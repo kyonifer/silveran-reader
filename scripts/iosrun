@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")" && pwd)"
+cd "${SCRIPT_DIR}/.."
+
+xcrun simctl boot "iPhone 17 Pro Max"
+open -a Simulator
+xcrun simctl install booted ".buildIos/Build/Products/Debug-iphonesimulator/Silveran Reader.app"
+xcrun simctl launch booted com.kyonifer.SilveranReader

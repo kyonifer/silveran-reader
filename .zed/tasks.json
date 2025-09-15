@@ -1,0 +1,56 @@
+[
+  {
+    "label": "Generate Project",
+    "command": "./scripts/genxproj",
+    "reveal": "always",
+    "use_new_terminal": false
+  },
+  {
+    "label": "Format Project",
+    "command": "./scripts/format",
+    "reveal": "always",
+    "use_new_terminal": false
+  },
+  {
+    "label": "Build macOS",
+    "command": "./scripts/macbuild",
+    "reveal": "always",
+    "use_new_terminal": false
+  },
+  {
+    "label": "Build Linux",
+    "command": "./scripts/linuxbuild",
+    "reveal": "always",
+    "use_new_terminal": false
+  },
+  {
+    "label": "Run Linux",
+    "command": "./scripts/linuxrun",
+    "reveal": "always",
+    "use_new_terminal": false
+  },
+  {
+    "label": "Run macOS",
+    "command": "./scripts/macrun",
+    "reveal": "always",
+    "use_new_terminal": false
+  },
+  {
+    "label": "Build iOS",
+    "command": "./scripts/iosbuild",
+    "reveal": "always",
+    "use_new_terminal": false
+  },
+  {
+    "label": "Run iOS",
+    "command": "./scripts/iosrun",
+    "reveal": "always",
+    "use_new_terminal": false
+  },
+  {
+    "label": "Initialize completion",
+    "command": "./scripts/initcompletion",
+    "reveal": "always",
+    "use_new_terminal": false
+  }
+]

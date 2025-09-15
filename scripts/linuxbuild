@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")" && pwd)"
+cd "${SCRIPT_DIR}/.."
+
+#export SCUI_DEFAULT_BACKEND=GtkBackend
+
+swift build --package-path SilveranKit --product SilveranKitLinuxApp "$@"

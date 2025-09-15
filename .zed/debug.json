@@ -1,0 +1,39 @@
+[
+  {
+    "adapter": "Swift",
+    "label": "Run Silveran Reader",
+    "env": {
+      "OS_ACTIVITY_MODE": "disable"
+    },
+    "program": ".buildMac/Build/Products/Debug/Silveran Reader.app/Contents/MacOS/Silveran Reader",
+    "request": "launch",
+    "stopOnEntry": false
+  },
+  {
+    "adapter": "Swift",
+    "label": "Build & Run Silveran Reader",
+    "env": {
+      "OS_ACTIVITY_MODE": "disable"
+    },
+    "build": {
+      "command": "xcodebuild",
+      "args": [
+        "-project",
+        "Silveran.xcodeproj",
+        "-scheme",
+        "\"Silveran Reader (macOS)\"",
+        "-configuration",
+        "Debug",
+        "-destination",
+        "generic/platform=macOS",
+        "-derivedDataPath",
+        ".buildMac",
+        "build"
+      ],
+      "shell": "system"
+    },
+    "program": ".buildMac/Build/Products/Debug/Silveran Reader.app/Contents/MacOS/Silveran Reader",
+    "request": "launch",
+    "stopOnEntry": false
+  }
+]
