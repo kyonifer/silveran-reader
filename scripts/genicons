@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")" && pwd)"
+cd "${SCRIPT_DIR}/.."
+
+ASSETS_DIR="XCodeWrapper/Assets.xcassets/AppIcon.appiconset"
+ORIG_ICON="${ASSETS_DIR}/app_icon_orig.png"
+
+if [ ! -f $ORIG_ICON ]; then
+    echo "Error: app_icon.png not found in project"
+    exit 1
+fi
+
+if ! command -v magick &> /dev/null; then
+    echo "Error: ImageMagick not found. Install with: brew install imagemagick"
+    exit 1
+fi
+
+echo "Generating app icons from app_icon.png..."
+
+magick ${ORIG_ICON} -resize 1024x1024 "${ASSETS_DIR}/icon_1024x1024.png"
+magick ${ORIG_ICON} -resize 512x512 "${ASSETS_DIR}/icon_512x512.png"
+magick ${ORIG_ICON} -resize 1024x1024 "${ASSETS_DIR}/icon_512x512@2x.png"
+magick ${ORIG_ICON} -resize 256x256 "${ASSETS_DIR}/icon_256x256.png"
+magick ${ORIG_ICON} -resize 512x512 "${ASSETS_DIR}/icon_256x256@2x.png"
+magick ${ORIG_ICON} -resize 128x128 "${ASSETS_DIR}/icon_128x128.png"
+magick ${ORIG_ICON} -resize 256x256 "${ASSETS_DIR}/icon_128x128@2x.png"
+magick ${ORIG_ICON} -resize 64x64 "${ASSETS_DIR}/icon_32x32@2x.png"
+magick ${ORIG_ICON} -resize 32x32 "${ASSETS_DIR}/icon_32x32.png"
+magick ${ORIG_ICON} -resize 32x32 "${ASSETS_DIR}/icon_16x16@2x.png"
+magick ${ORIG_ICON} -resize 16x16 "${ASSETS_DIR}/icon_16x16.png"
+
+magick ${ORIG_ICON} -resize 20x20 "${ASSETS_DIR}/icon_20x20.png"
+magick ${ORIG_ICON} -resize 40x40 "${ASSETS_DIR}/icon_20x20@2x.png"
+magick ${ORIG_ICON} -resize 60x60 "${ASSETS_DIR}/icon_20x20@3x.png"
+magick ${ORIG_ICON} -resize 29x29 "${ASSETS_DIR}/icon_29x29.png"
+magick ${ORIG_ICON} -resize 58x58 "${ASSETS_DIR}/icon_29x29@2x.png"
+magick ${ORIG_ICON} -resize 87x87 "${ASSETS_DIR}/icon_29x29@3x.png"
+magick ${ORIG_ICON} -resize 40x40 "${ASSETS_DIR}/icon_40x40.png"
+magick ${ORIG_ICON} -resize 80x80 "${ASSETS_DIR}/icon_40x40@2x.png"
+magick ${ORIG_ICON} -resize 120x120 "${ASSETS_DIR}/icon_40x40@3x.png"
+magick ${ORIG_ICON} -resize 120x120 "${ASSETS_DIR}/icon_60x60@2x.png"
+magick ${ORIG_ICON} -resize 180x180 "${ASSETS_DIR}/icon_60x60@3x.png"
+magick ${ORIG_ICON} -resize 76x76 "${ASSETS_DIR}/icon_76x76.png"
+magick ${ORIG_ICON} -resize 152x152 "${ASSETS_DIR}/icon_76x76@2x.png"
+magick ${ORIG_ICON} -resize 167x167 "${ASSETS_DIR}/icon_83.5x83.5@2x.png"
+
+echo "Generated all app icon sizes"
+
+# sudo rm -rf /Library/Caches/com.apple.iconservices.store

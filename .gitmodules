@@ -1,0 +1,3 @@
+[submodule "extern/foliate-js"]
+	path = extern/foliate-js
+	url = git@github.com:kyonifer/foliate-js.git

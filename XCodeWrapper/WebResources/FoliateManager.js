@@ -1,0 +1,920 @@
+import "./foliate-js/view.js";
+import { debugLog } from "./DebugConfig.js";
+
+const getCSS = ({
+  spacing,
+  justify,
+  hyphenate,
+  mediaActiveClass,
+  fontSize = 16,
+  fontFamily = null,
+  marginLeftRight = 8,
+  marginTopBottom = 8,
+  wordSpacing = 0,
+  letterSpacing = 0,
+  highlightColor = "#333333",
+  backgroundColor = null,
+  foregroundColor = null,
+  customCSS = null,
+}) => {
+  const activeClass = mediaActiveClass || "epub-media-overlay-active";
+  const fontFamilyCSS = fontFamily
+    ? `font-family: ${fontFamily} !important;`
+    : "";
+  const marginLR = `${marginLeftRight}%`;
+  const marginTB = `${marginTopBottom}%`;
+
+  const backgroundColorCSS = backgroundColor
+    ? `background-color: ${backgroundColor} !important;`
+    : "background-color: transparent !important;";
+  const foregroundColorCSS = foregroundColor
+    ? `color: ${foregroundColor} !important;`
+    : "";
+
+  return `
+    @namespace epub "http://www.idpf.org/2007/ops";
+    html {
+        color-scheme: light dark;
+        ${backgroundColor ? backgroundColorCSS : ""}
+    }
+    @media (prefers-color-scheme: dark) {
+        a:link {
+            color: lightblue;
+        }
+    }
+    body {
+        padding-left: ${marginLR} !important;
+        padding-right: ${marginLR} !important;
+        ${backgroundColorCSS}
+        ${foregroundColorCSS}
+    }
+    p, li, blockquote, dd {
+        font-size: ${fontSize}px !important;
+        ${fontFamilyCSS}
+        line-height: ${spacing};
+        text-align: ${justify ? "justify" : "start"};
+        -webkit-hyphens: ${hyphenate ? "auto" : "manual"};
+        hyphens: ${hyphenate ? "auto" : "manual"};
+        -webkit-hyphenate-limit-before: 3;
+        -webkit-hyphenate-limit-after: 2;
+        -webkit-hyphenate-limit-lines: 2;
+        hanging-punctuation: allow-end last;
+        widows: 2;
+        word-spacing: ${wordSpacing}em !important;
+        letter-spacing: ${letterSpacing}em !important;
+        ${foregroundColorCSS}
+    }
+    h1, h2, h3, h4, h5, h6 {
+        ${fontFamilyCSS}
+        word-spacing: ${wordSpacing}em !important;
+        letter-spacing: ${letterSpacing}em !important;
+        ${foregroundColorCSS}
+    }
+    [align="left"] { text-align: left; }
+    [align="right"] { text-align: right; }
+    [align="center"] { text-align: center; }
+    [align="justify"] { text-align: justify; }
+    pre {
+        white-space: pre-wrap !important;
+    }
+    aside[epub|type~="endnote"],
+    aside[epub|type~="footnote"],
+    aside[epub|type~="note"],
+    aside[epub|type~="rearnote"] {
+        display: none;
+    }
+    .${activeClass},
+    .${activeClass} * {
+        background-color: ${highlightColor} !important;
+        color: inherit !important;
+    }
+    ${customCSS || ""}
+`;
+};
+
+/**
+ * FoliateManager - Thin wrapper around foliate-view
+ *
+ * Design principles:
+ * - NO business logic or decision-making (Swift's job)
+ * - Minimal state (view reference + current styles)
+ * - Query foliate state when Swift asks
+ * - Execute commands from Swift
+ * - Report events to Swift
+ */
+class FoliateManager {
+  #view;
+  #fontSize = 20;
+  #fontFamily = "System Default";
+  #isDarkMode = false;
+  #marginLeftRight = 0;
+  #marginTopBottom = 8;
+  #wordSpacing = 0;
+  #letterSpacing = 0;
+  #highlightColor = "#333333";
+  #backgroundColor = null;
+  #foregroundColor = null;
+  #customCSS = null;
+  #singleColumnMode = false;
+  #lastRelocateRange = null;
+  #highlightedElement = null;
+  #resizeHandler = null;
+
+  async open(file) {
+    debugLog("FoliateManager", "open() called with file:", file.name);
+
+    this.#view = document.createElement("foliate-view");
+    this.#view.setAttribute("flow", "paginated");
+
+    const container = document.getElementById("reader-container");
+    container.appendChild(this.#view);
+
+    debugLog("FoliateManager", "Setting up event listeners");
+    this.#attachEventListeners();
+
+    debugLog("FoliateManager", "Opening file in foliate-view...");
+    await this.#view.open(file);
+
+    debugLog("FoliateManager", "Book opened, reporting structure to Swift");
+    await this.#reportBookStructureReady();
+
+    debugLog("FoliateManager", "Initialization complete");
+  }
+
+  #attachEventListeners() {
+    this.#view.addEventListener("relocate", ({ detail }) => {
+      this.#reportRelocate(detail);
+    });
+
+    this.#view.addEventListener("page-flip", ({ detail }) => {
+      this.#reportPageFlip(detail);
+    });
+
+    let clickTimer = null;
+
+    this.#view.addEventListener("load", ({ detail }) => {
+      const { doc, index } = detail;
+      if (doc) {
+        doc.addEventListener("click", (event) => {
+          if (clickTimer !== null) {
+            clearTimeout(clickTimer);
+            clickTimer = null;
+            return;
+          }
+
+          clickTimer = setTimeout(() => {
+            clickTimer = null;
+            this.#reportOverlayToggle();
+          }, 150);
+        });
+
+        doc.addEventListener("dblclick", (event) => {
+          if (clickTimer) {
+            clearTimeout(clickTimer);
+            clickTimer = null;
+          }
+
+          this.#handleDoubleClick(event, index, doc);
+        });
+      }
+    });
+
+    debugLog("FoliateManager", "Event listeners attached");
+  }
+
+  #reportRelocate(detail) {
+    debugLog("trace", "[FM2] Relocate event");
+
+    if (!detail || !detail.cfi) {
+      console.warn("[FM2] Relocate event missing detail or CFI");
+      return;
+    }
+
+    this.#lastRelocateRange = detail.range || null;
+    debugLog("trace", "[FM2] Stored relocate range:", this.#lastRelocateRange ? "available" : "null");
+
+    const sectionIndex = detail.section?.current;
+    const rawPage = this.#view?.renderer?.page;
+    const rawPages = this.#view?.renderer?.pages;
+
+    const textPages = typeof rawPages === 'number' && Number.isFinite(rawPages) && rawPages > 0
+        ? Math.max(1, Math.round(rawPages - 2))
+        : null;
+
+    const pageIndex = typeof rawPage === 'number' && Number.isFinite(rawPage) && textPages != null
+        ? Math.max(0, Math.min(textPages - 1, Math.round(rawPage - 1))) + 1
+        : null;
+
+    const totalPages = textPages;
+
+    const href = sectionIndex != null
+      ? this.#view?.book?.sections?.[sectionIndex]?.id || null
+      : null;
+
+    debugLog("overlay", "[FM2] Relocate - section:", sectionIndex, "page:", pageIndex, "/", totalPages, "href:", href);
+
+    let bookFraction = detail.fraction;
+    if (!Number.isFinite(bookFraction) && detail.section?.current != null && detail.section?.total > 0) {
+      bookFraction = detail.section.current / detail.section.total;
+    }
+
+    let chapterFraction = null;
+    const sectionFractions = this.#view?.getSectionFractions?.() || [];
+    if (Number.isFinite(detail.fraction) && sectionIndex != null) {
+      const sectionStart = sectionFractions[sectionIndex] || 0;
+      const sectionEnd = sectionFractions[sectionIndex + 1] || 1;
+      const sectionSize = sectionEnd - sectionStart;
+      chapterFraction = sectionSize > 0 ? (detail.fraction - sectionStart) / sectionSize : 0;
+    }
+
+    const payload = {
+      sectionIndex: sectionIndex,
+      pageIndex: pageIndex,
+      totalPages: totalPages,
+      href: href,
+      cfi: detail.cfi,
+      fraction: bookFraction,
+      chapterFraction: chapterFraction,
+      title: detail.tocItem?.label || null,
+    };
+
+    window.webkit?.messageHandlers?.Relocated?.postMessage(payload);
+  }
+
+  async #reportBookStructureReady() {
+    const bookSections = this.#view?.book?.sections || [];
+    const toc = this.#view?.book?.toc || [];
+
+    const tocMap = this.#buildTOCMap(toc);
+
+    const mediaOverlay = this.#view.book.getMediaOverlay();
+    const allSMILEntries = await mediaOverlay.getAllSMILEntries();
+
+    const sections = bookSections.map((section, index) => {
+      const tocEntry = tocMap.get(section.id);
+      const smilEntries = this.#transformSMILEntries(allSMILEntries[index] || []);
+
+      return {
+        index: index,
+        id: section.id,
+        label: tocEntry?.label || null,
+        level: tocEntry?.level ?? null,
+        mediaOverlay: smilEntries,
+      };
+    });
+
+    debugLog("FoliateManager", "Book structure ready -", sections.length, "sections");
+
+    const payload = { sections };
+    window.webkit?.messageHandlers?.BookStructureReady?.postMessage(payload);
+  }
+
+  #reportOverlayToggle() {
+    window.webkit?.messageHandlers?.OverlayToggled?.postMessage({});
+  }
+
+  #reportPageFlip(detail) {
+    if (!detail) {
+      console.warn("[FM2] Page flip event missing detail");
+      return;
+    }
+
+    const fromPage = Number.isFinite(detail.fromPage) ? detail.fromPage : null;
+    const toPage = Number.isFinite(detail.toPage) ? detail.toPage : null;
+
+    if (fromPage == null || toPage == null || fromPage === toPage) {
+      debugLog("FoliateManager", "Ignoring page flip with invalid page numbers", detail);
+      return;
+    }
+
+    const delta = toPage - fromPage;
+    const isRtl = this.#view?.book?.dir === "rtl";
+    let direction = delta > 0 ? "right" : "left";
+    if (isRtl) {
+      direction = direction === "right" ? "left" : "right";
+    }
+
+    debugLog("FoliateManager", "Posting PageFlipped message to Swift", direction);
+
+    window.webkit?.messageHandlers?.PageFlipped?.postMessage({
+      direction: direction,
+      fromPage: fromPage,
+      toPage: toPage,
+      delta: delta,
+      isRtl: !!isRtl,
+    });
+  }
+
+  #buildTOCMap(items, level = 0, map = new Map()) {
+    for (const item of items) {
+      if (item.href) {
+        const baseHref = item.href.split("#")[0];
+        if (!map.has(baseHref)) {
+          map.set(baseHref, { label: item.label, level: level });
+        }
+      }
+
+      if (item.subitems && item.subitems.length > 0) {
+        this.#buildTOCMap(item.subitems, level + 1, map);
+      }
+    }
+    return map;
+  }
+
+  #transformSMILEntries(entries) {
+    let cumSum = 0;
+    return entries.map((entry) => {
+      const [textHref, textId] = entry.text.split("#");
+      const duration = (entry.end ?? 0) - (entry.begin ?? 0);
+      cumSum += duration;
+
+      return {
+        textId: textId || "",
+        textHref: textHref || "",
+        audioFile: entry.audioFile || "",
+        begin: entry.begin ?? 0,
+        end: entry.end ?? 0,
+        cumSumAtEnd: cumSum,
+      };
+    });
+  }
+
+  goLeft() {
+    debugLog("FoliateManager", "goLeft()");
+    if (!this.#view) {
+      console.warn("[FM2] goLeft() called but view not initialized");
+      return;
+    }
+    this.#view.goLeft();
+  }
+
+  goRight() {
+    debugLog("FoliateManager", "goRight()");
+    if (!this.#view) {
+      console.warn("[FM2] goRight() called but view not initialized");
+      return;
+    }
+    this.#view.goRight();
+  }
+
+  goTo(href) {
+    debugLog("FoliateManager", "goTo() - href:", href);
+    if (!this.#view) {
+      console.warn("[FM2] goTo() called but view not initialized");
+      return;
+    }
+    this.#view.goTo(href);
+  }
+
+  async goToFractionInSection(sectionIndex, fraction) {
+    debugLog("FoliateManager", `goToFractionInSection(${sectionIndex}, ${fraction})`);
+    if (!this.#view) {
+      console.warn("[FM2] goToFractionInSection() called but view not initialized");
+      return;
+    }
+    if (typeof sectionIndex !== 'number' || typeof fraction !== 'number') {
+      console.warn("[FM2] goToFractionInSection() - invalid parameters");
+      return;
+    }
+    await this.#view.goToFractionInSection(sectionIndex, fraction);
+  }
+
+  async goToBookFraction(bookFraction) {
+    debugLog("FoliateManager", `goToBookFraction(${bookFraction})`);
+    if (!this.#view) {
+      console.warn("[FM2] goToBookFraction() called but view not initialized");
+      return;
+    }
+
+    const sectionFractions = this.#view?.getSectionFractions?.() || [];
+
+    if (bookFraction <= 0) {
+      return this.goToFractionInSection(0, 0);
+    }
+    if (bookFraction >= 1) {
+      const lastIdx = Math.max(0, sectionFractions.length - 2);
+      return this.goToFractionInSection(lastIdx, 1);
+    }
+
+    let sectionIndex = sectionFractions.findIndex(x => x > bookFraction) - 1;
+    if (sectionIndex < 0) sectionIndex = 0;
+
+    const sectionStart = sectionFractions[sectionIndex] || 0;
+    const sectionEnd = sectionFractions[sectionIndex + 1] || 1;
+    const sectionSize = sectionEnd - sectionStart;
+    const fractionInSection = sectionSize > 0
+      ? (bookFraction - sectionStart) / sectionSize
+      : 0;
+
+    return this.goToFractionInSection(sectionIndex, fractionInSection);
+  }
+
+  getCurrentLocation() {
+    if (!this.#view) {
+      console.warn("[FM2] getCurrentLocation() called but view not initialized");
+      return null;
+    }
+
+    const sectionIndex = this.#view.renderer?.section?.current;
+    const pageIndex = this.#view.renderer?.page;
+    const cfi = this.#view.getCFI?.();
+    const href = sectionIndex != null
+      ? this.#view?.book?.sections?.[sectionIndex]?.id || null
+      : null;
+
+    const sectionFractions = this.#view?.getSectionFractions?.() || [];
+    const fraction = this.#view.renderer?.getOverallProgress?.();
+
+    debugLog("FoliateManager", "getCurrentLocation() - section:", sectionIndex, "page:", pageIndex);
+
+    return {
+      sectionIndex: sectionIndex,
+      pageIndex: pageIndex,
+      cfi: cfi,
+      href: href,
+      fraction: fraction,
+    };
+  }
+
+  updateStyles(jsonString) {
+    debugLog("FoliateManager", "updateStyles() - jsonString:", jsonString);
+
+    if (!this.#view) {
+      console.warn("[FM2] updateStyles() called but view not initialized");
+      return;
+    }
+
+    let styles;
+    try {
+      styles = JSON.parse(jsonString);
+    } catch (error) {
+      console.error("[FM2] Failed to parse styles JSON:", error);
+      return;
+    }
+
+    if (styles.fontSize !== undefined && styles.fontSize !== null) {
+      this.#fontSize = styles.fontSize;
+    }
+    if (styles.fontFamily !== undefined && styles.fontFamily !== null) {
+      this.#fontFamily = styles.fontFamily;
+    }
+    if (styles.isDarkMode !== undefined && styles.isDarkMode !== null) {
+      this.#isDarkMode = styles.isDarkMode;
+    }
+    if (styles.marginLeftRight !== undefined && styles.marginLeftRight !== null) {
+      this.#marginLeftRight = styles.marginLeftRight;
+    }
+    if (styles.marginTopBottom !== undefined && styles.marginTopBottom !== null) {
+      this.#marginTopBottom = styles.marginTopBottom;
+    }
+    if (styles.wordSpacing !== undefined && styles.wordSpacing !== null) {
+      this.#wordSpacing = styles.wordSpacing;
+    }
+    if (styles.letterSpacing !== undefined && styles.letterSpacing !== null) {
+      this.#letterSpacing = styles.letterSpacing;
+    }
+    if (styles.highlightColor !== undefined && styles.highlightColor !== null) {
+      this.#highlightColor = styles.highlightColor;
+    }
+    if ("backgroundColor" in styles) {
+      this.#backgroundColor = styles.backgroundColor;
+    }
+    if ("foregroundColor" in styles) {
+      this.#foregroundColor = styles.foregroundColor;
+    }
+    if ("customCSS" in styles) {
+      this.#customCSS = styles.customCSS;
+    }
+    if (styles.singleColumnMode !== undefined && styles.singleColumnMode !== null) {
+      this.#singleColumnMode = styles.singleColumnMode;
+    }
+
+    this.#applyStylesToRenderer();
+  }
+
+  #applyStylesToRenderer() {
+    if (!this.#view.renderer) {
+      console.warn("[FM2] No renderer found, cannot apply styles");
+      return;
+    }
+
+    const mediaActiveClass =
+      this.#view?.book?.media?.activeClass || "epub-media-overlay-active";
+
+    debugLog("FoliateManager", "Applying styles to renderer:", {
+      fontSize: this.#fontSize,
+      fontFamily: this.#fontFamily,
+      backgroundColor: this.#backgroundColor,
+      foregroundColor: this.#foregroundColor,
+    });
+
+    this.#view.renderer.setStyles?.(
+      getCSS({
+        spacing: 1.4,
+        justify: true,
+        hyphenate: true,
+        mediaActiveClass,
+        fontSize: this.#fontSize,
+        fontFamily: this.#fontFamily,
+        marginLeftRight: this.#marginLeftRight,
+        marginTopBottom: this.#marginTopBottom,
+        wordSpacing: this.#wordSpacing,
+        letterSpacing: this.#letterSpacing,
+        highlightColor: this.#highlightColor,
+        backgroundColor: this.#backgroundColor,
+        foregroundColor: this.#foregroundColor,
+        customCSS: this.#customCSS,
+      }),
+    );
+
+    const columnCount = this.#singleColumnMode ? "1" : "2";
+    this.#view.renderer.setAttribute("max-column-count", columnCount);
+    debugLog("FoliateManager", `Set max-column-count to ${columnCount}`);
+
+    const marginPx = Math.round((this.#marginTopBottom / 100) * 800);
+    this.#view.renderer.setAttribute("margin", `${marginPx}px`);
+    debugLog("FoliateManager", `Set margin to ${marginPx}px`);
+
+    this.#view.renderer.setAttribute("gap", "0%");
+    this.#updateMaxInlineSize();
+
+    if (!this.#resizeHandler) {
+      this.#resizeHandler = () => this.#updateMaxInlineSize();
+      window.addEventListener("resize", this.#resizeHandler);
+    }
+
+    this.#view.renderer.render?.();
+  }
+
+  #updateMaxInlineSize() {
+    if (!this.#view?.renderer) return;
+
+    if (this.#singleColumnMode) {
+      this.#view.renderer.setAttribute("max-inline-size", `${window.innerWidth}px`);
+    } else {
+      this.#view.renderer.setAttribute("max-inline-size", `${Math.floor(window.innerWidth / 2)}px`);
+    }
+  }
+
+  #extractAnchorFromCFI(cfi) {
+    if (!cfi) return null;
+
+    const matches = [...cfi.matchAll(/\[([^\]]+)\]/g)];
+
+    for (let i = matches.length - 1; i >= 0; i--) {
+      const id = matches[i][1];
+      if (!id.match(/^\d+$/) && !id.includes(";") && !id.includes(",")) {
+        debugLog("FoliateManager", `Extracted anchor from CFI: ${id}`);
+        return id;
+      }
+    }
+
+    return null;
+  }
+
+  #handleDoubleClick(event, sectionIndex, doc) {
+    debugLog("FoliateManager", `Double-click detected in section ${sectionIndex}`);
+
+    const selection = doc.getSelection?.();
+    if (!selection) {
+      console.warn("[FM2] No selection available from double-click");
+      return;
+    }
+
+    const range = selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
+    if (!range) {
+      console.warn("[FM2] No range from selection");
+      return;
+    }
+
+    let cfi = null;
+    if (typeof this.#view.getCFI === 'function') {
+      try {
+        cfi = this.#view.getCFI(sectionIndex, range);
+        debugLog("FoliateManager", `Got CFI from double-click: ${cfi}`);
+      } catch (error) {
+        console.warn("[FM2] Failed to get CFI from double-click:", error);
+        return;
+      }
+    }
+
+    if (!cfi) {
+      console.warn("[FM2] Could not determine CFI from double-click");
+      return;
+    }
+
+    const anchor = this.#extractAnchorFromCFI(cfi);
+    if (!anchor) {
+      console.warn("[FM2] Could not extract anchor from CFI:", cfi);
+      return;
+    }
+
+    debugLog("FoliateManager", `Sending seek event: section=${sectionIndex}, anchor=${anchor}`);
+    this.#reportSeekEvent(sectionIndex, anchor);
+
+    selection.removeAllRanges();
+  }
+
+  #reportSeekEvent(sectionIndex, anchor) {
+    debugLog("FoliateManager", `Reporting seek event to Swift: section=${sectionIndex}, anchor=${anchor}`);
+
+    window.webkit?.messageHandlers?.mediaOverlaySeek?.postMessage({
+      sectionIndex: sectionIndex,
+      anchor: anchor
+    });
+  }
+
+  getFullyVisibleElementIds() {
+    const range = this.#lastRelocateRange;
+    if (!range) {
+      console.warn("[FM2] getFullyVisibleElementIds: No range available");
+      return [];
+    }
+
+    const doc = range.startContainer?.ownerDocument || range.commonAncestorContainer?.ownerDocument;
+    if (!doc) {
+      console.warn("[FM2] getFullyVisibleElementIds: Could not get document from range");
+      return [];
+    }
+
+    const ids = [];
+    try {
+      const allElements = doc.querySelectorAll('[id]');
+
+      for (const el of allElements) {
+        if (!range.intersectsNode(el)) continue;
+
+        const nodeRange = doc.createRange();
+        try {
+          nodeRange.selectNodeContents(el);
+
+          const startsAfterRangeStart = range.compareBoundaryPoints(Range.START_TO_START, nodeRange) <= 0;
+          const endsBeforeRangeEnd = range.compareBoundaryPoints(Range.END_TO_END, nodeRange) >= 0;
+
+          if (startsAfterRangeStart && endsBeforeRangeEnd) {
+            ids.push(el.id);
+          }
+        } finally {
+          nodeRange.detach?.();
+        }
+      }
+
+      debugLog("FoliateManager", `Found ${ids.length} fully visible element IDs`);
+    } catch (err) {
+      console.warn("[FM2] getFullyVisibleElementIds failed:", err);
+    }
+
+    return ids;
+  }
+
+  // MARK: - Highlight methods (Swift controls audio directly)
+
+  highlightFragment(href, textId) {
+    debugLog("FoliateManager", `highlightFragment(href: ${href}, textId: ${textId})`);
+
+    this.clearHighlight();
+
+    if (!this.#view?.book) {
+      console.warn("[FM2] highlightFragment() called but book not loaded");
+      return;
+    }
+
+    const sectionIndex = this.#view.book?.sections?.findIndex(s => s.id === href);
+    if (sectionIndex === -1 || sectionIndex === undefined) {
+      console.warn("[FM2] highlightFragment: Could not find section for href:", href);
+      return;
+    }
+
+    const renderer = this.#view?.renderer;
+    if (!renderer) {
+      console.warn("[FM2] highlightFragment: No renderer available");
+      return;
+    }
+
+    const contents = renderer.getContents?.();
+    if (!contents || !contents.length) {
+      debugLog("FoliateManager", "No contents loaded, navigating first");
+      this.#view.goTo(`${href}#${textId}`);
+      return;
+    }
+
+    const content = contents.find(c => c.index === sectionIndex);
+    if (!content?.doc) {
+      debugLog("FoliateManager", `Section ${sectionIndex} not currently loaded, navigating first`);
+      this.#view.goTo(`${href}#${textId}`);
+      return;
+    }
+
+    const doc = content.doc;
+    const el = doc.getElementById(textId);
+    if (!el) {
+      console.warn("[FM2] highlightFragment: Element not found:", textId);
+      return;
+    }
+
+    const activeClass = this.#view?.book?.media?.activeClass || "epub-media-overlay-active";
+    el.classList.add(activeClass);
+    this.#highlightedElement = new WeakRef(el);
+
+    const playbackActiveClass = this.#view?.book?.media?.playbackActiveClass;
+    if (playbackActiveClass) {
+      doc.documentElement.classList.add(playbackActiveClass);
+    }
+
+    const splitInfo = this.#getElementSplitInfo(el, doc, renderer);
+    const visibleRatio = splitInfo?.visibleRatio ?? 1.0;
+    const offScreenRatio = splitInfo?.offScreenRatio ?? 0.0;
+
+    debugLog("FoliateManager", `Element visibility: visible=${visibleRatio}, offScreen=${offScreenRatio}`);
+
+    window.webkit?.messageHandlers?.ElementVisibility?.postMessage({
+      textId: textId,
+      visibleRatio: visibleRatio,
+      offScreenRatio: offScreenRatio,
+    });
+  }
+
+  clearHighlight() {
+    const el = this.#highlightedElement?.deref?.();
+    if (el) {
+      const activeClass = this.#view?.book?.media?.activeClass || "epub-media-overlay-active";
+      el.classList.remove(activeClass);
+      const doc = el.ownerDocument;
+      if (doc?.documentElement) {
+        const playbackActiveClass = this.#view?.book?.media?.playbackActiveClass;
+        if (playbackActiveClass) {
+          doc.documentElement.classList.remove(playbackActiveClass);
+        }
+      }
+    }
+    this.#highlightedElement = null;
+  }
+
+  // MARK: - Search methods
+
+  async startSearch(query, options = {}) {
+    debugLog("FoliateManager", `startSearch(query: "${query}")`);
+
+    if (!this.#view) {
+      console.warn("[FM2] startSearch() called but view not initialized");
+      window.webkit?.messageHandlers?.SearchError?.postMessage({
+        message: "View not initialized"
+      });
+      return;
+    }
+
+    const searchOpts = {
+      query,
+      matchCase: options.matchCase ?? false,
+      matchDiacritics: options.matchDiacritics ?? false,
+      matchWholeWords: options.matchWholeWords ?? false,
+    };
+
+    try {
+      for await (const result of this.#view.search(searchOpts)) {
+        if (result === "done") {
+          window.webkit?.messageHandlers?.SearchComplete?.postMessage({});
+        } else if (result.progress !== undefined) {
+          window.webkit?.messageHandlers?.SearchProgress?.postMessage({
+            progress: result.progress
+          });
+        } else if (result.subitems) {
+          window.webkit?.messageHandlers?.SearchResults?.postMessage({
+            sectionLabel: result.label || "",
+            results: result.subitems.map(item => ({
+              cfi: item.cfi,
+              pre: item.excerpt?.pre ?? "",
+              match: item.excerpt?.match ?? "",
+              post: item.excerpt?.post ?? "",
+            }))
+          });
+        }
+      }
+    } catch (error) {
+      console.error("[FM2] Search error:", error);
+      window.webkit?.messageHandlers?.SearchError?.postMessage({
+        message: error.message || "Search failed"
+      });
+    }
+  }
+
+  clearSearch() {
+    debugLog("FoliateManager", "clearSearch()");
+    if (!this.#view) {
+      console.warn("[FM2] clearSearch() called but view not initialized");
+      return;
+    }
+    this.#view.clearSearch();
+  }
+
+  async goToCFI(cfi) {
+    debugLog("FoliateManager", `goToCFI(cfi: "${cfi}")`);
+    if (!this.#view) {
+      console.warn("[FM2] goToCFI() called but view not initialized");
+      return;
+    }
+    await this.#view.goTo(cfi);
+  }
+
+  #getElementSplitInfo(el, doc, renderer) {
+    if (!el || !doc?.defaultView || !renderer) return null;
+    if (renderer.scrolled) return null;
+
+    const rects = Array.from(el.getClientRects())
+      .filter(rect => rect.width > 0 && rect.height > 0);
+    if (!rects.length) return null;
+
+    const defaultView = doc.defaultView;
+    const frameElement = defaultView.frameElement;
+    const rendererRect = renderer.getBoundingClientRect?.();
+    if (!frameElement || !rendererRect ||
+        !rendererRect.width || !rendererRect.height) return null;
+
+    const frameRect = frameElement.getBoundingClientRect();
+    const viewportRect = {
+      left: Math.max(rendererRect.left, frameRect.left),
+      right: Math.min(rendererRect.right, frameRect.right),
+      top: Math.max(rendererRect.top, frameRect.top),
+      bottom: Math.min(rendererRect.bottom, frameRect.bottom)
+    };
+    if (viewportRect.left >= viewportRect.right ||
+        viewportRect.top >= viewportRect.bottom) return null;
+
+    const writingMode =
+      defaultView.getComputedStyle(doc.body)?.writingMode ?? '';
+    if (writingMode.startsWith('vertical')) return null;
+
+    const rtl = renderer.getAttribute?.('dir') === 'rtl';
+
+    let totalArea = 0;
+    let visibleArea = 0;
+    let forwardArea = 0;
+    let backwardArea = 0;
+
+    for (const rect of rects) {
+      const area = rect.width * rect.height;
+      if (!area) continue;
+      totalArea += area;
+
+      const globalLeft = frameRect.left + rect.left;
+      const globalRight = frameRect.left + rect.right;
+      const globalTop = frameRect.top + rect.top;
+      const globalBottom = frameRect.top + rect.bottom;
+
+      const overlapLeft = Math.max(globalLeft, viewportRect.left);
+      const overlapRight = Math.min(globalRight, viewportRect.right);
+      const overlapTop = Math.max(globalTop, viewportRect.top);
+      const overlapBottom = Math.min(globalBottom, viewportRect.bottom);
+      const overlapWidth = Math.max(0, overlapRight - overlapLeft);
+      const overlapHeight = Math.max(0, overlapBottom - overlapTop);
+
+      if (overlapWidth > 0 && overlapHeight > 0) {
+        visibleArea += overlapWidth * overlapHeight;
+      }
+
+      const verticalOverlap = Math.max(0,
+        Math.min(globalBottom, viewportRect.bottom) -
+        Math.max(globalTop, viewportRect.top));
+      if (verticalOverlap <= 0) continue;
+
+      const forwardHiddenWidth = rtl
+        ? Math.max(0, Math.min(rect.width,
+            viewportRect.left - globalLeft))
+        : Math.max(0, Math.min(rect.width,
+            globalRight - viewportRect.right));
+      const backwardHiddenWidth = rtl
+        ? Math.max(0, Math.min(rect.width,
+            globalRight - viewportRect.right))
+        : Math.max(0, Math.min(rect.width,
+            viewportRect.left - globalLeft));
+
+      if (forwardHiddenWidth > 0) {
+        forwardArea += forwardHiddenWidth * verticalOverlap;
+      }
+      if (backwardHiddenWidth > 0) {
+        backwardArea += backwardHiddenWidth * verticalOverlap;
+      }
+    }
+
+    if (!totalArea || !visibleArea) return null;
+
+    const visibleRatio = visibleArea / totalArea;
+    const forwardRatio = forwardArea / totalArea;
+    const backwardRatio = backwardArea / totalArea;
+
+    if (visibleRatio >= 0.98) return null;
+
+    const progressionRatio = rtl ? backwardRatio : forwardRatio;
+    const oppositeRatio = rtl ? forwardRatio : backwardRatio;
+
+    if (progressionRatio < 0.1) return null;
+    if (progressionRatio <= oppositeRatio) return null;
+
+    return {
+      visibleRatio,
+      offScreenRatio: progressionRatio
+    };
+  }
+}
+
+export default FoliateManager;
