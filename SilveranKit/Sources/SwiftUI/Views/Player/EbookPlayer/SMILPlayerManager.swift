@@ -26,12 +26,21 @@ private func createArtwork(from image: NSImage) -> MPMediaItemArtwork {
 }
 #endif
 
+enum RemoteCommand {
+    case play
+    case pause
+    case skipForward(seconds: Double)
+    case skipBackward(seconds: Double)
+    case seekTo(position: Double)
+}
+
 @MainActor
 protocol SMILPlayerManagerDelegate: AnyObject {
     func smilPlayerDidAdvanceToEntry(sectionIndex: Int, entryIndex: Int, entry: SMILEntry)
     func smilPlayerDidFinishBook()
     func smilPlayerDidUpdateTime(currentTime: Double, sectionIndex: Int, entryIndex: Int)
     func smilPlayerShouldAdvanceToNextSection(fromSection: Int) -> Bool
+    func smilPlayerRemoteCommandReceived(command: RemoteCommand)
 }
 
 @MainActor
@@ -486,14 +495,14 @@ class SMILPlayerManager {
 
         commandCenter.playCommand.addTarget { [weak self] _ in
             Task { @MainActor in
-                self?.play()
+                self?.delegate?.smilPlayerRemoteCommandReceived(command: .play)
             }
             return .success
         }
 
         commandCenter.pauseCommand.addTarget { [weak self] _ in
             Task { @MainActor in
-                self?.pause()
+                self?.delegate?.smilPlayerRemoteCommandReceived(command: .pause)
             }
             return .success
         }
@@ -501,8 +510,7 @@ class SMILPlayerManager {
         commandCenter.skipForwardCommand.preferredIntervals = [15]
         commandCenter.skipForwardCommand.addTarget { [weak self] _ in
             Task { @MainActor in
-                guard let self = self else { return }
-                self.seek(to: self.currentTime + 15)
+                self?.delegate?.smilPlayerRemoteCommandReceived(command: .skipForward(seconds: 15))
             }
             return .success
         }
@@ -510,8 +518,7 @@ class SMILPlayerManager {
         commandCenter.skipBackwardCommand.preferredIntervals = [15]
         commandCenter.skipBackwardCommand.addTarget { [weak self] _ in
             Task { @MainActor in
-                guard let self = self else { return }
-                self.seek(to: max(0, self.currentTime - 15))
+                self?.delegate?.smilPlayerRemoteCommandReceived(command: .skipBackward(seconds: 15))
             }
             return .success
         }
@@ -521,7 +528,7 @@ class SMILPlayerManager {
                 return .commandFailed
             }
             Task { @MainActor in
-                self?.seek(to: positionEvent.positionTime)
+                self?.delegate?.smilPlayerRemoteCommandReceived(command: .seekTo(position: positionEvent.positionTime))
             }
             return .success
         }
