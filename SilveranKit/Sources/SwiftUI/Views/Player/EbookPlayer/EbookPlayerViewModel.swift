@@ -258,6 +258,7 @@ class EbookPlayerViewModel {
     func handleScenePhaseChange(_ phase: ScenePhase) {
         switch phase {
         case .active:
+            smilPlayerManager?.reconcilePositionFromPlayer()
             if let syncData = smilPlayerManager?.getBackgroundSyncData() {
                 debugLog("[EbookPlayerViewModel] Resuming from background - syncing view to audio position")
                 Task { @MainActor in

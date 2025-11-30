@@ -45,7 +45,7 @@ protocol SMILPlayerManagerDelegate: AnyObject {
 
 @MainActor
 @Observable
-class SMILPlayerManager {
+class SMILPlayerManager: NSObject, AVAudioPlayerDelegate {
     // MARK: - State
 
     enum PlayerState {
@@ -108,6 +108,7 @@ class SMILPlayerManager {
         self.bookStructure = bookStructure
         self.epubPath = epubPath
         self.currentPlaybackRate = Float(initialPlaybackRate)
+        super.init()
         debugLog("[SMILPlayerManager] Initialized with \(bookStructure.count) sections, epubPath: \(epubPath?.path ?? "nil"), rate: \(initialPlaybackRate)")
 
         setupAudioSession()
@@ -222,6 +223,7 @@ class SMILPlayerManager {
                 audioPath: relativeAudioFile
             )
             audioPlayer = try AVAudioPlayer(data: audioData)
+            audioPlayer?.delegate = self
             audioPlayer?.enableRate = true
             audioPlayer?.rate = currentPlaybackRate
             audioPlayer?.prepareToPlay()
@@ -303,22 +305,7 @@ class SMILPlayerManager {
     private func timerFired() {
         guard let player = audioPlayer, state == .playing else { return }
 
-        let prevTime = currentTime
         currentTime = player.currentTime
-
-        // Detect if audio file finished (time wrapped to 0 after being near end)
-        if prevTime > 0 && currentTime == 0 && prevTime >= duration - 0.5 {
-            debugLog("[SMILPlayerManager] Audio ended (reached end of file)")
-            advanceToNextEntry()
-            return
-        }
-
-        // Backup: detect if player stopped (isPlaying becomes false at end of file)
-        if !player.isPlaying && currentTime >= duration - 0.1 {
-            debugLog("[SMILPlayerManager] Audio playback finished")
-            advanceToNextEntry()
-            return
-        }
 
         // Check if we've passed the current entry boundary (use >= for exact match)
         if currentTime >= currentEntryEndTime {
@@ -337,6 +324,15 @@ class SMILPlayerManager {
         }
 
         updateNowPlayingInfo()
+    }
+
+    // MARK: - AVAudioPlayerDelegate
+
+    nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        Task { @MainActor in
+            debugLog("[SMILPlayerManager] Audio file finished playing (delegate callback, success=\(flag))")
+            advanceToNextEntry()
+        }
     }
 
     // MARK: - Background Sync
@@ -360,6 +356,33 @@ class SMILPlayerManager {
             href: entry.textHref,
             fragment: entry.textId
         )
+    }
+
+    /// Reconcile cached position from actual player state (call after returning from background).
+    /// Timers may have not been fired while backgrounded, so the audio player may have freewheeled
+    /// forward without updating the currentEntry (which happens on a timer). So we manually
+    /// force the location after we resume from being backgrounded.
+    func reconcilePositionFromPlayer() {
+        guard let player = audioPlayer else { return }
+        guard currentSectionIndex < bookStructure.count else { return }
+
+        let actualTime = player.currentTime
+        currentTime = actualTime
+
+        let section = bookStructure[currentSectionIndex]
+        for (index, entry) in section.mediaOverlay.enumerated() {
+            if actualTime >= entry.begin && actualTime < entry.end {
+                if index != currentEntryIndex {
+                    debugLog("[SMILPlayerManager] Reconciled entry: was \(currentEntryIndex), now \(index)")
+                    currentEntryIndex = index
+                    currentEntryBeginTime = entry.begin
+                    currentEntryEndTime = entry.end
+                }
+                return
+            }
+        }
+
+        debugLog("[SMILPlayerManager] Could not reconcile entry for time \(actualTime) in section \(currentSectionIndex)")
     }
 
     // MARK: - Entry Navigation
