@@ -687,4 +687,18 @@ extension MediaOverlayManager: SMILPlayerManagerDelegate {
         }
         return true
     }
+
+    func smilPlayerRemoteCommandReceived(command: RemoteCommand) {
+        debugLog("[MOM] Remote command received: \(command)")
+        switch command {
+        case .play, .pause:
+            Task { await togglePlaying() }
+        case .skipForward(let seconds):
+            smilPlayerManager?.seek(to: (smilPlayerManager?.currentTime ?? 0) + seconds)
+        case .skipBackward(let seconds):
+            smilPlayerManager?.seek(to: max(0, (smilPlayerManager?.currentTime ?? 0) - seconds))
+        case .seekTo(let position):
+            smilPlayerManager?.seek(to: position)
+        }
+    }
 }
