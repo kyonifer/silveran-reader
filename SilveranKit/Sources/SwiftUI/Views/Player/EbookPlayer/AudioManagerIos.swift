@@ -25,6 +25,15 @@ class AudioManagerIos {
 
     // MARK: - Audio Session
 
+    func ensureAudioSessionActive() {
+        do {
+            try AVAudioSession.sharedInstance().setActive(true)
+            debugLog("[AudioManagerIos] Audio session re-activated before play")
+        } catch {
+            debugLog("[AudioManagerIos] Failed to re-activate audio session: \(error)")
+        }
+    }
+
     private func setupAudioSession() {
         do {
             let session = AVAudioSession.sharedInstance()

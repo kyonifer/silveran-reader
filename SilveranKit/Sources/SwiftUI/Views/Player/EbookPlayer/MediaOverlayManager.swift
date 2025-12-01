@@ -313,6 +313,9 @@ class MediaOverlayManager {
             }
         }
 
+        #if os(iOS)
+        audioManagerIos?.ensureAudioSessionActive()
+        #endif
         smilPlayerManager.play()
         if let entry = smilPlayerManager.getCurrentEntry() {
             let (sectionIndex, _) = smilPlayerManager.getCurrentPosition()
