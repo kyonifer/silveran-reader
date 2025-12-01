@@ -1,11 +1,5 @@
 import Foundation
 import AVFoundation
-import MediaPlayer
-#if canImport(UIKit)
-import UIKit
-#elseif canImport(AppKit)
-import AppKit
-#endif
 
 struct AudioPositionSyncData {
     let sectionIndex: Int
@@ -16,31 +10,12 @@ struct AudioPositionSyncData {
     let fragment: String
 }
 
-#if os(iOS)
-private func createArtwork(from image: UIImage) -> MPMediaItemArtwork {
-    MPMediaItemArtwork(boundsSize: image.size) { _ in image }
-}
-#elseif os(macOS)
-private func createArtwork(from image: NSImage) -> MPMediaItemArtwork {
-    MPMediaItemArtwork(boundsSize: image.size) { _ in image }
-}
-#endif
-
-enum RemoteCommand {
-    case play
-    case pause
-    case skipForward(seconds: Double)
-    case skipBackward(seconds: Double)
-    case seekTo(position: Double)
-}
-
 @MainActor
 protocol SMILPlayerManagerDelegate: AnyObject {
     func smilPlayerDidAdvanceToEntry(sectionIndex: Int, entryIndex: Int, entry: SMILEntry)
     func smilPlayerDidFinishBook()
     func smilPlayerDidUpdateTime(currentTime: Double, sectionIndex: Int, entryIndex: Int)
     func smilPlayerShouldAdvanceToNextSection(fromSection: Int) -> Bool
-    func smilPlayerRemoteCommandReceived(command: RemoteCommand)
 }
 
 @MainActor
@@ -71,26 +46,6 @@ class SMILPlayerManager: NSObject, AVAudioPlayerDelegate {
     private var currentEntryEndTime: Double = 0
     private var epubPath: URL?
 
-    // MARK: - Metadata for lockscreen
-
-    var bookTitle: String?
-    var bookAuthor: String?
-    private var cachedArtwork: MPMediaItemArtwork?
-
-    #if os(iOS)
-    var coverImage: UIImage? {
-        didSet {
-            cachedArtwork = coverImage.map { createArtwork(from: $0) }
-        }
-    }
-    #elseif os(macOS)
-    var coverImage: NSImage? {
-        didSet {
-            cachedArtwork = coverImage.map { createArtwork(from: $0) }
-        }
-    }
-    #endif
-
     // MARK: - AVFoundation
 
     private var audioPlayer: AVAudioPlayer?
@@ -110,24 +65,6 @@ class SMILPlayerManager: NSObject, AVAudioPlayerDelegate {
         self.currentPlaybackRate = Float(initialPlaybackRate)
         super.init()
         debugLog("[SMILPlayerManager] Initialized with \(bookStructure.count) sections, epubPath: \(epubPath?.path ?? "nil"), rate: \(initialPlaybackRate)")
-
-        setupAudioSession()
-        setupRemoteCommandCenter()
-    }
-
-    // MARK: - Audio Session Setup
-
-    private func setupAudioSession() {
-        #if os(iOS)
-        do {
-            let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .spokenAudio, options: [])
-            try session.setActive(true)
-            debugLog("[SMILPlayerManager] Audio session configured for playback")
-        } catch {
-            debugLog("[SMILPlayerManager] Failed to configure audio session: \(error)")
-        }
-        #endif
     }
 
     // MARK: - Entry Management
@@ -166,8 +103,6 @@ class SMILPlayerManager: NSObject, AVAudioPlayerDelegate {
                 play()
             }
         }
-
-        updateNowPlayingInfo()
     }
 
     /// Seek to a specific fragment by textId within a section
@@ -322,8 +257,6 @@ class SMILPlayerManager: NSObject, AVAudioPlayerDelegate {
                 entryIndex: currentEntryIndex
             )
         }
-
-        updateNowPlayingInfo()
     }
 
     // MARK: - AVAudioPlayerDelegate
@@ -453,8 +386,6 @@ class SMILPlayerManager: NSObject, AVAudioPlayerDelegate {
                 delegate?.smilPlayerDidFinishBook()
             }
         }
-
-        updateNowPlayingInfo()
     }
 
     /// Go back to the previous SMIL entry
@@ -507,80 +438,6 @@ class SMILPlayerManager: NSObject, AVAudioPlayerDelegate {
             seek(to: currentEntryBeginTime)
             debugLog("[SMILPlayerManager] Already at beginning, seeking to start of current entry")
         }
-
-        updateNowPlayingInfo()
-    }
-
-    // MARK: - Remote Command Center
-
-    private func setupRemoteCommandCenter() {
-        let commandCenter = MPRemoteCommandCenter.shared()
-
-        commandCenter.playCommand.addTarget { [weak self] _ in
-            Task { @MainActor in
-                self?.delegate?.smilPlayerRemoteCommandReceived(command: .play)
-            }
-            return .success
-        }
-
-        commandCenter.pauseCommand.addTarget { [weak self] _ in
-            Task { @MainActor in
-                self?.delegate?.smilPlayerRemoteCommandReceived(command: .pause)
-            }
-            return .success
-        }
-
-        commandCenter.skipForwardCommand.preferredIntervals = [15]
-        commandCenter.skipForwardCommand.addTarget { [weak self] _ in
-            Task { @MainActor in
-                self?.delegate?.smilPlayerRemoteCommandReceived(command: .skipForward(seconds: 15))
-            }
-            return .success
-        }
-
-        commandCenter.skipBackwardCommand.preferredIntervals = [15]
-        commandCenter.skipBackwardCommand.addTarget { [weak self] _ in
-            Task { @MainActor in
-                self?.delegate?.smilPlayerRemoteCommandReceived(command: .skipBackward(seconds: 15))
-            }
-            return .success
-        }
-
-        commandCenter.changePlaybackPositionCommand.addTarget { [weak self] event in
-            guard let positionEvent = event as? MPChangePlaybackPositionCommandEvent else {
-                return .commandFailed
-            }
-            Task { @MainActor in
-                self?.delegate?.smilPlayerRemoteCommandReceived(command: .seekTo(position: positionEvent.positionTime))
-            }
-            return .success
-        }
-
-        debugLog("[SMILPlayerManager] Remote command center configured")
-    }
-
-    // MARK: - Now Playing Info
-
-    private func updateNowPlayingInfo() {
-        var info = [String: Any]()
-
-        info[MPMediaItemPropertyTitle] = bookTitle ?? "Silveran Reader"
-        info[MPMediaItemPropertyArtist] = currentChapterLabel()
-        info[MPMediaItemPropertyAlbumTitle] = bookAuthor ?? ""
-        info[MPMediaItemPropertyPlaybackDuration] = duration
-        info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = currentTime
-        info[MPNowPlayingInfoPropertyPlaybackRate] = Double(audioPlayer?.rate ?? 1.0)
-
-        if let artwork = cachedArtwork {
-            info[MPMediaItemPropertyArtwork] = artwork
-        }
-
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
-    }
-
-    private func currentChapterLabel() -> String {
-        guard currentSectionIndex < bookStructure.count else { return "" }
-        return bookStructure[currentSectionIndex].label ?? "Chapter \(currentSectionIndex + 1)"
     }
 
     // MARK: - Cleanup
@@ -591,14 +448,5 @@ class SMILPlayerManager: NSObject, AVAudioPlayerDelegate {
         audioPlayer?.stop()
         audioPlayer = nil
         state = .idle
-
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
-
-        let commandCenter = MPRemoteCommandCenter.shared()
-        commandCenter.playCommand.removeTarget(nil)
-        commandCenter.pauseCommand.removeTarget(nil)
-        commandCenter.skipForwardCommand.removeTarget(nil)
-        commandCenter.skipBackwardCommand.removeTarget(nil)
-        commandCenter.changePlaybackPositionCommand.removeTarget(nil)
     }
 }
