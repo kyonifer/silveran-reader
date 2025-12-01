@@ -103,7 +103,7 @@ class AudioManagerIos {
         commandCenter.skipForwardCommand.addTarget { [weak self] _ in
             Task { @MainActor in
                 debugLog("[AudioManagerIos] Remote skip forward command received")
-                self?.mediaOverlayManager?.handleExternalSkipForward(seconds: 15)
+                await self?.mediaOverlayManager?.handleExternalSkipForward(seconds: 15)
             }
             return .success
         }
@@ -112,7 +112,7 @@ class AudioManagerIos {
         commandCenter.skipBackwardCommand.addTarget { [weak self] _ in
             Task { @MainActor in
                 debugLog("[AudioManagerIos] Remote skip backward command received")
-                self?.mediaOverlayManager?.handleExternalSkipBackward(seconds: 15)
+                await self?.mediaOverlayManager?.handleExternalSkipBackward(seconds: 15)
             }
             return .success
         }
@@ -123,7 +123,7 @@ class AudioManagerIos {
             }
             Task { @MainActor in
                 debugLog("[AudioManagerIos] Remote seek command received: \(positionEvent.positionTime)")
-                self?.mediaOverlayManager?.handleExternalSeek(to: positionEvent.positionTime)
+                await self?.mediaOverlayManager?.handleExternalSeek(to: positionEvent.positionTime)
             }
             return .success
         }
