@@ -21,6 +21,7 @@ class EbookPlayerViewModel {
     var extractedEbookPath: URL? = nil
     #if os(iOS)
     private(set) var recoveryManager: WebViewRecoveryManager?
+    var audioManagerIos: AudioManagerIos?
     #endif
 
     var chapterList: [ChapterItem] {
@@ -251,6 +252,9 @@ class EbookPlayerViewModel {
         Task { @MainActor in
             await mediaOverlayManager?.cleanup()
             smilPlayerManager?.cleanup()
+            #if os(iOS)
+            audioManagerIos?.cleanup()
+            #endif
             await progressManager?.cleanup()
         }
     }
@@ -362,8 +366,6 @@ class EbookPlayerViewModel {
                             epubPath: self.bookData?.localMediaPath,
                             initialPlaybackRate: self.settingsVM.defaultPlaybackSpeed
                         )
-                        smilPlayer.bookTitle = self.bookData?.metadata.title
-                        smilPlayer.bookAuthor = self.bookData?.metadata.authors?.first?.name
                         smilPlayer.setVolume(self.settingsVM.defaultVolume)
                         self.smilPlayerManager = smilPlayer
                         debugLog("[EbookPlayerViewModel] SMILPlayerManager created for native audio")
@@ -372,20 +374,26 @@ class EbookPlayerViewModel {
                         smilPlayer.delegate = manager
                         debugLog("[EbookPlayerViewModel] MOM connected to SMILPlayerManager (direct control)")
 
+                        #if os(iOS)
+                        let audioManager = AudioManagerIos()
+                        audioManager.mediaOverlayManager = manager
+                        audioManager.bookTitle = self.bookData?.metadata.title
+                        audioManager.bookAuthor = self.bookData?.metadata.authors?.first?.name
+                        manager.audioManagerIos = audioManager
+                        self.audioManagerIos = audioManager
+                        debugLog("[EbookPlayerViewModel] AudioManagerIos created and connected to MOM")
+
                         if let uuid = self.bookData?.metadata.uuid {
                             Task {
                                 if let coverData = await FilesystemActor.shared.loadCoverImage(uuid: uuid, variant: "standard") {
                                     await MainActor.run {
-                                        #if os(iOS)
-                                        self.smilPlayerManager?.coverImage = UIImage(data: coverData)
-                                        #elseif os(macOS)
-                                        self.smilPlayerManager?.coverImage = NSImage(data: coverData)
-                                        #endif
-                                        debugLog("[EbookPlayerViewModel] Cover image set on SMILPlayerManager")
+                                        self.audioManagerIos?.coverImage = UIImage(data: coverData)
+                                        debugLog("[EbookPlayerViewModel] Cover image set on AudioManagerIos")
                                     }
                                 }
                             }
                         }
+                        #endif
                     } else {
                         debugLog("[EbookPlayerViewModel] Book has no media overlay")
                         self.mediaOverlayManager = nil

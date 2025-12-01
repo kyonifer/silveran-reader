@@ -24,6 +24,11 @@ class MediaOverlayManager {
     /// Reference to EbookProgressManager for coordinating progress sync
     weak var progressManager: EbookProgressManager?
 
+    #if os(iOS)
+    /// Reference to AudioManagerIos for lock screen / remote command updates
+    weak var audioManagerIos: AudioManagerIos?
+    #endif
+
     /// Internal state tracking for play/pause
     var isPlaying: Bool = false
 
@@ -271,47 +276,103 @@ class MediaOverlayManager {
     }
 
     func togglePlaying() async {
-        guard let smilPlayerManager = smilPlayerManager else {
-            debugLog("[MOM] togglePlaying() - no smilPlayerManager available")
+        if isPlaying {
+            await stopPlaying()
+        } else {
+            await startPlaying()
+        }
+    }
+
+    func startPlaying() async {
+        guard !isPlaying else {
+            debugLog("[MOM] startPlaying() - already playing, ignoring")
             return
         }
 
-        if isPlaying {
-            debugLog("[MOM] togglePlaying() - pausing")
-            isPlaying = false
-            smilPlayerManager.pause()
-            pageFlipTimer?.invalidate()
-            pageFlipTimer = nil
-            debugLog("[MOM] togglePlaying() - paused")
-        } else {
-            debugLog("[MOM] togglePlaying() - starting")
-            isPlaying = true
-
-            if smilPlayerManager.state == .idle {
-                let (sectionIndex, entryIndex) = smilPlayerManager.getCurrentPosition()
-                if let section = getSection(at: sectionIndex),
-                   entryIndex < section.mediaOverlay.count {
-                    let entry = section.mediaOverlay[entryIndex]
-                    debugLog("[MOM] togglePlaying() - initializing audio at section \(sectionIndex), entry \(entryIndex)")
-                    await smilPlayerManager.setCurrentEntry(
-                        sectionIndex: sectionIndex,
-                        entryIndex: entryIndex,
-                        audioFile: entry.audioFile,
-                        beginTime: entry.begin,
-                        endTime: entry.end
-                    )
-                }
-            }
-
-            smilPlayerManager.play()
-            if let entry = smilPlayerManager.getCurrentEntry() {
-                let (sectionIndex, _) = smilPlayerManager.getCurrentPosition()
-                if let section = getSection(at: sectionIndex) {
-                    await sendHighlightCommand(href: section.id, textId: entry.textId)
-                }
-            }
-            debugLog("[MOM] togglePlaying() - started")
+        guard let smilPlayerManager = smilPlayerManager else {
+            debugLog("[MOM] startPlaying() - no smilPlayerManager available")
+            return
         }
+
+        debugLog("[MOM] startPlaying()")
+        isPlaying = true
+
+        if smilPlayerManager.state == .idle {
+            let (sectionIndex, entryIndex) = smilPlayerManager.getCurrentPosition()
+            if let section = getSection(at: sectionIndex),
+               entryIndex < section.mediaOverlay.count {
+                let entry = section.mediaOverlay[entryIndex]
+                debugLog("[MOM] startPlaying() - initializing audio at section \(sectionIndex), entry \(entryIndex)")
+                await smilPlayerManager.setCurrentEntry(
+                    sectionIndex: sectionIndex,
+                    entryIndex: entryIndex,
+                    audioFile: entry.audioFile,
+                    beginTime: entry.begin,
+                    endTime: entry.end
+                )
+            }
+        }
+
+        smilPlayerManager.play()
+        if let entry = smilPlayerManager.getCurrentEntry() {
+            let (sectionIndex, _) = smilPlayerManager.getCurrentPosition()
+            if let section = getSection(at: sectionIndex) {
+                await sendHighlightCommand(href: section.id, textId: entry.textId)
+            }
+        }
+        #if os(iOS)
+        pushNowPlayingUpdate()
+        #endif
+        debugLog("[MOM] startPlaying() - started")
+    }
+
+    func stopPlaying() async {
+        guard isPlaying else {
+            debugLog("[MOM] stopPlaying() - already stopped, ignoring")
+            return
+        }
+
+        guard let smilPlayerManager = smilPlayerManager else {
+            debugLog("[MOM] stopPlaying() - no smilPlayerManager available")
+            return
+        }
+
+        debugLog("[MOM] stopPlaying()")
+        isPlaying = false
+        smilPlayerManager.pause()
+        pageFlipTimer?.invalidate()
+        pageFlipTimer = nil
+        #if os(iOS)
+        pushNowPlayingUpdate()
+        #endif
+        debugLog("[MOM] stopPlaying() - paused")
+    }
+
+    // MARK: - External Event Handlers (from AudioManagerIos)
+
+    func handleExternalPlayCommand() async {
+        debugLog("[MOM] External play command received")
+        await startPlaying()
+    }
+
+    func handleExternalPauseCommand() async {
+        debugLog("[MOM] External pause command received")
+        await stopPlaying()
+    }
+
+    func handleExternalSkipForward(seconds: Double) {
+        debugLog("[MOM] External skip forward: \(seconds)s")
+        smilPlayerManager?.seek(to: (smilPlayerManager?.currentTime ?? 0) + seconds)
+    }
+
+    func handleExternalSkipBackward(seconds: Double) {
+        debugLog("[MOM] External skip backward: \(seconds)s")
+        smilPlayerManager?.seek(to: max(0, (smilPlayerManager?.currentTime ?? 0) - seconds))
+    }
+
+    func handleExternalSeek(to position: Double) {
+        debugLog("[MOM] External seek to: \(position)")
+        smilPlayerManager?.seek(to: position)
     }
 
     func nextSentence() {
@@ -560,6 +621,27 @@ class MediaOverlayManager {
         return section.mediaOverlay.first { $0.textId == textId }
     }
 
+    /// Get the current chapter label for Now Playing display
+    func currentChapterLabel() -> String {
+        guard let smilPlayer = smilPlayerManager else { return "" }
+        let (sectionIndex, _) = smilPlayer.getCurrentPosition()
+        guard sectionIndex < bookStructure.count else { return "" }
+        return bookStructure[sectionIndex].label ?? "Chapter \(sectionIndex + 1)"
+    }
+
+    #if os(iOS)
+    /// Push current state to AudioManagerIos for Now Playing updates
+    func pushNowPlayingUpdate() {
+        audioManagerIos?.updateNowPlayingInfo(
+            currentTime: chapterElapsedSeconds ?? 0,
+            duration: chapterTotalSeconds ?? 0,
+            chapterLabel: currentChapterLabel(),
+            isPlaying: isPlaying,
+            playbackRate: playbackRate
+        )
+    }
+    #endif
+
     // MARK: - Highlight and Page Flip
 
     /// Send highlight command to JS for the current fragment
@@ -655,6 +737,9 @@ extension MediaOverlayManager: SMILPlayerManagerDelegate {
         debugLog("[MOM] SMILPlayer advanced to: section=\(sectionIndex), entry=\(entryIndex), textId=\(entry.textId)")
 
         updateProgressFromPlayer()
+        #if os(iOS)
+        pushNowPlayingUpdate()
+        #endif
 
         if syncEnabled {
             Task {
@@ -669,6 +754,9 @@ extension MediaOverlayManager: SMILPlayerManagerDelegate {
         isPlaying = false
         pageFlipTimer?.invalidate()
         pageFlipTimer = nil
+        #if os(iOS)
+        pushNowPlayingUpdate()
+        #endif
         Task {
             try? await commsBridge?.sendJsClearHighlight()
         }
@@ -676,6 +764,9 @@ extension MediaOverlayManager: SMILPlayerManagerDelegate {
 
     func smilPlayerDidUpdateTime(currentTime: Double, sectionIndex: Int, entryIndex: Int) {
         updateProgressFromPlayer()
+        #if os(iOS)
+        pushNowPlayingUpdate()
+        #endif
     }
 
     func smilPlayerShouldAdvanceToNextSection(fromSection: Int) -> Bool {
@@ -683,22 +774,11 @@ extension MediaOverlayManager: SMILPlayerManagerDelegate {
             debugLog("[MOM] Sleep timer blocking section advance (end of chapter)")
             isPlaying = false
             cancelSleepTimer()
+            #if os(iOS)
+            pushNowPlayingUpdate()
+            #endif
             return false
         }
         return true
-    }
-
-    func smilPlayerRemoteCommandReceived(command: RemoteCommand) {
-        debugLog("[MOM] Remote command received: \(command)")
-        switch command {
-        case .play, .pause:
-            Task { await togglePlaying() }
-        case .skipForward(let seconds):
-            smilPlayerManager?.seek(to: (smilPlayerManager?.currentTime ?? 0) + seconds)
-        case .skipBackward(let seconds):
-            smilPlayerManager?.seek(to: max(0, (smilPlayerManager?.currentTime ?? 0) - seconds))
-        case .seekTo(let position):
-            smilPlayerManager?.seek(to: position)
-        }
     }
 }
