@@ -360,19 +360,55 @@ class MediaOverlayManager {
         await stopPlaying()
     }
 
-    func handleExternalSkipForward(seconds: Double) {
+    func handleExternalSkipForward(seconds: Double) async {
         debugLog("[MOM] External skip forward: \(seconds)s")
-        smilPlayerManager?.seek(to: (smilPlayerManager?.currentTime ?? 0) + seconds)
+        let newPosition = (smilPlayerManager?.currentTime ?? 0) + seconds
+        await handleExternalSeek(to: newPosition)
     }
 
-    func handleExternalSkipBackward(seconds: Double) {
+    func handleExternalSkipBackward(seconds: Double) async {
         debugLog("[MOM] External skip backward: \(seconds)s")
-        smilPlayerManager?.seek(to: max(0, (smilPlayerManager?.currentTime ?? 0) - seconds))
+        let newPosition = max(0, (smilPlayerManager?.currentTime ?? 0) - seconds)
+        await handleExternalSeek(to: newPosition)
     }
 
-    func handleExternalSeek(to position: Double) {
+    func handleExternalSeek(to position: Double) async {
         debugLog("[MOM] External seek to: \(position)")
-        smilPlayerManager?.seek(to: position)
+
+        guard let smilPlayerManager = smilPlayerManager else { return }
+
+        let (sectionIndex, _) = smilPlayerManager.getCurrentPosition()
+
+        if let (entryIndex, entry) = findEntryByTime(position, in: sectionIndex),
+           let section = getSection(at: sectionIndex) {
+
+            await smilPlayerManager.setCurrentEntry(
+                sectionIndex: sectionIndex,
+                entryIndex: entryIndex,
+                audioFile: entry.audioFile,
+                beginTime: entry.begin,
+                endTime: entry.end
+            )
+
+            // Prevents seeking past the end and triggering immediate advance
+            let clampedPosition = min(position, entry.end - 0.05)
+            smilPlayerManager.seek(to: max(entry.begin, clampedPosition))
+
+            if syncEnabled {
+                try? await commsBridge?.sendJsGoToHrefCommand(href: "\(section.id)#\(entry.textId)")
+                await sendHighlightCommand(href: section.id, textId: entry.textId)
+            }
+
+            debugLog("[MOM] External seek updated to entry \(entryIndex): \(entry.textId)")
+        } else {
+            smilPlayerManager.seek(to: position)
+            debugLog("[MOM] External seek - no matching entry found, raw seek only")
+        }
+
+        #if os(iOS)
+        updateProgressFromPlayer()
+        pushNowPlayingUpdate()
+        #endif
     }
 
     func nextSentence() {
@@ -619,6 +655,25 @@ class MediaOverlayManager {
     func findSMILEntry(textId: String, in sectionIndex: Int) -> SMILEntry? {
         guard let section = getSection(at: sectionIndex) else { return nil }
         return section.mediaOverlay.first { $0.textId == textId }
+    }
+
+    /// Find SMIL entry by audio time position in a specific section
+    private func findEntryByTime(_ time: Double, in sectionIndex: Int) -> (entryIndex: Int, entry: SMILEntry)? {
+        guard let section = getSection(at: sectionIndex), !section.mediaOverlay.isEmpty else { return nil }
+
+        for (index, entry) in section.mediaOverlay.enumerated() {
+            if time >= entry.begin && time < entry.end {
+                return (index, entry)
+            }
+        }
+
+        let lastIndex = section.mediaOverlay.count - 1
+        let lastEntry = section.mediaOverlay[lastIndex]
+        if time >= lastEntry.end {
+            return (lastIndex, lastEntry)
+        }
+
+        return nil
     }
 
     /// Get the current chapter label for Now Playing display
