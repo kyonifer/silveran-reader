@@ -1,5 +1,8 @@
 import Foundation
 import WebKit
+#if os(iOS)
+import UIKit
+#endif
 
 /// MediaOverlayManager - Single source of truth for audio sync decisions
 ///
@@ -57,6 +60,13 @@ class MediaOverlayManager {
 
     /// Internal sleep timer instance
     private var sleepTimer: Timer? = nil
+
+    // MARK: - Screen Wake Lock State
+
+    #if os(macOS)
+    /// Activity token to prevent display sleep on macOS
+    private var displaySleepActivity: NSObjectProtocol?
+    #endif
 
     // MARK: - Audio Progress State
 
@@ -296,6 +306,7 @@ class MediaOverlayManager {
 
         debugLog("[MOM] startPlaying()")
         isPlaying = true
+        enableScreenWakeLock()
 
         if smilPlayerManager.state == .idle {
             let (sectionIndex, entryIndex) = smilPlayerManager.getCurrentPosition()
@@ -342,6 +353,7 @@ class MediaOverlayManager {
 
         debugLog("[MOM] stopPlaying()")
         isPlaying = false
+        disableScreenWakeLock()
         smilPlayerManager.pause()
         pageFlipTimer?.invalidate()
         pageFlipTimer = nil
@@ -618,6 +630,7 @@ class MediaOverlayManager {
         cancelSleepTimer()
         pageFlipTimer?.invalidate()
         pageFlipTimer = nil
+        disableScreenWakeLock()
 
         guard isPlaying else {
             debugLog("[MOM] Audio not playing, no cleanup needed")
@@ -641,6 +654,35 @@ class MediaOverlayManager {
         checkChapterEndForSleepTimer(message: message)
 
         debugLog("[MOM] Audio progress: chapter \(message.chapterElapsedSeconds?.description ?? "nil")/\(message.chapterTotalSeconds?.description ?? "nil")s, book \(message.bookElapsedSeconds?.description ?? "nil")/\(message.bookTotalSeconds?.description ?? "nil")s, fragment: \(message.currentFragment ?? "nil")")
+    }
+
+    // MARK: - Screen Wake Lock
+
+    private func enableScreenWakeLock() {
+        #if os(iOS)
+        UIApplication.shared.isIdleTimerDisabled = true
+        debugLog("[MOM] Screen wake lock enabled (iOS idle timer disabled)")
+        #elseif os(macOS)
+        guard displaySleepActivity == nil else { return }
+        displaySleepActivity = ProcessInfo.processInfo.beginActivity(
+            options: [.idleDisplaySleepDisabled, .userInitiated],
+            reason: "Audio narration playback"
+        )
+        debugLog("[MOM] Screen wake lock enabled (macOS display sleep disabled)")
+        #endif
+    }
+
+    private func disableScreenWakeLock() {
+        #if os(iOS)
+        UIApplication.shared.isIdleTimerDisabled = false
+        debugLog("[MOM] Screen wake lock disabled (iOS idle timer enabled)")
+        #elseif os(macOS)
+        if let activity = displaySleepActivity {
+            ProcessInfo.processInfo.endActivity(activity)
+            displaySleepActivity = nil
+            debugLog("[MOM] Screen wake lock disabled (macOS display sleep enabled)")
+        }
+        #endif
     }
 
     // MARK: - Helpers
@@ -810,6 +852,7 @@ extension MediaOverlayManager: SMILPlayerManagerDelegate {
     func smilPlayerDidFinishBook() {
         debugLog("[MOM] SMILPlayer finished book")
         isPlaying = false
+        disableScreenWakeLock()
         pageFlipTimer?.invalidate()
         pageFlipTimer = nil
         #if os(iOS)
@@ -831,6 +874,7 @@ extension MediaOverlayManager: SMILPlayerManagerDelegate {
         if sleepTimerActive && sleepTimerType == .endOfChapter {
             debugLog("[MOM] Sleep timer blocking section advance (end of chapter)")
             isPlaying = false
+            disableScreenWakeLock()
             cancelSleepTimer()
             #if os(iOS)
             pushNowPlayingUpdate()
