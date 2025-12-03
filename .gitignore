@@ -14,5 +14,6 @@ DerivedData/
 *.xcodeproj/
 .build/
 Package.resolved
+!SilveranKit/Package.resolved
 .cache
 icon*.png
