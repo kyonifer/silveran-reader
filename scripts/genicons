@@ -6,10 +6,10 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")" && p
 cd "${SCRIPT_DIR}/.."
 
 ASSETS_DIR="XCodeWrapper/Assets.xcassets/AppIcon.appiconset"
-ORIG_ICON="${ASSETS_DIR}/app_icon_orig.png"
+ORIG_ICON="extern/assets/icons/app_icon_orig.png"
 
 if [ ! -f $ORIG_ICON ]; then
-    echo "Error: app_icon.png not found in project"
+    echo "Error: app_icon_orig.png not found in project"
     exit 1
 fi
 
@@ -18,7 +18,7 @@ if ! command -v magick &> /dev/null; then
     exit 1
 fi
 
-echo "Generating app icons from app_icon.png..."
+echo "Generating app icons from app_icon_orig.png..."
 
 magick ${ORIG_ICON} -resize 1024x1024 "${ASSETS_DIR}/icon_1024x1024.png"
 magick ${ORIG_ICON} -resize 512x512 "${ASSETS_DIR}/icon_512x512.png"
