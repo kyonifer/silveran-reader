@@ -6,17 +6,17 @@ A book reading app for ebooks, audiobooks, and readalong books, with tight [Stor
 
 ### macOS
 
-![Library](https://raw.githubusercontent.com/kyonifer/silveran-reader/assets/assets/mac_library.png)
+![Library](https://raw.githubusercontent.com/kyonifer/s-r-assets/main/screenshots/mac_library.png)
 
 | Reader | Reader |
 |--------|--------|
-| ![Book 1](https://raw.githubusercontent.com/kyonifer/silveran-reader/assets/assets/mac_book1.png) | ![Book 2](https://raw.githubusercontent.com/kyonifer/silveran-reader/assets/assets/mac_book2.png) |
+| ![Book 1](https://raw.githubusercontent.com/kyonifer/s-r-assets/main/screenshots/mac_book1.png) | ![Book 2](https://raw.githubusercontent.com/kyonifer/s-r-assets/main/screenshots/mac_book2.png) |
 
 ### iOS
 
 | Library | Reader | Reader |
 |---------|--------|--------|
-| ![Library](https://raw.githubusercontent.com/kyonifer/silveran-reader/assets/assets/ios_library.png) | ![Book 1](https://raw.githubusercontent.com/kyonifer/silveran-reader/assets/assets/ios_book1.png) | ![Book 2](https://raw.githubusercontent.com/kyonifer/silveran-reader/assets/assets/ios_book2.png) |
+| ![Library](https://raw.githubusercontent.com/kyonifer/s-r-assets/main/screenshots/ios_library.png) | ![Book 1](https://raw.githubusercontent.com/kyonifer/s-r-assets/main/screenshots/ios_book1.png) | ![Book 2](https://raw.githubusercontent.com/kyonifer/s-r-assets/main/screenshots/ios_book2.png) |
 
 ## Design Goals
 
