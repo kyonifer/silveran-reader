@@ -47,7 +47,13 @@ class AudioManagerIos {
                 name: AVAudioSession.interruptionNotification,
                 object: session
             )
-            debugLog("[AudioManagerIos] Audio session interruption observer registered")
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(handleAudioRouteChange),
+                name: AVAudioSession.routeChangeNotification,
+                object: session
+            )
+            debugLog("[AudioManagerIos] Audio session observers registered")
         } catch {
             debugLog("[AudioManagerIos] Failed to configure audio session: \(error)")
         }
@@ -83,6 +89,31 @@ class AudioManagerIos {
                 }
             @unknown default:
                 break
+            }
+        }
+    }
+
+    @objc nonisolated private func handleAudioRouteChange(_ notification: Notification) {
+        guard let userInfo = notification.userInfo,
+              let reasonValue = userInfo[AVAudioSessionRouteChangeReasonKey] as? UInt,
+              let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue) else {
+            return
+        }
+
+        Task { @MainActor in
+            switch reason {
+            case .oldDeviceUnavailable:
+                debugLog("[AudioManagerIos] Audio route lost (device unavailable) - pausing")
+                await mediaOverlayManager?.handleExternalPauseCommand()
+
+            case .newDeviceAvailable:
+                debugLog("[AudioManagerIos] New audio device available")
+
+            case .routeConfigurationChange:
+                debugLog("[AudioManagerIos] Audio route configuration changed")
+
+            default:
+                debugLog("[AudioManagerIos] Audio route change reason: \(reason.rawValue)")
             }
         }
     }
@@ -171,6 +202,7 @@ class AudioManagerIos {
         debugLog("[AudioManagerIos] Cleanup")
 
         NotificationCenter.default.removeObserver(self, name: AVAudioSession.interruptionNotification, object: nil)
+        NotificationCenter.default.removeObserver(self, name: AVAudioSession.routeChangeNotification, object: nil)
 
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
 

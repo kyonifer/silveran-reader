@@ -1,5 +1,4 @@
 import SwiftUI
-import AVFoundation
 
 extension Notification.Name {
     static let appWillResignActive = Notification.Name("appWillResignActive")
@@ -10,14 +9,6 @@ struct SilveranReaderApp: App {
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
-        do {
-            let audioSession = AVAudioSession.sharedInstance()
-            try audioSession.setCategory(.playback, mode: .default, options: [])
-            try audioSession.setActive(true)
-        } catch {
-            debugLog("[SilveranReaderApp] Failed to configure audio session: \(error.localizedDescription)")
-        }
-
         Task {
             do {
                 if let credentials = try await AuthenticationActor.shared.loadCredentials() {
