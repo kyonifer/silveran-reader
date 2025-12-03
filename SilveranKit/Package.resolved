@@ -1,0 +1,135 @@
+{
+  "originHash" : "b7d87cd08c65dc186c091cc80eaa2c371504617fcf3ce23b7bb5fab34b5dcdcd",
+  "pins" : [
+    {
+      "identity" : "jpeg",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/stackotter/jpeg",
+      "state" : {
+        "revision" : "a27e47f49479993b2541bc5f5c95d9354ed567a0",
+        "version" : "1.0.2"
+      }
+    },
+    {
+      "identity" : "libpng",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/the-swift-collective/libpng",
+      "state" : {
+        "revision" : "0eff23aca92a086b7892831f5cb4f58e15be9449",
+        "version" : "1.6.45"
+      }
+    },
+    {
+      "identity" : "libwebp",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/the-swift-collective/libwebp",
+      "state" : {
+        "revision" : "5f745a17b9a5c2a4283f17c2cde4517610ab5f99",
+        "version" : "1.4.1"
+      }
+    },
+    {
+      "identity" : "swift-cross-ui",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/stackotter/swift-cross-ui.git",
+      "state" : {
+        "branch" : "main",
+        "revision" : "7406f229eb639a2a8f068d7a8eaa27fc7dab11fd"
+      }
+    },
+    {
+      "identity" : "swift-cwinrt",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/thebrowsercompany/swift-cwinrt",
+      "state" : {
+        "revision" : "eb46cdb66f770a1e006f9fcfebbf9e99a0fba811"
+      }
+    },
+    {
+      "identity" : "swift-image-formats",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/stackotter/swift-image-formats",
+      "state" : {
+        "revision" : "2e5dc1ead747afab9fd517d81316d961969e3610",
+        "version" : "0.3.3"
+      }
+    },
+    {
+      "identity" : "swift-macro-toolkit",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/stackotter/swift-macro-toolkit",
+      "state" : {
+        "revision" : "569627091e1fbb8745d691aeeb008e7247dedb7c",
+        "version" : "0.6.1"
+      }
+    },
+    {
+      "identity" : "swift-syntax",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/swiftlang/swift-syntax.git",
+      "state" : {
+        "revision" : "0687f71944021d616d34d922343dcef086855920",
+        "version" : "600.0.1"
+      }
+    },
+    {
+      "identity" : "swift-uwp",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/stackotter/swift-uwp",
+      "state" : {
+        "revision" : "e3ff9c195775e16b404b82cf6886c5e81d73b6c1"
+      }
+    },
+    {
+      "identity" : "swift-webview2core",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/stackotter/swift-webview2core",
+      "state" : {
+        "revision" : "c9911ca23455b9fcdb2429e98baa6f4d003b381c"
+      }
+    },
+    {
+      "identity" : "swift-windowsappsdk",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/stackotter/swift-windowsappsdk",
+      "state" : {
+        "revision" : "ba6f0ec377b70d8be835d253102ff665a0e47d99"
+      }
+    },
+    {
+      "identity" : "swift-windowsfoundation",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/stackotter/swift-windowsfoundation",
+      "state" : {
+        "revision" : "4ad57d20553514bcb23724bdae9121569b19f172"
+      }
+    },
+    {
+      "identity" : "swift-winui",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/stackotter/swift-winui",
+      "state" : {
+        "revision" : "1695ee3ea2b7a249f6504c7f1759e7ec7a38eb86"
+      }
+    },
+    {
+      "identity" : "zipfoundation",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/weichsel/ZIPFoundation.git",
+      "state" : {
+        "revision" : "22787ffb59de99e5dc1fbfe80b19c97a904ad48d",
+        "version" : "0.9.20"
+      }
+    },
+    {
+      "identity" : "zlib",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/the-swift-collective/zlib.git",
+      "state" : {
+        "revision" : "f1d153b90420f9fcc6ef916cd67ea96f0e68d137",
+        "version" : "1.3.2"
+      }
+    }
+  ],
+  "version" : 3
+}
