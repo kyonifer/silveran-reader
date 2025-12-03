@@ -1,5 +1,6 @@
 import Foundation
 import WebKit
+
 #if os(iOS)
 import UIKit
 #endif
@@ -18,13 +19,8 @@ class MediaOverlayManager {
 
     private let bookStructure: [SectionInfo]
 
-    /// Bridge to send highlight commands to JS (rendering only, no audio control)
     weak var commsBridge: WebViewCommsBridge?
-
-    /// Reference to SMILPlayerManager for direct audio control
     weak var smilPlayerManager: SMILPlayerManager?
-
-    /// Reference to EbookProgressManager for coordinating progress sync
     weak var progressManager: EbookProgressManager?
 
     #if os(iOS)
@@ -32,33 +28,23 @@ class MediaOverlayManager {
     weak var audioManagerIos: AudioManagerIos?
     #endif
 
-    /// Internal state tracking for play/pause
     var isPlaying: Bool = false
 
     /// Timer for delayed page flips during fractional sentence playback
+    /// (i.e. when a sentence is half on this page and half on the next)
     private var pageFlipTimer: Timer?
 
     /// Whether audio is synced to view navigation (true) or detached (false)
     var syncEnabled: Bool = true
 
-    /// Current playback rate/speed (1.0 = normal, 1.5 = 1.5x speed, etc.)
     var playbackRate: Double = 1.0
-
-    /// Current volume (0.0 = mute, 1.0 = full volume)
     var volume: Double = 1.0
 
     // MARK: - Sleep Timer State
 
-    /// Whether sleep timer is currently active
     var sleepTimerActive: Bool = false
-
-    /// Remaining time on sleep timer (seconds)
     var sleepTimerRemaining: TimeInterval? = nil
-
-    /// Type of sleep timer (duration or end-of-chapter)
     var sleepTimerType: SleepTimerType? = nil
-
-    /// Internal sleep timer instance
     private var sleepTimer: Timer? = nil
 
     // MARK: - Screen Wake Lock State
@@ -70,16 +56,9 @@ class MediaOverlayManager {
 
     // MARK: - Audio Progress State
 
-    /// Current elapsed time in the current chapter (seconds)
     var chapterElapsedSeconds: Double? = nil
-
-    /// Total duration of the current chapter (seconds)
     var chapterTotalSeconds: Double? = nil
-
-    /// Current elapsed time in the entire book (seconds)
     var bookElapsedSeconds: Double? = nil
-
-    /// Total duration of the entire book (seconds)
     var bookTotalSeconds: Double? = nil
 
     /// Current fragment being played (format: "href#anchor", e.g., "text/part0007.html#para-123")
@@ -87,7 +66,7 @@ class MediaOverlayManager {
 
     // MARK: - Computed Properties
 
-    /// Returns true if the book has any media overlay (SMIL entries)
+    /// Returns true if the book has any SMIL entries
     var hasMediaOverlay: Bool {
         bookStructure.contains { !$0.mediaOverlay.isEmpty }
     }
@@ -97,22 +76,22 @@ class MediaOverlayManager {
         bookStructure.filter { $0.label != nil }
     }
 
-    /// Computed time remaining in current chapter (adjusts for playback rate)
     var chapterTimeRemaining: TimeInterval? {
         guard let total = chapterTotalSeconds,
-              let elapsed = chapterElapsedSeconds,
-              playbackRate > 0 else {
+            let elapsed = chapterElapsedSeconds,
+            playbackRate > 0
+        else {
             return nil
         }
         let remaining = max(total - elapsed, 0)
         return remaining / playbackRate
     }
 
-    /// Computed time remaining in entire book (adjusts for playback rate)
     var bookTimeRemaining: TimeInterval? {
         guard let total = bookTotalSeconds,
-              let elapsed = bookElapsedSeconds,
-              playbackRate > 0 else {
+            let elapsed = bookElapsedSeconds,
+            playbackRate > 0
+        else {
             return nil
         }
         let remaining = max(total - elapsed, 0)
@@ -126,7 +105,9 @@ class MediaOverlayManager {
         self.commsBridge = bridge
         debugLog("[MOM] MediaOverlayManager initialized")
         debugLog("[MOM]   Total sections: \(bookStructure.count)")
-        debugLog("[MOM]   Sections with audio: \(bookStructure.filter { !$0.mediaOverlay.isEmpty }.count)")
+        debugLog(
+            "[MOM]   Sections with audio: \(bookStructure.filter { !$0.mediaOverlay.isEmpty }.count)"
+        )
         debugLog("[MOM]   TOC sections: \(tocSections.count)")
 
         let sectionsToShow = min(20, bookStructure.count)
@@ -138,7 +119,9 @@ class MediaOverlayManager {
             let level = section.level?.description ?? "nil"
             let smilCount = section.mediaOverlay.count
 
-            debugLog("[MOM]   [\(i)] \(section.id) - \(label) (level: \(level), SMIL entries: \(smilCount))")
+            debugLog(
+                "[MOM]   [\(i)] \(section.id) - \(label) (level: \(level), SMIL entries: \(smilCount))"
+            )
 
             if !section.mediaOverlay.isEmpty {
                 let smilToShow = min(10, section.mediaOverlay.count)
@@ -147,12 +130,18 @@ class MediaOverlayManager {
                 for j in 0..<smilToShow {
                     let entry = section.mediaOverlay[j]
                     debugLog("[MOM]       [\(j)] #\(entry.textId) @ \(entry.textHref)")
-                    debugLog("[MOM]            audio: \(entry.audioFile) [\(String(format: "%.3f", entry.begin))s - \(String(format: "%.3f", entry.end))s]")
-                    debugLog("[MOM]            cumSum: \(String(format: "%.3f", entry.cumSumAtEnd))s")
+                    debugLog(
+                        "[MOM]            audio: \(entry.audioFile) [\(String(format: "%.3f", entry.begin))s - \(String(format: "%.3f", entry.end))s]"
+                    )
+                    debugLog(
+                        "[MOM]            cumSum: \(String(format: "%.3f", entry.cumSumAtEnd))s"
+                    )
                 }
 
                 if section.mediaOverlay.count > smilToShow {
-                    debugLog("[MOM]       ... and \(section.mediaOverlay.count - smilToShow) more entries")
+                    debugLog(
+                        "[MOM]       ... and \(section.mediaOverlay.count - smilToShow) more entries"
+                    )
                 }
             }
         }
@@ -210,7 +199,9 @@ class MediaOverlayManager {
         }
 
         if page == 1 {
-            debugLog("[MOM] First page of section with audio - seeking to first fragment: \(sectionInfo.mediaOverlay[0].textId)")
+            debugLog(
+                "[MOM] First page of section with audio - seeking to first fragment: \(sectionInfo.mediaOverlay[0].textId)"
+            )
             await handleSeekEvent(sectionIndex: section, anchor: sectionInfo.mediaOverlay[0].textId)
             return
         }
@@ -218,7 +209,8 @@ class MediaOverlayManager {
         debugLog("[MOM] Mid-chapter page (\(page)), querying fully visible elements")
 
         guard let visibleIds = try? await commsBridge?.sendJsGetFullyVisibleElementIds(),
-              !visibleIds.isEmpty else {
+            !visibleIds.isEmpty
+        else {
             debugLog("[MOM] No visible elements found, skipping audio sync")
             return
         }
@@ -257,8 +249,12 @@ class MediaOverlayManager {
         let fragmentExists = section.mediaOverlay.contains { $0.textId == anchor }
 
         if !fragmentExists {
-            debugLog("[MOM] ERROR: handleSeekEvent - fragment '\(anchor)' not found in section \(sectionIndex) (\(section.id))")
-            debugLog("[MOM]   Available fragments in section: \(section.mediaOverlay.map { $0.textId }.prefix(10).joined(separator: ", "))")
+            debugLog(
+                "[MOM] ERROR: handleSeekEvent - fragment '\(anchor)' not found in section \(sectionIndex) (\(section.id))"
+            )
+            debugLog(
+                "[MOM]   Available fragments in section: \(section.mediaOverlay.map { $0.textId }.prefix(10).joined(separator: ", "))"
+            )
             return
         }
 
@@ -271,7 +267,10 @@ class MediaOverlayManager {
 
         let wasPlaying = isPlaying
 
-        let success = await smilPlayerManager.seekToFragment(sectionIndex: sectionIndex, textId: anchor)
+        let success = await smilPlayerManager.seekToFragment(
+            sectionIndex: sectionIndex,
+            textId: anchor
+        )
         if success {
             debugLog("[MOM] handleSeekEvent - seek successful")
             await sendHighlightCommand(href: section.id, textId: anchor)
@@ -311,9 +310,12 @@ class MediaOverlayManager {
         if smilPlayerManager.state == .idle {
             let (sectionIndex, entryIndex) = smilPlayerManager.getCurrentPosition()
             if let section = getSection(at: sectionIndex),
-               entryIndex < section.mediaOverlay.count {
+                entryIndex < section.mediaOverlay.count
+            {
                 let entry = section.mediaOverlay[entryIndex]
-                debugLog("[MOM] startPlaying() - initializing audio at section \(sectionIndex), entry \(entryIndex)")
+                debugLog(
+                    "[MOM] startPlaying() - initializing audio at section \(sectionIndex), entry \(entryIndex)"
+                )
                 await smilPlayerManager.setCurrentEntry(
                     sectionIndex: sectionIndex,
                     entryIndex: entryIndex,
@@ -395,7 +397,8 @@ class MediaOverlayManager {
         let (sectionIndex, _) = smilPlayerManager.getCurrentPosition()
 
         if let (entryIndex, entry) = findEntryByTime(position, in: sectionIndex),
-           let section = getSection(at: sectionIndex) {
+            let section = getSection(at: sectionIndex)
+        {
 
             await smilPlayerManager.setCurrentEntry(
                 sectionIndex: sectionIndex,
@@ -446,10 +449,15 @@ class MediaOverlayManager {
         let nextEntryIndex = entryIndex + 1
         if nextEntryIndex < section.mediaOverlay.count {
             let entry = section.mediaOverlay[nextEntryIndex]
-            debugLog("[MOM] nextSentence() - advancing to entry \(nextEntryIndex) in section \(sectionIndex)")
+            debugLog(
+                "[MOM] nextSentence() - advancing to entry \(nextEntryIndex) in section \(sectionIndex)"
+            )
             Task {
                 let wasPlaying = isPlaying
-                _ = await smilPlayerManager.seekToFragment(sectionIndex: sectionIndex, textId: entry.textId)
+                _ = await smilPlayerManager.seekToFragment(
+                    sectionIndex: sectionIndex,
+                    textId: entry.textId
+                )
                 try? await commsBridge?.sendJsGoToHrefCommand(href: "\(section.id)#\(entry.textId)")
                 await sendHighlightCommand(href: section.id, textId: entry.textId)
                 if wasPlaying { smilPlayerManager.play() }
@@ -462,8 +470,13 @@ class MediaOverlayManager {
                     debugLog("[MOM] nextSentence() - advancing to section \(nextSectionIndex)")
                     Task {
                         let wasPlaying = isPlaying
-                        _ = await smilPlayerManager.seekToFragment(sectionIndex: nextSectionIndex, textId: entry.textId)
-                        try? await commsBridge?.sendJsGoToHrefCommand(href: "\(nextSection.id)#\(entry.textId)")
+                        _ = await smilPlayerManager.seekToFragment(
+                            sectionIndex: nextSectionIndex,
+                            textId: entry.textId
+                        )
+                        try? await commsBridge?.sendJsGoToHrefCommand(
+                            href: "\(nextSection.id)#\(entry.textId)"
+                        )
                         await sendHighlightCommand(href: nextSection.id, textId: entry.textId)
                         if wasPlaying { smilPlayerManager.play() }
                     }
@@ -493,10 +506,15 @@ class MediaOverlayManager {
                 return
             }
             let entry = section.mediaOverlay[entryIndex - 1]
-            debugLog("[MOM] prevSentence() - going to entry \(entryIndex - 1) in section \(sectionIndex)")
+            debugLog(
+                "[MOM] prevSentence() - going to entry \(entryIndex - 1) in section \(sectionIndex)"
+            )
             Task {
                 let wasPlaying = isPlaying
-                _ = await smilPlayerManager.seekToFragment(sectionIndex: sectionIndex, textId: entry.textId)
+                _ = await smilPlayerManager.seekToFragment(
+                    sectionIndex: sectionIndex,
+                    textId: entry.textId
+                )
                 try? await commsBridge?.sendJsGoToHrefCommand(href: "\(section.id)#\(entry.textId)")
                 await sendHighlightCommand(href: section.id, textId: entry.textId)
                 if wasPlaying { smilPlayerManager.play() }
@@ -507,11 +525,18 @@ class MediaOverlayManager {
                 if !prevSection.mediaOverlay.isEmpty {
                     let lastEntryIndex = prevSection.mediaOverlay.count - 1
                     let entry = prevSection.mediaOverlay[lastEntryIndex]
-                    debugLog("[MOM] prevSentence() - going to section \(prevSectionIndex), entry \(lastEntryIndex)")
+                    debugLog(
+                        "[MOM] prevSentence() - going to section \(prevSectionIndex), entry \(lastEntryIndex)"
+                    )
                     Task {
                         let wasPlaying = isPlaying
-                        _ = await smilPlayerManager.seekToFragment(sectionIndex: prevSectionIndex, textId: entry.textId)
-                        try? await commsBridge?.sendJsGoToHrefCommand(href: "\(prevSection.id)#\(entry.textId)")
+                        _ = await smilPlayerManager.seekToFragment(
+                            sectionIndex: prevSectionIndex,
+                            textId: entry.textId
+                        )
+                        try? await commsBridge?.sendJsGoToHrefCommand(
+                            href: "\(prevSection.id)#\(entry.textId)"
+                        )
                         await sendHighlightCommand(href: prevSection.id, textId: entry.textId)
                         if wasPlaying { smilPlayerManager.play() }
                     }
@@ -525,7 +550,9 @@ class MediaOverlayManager {
     /// Enable or disable audio sync with page navigation
     func setSyncMode(enabled: Bool) {
         syncEnabled = enabled
-        debugLog("[MOM] Sync mode: \(enabled ? "enabled" : "disabled") - audio will \(enabled ? "follow" : "not follow") page navigation")
+        debugLog(
+            "[MOM] Sync mode: \(enabled ? "enabled" : "disabled") - audio will \(enabled ? "follow" : "not follow") page navigation"
+        )
 
         if !enabled {
             Task {
@@ -564,7 +591,8 @@ class MediaOverlayManager {
             sleepTimerActive = true
             sleepTimerRemaining = duration
 
-            sleepTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            sleepTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) {
+                [weak self] _ in
                 guard let self = self else { return }
                 Task { @MainActor in
                     await self.updateSleepTimer()
@@ -605,14 +633,15 @@ class MediaOverlayManager {
         }
     }
 
-    /// Check if chapter ended (for end-of-chapter sleep timer)
     func checkChapterEndForSleepTimer(message: MediaOverlayProgressMessage) {
         guard sleepTimerActive,
-              sleepTimerType == .endOfChapter,
-              isPlaying else { return }
+            sleepTimerType == .endOfChapter,
+            isPlaying
+        else { return }
 
         guard let chapterElapsed = message.chapterElapsedSeconds,
-              let chapterTotal = message.chapterTotalSeconds else { return }
+            let chapterTotal = message.chapterTotalSeconds
+        else { return }
 
         if chapterElapsed >= chapterTotal - 0.5 {
             debugLog("[MOM] End of chapter reached - sleep timer pausing playback")
@@ -653,7 +682,9 @@ class MediaOverlayManager {
 
         checkChapterEndForSleepTimer(message: message)
 
-        debugLog("[MOM] Audio progress: chapter \(message.chapterElapsedSeconds?.description ?? "nil")/\(message.chapterTotalSeconds?.description ?? "nil")s, book \(message.bookElapsedSeconds?.description ?? "nil")/\(message.bookTotalSeconds?.description ?? "nil")s, fragment: \(message.currentFragment ?? "nil")")
+        debugLog(
+            "[MOM] Audio progress: chapter \(message.chapterElapsedSeconds?.description ?? "nil")/\(message.chapterTotalSeconds?.description ?? "nil")s, book \(message.bookElapsedSeconds?.description ?? "nil")/\(message.bookTotalSeconds?.description ?? "nil")s, fragment: \(message.currentFragment ?? "nil")"
+        )
     }
 
     // MARK: - Screen Wake Lock
@@ -703,8 +734,12 @@ class MediaOverlayManager {
     }
 
     /// Find SMIL entry by audio time position in a specific section
-    private func findEntryByTime(_ time: Double, in sectionIndex: Int) -> (entryIndex: Int, entry: SMILEntry)? {
-        guard let section = getSection(at: sectionIndex), !section.mediaOverlay.isEmpty else { return nil }
+    private func findEntryByTime(_ time: Double, in sectionIndex: Int) -> (
+        entryIndex: Int, entry: SMILEntry
+    )? {
+        guard let section = getSection(at: sectionIndex), !section.mediaOverlay.isEmpty else {
+            return nil
+        }
 
         for (index, entry) in section.mediaOverlay.enumerated() {
             if time >= entry.begin && time < entry.end {
@@ -763,7 +798,9 @@ class MediaOverlayManager {
 
         guard isPlaying, syncEnabled else { return }
 
-        debugLog("[MOM] Element visibility: textId=\(message.textId), visible=\(message.visibleRatio), offScreen=\(message.offScreenRatio)")
+        debugLog(
+            "[MOM] Element visibility: textId=\(message.textId), visible=\(message.visibleRatio), offScreen=\(message.offScreenRatio)"
+        )
 
         if message.offScreenRatio >= 0.9 {
             debugLog("[MOM] Element almost fully off-screen, flipping immediately")
@@ -776,9 +813,12 @@ class MediaOverlayManager {
             let earlyOffset = 1.0
             let delay = max(0, (entryDuration * message.visibleRatio / playbackRate) - earlyOffset)
 
-            debugLog("[MOM] Scheduling page flip in \(String(format: "%.2f", delay))s (entry duration: \(String(format: "%.2f", entryDuration))s, visible: \(String(format: "%.0f", message.visibleRatio * 100))%)")
+            debugLog(
+                "[MOM] Scheduling page flip in \(String(format: "%.2f", delay))s (entry duration: \(String(format: "%.2f", entryDuration))s, visible: \(String(format: "%.0f", message.visibleRatio * 100))%)"
+            )
 
-            pageFlipTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
+            pageFlipTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) {
+                [weak self] _ in
                 Task { @MainActor [weak self] in
                     guard self?.isPlaying == true, self?.syncEnabled == true else { return }
                     debugLog("[MOM] Page flip timer fired")
@@ -834,7 +874,9 @@ extension MediaOverlayManager: SMILPlayerManagerDelegate {
     func smilPlayerDidAdvanceToEntry(sectionIndex: Int, entryIndex: Int, entry: SMILEntry) {
         guard let section = getSection(at: sectionIndex) else { return }
 
-        debugLog("[MOM] SMILPlayer advanced to: section=\(sectionIndex), entry=\(entryIndex), textId=\(entry.textId)")
+        debugLog(
+            "[MOM] SMILPlayer advanced to: section=\(sectionIndex), entry=\(entryIndex), textId=\(entry.textId)"
+        )
 
         updateProgressFromPlayer()
         #if os(iOS)

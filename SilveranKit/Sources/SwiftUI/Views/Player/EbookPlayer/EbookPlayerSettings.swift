@@ -165,7 +165,8 @@ struct EbookPlayerSettings: View {
                             selection: Binding(
                                 get: { Color(hex: settingsVM.highlightColor) ?? .yellow },
                                 set: {
-                                    settingsVM.highlightColor = $0.hexString() ?? settingsVM.highlightColor
+                                    settingsVM.highlightColor =
+                                        $0.hexString() ?? settingsVM.highlightColor
                                     Task { try? await settingsVM.save() }
                                 }
                             )
@@ -230,9 +231,12 @@ struct EbookPlayerSettings: View {
                         ColorPicker(
                             "Background Color",
                             selection: Binding(
-                                get: { Color(hex: settingsVM.backgroundColor ?? "#FFFFFF") ?? .gray },
+                                get: {
+                                    Color(hex: settingsVM.backgroundColor ?? "#FFFFFF") ?? .gray
+                                },
                                 set: {
-                                    settingsVM.backgroundColor = $0.hexString() ?? settingsVM.backgroundColor
+                                    settingsVM.backgroundColor =
+                                        $0.hexString() ?? settingsVM.backgroundColor
                                     Task { try? await settingsVM.save() }
                                 }
                             )
@@ -296,9 +300,12 @@ struct EbookPlayerSettings: View {
                         ColorPicker(
                             "Text Color",
                             selection: Binding(
-                                get: { Color(hex: settingsVM.foregroundColor ?? "#000000") ?? .gray },
+                                get: {
+                                    Color(hex: settingsVM.foregroundColor ?? "#000000") ?? .gray
+                                },
                                 set: {
-                                    settingsVM.foregroundColor = $0.hexString() ?? settingsVM.foregroundColor
+                                    settingsVM.foregroundColor =
+                                        $0.hexString() ?? settingsVM.foregroundColor
                                     Task { try? await settingsVM.save() }
                                 }
                             )
@@ -316,7 +323,9 @@ struct EbookPlayerSettings: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Slider(value: $settingsVM.marginLeftRight, in: 0...30, step: 1)
-                    .onChange(of: settingsVM.marginLeftRight) { _, _ in Task { try? await settingsVM.save() } }
+                    .onChange(of: settingsVM.marginLeftRight) { _, _ in
+                        Task { try? await settingsVM.save() }
+                    }
             }
 
             VStack(alignment: .leading, spacing: 4) {
@@ -324,7 +333,9 @@ struct EbookPlayerSettings: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Slider(value: $settingsVM.marginTopBottom, in: 0...30, step: 1)
-                    .onChange(of: settingsVM.marginTopBottom) { _, _ in Task { try? await settingsVM.save() } }
+                    .onChange(of: settingsVM.marginTopBottom) { _, _ in
+                        Task { try? await settingsVM.save() }
+                    }
             }
 
             Divider()
@@ -334,7 +345,9 @@ struct EbookPlayerSettings: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Slider(value: $settingsVM.wordSpacing, in: -0.5...2.0, step: 0.1)
-                    .onChange(of: settingsVM.wordSpacing) { _, _ in Task { try? await settingsVM.save() } }
+                    .onChange(of: settingsVM.wordSpacing) { _, _ in
+                        Task { try? await settingsVM.save() }
+                    }
             }
 
             VStack(alignment: .leading, spacing: 4) {
@@ -342,7 +355,9 @@ struct EbookPlayerSettings: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Slider(value: $settingsVM.letterSpacing, in: -0.1...0.5, step: 0.01)
-                    .onChange(of: settingsVM.letterSpacing) { _, _ in Task { try? await settingsVM.save() } }
+                    .onChange(of: settingsVM.letterSpacing) { _, _ in
+                        Task { try? await settingsVM.save() }
+                    }
             }
 
             Divider()
@@ -355,7 +370,9 @@ struct EbookPlayerSettings: View {
                 #if os(macOS)
                 Toggle("Enable Overlay Stats", isOn: $settingsVM.enableReadingBar)
                     .font(.caption)
-                    .onChange(of: settingsVM.enableReadingBar) { _, _ in Task { try? await settingsVM.save() } }
+                    .onChange(of: settingsVM.enableReadingBar) { _, _ in
+                        Task { try? await settingsVM.save() }
+                    }
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Transparency: \(Int(settingsVM.overlayTransparency * 100))%")
@@ -366,7 +383,9 @@ struct EbookPlayerSettings: View {
                         in: 0.1...1.0,
                         step: 0.01
                     )
-                    .onChange(of: settingsVM.overlayTransparency) { _, _ in Task { try? await settingsVM.save() } }
+                    .onChange(of: settingsVM.overlayTransparency) { _, _ in
+                        Task { try? await settingsVM.save() }
+                    }
                 }
                 .disabled(!settingsVM.enableReadingBar)
                 .opacity(settingsVM.enableReadingBar ? 1.0 : 0.5)
@@ -374,41 +393,56 @@ struct EbookPlayerSettings: View {
                 Toggle("Show Player Controls", isOn: $settingsVM.showPlayerControls)
                     .font(.caption)
                     .disabled(!settingsVM.enableReadingBar)
-                    .onChange(of: settingsVM.showPlayerControls) { _, _ in Task { try? await settingsVM.save() } }
+                    .onChange(of: settingsVM.showPlayerControls) { _, _ in
+                        Task { try? await settingsVM.save() }
+                    }
 
                 Toggle("Show Progress Bar", isOn: $settingsVM.showProgressBar)
                     .font(.caption)
                     .disabled(!settingsVM.enableReadingBar)
-                    .onChange(of: settingsVM.showProgressBar) { _, _ in Task { try? await settingsVM.save() } }
+                    .onChange(of: settingsVM.showProgressBar) { _, _ in
+                        Task { try? await settingsVM.save() }
+                    }
                 #endif
 
                 Toggle("Show Page Number in Chapter", isOn: $settingsVM.showPageNumber)
                     .font(.caption)
                     #if os(macOS)
-                    .disabled(!settingsVM.enableReadingBar)
+                .disabled(!settingsVM.enableReadingBar)
                     #endif
-                    .onChange(of: settingsVM.showPageNumber) { _, _ in Task { try? await settingsVM.save() } }
+                    .onChange(of: settingsVM.showPageNumber) { _, _ in
+                        Task { try? await settingsVM.save() }
+                    }
 
                 Toggle("Show Book Progress (%)", isOn: $settingsVM.showProgress)
                     .font(.caption)
                     #if os(macOS)
-                    .disabled(!settingsVM.enableReadingBar)
+                .disabled(!settingsVM.enableReadingBar)
                     #endif
-                    .onChange(of: settingsVM.showProgress) { _, _ in Task { try? await settingsVM.save() } }
+                    .onChange(of: settingsVM.showProgress) { _, _ in
+                        Task { try? await settingsVM.save() }
+                    }
 
-                Toggle("Show Time Remaining in Chapter", isOn: $settingsVM.showTimeRemainingInChapter)
-                    .font(.caption)
-                    #if os(macOS)
-                    .disabled(!settingsVM.enableReadingBar)
-                    #endif
-                    .onChange(of: settingsVM.showTimeRemainingInChapter) { _, _ in Task { try? await settingsVM.save() } }
+                Toggle(
+                    "Show Time Remaining in Chapter",
+                    isOn: $settingsVM.showTimeRemainingInChapter
+                )
+                .font(.caption)
+                #if os(macOS)
+                .disabled(!settingsVM.enableReadingBar)
+                #endif
+                .onChange(of: settingsVM.showTimeRemainingInChapter) { _, _ in
+                    Task { try? await settingsVM.save() }
+                }
 
                 Toggle("Show Time Remaining in Book", isOn: $settingsVM.showTimeRemainingInBook)
                     .font(.caption)
                     #if os(macOS)
-                    .disabled(!settingsVM.enableReadingBar)
+                .disabled(!settingsVM.enableReadingBar)
                     #endif
-                    .onChange(of: settingsVM.showTimeRemainingInBook) { _, _ in Task { try? await settingsVM.save() } }
+                    .onChange(of: settingsVM.showTimeRemainingInBook) { _, _ in
+                        Task { try? await settingsVM.save() }
+                    }
 
                 #if os(iOS)
                 VStack(alignment: .leading, spacing: 4) {
@@ -420,7 +454,9 @@ struct EbookPlayerSettings: View {
                         in: 0.1...1.0,
                         step: 0.01
                     )
-                    .onChange(of: settingsVM.overlayTransparency) { _, _ in Task { try? await settingsVM.save() } }
+                    .onChange(of: settingsVM.overlayTransparency) { _, _ in
+                        Task { try? await settingsVM.save() }
+                    }
                 }
                 #endif
             }
@@ -483,9 +519,12 @@ struct EbookPlayerSettings: View {
         !["System Default", "serif", "sans-serif", "monospace"].contains(fontFamily)
     }
 
-    private func highlightColorButton(lightColor: String, darkColor: String, label: String) -> some View {
+    private func highlightColorButton(lightColor: String, darkColor: String, label: String)
+        -> some View
+    {
         let colorToUse = colorScheme == .dark ? darkColor : lightColor
-        let isSelected = settingsVM.highlightColor == lightColor || settingsVM.highlightColor == darkColor
+        let isSelected =
+            settingsVM.highlightColor == lightColor || settingsVM.highlightColor == darkColor
 
         return Button {
             settingsVM.highlightColor = colorToUse
@@ -529,7 +568,8 @@ struct EbookPlayerSettings: View {
 
         let fontPanel = NSFontPanel.shared
         let currentFont =
-            NSFont(name: settingsVM.fontFamily, size: settingsVM.fontSize) ?? NSFont.systemFont(ofSize: settingsVM.fontSize)
+            NSFont(name: settingsVM.fontFamily, size: settingsVM.fontSize)
+            ?? NSFont.systemFont(ofSize: settingsVM.fontSize)
         fontPanel.setPanelFont(currentFont, isMultiple: false)
         fontPanel.orderFront(nil)
     }

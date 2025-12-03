@@ -23,51 +23,51 @@ public struct LibraryView: View {
     public var body: some View {
         ZStack {
             NavigationSplitView {
-            SidebarView(
-                sections: sections,
-                selectedItem: $selectedItem,
-                searchText: $searchText,
-                isSearchFocused: $isSearchFocused
-            )
-        } detail: {
-            if let selected = selectedItem {
-                detailView(
-                    for: selected,
-                    sections: $sections,
+                SidebarView(
+                    sections: sections,
                     selectedItem: $selectedItem,
+                    searchText: $searchText,
+                    isSearchFocused: $isSearchFocused
                 )
-            } else {
-                PlaceholderDetailView(title: "Select an item")
-            }
-        }
-        #if os(macOS)
-        .onAppear {
-            NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-                if event.modifierFlags.contains(.command)
-                    && event.charactersIgnoringModifiers == "f"
-                {
-                    isSearchFocused = true
-                    return nil
-                }
-                return event
-            }
-        }
-        #endif
-        #if os(iOS)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    showSettings = true
-                } label: {
-                    Label("Settings", systemImage: "gearshape")
+            } detail: {
+                if let selected = selectedItem {
+                    detailView(
+                        for: selected,
+                        sections: $sections,
+                        selectedItem: $selectedItem,
+                    )
+                } else {
+                    PlaceholderDetailView(title: "Select an item")
                 }
             }
-        }
-        .sheet(isPresented: $showSettings) {
-            SettingsView()
-            .presentationDragIndicator(.visible)
-        }
-        #endif
+            #if os(macOS)
+            .onAppear {
+                NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+                    if event.modifierFlags.contains(.command)
+                        && event.charactersIgnoringModifiers == "f"
+                    {
+                        isSearchFocused = true
+                        return nil
+                    }
+                    return event
+                }
+            }
+            #endif
+            #if os(iOS)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showSettings = true
+                    } label: {
+                        Label("Settings", systemImage: "gearshape")
+                    }
+                }
+            }
+            .sheet(isPresented: $showSettings) {
+                SettingsView()
+                .presentationDragIndicator(.visible)
+            }
+            #endif
 
             if let notification = mediaViewModel.syncNotification {
                 VStack {

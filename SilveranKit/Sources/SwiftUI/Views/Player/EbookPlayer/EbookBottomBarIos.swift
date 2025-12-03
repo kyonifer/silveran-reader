@@ -1,13 +1,13 @@
 import SwiftUI
 
-private extension VerticalAlignment {
-    struct IconCenter: AlignmentID {
+extension VerticalAlignment {
+    fileprivate struct IconCenter: AlignmentID {
         static func defaultValue(in context: ViewDimensions) -> CGFloat {
             context[VerticalAlignment.center]
         }
     }
 
-    static let iconCenter = VerticalAlignment(IconCenter.self)
+    fileprivate static let iconCenter = VerticalAlignment(IconCenter.self)
 }
 
 struct EbookBottomBarIos: View {
@@ -121,7 +121,8 @@ struct EbookBottomBarIos: View {
                 }
 
                 if let current = progressData?.chapterCurrentPage,
-                   let total = progressData?.chapterTotalPages {
+                    let total = progressData?.chapterTotalPages
+                {
                     Text("pg. \(current)/\(total)")
                         .font(.caption2.monospacedDigit())
                         .foregroundColor(.white.opacity(0.6))
@@ -174,35 +175,39 @@ struct EbookBottomBarIos: View {
         )
 
         return VStack(alignment: .leading, spacing: 4) {
-            Slider(value: sliderBinding, in: 0...1, onEditingChanged: { editing in
-                isDraggingSlider = editing
-                if editing {
-                    seekDebounceUntil = nil
-                    let audioFraction = chapterAudioFraction(
-                        current: progressData?.chapterCurrentSecondsAudio,
-                        total: progressData?.chapterTotalSecondsAudio
-                    )
-                    let pagesFraction = chapterPagesFraction(
-                        current: progressData?.chapterCurrentPage,
-                        total: progressData?.chapterTotalPages
-                    )
+            Slider(
+                value: sliderBinding,
+                in: 0...1,
+                onEditingChanged: { editing in
+                    isDraggingSlider = editing
+                    if editing {
+                        seekDebounceUntil = nil
+                        let audioFraction = chapterAudioFraction(
+                            current: progressData?.chapterCurrentSecondsAudio,
+                            total: progressData?.chapterTotalSecondsAudio
+                        )
+                        let pagesFraction = chapterPagesFraction(
+                            current: progressData?.chapterCurrentPage,
+                            total: progressData?.chapterTotalPages
+                        )
 
-                    let initialFraction: Double
-                    if isPlaying, let audio = audioFraction {
-                        initialFraction = audio
-                    } else if let pages = pagesFraction {
-                        initialFraction = pages
-                    } else if let audio = audioFraction {
-                        initialFraction = audio
+                        let initialFraction: Double
+                        if isPlaying, let audio = audioFraction {
+                            initialFraction = audio
+                        } else if let pages = pagesFraction {
+                            initialFraction = pages
+                        } else if let audio = audioFraction {
+                            initialFraction = audio
+                        } else {
+                            initialFraction = chapterProgress
+                        }
+
+                        draggedSliderValue = min(max(initialFraction, 0), 1)
                     } else {
-                        initialFraction = chapterProgress
+                        seekDebounceUntil = Date().addingTimeInterval(0.5)
                     }
-
-                    draggedSliderValue = min(max(initialFraction, 0), 1)
-                } else {
-                    seekDebounceUntil = Date().addingTimeInterval(0.5)
                 }
-            })
+            )
             .tint(Color.white.opacity(0.9))
 
             HStack {
@@ -210,9 +215,11 @@ struct EbookBottomBarIos: View {
                     .font(.caption2.monospacedDigit())
                     .foregroundColor(.white.opacity(0.7))
                 Spacer()
-                Text("-\(formatOptionalTime(chapterRemainingAtRate ?? rawRemaining)) (\(formatPlaybackRate(playbackRate)))")
-                    .font(.caption2)
-                    .foregroundColor(.white.opacity(0.6))
+                Text(
+                    "-\(formatOptionalTime(chapterRemainingAtRate ?? rawRemaining)) (\(formatPlaybackRate(playbackRate)))"
+                )
+                .font(.caption2)
+                .foregroundColor(.white.opacity(0.6))
                 Spacer()
                 Text(formatOptionalTime(chapterTotal))
                     .font(.caption2.monospacedDigit())
@@ -227,7 +234,8 @@ struct EbookBottomBarIos: View {
 
     private var chapterTotal: TimeInterval? {
         guard let elapsed = chapterElapsed,
-              let total = normalizedSeconds(progressData?.chapterTotalSecondsAudio) else {
+            let total = normalizedSeconds(progressData?.chapterTotalSecondsAudio)
+        else {
             return nil
         }
         return max(total, elapsed)

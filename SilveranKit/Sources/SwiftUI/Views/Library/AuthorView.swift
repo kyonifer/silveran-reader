@@ -35,56 +35,57 @@ struct AuthorView: View {
     private var authorListContent: some View {
         authorListView
             #if os(iOS)
-            .navigationTitle("Authors")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    HStack(spacing: 12) {
-                        if mediaViewModel.lastNetworkOpSucceeded == false,
-                           let showOfflineSheet {
-                            Button {
-                                showOfflineSheet.wrappedValue = true
-                            } label: {
-                                Image(systemName: "wifi.slash")
-                                    .foregroundColor(.red)
-                            }
-                        }
+        .navigationTitle("Authors")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                HStack(spacing: 12) {
+                    if mediaViewModel.lastNetworkOpSucceeded == false,
+                        let showOfflineSheet
+                    {
                         Button {
-                            showSettings = true
+                            showOfflineSheet.wrappedValue = true
                         } label: {
-                            Label("Settings", systemImage: "gearshape")
+                            Image(systemName: "wifi.slash")
+                            .foregroundColor(.red)
                         }
+                    }
+                    Button {
+                        showSettings = true
+                    } label: {
+                        Label("Settings", systemImage: "gearshape")
                     }
                 }
             }
-            .searchable(
-                text: $searchText,
-                placement: .navigationBarDrawer(displayMode: .always),
-                prompt: "Search"
-            )
+        }
+        .searchable(
+            text: $searchText,
+            placement: .navigationBarDrawer(displayMode: .always),
+            prompt: "Search"
+        )
             #endif
             .navigationDestination(for: String.self) { authorName in
                 authorDetailView(for: authorName)
             }
             #if os(iOS)
-            .navigationDestination(for: BookMetadata.self) { item in
-                iOSBookDetailView(item: item, mediaKind: mediaKind)
-            }
-            .navigationDestination(for: PlayerBookData.self) { bookData in
-                playerView(for: bookData)
-            }
-            #endif
-            #if os(macOS)
-            .onKeyPress(.escape) {
-                if isSidebarVisible {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        isSidebarVisible = false
-                    }
-                    return .handled
+        .navigationDestination(for: BookMetadata.self) { item in
+            iOSBookDetailView(item: item, mediaKind: mediaKind)
+        }
+        .navigationDestination(for: PlayerBookData.self) { bookData in
+            playerView(for: bookData)
+        }
+        #endif
+        #if os(macOS)
+        .onKeyPress(.escape) {
+            if isSidebarVisible {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    isSidebarVisible = false
                 }
-                return .ignored
+                return .handled
             }
-            #endif
+            return .ignored
+        }
+        #endif
     }
 
     private var authorListView: some View {
@@ -278,16 +279,16 @@ struct AuthorView: View {
     @ViewBuilder
     private func playerView(for bookData: PlayerBookData) -> some View {
         switch bookData.category {
-        case .audio:
-            AudiobookPlayerView(bookData: bookData)
-                #if os(iOS)
+            case .audio:
+                AudiobookPlayerView(bookData: bookData)
+                    #if os(iOS)
                 .navigationBarTitleDisplayMode(.inline)
-                #endif
-        case .ebook, .synced:
-            EbookPlayerView(bookData: bookData)
-                #if os(iOS)
+                    #endif
+            case .ebook, .synced:
+                EbookPlayerView(bookData: bookData)
+                    #if os(iOS)
                 .navigationBarTitleDisplayMode(.inline)
-                #endif
+                    #endif
         }
     }
 }

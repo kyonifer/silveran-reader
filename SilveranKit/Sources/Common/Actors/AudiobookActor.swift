@@ -1,5 +1,6 @@
-import Foundation
 import AVFoundation
+import Foundation
+
 #if os(iOS)
 import MediaPlayer
 #endif
@@ -12,14 +13,15 @@ public enum AudiobookError: Error, LocalizedError {
 
     public var errorDescription: String? {
         switch self {
-        case .invalidFileFormat(let format):
-            return "Audiobook format '\(format)' is not supported. Only M4B audiobooks are currently supported."
-        case .fileNotFound:
-            return "Audiobook file not found at the specified path."
-        case .failedToLoadMetadata:
-            return "Failed to load audiobook metadata or chapters."
-        case .playbackFailed(let reason):
-            return "Playback failed: \(reason)"
+            case .invalidFileFormat(let format):
+                return
+                    "Audiobook format '\(format)' is not supported. Only M4B audiobooks are currently supported."
+            case .fileNotFound:
+                return "Audiobook file not found at the specified path."
+            case .failedToLoadMetadata:
+                return "Failed to load audiobook metadata or chapters."
+            case .playbackFailed(let reason):
+                return "Playback failed: \(reason)"
         }
     }
 }
@@ -44,7 +46,12 @@ public struct AudiobookMetadata: Sendable {
     public let title: String?
     public let author: String?
 
-    public init(chapters: [AudiobookChapter], totalDuration: TimeInterval, title: String?, author: String?) {
+    public init(
+        chapters: [AudiobookChapter],
+        totalDuration: TimeInterval,
+        title: String?,
+        author: String?
+    ) {
         self.chapters = chapters
         self.totalDuration = totalDuration
         self.title = title
@@ -152,38 +159,49 @@ public actor AudiobookActor {
         return metadata
     }
 
-    nonisolated private func loadChapters(from asset: AVAsset, totalDuration: TimeInterval) async throws -> [AudiobookChapter] {
+    nonisolated private func loadChapters(from asset: AVAsset, totalDuration: TimeInterval)
+        async throws -> [AudiobookChapter]
+    {
         guard let urlAsset = asset as? AVURLAsset else {
-            return [AudiobookChapter(
-                title: "Full Book",
-                startTime: 0,
-                duration: totalDuration,
-                href: "chapter-0"
-            )]
+            return [
+                AudiobookChapter(
+                    title: "Full Book",
+                    startTime: 0,
+                    duration: totalDuration,
+                    href: "chapter-0"
+                )
+            ]
         }
 
         let languages: [Locale]
         do {
             languages = try await asset.load(.availableChapterLocales)
         } catch {
-            return [AudiobookChapter(
-                title: "Full Book",
-                startTime: 0,
-                duration: totalDuration,
-                href: "chapter-0"
-            )]
+            return [
+                AudiobookChapter(
+                    title: "Full Book",
+                    startTime: 0,
+                    duration: totalDuration,
+                    href: "chapter-0"
+                )
+            ]
         }
 
         guard !languages.isEmpty else {
-            return [AudiobookChapter(
-                title: "Full Book",
-                startTime: 0,
-                duration: totalDuration,
-                href: "chapter-0"
-            )]
+            return [
+                AudiobookChapter(
+                    title: "Full Book",
+                    startTime: 0,
+                    duration: totalDuration,
+                    href: "chapter-0"
+                )
+            ]
         }
 
-        let chapterMetadataGroups = try await urlAsset.loadChapterMetadataGroups(withTitleLocale: languages[0], containingItemsWithCommonKeys: [.commonKeyTitle])
+        let chapterMetadataGroups = try await urlAsset.loadChapterMetadataGroups(
+            withTitleLocale: languages[0],
+            containingItemsWithCommonKeys: [.commonKeyTitle]
+        )
 
         var chapters: [AudiobookChapter] = []
 
@@ -198,28 +216,34 @@ public actor AudiobookActor {
                     if let value = try? await item.load(.value) {
                         if let stringValue = value as? String {
                             chapterTitle = stringValue
-                        } else if let dataValue = value as? Data, let stringValue = String(data: dataValue, encoding: .utf8) {
+                        } else if let dataValue = value as? Data,
+                            let stringValue = String(data: dataValue, encoding: .utf8)
+                        {
                             chapterTitle = stringValue
                         }
                     }
                 }
             }
 
-            chapters.append(AudiobookChapter(
-                title: chapterTitle,
-                startTime: startTime,
-                duration: duration,
-                href: "chapter-\(index)"
-            ))
+            chapters.append(
+                AudiobookChapter(
+                    title: chapterTitle,
+                    startTime: startTime,
+                    duration: duration,
+                    href: "chapter-\(index)"
+                )
+            )
         }
 
         if chapters.isEmpty {
-            chapters.append(AudiobookChapter(
-                title: "Full Book",
-                startTime: 0,
-                duration: totalDuration,
-                href: "chapter-0"
-            ))
+            chapters.append(
+                AudiobookChapter(
+                    title: "Full Book",
+                    startTime: 0,
+                    duration: totalDuration,
+                    href: "chapter-0"
+                )
+            )
         }
 
         return chapters
@@ -345,7 +369,10 @@ public actor AudiobookActor {
         )
     }
 
-    public func addStateObserver(id: UUID = UUID(), observer: @escaping @Sendable @MainActor (AudiobookPlaybackState) -> Void) async -> UUID {
+    public func addStateObserver(
+        id: UUID = UUID(),
+        observer: @escaping @Sendable @MainActor (AudiobookPlaybackState) -> Void
+    ) async -> UUID {
         stateObservers[id] = observer
         if let state = await getCurrentState() {
             await observer(state)
@@ -479,7 +506,7 @@ public actor AudiobookActor {
             MPMediaItemPropertyPlaybackDuration: player.duration,
             MPNowPlayingInfoPropertyElapsedPlaybackTime: player.currentTime,
             MPNowPlayingInfoPropertyPlaybackRate: Double(player.rate != 0 ? player.rate : 1.0),
-            MPNowPlayingInfoPropertyDefaultPlaybackRate: 1.0
+            MPNowPlayingInfoPropertyDefaultPlaybackRate: 1.0,
         ]
 
         if let title = metadata?.title {
@@ -491,14 +518,18 @@ public actor AudiobookActor {
         }
 
         if let chapters = metadata?.chapters,
-           let currentIndex = getCurrentChapterIndexSync(),
-           currentIndex < chapters.count {
+            let currentIndex = getCurrentChapterIndexSync(),
+            currentIndex < chapters.count
+        {
             let chapter = chapters[currentIndex]
-            nowPlayingInfo[MPMediaItemPropertyTitle] = "\(metadata?.title ?? "Audiobook") - \(chapter.title)"
+            nowPlayingInfo[MPMediaItemPropertyTitle] =
+                "\(metadata?.title ?? "Audiobook") - \(chapter.title)"
         }
 
         if let artwork = artworkImage {
-            nowPlayingInfo[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(boundsSize: artwork.size) { _ in
+            nowPlayingInfo[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(
+                boundsSize: artwork.size
+            ) { _ in
                 artwork
             }
         }
@@ -539,15 +570,17 @@ public actor AudiobookActor {
 
     public func skipToNextChapter() async {
         guard let chapters = metadata?.chapters,
-              let currentIndex = await getCurrentChapterIndex(),
-              currentIndex < chapters.count - 1 else { return }
+            let currentIndex = await getCurrentChapterIndex(),
+            currentIndex < chapters.count - 1
+        else { return }
         await seekToChapter(href: chapters[currentIndex + 1].href)
     }
 
     public func skipToPreviousChapter() async {
         guard let chapters = metadata?.chapters,
-              let currentIndex = await getCurrentChapterIndex(),
-              currentIndex > 0 else { return }
+            let currentIndex = await getCurrentChapterIndex(),
+            currentIndex > 0
+        else { return }
         await seekToChapter(href: chapters[currentIndex - 1].href)
     }
 
@@ -586,7 +619,10 @@ public actor AudiobookActor {
         artworkImage = nil
 
         do {
-            try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+            try AVAudioSession.sharedInstance().setActive(
+                false,
+                options: .notifyOthersOnDeactivation
+            )
         } catch {
             debugLog("[AudiobookActor] Failed to deactivate audio session: \(error)")
         }

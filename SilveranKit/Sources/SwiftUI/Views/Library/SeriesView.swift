@@ -27,49 +27,56 @@ struct SeriesView: View {
         NavigationStack(path: $navigationPath) {
             seriesListView
                 #if os(iOS)
-                .navigationTitle("Series")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        HStack(spacing: 12) {
-                            if mediaViewModel.lastNetworkOpSucceeded == false,
-                               let showOfflineSheet {
-                                Button {
-                                    showOfflineSheet.wrappedValue = true
-                                } label: {
-                                    Image(systemName: "wifi.slash")
-                                        .foregroundColor(.red)
-                                }
-                            }
+            .navigationTitle("Series")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    HStack(spacing: 12) {
+                        if mediaViewModel.lastNetworkOpSucceeded == false,
+                            let showOfflineSheet
+                        {
                             Button {
-                                showSettings = true
+                                showOfflineSheet.wrappedValue = true
                             } label: {
-                                Label("Settings", systemImage: "gearshape")
+                                Image(systemName: "wifi.slash")
+                                .foregroundColor(.red)
                             }
+                        }
+                        Button {
+                            showSettings = true
+                        } label: {
+                            Label("Settings", systemImage: "gearshape")
                         }
                     }
                 }
-                .searchable(
-                    text: $searchText,
-                    placement: .navigationBarDrawer(displayMode: .always),
-                    prompt: "Search"
-                )
+            }
+            .searchable(
+                text: $searchText,
+                placement: .navigationBarDrawer(displayMode: .always),
+                prompt: "Search"
+            )
                 #endif
                 .navigationDestination(for: String.self) { seriesName in
                     seriesDetailView(for: seriesName)
                         #if os(iOS)
-                        .iOSLibraryToolbar(showSettings: $showSettings, showOfflineSheet: showOfflineSheet ?? .constant(false))
+                    .iOSLibraryToolbar(
+                        showSettings: $showSettings,
+                        showOfflineSheet: showOfflineSheet ?? .constant(false)
+                    )
                         #endif
                 }
                 #if os(iOS)
-                .navigationDestination(for: BookMetadata.self) { item in
-                    iOSBookDetailView(item: item, mediaKind: mediaKind)
-                        .iOSLibraryToolbar(showSettings: $showSettings, showOfflineSheet: showOfflineSheet ?? .constant(false))
-                }
-                .navigationDestination(for: PlayerBookData.self) { bookData in
-                    playerView(for: bookData)
-                }
-                #endif
+            .navigationDestination(for: BookMetadata.self) { item in
+                iOSBookDetailView(item: item, mediaKind: mediaKind)
+                .iOSLibraryToolbar(
+                    showSettings: $showSettings,
+                    showOfflineSheet: showOfflineSheet ?? .constant(false)
+                )
+            }
+            .navigationDestination(for: PlayerBookData.self) { bookData in
+                playerView(for: bookData)
+            }
+            #endif
         }
         #if os(macOS)
         .onKeyPress(.escape) {
@@ -268,16 +275,16 @@ struct SeriesView: View {
     @ViewBuilder
     private func playerView(for bookData: PlayerBookData) -> some View {
         switch bookData.category {
-        case .audio:
-            AudiobookPlayerView(bookData: bookData)
-                #if os(iOS)
+            case .audio:
+                AudiobookPlayerView(bookData: bookData)
+                    #if os(iOS)
                 .navigationBarTitleDisplayMode(.inline)
-                #endif
-        case .ebook, .synced:
-            EbookPlayerView(bookData: bookData)
-                #if os(iOS)
+                    #endif
+            case .ebook, .synced:
+                EbookPlayerView(bookData: bookData)
+                    #if os(iOS)
                 .navigationBarTitleDisplayMode(.inline)
-                #endif
+                    #endif
         }
     }
 }

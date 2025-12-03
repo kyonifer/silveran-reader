@@ -41,7 +41,7 @@ public struct AudiobookPlayerView: View {
         readingSidebarView
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             #if os(iOS)
-            .toolbar(.hidden, for: .tabBar)
+        .toolbar(.hidden, for: .tabBar)
             #endif
             .alert("Audiobook Error", isPresented: .constant(errorMessage != nil)) {
                 Button("OK") {
@@ -87,9 +87,13 @@ public struct AudiobookPlayerView: View {
                     Task {
                         await AudiobookActor.shared.setPlaybackRate(newValue)
                         do {
-                            try await SettingsActor.shared.updateConfig(defaultPlaybackSpeed: newValue)
+                            try await SettingsActor.shared.updateConfig(
+                                defaultPlaybackSpeed: newValue
+                            )
                         } catch {
-                            debugLog("[AudiobookPlayerView] Failed to auto-save playback rate: \(error)")
+                            debugLog(
+                                "[AudiobookPlayerView] Failed to auto-save playback rate: \(error)"
+                            )
                         }
                     }
                 }
@@ -113,7 +117,9 @@ public struct AudiobookPlayerView: View {
                             try await SettingsActor.shared.updateConfig(statsExpanded: newValue)
                             debugLog("[AudiobookPlayerView] Auto-saved stats expanded: \(newValue)")
                         } catch {
-                            debugLog("[AudiobookPlayerView] Failed to auto-save stats expanded: \(error)")
+                            debugLog(
+                                "[AudiobookPlayerView] Failed to auto-save stats expanded: \(error)"
+                            )
                         }
                     }
                 }
@@ -205,8 +211,9 @@ public struct AudiobookPlayerView: View {
             onProgressSeek: { fraction in
                 Task {
                     if let metadata = metadata,
-                       let chapterIndex = await AudiobookActor.shared.getCurrentChapterIndex(),
-                       chapterIndex < metadata.chapters.count {
+                        let chapterIndex = await AudiobookActor.shared.getCurrentChapterIndex(),
+                        chapterIndex < metadata.chapters.count
+                    {
                         let chapter = metadata.chapters[chapterIndex]
                         let targetTime = chapter.startTime + (chapter.duration * fraction)
                         await AudiobookActor.shared.seek(to: targetTime)
@@ -225,7 +232,9 @@ public struct AudiobookPlayerView: View {
         }
 
         do {
-            let loadedMetadata = try await AudiobookActor.shared.validateAndLoadAudiobook(url: mediaURL)
+            let loadedMetadata = try await AudiobookActor.shared.validateAndLoadAudiobook(
+                url: mediaURL
+            )
             metadata = loadedMetadata
 
             chapters = loadedMetadata.chapters.map { chapter in
@@ -245,7 +254,8 @@ public struct AudiobookPlayerView: View {
             await AudiobookActor.shared.setVolume(volume)
 
             if let position = bookData.metadata.position,
-               let totalProgression = position.locator?.locations?.totalProgression {
+                let totalProgression = position.locator?.locations?.totalProgression
+            {
                 await AudiobookActor.shared.seekToTotalProgressFraction(totalProgression)
                 lastSyncedProgress = totalProgression
             }
@@ -376,19 +386,24 @@ public struct AudiobookPlayerView: View {
             let currentProgress = chapterProgress
             let now = Date()
 
-            let justRestarted = if let lastRestart = lastRestartTime {
-                now.timeIntervalSince(lastRestart) < 2.0
-            } else {
-                false
-            }
+            let justRestarted =
+                if let lastRestart = lastRestartTime {
+                    now.timeIntervalSince(lastRestart) < 2.0
+                } else {
+                    false
+                }
 
             if currentProgress > 0.01 && !justRestarted {
-                debugLog("[AudiobookPlayerView] Restarting current chapter: \(currentChapter.title) (was at \(Int(currentProgress * 100))%)")
+                debugLog(
+                    "[AudiobookPlayerView] Restarting current chapter: \(currentChapter.title) (was at \(Int(currentProgress * 100))%)"
+                )
                 await AudiobookActor.shared.seekToChapter(href: currentChapter.href)
                 lastRestartTime = now
             } else if currentIndex > 0 {
                 let prevChapter = metadata.chapters[currentIndex - 1]
-                debugLog("[AudiobookPlayerView] Navigating to previous chapter: \(prevChapter.title)")
+                debugLog(
+                    "[AudiobookPlayerView] Navigating to previous chapter: \(prevChapter.title)"
+                )
                 await AudiobookActor.shared.seekToChapter(href: prevChapter.href)
                 lastRestartTime = nil
             } else {
@@ -431,7 +446,8 @@ public struct AudiobookPlayerView: View {
         }
 
         guard let state = await AudiobookActor.shared.getCurrentState(),
-              let audiobookMeta = metadata else {
+            let audiobookMeta = metadata
+        else {
             return
         }
 
@@ -442,15 +458,17 @@ public struct AudiobookPlayerView: View {
         }
 
         let chapterIndex = state.currentChapterIndex ?? 0
-        let chapter = audiobookMeta.chapters.indices.contains(chapterIndex)
+        let chapter =
+            audiobookMeta.chapters.indices.contains(chapterIndex)
             ? audiobookMeta.chapters[chapterIndex]
             : nil
 
-        let chapterProgression: Double = if let ch = chapter, ch.duration > 0 {
-            (state.currentTime - ch.startTime) / ch.duration
-        } else {
-            0.0
-        }
+        let chapterProgression: Double =
+            if let ch = chapter, ch.duration > 0 {
+                (state.currentTime - ch.startTime) / ch.duration
+            } else {
+                0.0
+            }
 
         let audioHref = bookData?.localMediaPath?.lastPathComponent ?? "audiobook.m4b"
         let timeOffset = state.currentTime
@@ -471,7 +489,9 @@ public struct AudiobookPlayerView: View {
             text: nil
         )
 
-        debugLog("[AudiobookPlayerView] Syncing progress - href: \(audioHref), type: audio/mp4, t=\(String(format: "%.1f", timeOffset))s, chapterProg: \(String(format: "%.1f%%", chapterProgression * 100)), totalProg: \(String(format: "%.1f%%", currentProgress * 100))")
+        debugLog(
+            "[AudiobookPlayerView] Syncing progress - href: \(audioHref), type: audio/mp4, t=\(String(format: "%.1f", timeOffset))s, chapterProg: \(String(format: "%.1f%%", chapterProgression * 100)), totalProg: \(String(format: "%.1f%%", currentProgress * 100))"
+        )
 
         let timestamp = Date().timeIntervalSince1970 * 1000
 

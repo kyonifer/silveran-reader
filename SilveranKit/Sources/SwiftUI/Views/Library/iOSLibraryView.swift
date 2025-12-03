@@ -21,19 +21,19 @@ public struct iOSLibraryView: View {
 
         var label: String {
             switch self {
-            case .home: "Home"
-            case .books: "Books"
-            case .series: "Series"
-            case .more: "More"
+                case .home: "Home"
+                case .books: "Books"
+                case .series: "Series"
+                case .more: "More"
             }
         }
 
         var iconName: String {
             switch self {
-            case .home: "house.fill"
-            case .books: "books.vertical.fill"
-            case .series: "square.stack.fill"
-            case .more: "ellipsis.circle.fill"
+                case .home: "house.fill"
+                case .books: "books.vertical.fill"
+                case .series: "square.stack.fill"
+                case .more: "ellipsis.circle.fill"
             }
         }
     }
@@ -151,7 +151,10 @@ public struct iOSLibraryView: View {
             )
             .navigationDestination(for: BookMetadata.self) { item in
                 iOSBookDetailView(item: item, mediaKind: .ebook)
-                    .iOSLibraryToolbar(showSettings: $showSettings, showOfflineSheet: $showOfflineSheet)
+                    .iOSLibraryToolbar(
+                        showSettings: $showSettings,
+                        showOfflineSheet: $showOfflineSheet
+                    )
             }
             .navigationDestination(for: PlayerBookData.self) { bookData in
                 playerView(for: bookData)
@@ -183,12 +186,12 @@ public struct iOSLibraryView: View {
     @ViewBuilder
     private func playerView(for bookData: PlayerBookData) -> some View {
         switch bookData.category {
-        case .audio:
-            AudiobookPlayerView(bookData: bookData)
-                .navigationBarTitleDisplayMode(.inline)
-        case .ebook, .synced:
-            EbookPlayerView(bookData: bookData)
-                .navigationBarTitleDisplayMode(.inline)
+            case .audio:
+                AudiobookPlayerView(bookData: bookData)
+                    .navigationBarTitleDisplayMode(.inline)
+            case .ebook, .synced:
+                EbookPlayerView(bookData: bookData)
+                    .navigationBarTitleDisplayMode(.inline)
         }
     }
 }
@@ -238,29 +241,35 @@ struct MoreMenuView: View {
         }
         .navigationDestination(for: MoreDestination.self) { destination in
             switch destination {
-            case .authors:
-                AuthorsListView(searchText: $searchText)
-                    .iOSLibraryToolbar(showSettings: $showSettings, showOfflineSheet: $showOfflineSheet)
-            case .downloaded:
-                MediaGridView(
-                    title: "Downloaded",
-                    searchText: searchText,
-                    mediaKind: .ebook,
-                    tagFilter: nil,
-                    seriesFilter: nil,
-                    statusFilter: nil,
-                    defaultSort: "titleAZ",
-                    preferredTileWidth: 110,
-                    minimumTileWidth: 90,
-                    columnBreakpoints: [
-                        MediaGridView.ColumnBreakpoint(columns: 3, minWidth: 0)
-                    ],
-                    initialNarrationFilterOption: .both,
-                    initialLocationFilter: .downloaded
-                )
-                .navigationTitle("Downloaded")
-                .navigationBarTitleDisplayMode(.inline)
-                .iOSLibraryToolbar(showSettings: $showSettings, showOfflineSheet: $showOfflineSheet)
+                case .authors:
+                    AuthorsListView(searchText: $searchText)
+                        .iOSLibraryToolbar(
+                            showSettings: $showSettings,
+                            showOfflineSheet: $showOfflineSheet
+                        )
+                case .downloaded:
+                    MediaGridView(
+                        title: "Downloaded",
+                        searchText: searchText,
+                        mediaKind: .ebook,
+                        tagFilter: nil,
+                        seriesFilter: nil,
+                        statusFilter: nil,
+                        defaultSort: "titleAZ",
+                        preferredTileWidth: 110,
+                        minimumTileWidth: 90,
+                        columnBreakpoints: [
+                            MediaGridView.ColumnBreakpoint(columns: 3, minWidth: 0)
+                        ],
+                        initialNarrationFilterOption: .both,
+                        initialLocationFilter: .downloaded
+                    )
+                    .navigationTitle("Downloaded")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .iOSLibraryToolbar(
+                        showSettings: $showSettings,
+                        showOfflineSheet: $showOfflineSheet
+                    )
             }
         }
         .navigationDestination(for: String.self) { authorName in
@@ -289,12 +298,12 @@ struct MoreMenuView: View {
         }
         .navigationDestination(for: PlayerBookData.self) { bookData in
             switch bookData.category {
-            case .audio:
-                AudiobookPlayerView(bookData: bookData)
-                    .navigationBarTitleDisplayMode(.inline)
-            case .ebook, .synced:
-                EbookPlayerView(bookData: bookData)
-                    .navigationBarTitleDisplayMode(.inline)
+                case .audio:
+                    AudiobookPlayerView(bookData: bookData)
+                        .navigationBarTitleDisplayMode(.inline)
+                case .ebook, .synced:
+                    EbookPlayerView(bookData: bookData)
+                        .navigationBarTitleDisplayMode(.inline)
             }
         }
     }
@@ -405,10 +414,12 @@ struct OfflineStatusSheet: View {
                 Text("Not Connected")
                     .font(.title2.weight(.semibold))
 
-                Text("You are currently not connected to the server. Only downloaded books are available for reading.")
-                    .font(.body)
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
+                Text(
+                    "You are currently not connected to the server. Only downloaded books are available for reading."
+                )
+                .font(.body)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
             }
 
             Button(action: onGoToDownloads) {
@@ -456,8 +467,15 @@ struct IOSLibraryToolbarModifier: ViewModifier {
 }
 
 extension View {
-    func iOSLibraryToolbar(showSettings: Binding<Bool>, showOfflineSheet: Binding<Bool>) -> some View {
-        modifier(IOSLibraryToolbarModifier(showSettings: showSettings, showOfflineSheet: showOfflineSheet))
+    func iOSLibraryToolbar(showSettings: Binding<Bool>, showOfflineSheet: Binding<Bool>)
+        -> some View
+    {
+        modifier(
+            IOSLibraryToolbarModifier(
+                showSettings: showSettings,
+                showOfflineSheet: showOfflineSheet
+            )
+        )
     }
 }
 #endif

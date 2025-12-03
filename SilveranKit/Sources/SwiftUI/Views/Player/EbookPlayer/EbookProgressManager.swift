@@ -5,7 +5,6 @@ import Foundation
 /// Responsibilities:
 /// - Track current position in book (chapter, page)
 /// - Calculate fractional progress (chapter and book level)
-/// - Estimate time remaining (when implemented)
 /// - Sync progress to server (when implemented)
 /// - Handle initial navigation to saved reading position
 @MainActor
@@ -25,7 +24,9 @@ class EbookProgressManager {
     var selectedChapterId: Int? = nil {
         didSet {
             guard selectedChapterId != oldValue else { return }
-            debugLog("[EPM] selectedChapterId changed: \(oldValue?.description ?? "nil") -> \(selectedChapterId?.description ?? "nil")")
+            debugLog(
+                "[EPM] selectedChapterId changed: \(oldValue?.description ?? "nil") -> \(selectedChapterId?.description ?? "nil")"
+            )
             uiSelectedChapterId = selectedChapterId
         }
     }
@@ -33,8 +34,12 @@ class EbookProgressManager {
     /// UI-selected chapter index (what SwiftUI binds to)
     var uiSelectedChapterId: Int? = nil {
         didSet {
-            debugLog("[EPM] uiSelectedChapterId changed: \(oldValue?.description ?? "nil") -> \(uiSelectedChapterId?.description ?? "nil")")
-            debugLog("[EPM] selectedChapterId is currently: \(selectedChapterId?.description ?? "nil")")
+            debugLog(
+                "[EPM] uiSelectedChapterId changed: \(oldValue?.description ?? "nil") -> \(uiSelectedChapterId?.description ?? "nil")"
+            )
+            debugLog(
+                "[EPM] selectedChapterId is currently: \(selectedChapterId?.description ?? "nil")"
+            )
             if let newId = uiSelectedChapterId, newId != selectedChapterId {
                 debugLog("[EPM] Triggering handleUserChapterSelected(\(newId))")
                 handleUserChapterSelected(newId)
@@ -48,24 +53,21 @@ class EbookProgressManager {
 
     // MARK: - Communication
 
-    /// Allows sending commands to JS
     weak var commsBridge: WebViewCommsBridge?
-
-    /// Reference to MediaOverlayManager for coordinating audio sync
     weak var mediaOverlayManager: MediaOverlayManager?
 
     /// Initial reading position (typ. from server sync)
     private var initialLocator: BookLocator?
 
-    /// Track whether we've performed initial seek to server location
+    /// Track whether we've performed initial seek to server location.
+    /// This happens when the book is first opened and has been
+    /// read in a previous session.
     private var hasPerformedInitialSeek = false
 
     // MARK: - User Navigation Detection
 
     /// Pending task for debounced user navigation notification
     private var userNavPendingTask: Task<Void, Never>?
-
-    /// Tracks if we're waiting for user navigation to settle
     private var isUserNavPending: Bool = false
 
     // MARK: - Progress Sync State
@@ -73,13 +75,11 @@ class EbookProgressManager {
     /// Timestamp of last user activity (navigation or audio playback)
     private var lastActivityTimestamp: TimeInterval? = nil
 
-    /// Timestamp of last successful sync to server (prevents duplicate uploads)
+    /// Timestamp of last successful sync to server
     private var lastSyncedTimestamp: TimeInterval? = nil
 
-    /// Timer for periodic progress sync
+    /// Timer for periodic progress syncs to server
     private var syncTimer: Timer? = nil
-
-    /// Book ID for server sync
     private var bookId: String? = nil
 
     /// Book metadata for lockscreen display
@@ -93,7 +93,9 @@ class EbookProgressManager {
         self.commsBridge = bridge
         self.bookId = bookId
         self.initialLocator = initialLocator
-        debugLog("[EPM] EbookProgressManager initialized with bookId: \(bookId ?? "none"), locator: \(initialLocator?.href ?? "none")")
+        debugLog(
+            "[EPM] EbookProgressManager initialized with bookId: \(bookId ?? "none"), locator: \(initialLocator?.href ?? "none")"
+        )
 
         bridge.onRelocated = { [weak self] message in
             Task { @MainActor in
@@ -111,7 +113,9 @@ class EbookProgressManager {
         }
 
         chapterSeekBarValue = Double(current - 1) / Double(total)
-        debugLog("[EPM] Chapter progress updated: \(String(format: "%.1f%%", chapterSeekBarValue * 100))")
+        debugLog(
+            "[EPM] Chapter progress updated: \(String(format: "%.1f%%", chapterSeekBarValue * 100))"
+        )
     }
 
     /// Update book progress (fractional position in entire book)
@@ -154,7 +158,9 @@ class EbookProgressManager {
     /// Find the SMIL entry corresponding to a book fraction (0-1).
     /// Uses cumSumAtEnd times in SMIL entries to locate the audio position.
     /// Note: cumSumAtEnd is per-section (resets to 0 each section), so we track book-wide time ourselves.
-    private func findSmilEntryByBookFraction(_ fraction: Double) -> (sectionIndex: Int, anchor: String)? {
+    private func findSmilEntryByBookFraction(_ fraction: Double) -> (
+        sectionIndex: Int, anchor: String
+    )? {
         var totalAudioDuration: Double = 0
         for section in bookStructure {
             if let lastEntry = section.mediaOverlay.last {
@@ -184,7 +190,7 @@ class EbookProgressManager {
 
     // MARK: - Initial Navigation
 
-    /// Called when book structure is ready - performs initial navigation
+    /// Called when book structure is ready-- performs initial navigation
     /// Handles both text (ebook) and audio (audiobook) locators.
     /// Audio locators are detected via type.contains("audio") to match server behavior:
     /// storyteller/web/src/components/reader/BookService.ts:892 (translateLocator)
@@ -204,18 +210,26 @@ class EbookProgressManager {
         Task { @MainActor in
             do {
                 if let locator = initialLocator {
-                    let isAudioLocator = locator.type.contains("audio") ||
-                                         locator.href.hasPrefix("audiobook://")
+                    let isAudioLocator =
+                        locator.type.contains("audio") || locator.href.hasPrefix("audiobook://")
 
                     if isAudioLocator {
                         if let totalProg = locator.locations?.totalProgression, totalProg > 0 {
-                            debugLog("[EPM] Translating audio locator (totalProgression: \(totalProg)) to text position")
+                            debugLog(
+                                "[EPM] Translating audio locator (totalProgression: \(totalProg)) to text position"
+                            )
                             try await bridge.sendJsGoToBookFractionCommand(fraction: totalProg)
 
                             if let mom = mediaOverlayManager,
-                               let (sectionIndex, anchor) = findSmilEntryByBookFraction(totalProg) {
-                                debugLog("[EPM] Seeking media overlay to section \(sectionIndex), anchor: \(anchor)")
-                                await mom.handleSeekEvent(sectionIndex: sectionIndex, anchor: anchor)
+                                let (sectionIndex, anchor) = findSmilEntryByBookFraction(totalProg)
+                            {
+                                debugLog(
+                                    "[EPM] Seeking media overlay to section \(sectionIndex), anchor: \(anchor)"
+                                )
+                                await mom.handleSeekEvent(
+                                    sectionIndex: sectionIndex,
+                                    anchor: anchor
+                                )
                             }
                         } else {
                             debugLog("[EPM] Audio locator has no totalProgression, going to start")
@@ -227,23 +241,41 @@ class EbookProgressManager {
                     let hasSMIL = mediaOverlayManager?.hasMediaOverlay == true
 
                     if let fragment = locator.locations?.fragments?.first, hasSMIL {
-                        debugLog("[EPM] Seeking to saved position with fragment: \(locator.href)#\(fragment)")
+                        debugLog(
+                            "[EPM] Seeking to saved position with fragment: \(locator.href)#\(fragment)"
+                        )
                         try await bridge.sendJsGoToLocatorCommand(locator: locator)
 
                         if let mom = mediaOverlayManager,
-                           let sectionIndex = bookStructure.firstIndex(where: { $0.id == locator.href }) {
-                            debugLog("[EPM] Also seeking media overlay to section \(sectionIndex), fragment: \(fragment)")
+                            let sectionIndex = bookStructure.firstIndex(where: {
+                                $0.id == locator.href
+                            })
+                        {
+                            debugLog(
+                                "[EPM] Also seeking media overlay to section \(sectionIndex), fragment: \(fragment)"
+                            )
                             await mom.handleSeekEvent(sectionIndex: sectionIndex, anchor: fragment)
                         }
                     } else if let progression = locator.locations?.progression,
-                              let sectionIndex = bookStructure.firstIndex(where: { $0.id == locator.href }) {
+                        let sectionIndex = bookStructure.firstIndex(where: { $0.id == locator.href }
+                        )
+                    {
                         debugLog("[EPM] Using section \(sectionIndex) progression: \(progression)")
-                        try await bridge.sendJsGoToFractionInSectionCommand(sectionIndex: sectionIndex, fraction: progression)
+                        try await bridge.sendJsGoToFractionInSectionCommand(
+                            sectionIndex: sectionIndex,
+                            fraction: progression
+                        )
 
                         if hasSMIL,
-                           let mom = mediaOverlayManager,
-                           let anchor = findSmilEntryBySectionFraction(sectionIndex, fraction: progression) {
-                            debugLog("[EPM] Also seeking media overlay to section \(sectionIndex), anchor: \(anchor)")
+                            let mom = mediaOverlayManager,
+                            let anchor = findSmilEntryBySectionFraction(
+                                sectionIndex,
+                                fraction: progression
+                            )
+                        {
+                            debugLog(
+                                "[EPM] Also seeking media overlay to section \(sectionIndex), anchor: \(anchor)"
+                            )
                             await mom.handleSeekEvent(sectionIndex: sectionIndex, anchor: anchor)
                         }
                     } else if let totalProg = locator.locations?.totalProgression, totalProg > 0 {
@@ -251,9 +283,12 @@ class EbookProgressManager {
                         try await bridge.sendJsGoToBookFractionCommand(fraction: totalProg)
 
                         if hasSMIL,
-                           let mom = mediaOverlayManager,
-                           let (smilSection, anchor) = findSmilEntryByBookFraction(totalProg) {
-                            debugLog("[EPM] Also seeking media overlay to section \(smilSection), anchor: \(anchor)")
+                            let mom = mediaOverlayManager,
+                            let (smilSection, anchor) = findSmilEntryByBookFraction(totalProg)
+                        {
+                            debugLog(
+                                "[EPM] Also seeking media overlay to section \(smilSection), anchor: \(anchor)"
+                            )
                             await mom.handleSeekEvent(sectionIndex: smilSection, anchor: anchor)
                         }
                     } else {
@@ -274,15 +309,18 @@ class EbookProgressManager {
 
     /// JS sent relocate (position or chapter changed during playback)
     private func handleRelocated(_ message: RelocatedMessage) {
-        debugLog("[EPM] Received relocate event from JS: sectionIndex=\(message.sectionIndex?.description ?? "nil")")
+        debugLog(
+            "[EPM] Received relocate event from JS: sectionIndex=\(message.sectionIndex?.description ?? "nil")"
+        )
 
         if isUserNavPending {
             debugLog("[EPM] User nav pending, ignoring relocate (will be handled when timer fires)")
         } else {
             if let section = message.sectionIndex,
-               let page = message.pageIndex,
-               let total = message.totalPages,
-               let mom = mediaOverlayManager {
+                let page = message.pageIndex,
+                let total = message.totalPages,
+                let mom = mediaOverlayManager
+            {
                 Task { @MainActor in
                     await mom.handleNaturalNavEvent(section: section, page: page, totalPages: total)
                 }
@@ -362,7 +400,8 @@ class EbookProgressManager {
         }
 
         guard let chapter = bookStructure[safe: newId],
-              let bridge = commsBridge else {
+            let bridge = commsBridge
+        else {
             debugLog("[EPM] Cannot navigate - invalid chapter index or no bridge")
             return
         }
@@ -390,10 +429,13 @@ class EbookProgressManager {
         let clampedProgress = max(0.0, min(1.0, progress))
         chapterSeekBarValue = clampedProgress
 
-        debugLog("[EPM] User seeking to chapter progress: \(String(format: "%.1f%%", clampedProgress * 100))")
+        debugLog(
+            "[EPM] User seeking to chapter progress: \(String(format: "%.1f%%", clampedProgress * 100))"
+        )
 
         guard let currentChapterIndex = selectedChapterId,
-              let bridge = commsBridge else {
+            let bridge = commsBridge
+        else {
             debugLog("[EPM] Cannot seek - no chapter selected or bridge unavailable")
             return
         }
@@ -417,12 +459,15 @@ class EbookProgressManager {
     /// Handle position handoff from SMILPlayerManager after returning from background
     /// Syncs the view to current audio position and updates server
     func handleBackgroundSyncHandoff(_ syncData: AudioPositionSyncData) async {
-        debugLog("[EPM] Background sync handoff: section=\(syncData.sectionIndex), fragment=\(syncData.fragment)")
+        debugLog(
+            "[EPM] Background sync handoff: section=\(syncData.sectionIndex), fragment=\(syncData.fragment)"
+        )
 
         selectedChapterId = syncData.sectionIndex
         recordActivity()
 
-        let fullHref = syncData.fragment.isEmpty
+        let fullHref =
+            syncData.fragment.isEmpty
             ? syncData.href
             : "\(syncData.href)#\(syncData.fragment)"
 
@@ -444,7 +489,9 @@ class EbookProgressManager {
 
         let wasPlaying = mediaOverlayManager?.isPlaying ?? false
 
-        debugLog("[EPM] togglePlaying - activity recorded, delegating to MOM (wasPlaying: \(wasPlaying))")
+        debugLog(
+            "[EPM] togglePlaying - activity recorded, delegating to MOM (wasPlaying: \(wasPlaying))"
+        )
         await mediaOverlayManager?.togglePlaying()
 
         let isNowPlaying = mediaOverlayManager?.isPlaying ?? false
@@ -507,7 +554,8 @@ class EbookProgressManager {
         stopPeriodicSync()
         debugLog("[EPM] Starting periodic sync with interval \(syncInterval)s")
 
-        syncTimer = Timer.scheduledTimer(withTimeInterval: syncInterval, repeats: true) { [weak self] _ in
+        syncTimer = Timer.scheduledTimer(withTimeInterval: syncInterval, repeats: true) {
+            [weak self] _ in
             Task { @MainActor in
                 await self?.syncProgressToServer()
             }
@@ -537,20 +585,25 @@ class EbookProgressManager {
         }
 
         if !force, let lastSynced = lastSyncedTimestamp, lastActivity == lastSynced {
-            debugLog("[EPM] Skipping sync - already synced this position (timestamp: \(lastActivity))")
+            debugLog(
+                "[EPM] Skipping sync - already synced this position (timestamp: \(lastActivity))"
+            )
             return
         }
 
         let now = Date().timeIntervalSince1970
         let timeSinceActivity = now - lastActivity
         let forceNote = force ? " (forced)" : ""
-        debugLog("[EPM] Syncing progress\(forceNote) (activity \(String(format: "%.1f", timeSinceActivity))s ago)")
+        debugLog(
+            "[EPM] Syncing progress\(forceNote) (activity \(String(format: "%.1f", timeSinceActivity))s ago)"
+        )
 
         let locator: BookLocator?
 
         if let mom = mediaOverlayManager,
-           mom.hasMediaOverlay,
-           let fragment = mom.currentFragment {
+            mom.hasMediaOverlay,
+            let fragment = mom.currentFragment
+        {
             debugLog("[EPM] Using audio fragment for sync: \(fragment)")
             locator = buildLocatorFromFragment(fragment)
         } else if let fraction = bookFraction {
@@ -610,7 +663,8 @@ class EbookProgressManager {
 
     private func buildLocatorFromFraction(_ fraction: Double) -> BookLocator? {
         guard let section = selectedChapterId,
-              section >= 0 && section < bookStructure.count else {
+            section >= 0 && section < bookStructure.count
+        else {
             return nil
         }
 

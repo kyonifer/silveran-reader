@@ -1,4 +1,5 @@
 import Foundation
+
 #if canImport(os)
 import os
 private let logger = Logger(subsystem: "com.kyonifer.SilveranReader", category: "debug")

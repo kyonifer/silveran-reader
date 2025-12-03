@@ -69,8 +69,8 @@ public struct EbookPlayerView: View {
         }
         .sheet(isPresented: $viewModel.showAudioSheet) {
             audiobookSidebar
-                .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
         }
         #else
         .onKeyPress(.leftArrow) {
@@ -178,7 +178,10 @@ public struct EbookPlayerView: View {
                             ebookPath: ebookPath,
                             commsBridge: $viewModel.commsBridge,
                             onBridgeReady: { bridge in
-                                viewModel.installBridgeHandlers(bridge, initialColorScheme: colorScheme)
+                                viewModel.installBridgeHandlers(
+                                    bridge,
+                                    initialColorScheme: colorScheme
+                                )
                             },
                             onContentPurged: {
                                 viewModel.recoveryManager?.handleContentPurged()
@@ -192,7 +195,10 @@ public struct EbookPlayerView: View {
                             ebookPath: ebookPath,
                             commsBridge: $viewModel.commsBridge,
                             onBridgeReady: { bridge in
-                                viewModel.installBridgeHandlers(bridge, initialColorScheme: colorScheme)
+                                viewModel.installBridgeHandlers(
+                                    bridge,
+                                    initialColorScheme: colorScheme
+                                )
                             }
                         )
                     )
@@ -205,7 +211,8 @@ public struct EbookPlayerView: View {
 
             #if os(iOS)
             let shouldShowBar = !viewModel.showAudioSidebar && viewModel.isReadingBarVisible
-            let shouldShowStatsOverlay = !viewModel.showAudioSidebar && !viewModel.isReadingBarVisible
+            let shouldShowStatsOverlay =
+                !viewModel.showAudioSidebar && !viewModel.isReadingBarVisible
             #else
             let shouldShowBar = viewModel.settingsVM.enableReadingBar && !viewModel.showAudioSidebar
             #endif
@@ -265,7 +272,8 @@ public struct EbookPlayerView: View {
     #if os(iOS)
     private var safeAreaInsets: EdgeInsets {
         guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-              let window = windowScene.windows.first else {
+            let window = windowScene.windows.first
+        else {
             return EdgeInsets()
         }
         return EdgeInsets(
@@ -333,7 +341,6 @@ public struct EbookPlayerView: View {
         )
         #endif
     }
-
 
     private func sidebarToggleButton(
         isVisible: Bool,

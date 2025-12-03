@@ -1,5 +1,5 @@
-import Foundation
 import AVFoundation
+import Foundation
 
 struct AudioPositionSyncData {
     let sectionIndex: Int
@@ -64,20 +64,32 @@ class SMILPlayerManager: NSObject, AVAudioPlayerDelegate {
         self.epubPath = epubPath
         self.currentPlaybackRate = Float(initialPlaybackRate)
         super.init()
-        debugLog("[SMILPlayerManager] Initialized with \(bookStructure.count) sections, epubPath: \(epubPath?.path ?? "nil"), rate: \(initialPlaybackRate)")
+        debugLog(
+            "[SMILPlayerManager] Initialized with \(bookStructure.count) sections, epubPath: \(epubPath?.path ?? "nil"), rate: \(initialPlaybackRate)"
+        )
     }
 
     // MARK: - Entry Management
 
-    func setCurrentEntry(sectionIndex: Int, entryIndex: Int, audioFile: String, beginTime: Double, endTime: Double) async {
-        debugLog("[SMILPlayerManager] setCurrentEntry: section=\(sectionIndex), entry=\(entryIndex), file=\(audioFile), begin=\(beginTime), end=\(endTime)")
+    func setCurrentEntry(
+        sectionIndex: Int,
+        entryIndex: Int,
+        audioFile: String,
+        beginTime: Double,
+        endTime: Double
+    ) async {
+        debugLog(
+            "[SMILPlayerManager] setCurrentEntry: section=\(sectionIndex), entry=\(entryIndex), file=\(audioFile), begin=\(beginTime), end=\(endTime)"
+        )
 
         // Check if we were recently playing (paused within last 500ms for seek)
         let wasRecentlyPlaying: Bool
         if let pauseTime = lastPausedWhilePlayingTime {
             let elapsed = Date().timeIntervalSince(pauseTime)
             wasRecentlyPlaying = elapsed < 0.5
-            debugLog("[SMILPlayerManager] Time since pause: \(elapsed)s, wasRecentlyPlaying=\(wasRecentlyPlaying)")
+            debugLog(
+                "[SMILPlayerManager] Time since pause: \(elapsed)s, wasRecentlyPlaying=\(wasRecentlyPlaying)"
+            )
         } else {
             wasRecentlyPlaying = false
         }
@@ -113,7 +125,8 @@ class SMILPlayerManager: NSObject, AVAudioPlayerDelegate {
         }
 
         let section = bookStructure[sectionIndex]
-        guard let entryIndex = section.mediaOverlay.firstIndex(where: { $0.textId == textId }) else {
+        guard let entryIndex = section.mediaOverlay.firstIndex(where: { $0.textId == textId })
+        else {
             debugLog("[SMILPlayerManager] seekToFragment - textId not found: \(textId)")
             return false
         }
@@ -164,7 +177,9 @@ class SMILPlayerManager: NSObject, AVAudioPlayerDelegate {
             audioPlayer?.prepareToPlay()
             duration = audioPlayer?.duration ?? 0
             state = .ready
-            debugLog("[SMILPlayerManager] Audio loaded from EPUB, duration: \(duration)s, rate: \(currentPlaybackRate)")
+            debugLog(
+                "[SMILPlayerManager] Audio loaded from EPUB, duration: \(duration)s, rate: \(currentPlaybackRate)"
+            )
         } catch {
             debugLog("[SMILPlayerManager] Failed to load audio from EPUB: \(error)")
             state = .idle
@@ -263,7 +278,9 @@ class SMILPlayerManager: NSObject, AVAudioPlayerDelegate {
 
     nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
         Task { @MainActor in
-            debugLog("[SMILPlayerManager] Audio file finished playing (delegate callback, success=\(flag))")
+            debugLog(
+                "[SMILPlayerManager] Audio file finished playing (delegate callback, success=\(flag))"
+            )
             advanceToNextEntry()
         }
     }
@@ -279,7 +296,9 @@ class SMILPlayerManager: NSObject, AVAudioPlayerDelegate {
 
         let entry = section.mediaOverlay[currentEntryIndex]
 
-        debugLog("[SMILPlayerManager] getBackgroundSyncData: section=\(currentSectionIndex), entry=\(currentEntryIndex), fragment=\(entry.textId)")
+        debugLog(
+            "[SMILPlayerManager] getBackgroundSyncData: section=\(currentSectionIndex), entry=\(currentEntryIndex), fragment=\(entry.textId)"
+        )
 
         return AudioPositionSyncData(
             sectionIndex: currentSectionIndex,
@@ -306,7 +325,9 @@ class SMILPlayerManager: NSObject, AVAudioPlayerDelegate {
         for (index, entry) in section.mediaOverlay.enumerated() {
             if actualTime >= entry.begin && actualTime < entry.end {
                 if index != currentEntryIndex {
-                    debugLog("[SMILPlayerManager] Reconciled entry: was \(currentEntryIndex), now \(index)")
+                    debugLog(
+                        "[SMILPlayerManager] Reconciled entry: was \(currentEntryIndex), now \(index)"
+                    )
                     currentEntryIndex = index
                     currentEntryBeginTime = entry.begin
                     currentEntryEndTime = entry.end
@@ -315,7 +336,9 @@ class SMILPlayerManager: NSObject, AVAudioPlayerDelegate {
             }
         }
 
-        debugLog("[SMILPlayerManager] Could not reconcile entry for time \(actualTime) in section \(currentSectionIndex)")
+        debugLog(
+            "[SMILPlayerManager] Could not reconcile entry for time \(actualTime) in section \(currentSectionIndex)"
+        )
     }
 
     // MARK: - Entry Navigation
@@ -347,10 +370,18 @@ class SMILPlayerManager: NSObject, AVAudioPlayerDelegate {
                 }
             }
 
-            debugLog("[SMILPlayerManager] Advanced to entry \(nextEntryIndex) in section \(currentSectionIndex)")
-            delegate?.smilPlayerDidAdvanceToEntry(sectionIndex: currentSectionIndex, entryIndex: currentEntryIndex, entry: nextEntry)
+            debugLog(
+                "[SMILPlayerManager] Advanced to entry \(nextEntryIndex) in section \(currentSectionIndex)"
+            )
+            delegate?.smilPlayerDidAdvanceToEntry(
+                sectionIndex: currentSectionIndex,
+                entryIndex: currentEntryIndex,
+                entry: nextEntry
+            )
         } else {
-            if delegate?.smilPlayerShouldAdvanceToNextSection(fromSection: currentSectionIndex) == false {
+            if delegate?.smilPlayerShouldAdvanceToNextSection(fromSection: currentSectionIndex)
+                == false
+            {
                 debugLog("[SMILPlayerManager] Delegate blocked section advance (sleep timer?)")
                 pause()
                 return
@@ -374,7 +405,11 @@ class SMILPlayerManager: NSObject, AVAudioPlayerDelegate {
                     }
 
                     debugLog("[SMILPlayerManager] Advanced to section \(nextSectionIndex)")
-                    delegate?.smilPlayerDidAdvanceToEntry(sectionIndex: currentSectionIndex, entryIndex: currentEntryIndex, entry: nextEntry)
+                    delegate?.smilPlayerDidAdvanceToEntry(
+                        sectionIndex: currentSectionIndex,
+                        entryIndex: currentEntryIndex,
+                        entry: nextEntry
+                    )
                 } else {
                     debugLog("[SMILPlayerManager] End of book reached (next section has no audio)")
                     pause()
@@ -408,8 +443,14 @@ class SMILPlayerManager: NSObject, AVAudioPlayerDelegate {
                 seek(to: prevEntry.begin)
             }
 
-            debugLog("[SMILPlayerManager] Went back to entry \(currentEntryIndex) in section \(currentSectionIndex)")
-            delegate?.smilPlayerDidAdvanceToEntry(sectionIndex: currentSectionIndex, entryIndex: currentEntryIndex, entry: prevEntry)
+            debugLog(
+                "[SMILPlayerManager] Went back to entry \(currentEntryIndex) in section \(currentSectionIndex)"
+            )
+            delegate?.smilPlayerDidAdvanceToEntry(
+                sectionIndex: currentSectionIndex,
+                entryIndex: currentEntryIndex,
+                entry: prevEntry
+            )
         } else if currentSectionIndex > 0 {
             var prevSectionIndex = currentSectionIndex - 1
             while prevSectionIndex >= 0 && bookStructure[prevSectionIndex].mediaOverlay.isEmpty {
@@ -431,8 +472,14 @@ class SMILPlayerManager: NSObject, AVAudioPlayerDelegate {
                     if state == .playing { play() }
                 }
 
-                debugLog("[SMILPlayerManager] Went back to section \(prevSectionIndex), entry \(currentEntryIndex)")
-                delegate?.smilPlayerDidAdvanceToEntry(sectionIndex: currentSectionIndex, entryIndex: currentEntryIndex, entry: lastEntry)
+                debugLog(
+                    "[SMILPlayerManager] Went back to section \(prevSectionIndex), entry \(currentEntryIndex)"
+                )
+                delegate?.smilPlayerDidAdvanceToEntry(
+                    sectionIndex: currentSectionIndex,
+                    entryIndex: currentEntryIndex,
+                    entry: lastEntry
+                )
             }
         } else {
             seek(to: currentEntryBeginTime)

@@ -29,7 +29,9 @@ struct EbookChapterSidebar: View {
         .listStyle(.sidebar)
         .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 280)
         .onChange(of: selectedChapterId) { oldValue, newValue in
-            debugLog("[EbookPlayerView] EbookChapterSidebar - selectedChapterId changed from \(oldValue?.description ?? "nil") to \(newValue?.description ?? "nil")")
+            debugLog(
+                "[EbookPlayerView] EbookChapterSidebar - selectedChapterId changed from \(oldValue?.description ?? "nil") to \(newValue?.description ?? "nil")"
+            )
             onChapterSelected(newValue)
         }
     }

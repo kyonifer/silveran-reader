@@ -76,7 +76,9 @@ struct ImportLocalFileView: View {
                     let url = await LocalMediaActor.shared.getDomainDirectory(for: .local)
                     NSWorkspace.shared.activateFileViewerSelecting([url])
                 } catch {
-                    debugLog("[ImportLocalFileView] Failed to open directory: \(error.localizedDescription)")
+                    debugLog(
+                        "[ImportLocalFileView] Failed to open directory: \(error.localizedDescription)"
+                    )
                 }
             }
         }

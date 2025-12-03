@@ -43,13 +43,8 @@ struct MediaItemCardMetrics {
         let coverContainerHeight = tallestCoverHeight + progressBarTopPadding + progressBarHeight
 
         let maxCardHeight =
-            (cardPadding * 2) +
-            coverContainerHeight +
-            contentSpacing +
-            titleContainerHeight +
-            titleToAuthorGap +
-            authorRowHeight +
-            authorRowBottomPadding
+            (cardPadding * 2) + coverContainerHeight + contentSpacing + titleContainerHeight
+            + titleToAuthorGap + authorRowHeight + authorRowBottomPadding
 
         return MediaItemCardMetrics(
             tileWidth: tileWidth,
@@ -155,19 +150,33 @@ struct MediaItemCardView: View {
                     if item.id == "14749693-3d16-4076-b3b3-c8593040fa74" {
                         debugLog("[MediaItemCardView] Book \(item.title) (\(item.id))")
                         debugLog("[MediaItemCardView]   progress: \(item.progress)")
-                        debugLog("[MediaItemCardView]   position: \(item.position != nil ? "exists" : "nil")")
+                        debugLog(
+                            "[MediaItemCardView]   position: \(item.position != nil ? "exists" : "nil")"
+                        )
                         if let position = item.position {
-                            debugLog("[MediaItemCardView]   locator: \(position.locator != nil ? "exists" : "nil")")
+                            debugLog(
+                                "[MediaItemCardView]   locator: \(position.locator != nil ? "exists" : "nil")"
+                            )
                             if let locator = position.locator {
                                 debugLog("[MediaItemCardView]     href: \(locator.href)")
-                                debugLog("[MediaItemCardView]     locations: \(locator.locations != nil ? "exists" : "nil")")
+                                debugLog(
+                                    "[MediaItemCardView]     locations: \(locator.locations != nil ? "exists" : "nil")"
+                                )
                                 if let locations = locator.locations {
-                                    debugLog("[MediaItemCardView]       totalProgression: \(locations.totalProgression ?? -1)")
-                                    debugLog("[MediaItemCardView]       progression: \(locations.progression ?? -1)")
-                                    debugLog("[MediaItemCardView]       position: \(locations.position ?? -1)")
+                                    debugLog(
+                                        "[MediaItemCardView]       totalProgression: \(locations.totalProgression ?? -1)"
+                                    )
+                                    debugLog(
+                                        "[MediaItemCardView]       progression: \(locations.progression ?? -1)"
+                                    )
+                                    debugLog(
+                                        "[MediaItemCardView]       position: \(locations.position ?? -1)"
+                                    )
                                 }
                             }
-                            debugLog("[MediaItemCardView]   updatedAt: \(position.updatedAt ?? "nil")")
+                            debugLog(
+                                "[MediaItemCardView]   updatedAt: \(position.updatedAt ?? "nil")"
+                            )
                         }
                     }
                 }
@@ -202,9 +211,9 @@ struct MediaItemCardView: View {
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 #if os(macOS)
-                .fill(isSelected ? Color.accentColor.opacity(0.15) : Color.secondary.opacity(0.08))
+            .fill(isSelected ? Color.accentColor.opacity(0.15) : Color.secondary.opacity(0.08))
                 #else
-                .fill(Color.secondary.opacity(0.08))
+            .fill(Color.secondary.opacity(0.08))
                 #endif
         )
         .contentShape(Rectangle())

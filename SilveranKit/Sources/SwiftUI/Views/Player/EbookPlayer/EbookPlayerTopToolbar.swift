@@ -49,7 +49,9 @@ struct EbookPlayerTopToolbar: View {
                             showBackground: false,
                             compactLabel: true
                         )
-                        .alignmentGuide(VerticalAlignment.center) { d in d[VerticalAlignment.top] + 22 }
+                        .alignmentGuide(VerticalAlignment.center) { d in
+                            d[VerticalAlignment.top] + 22
+                        }
                     }
 
                     ChaptersButton(

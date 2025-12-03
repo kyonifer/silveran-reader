@@ -88,69 +88,71 @@ private class WebViewCoordinator2: NSObject, WKNavigationDelegate, WKScriptMessa
 
         do {
             switch message.name {
-            case "ConsoleLog":
-                if let body = message.body as? [String: Any],
-                   let level = body["level"] as? String,
-                   let msg = body["message"] as? String {
-                    let prefix = level == "error" ? "JS ERROR: " : level == "warn" ? "JS WARN: " : "JS: "
-                    debugLog("[EbookPlayerWebView] \(prefix)\(msg)")
-                }
+                case "ConsoleLog":
+                    if let body = message.body as? [String: Any],
+                        let level = body["level"] as? String,
+                        let msg = body["message"] as? String
+                    {
+                        let prefix =
+                            level == "error" ? "JS ERROR: " : level == "warn" ? "JS WARN: " : "JS: "
+                        debugLog("[EbookPlayerWebView] \(prefix)\(msg)")
+                    }
 
-            case "BookStructureReady":
-                let data = try JSONSerialization.data(withJSONObject: message.body)
-                let msg = try decoder.decode(BookStructureReadyMessage.self, from: data)
-                bridge.sendSwiftBookStructureReady(msg)
+                case "BookStructureReady":
+                    let data = try JSONSerialization.data(withJSONObject: message.body)
+                    let msg = try decoder.decode(BookStructureReadyMessage.self, from: data)
+                    bridge.sendSwiftBookStructureReady(msg)
 
-            case "Relocated":
-                let data = try JSONSerialization.data(withJSONObject: message.body)
-                let msg = try decoder.decode(RelocatedMessage.self, from: data)
-                bridge.sendSwiftRelocated(msg)
+                case "Relocated":
+                    let data = try JSONSerialization.data(withJSONObject: message.body)
+                    let msg = try decoder.decode(RelocatedMessage.self, from: data)
+                    bridge.sendSwiftRelocated(msg)
 
-            case "PageFlipped":
-                let data = try JSONSerialization.data(withJSONObject: message.body)
-                let msg = try decoder.decode(PageFlippedMessage.self, from: data)
-                bridge.sendSwiftPageFlipped(msg)
+                case "PageFlipped":
+                    let data = try JSONSerialization.data(withJSONObject: message.body)
+                    let msg = try decoder.decode(PageFlippedMessage.self, from: data)
+                    bridge.sendSwiftPageFlipped(msg)
 
-            case "OverlayToggled":
-                let data = try JSONSerialization.data(withJSONObject: message.body)
-                let msg = try decoder.decode(OverlayToggledMessage.self, from: data)
-                bridge.sendSwiftOverlayToggled(msg)
+                case "OverlayToggled":
+                    let data = try JSONSerialization.data(withJSONObject: message.body)
+                    let msg = try decoder.decode(OverlayToggledMessage.self, from: data)
+                    bridge.sendSwiftOverlayToggled(msg)
 
-            case "mediaOverlaySeek":
-                let data = try JSONSerialization.data(withJSONObject: message.body)
-                let msg = try decoder.decode(MediaOverlaySeekMessage.self, from: data)
-                bridge.sendSwiftMediaOverlaySeek(msg)
+                case "mediaOverlaySeek":
+                    let data = try JSONSerialization.data(withJSONObject: message.body)
+                    let msg = try decoder.decode(MediaOverlaySeekMessage.self, from: data)
+                    bridge.sendSwiftMediaOverlaySeek(msg)
 
-            case "MediaOverlayProgress":
-                let data = try JSONSerialization.data(withJSONObject: message.body)
-                let msg = try decoder.decode(MediaOverlayProgressMessage.self, from: data)
-                bridge.sendSwiftMediaOverlayProgress(msg)
+                case "MediaOverlayProgress":
+                    let data = try JSONSerialization.data(withJSONObject: message.body)
+                    let msg = try decoder.decode(MediaOverlayProgressMessage.self, from: data)
+                    bridge.sendSwiftMediaOverlayProgress(msg)
 
-            case "ElementVisibility":
-                let data = try JSONSerialization.data(withJSONObject: message.body)
-                let msg = try decoder.decode(ElementVisibilityMessage.self, from: data)
-                bridge.sendSwiftElementVisibility(msg)
+                case "ElementVisibility":
+                    let data = try JSONSerialization.data(withJSONObject: message.body)
+                    let msg = try decoder.decode(ElementVisibilityMessage.self, from: data)
+                    bridge.sendSwiftElementVisibility(msg)
 
-            case "SearchResults":
-                let data = try JSONSerialization.data(withJSONObject: message.body)
-                let msg = try decoder.decode(SearchResultsMessage.self, from: data)
-                bridge.sendSwiftSearchResults(msg)
+                case "SearchResults":
+                    let data = try JSONSerialization.data(withJSONObject: message.body)
+                    let msg = try decoder.decode(SearchResultsMessage.self, from: data)
+                    bridge.sendSwiftSearchResults(msg)
 
-            case "SearchProgress":
-                let data = try JSONSerialization.data(withJSONObject: message.body)
-                let msg = try decoder.decode(SearchProgressMessage.self, from: data)
-                bridge.sendSwiftSearchProgress(msg)
+                case "SearchProgress":
+                    let data = try JSONSerialization.data(withJSONObject: message.body)
+                    let msg = try decoder.decode(SearchProgressMessage.self, from: data)
+                    bridge.sendSwiftSearchProgress(msg)
 
-            case "SearchComplete":
-                bridge.sendSwiftSearchComplete()
+                case "SearchComplete":
+                    bridge.sendSwiftSearchComplete()
 
-            case "SearchError":
-                let data = try JSONSerialization.data(withJSONObject: message.body)
-                let msg = try decoder.decode(SearchErrorMessage.self, from: data)
-                bridge.sendSwiftSearchError(msg)
+                case "SearchError":
+                    let data = try JSONSerialization.data(withJSONObject: message.body)
+                    let msg = try decoder.decode(SearchErrorMessage.self, from: data)
+                    bridge.sendSwiftSearchError(msg)
 
-            default:
-                debugLog("[EbookPlayerWebView] Unknown message type: \(message.name)")
+                default:
+                    debugLog("[EbookPlayerWebView] Unknown message type: \(message.name)")
             }
         } catch {
             debugLog("[EbookPlayerWebView] Failed to decode message '\(message.name)': \(error)")
@@ -175,7 +177,9 @@ private class WebViewCoordinator2: NSObject, WKNavigationDelegate, WKScriptMessa
         didFailProvisionalNavigation navigation: WKNavigation!,
         withError error: Error
     ) {
-        debugLog("[EbookPlayerWebView] Provisional navigation failed: \(error.localizedDescription)")
+        debugLog(
+            "[EbookPlayerWebView] Provisional navigation failed: \(error.localizedDescription)"
+        )
     }
 }
 
@@ -289,10 +293,15 @@ private struct WebViewWrapper2: View {
             }
 
             debugLog("[EbookPlayerWebView] Loading foliate_wrap.html from: \(url)")
-            debugLog("[EbookPlayerWebView] Granting read access to: \(webResourcesDir.deletingLastPathComponent().path)")
+            debugLog(
+                "[EbookPlayerWebView] Granting read access to: \(webResourcesDir.deletingLastPathComponent().path)"
+            )
             // Grant access to Application Support (parent of WebResources) so that BookLoader.js
             // can fetch EPUB files from sibling directories like storyteller_media/
-            webView.loadFileURL(url, allowingReadAccessTo: webResourcesDir.deletingLastPathComponent())
+            webView.loadFileURL(
+                url,
+                allowingReadAccessTo: webResourcesDir.deletingLastPathComponent()
+            )
         }
     }
 

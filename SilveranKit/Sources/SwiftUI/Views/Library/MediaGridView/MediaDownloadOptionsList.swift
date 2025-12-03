@@ -48,7 +48,9 @@ struct MediaDownloadOptionRow: View {
         .alert("Server Not Connected", isPresented: $showOfflineAlert) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text("Cannot download media while disconnected from the server. Please check your connection and try again.")
+            Text(
+                "Cannot download media while disconnected from the server. Please check your connection and try again."
+            )
         }
         #else
         HStack(spacing: 12) {
@@ -88,7 +90,9 @@ struct MediaDownloadOptionRow: View {
         .alert("Server Not Connected", isPresented: $showOfflineAlert) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text("Cannot download media while disconnected from the server. Please check your connection and try again.")
+            Text(
+                "Cannot download media while disconnected from the server. Please check your connection and try again."
+            )
         }
         #endif
     }

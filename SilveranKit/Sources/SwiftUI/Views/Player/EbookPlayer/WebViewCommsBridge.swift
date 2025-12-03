@@ -56,17 +56,23 @@ class WebViewCommsBridge {
 
     /// JS is sending Swift a BookStructureReady event when book TOC is loaded
     func sendSwiftBookStructureReady(_ message: BookStructureReadyMessage) {
-        debugLog("[WebViewCommsBridge] sendSwiftBookStructureReady - \(message.sections.count) sections")
+        debugLog(
+            "[WebViewCommsBridge] sendSwiftBookStructureReady - \(message.sections.count) sections"
+        )
         onBookStructureReady?(message)
     }
 
     /// JS is sending Swift a Relocated event when user navigates, page turns, resizes, etc.
     func sendSwiftRelocated(_ message: RelocatedMessage) {
         debugLog("[WebViewCommsBridge] sendSwiftRelocated")
-        debugLog("[WebViewCommsBridge]   section: \(message.sectionIndex?.description ?? "nil"), page: \(message.pageIndex?.description ?? "nil")")
+        debugLog(
+            "[WebViewCommsBridge]   section: \(message.sectionIndex?.description ?? "nil"), page: \(message.pageIndex?.description ?? "nil")"
+        )
         debugLog("[WebViewCommsBridge]   href: \(message.href ?? "nil")")
         debugLog("[WebViewCommsBridge]   cfi: \(message.cfi)")
-        debugLog("[WebViewCommsBridge]   fraction: \(message.fraction?.description ?? "nil"), chapterFraction: \(message.chapterFraction?.description ?? "nil")")
+        debugLog(
+            "[WebViewCommsBridge]   fraction: \(message.fraction?.description ?? "nil"), chapterFraction: \(message.chapterFraction?.description ?? "nil")"
+        )
         onRelocated?(message)
     }
 
@@ -84,19 +90,25 @@ class WebViewCommsBridge {
 
     /// JS detected a media overlay seek event (double-click or initial position)
     func sendSwiftMediaOverlaySeek(_ message: MediaOverlaySeekMessage) {
-        debugLog("[WebViewCommsBridge] sendSwiftMediaOverlaySeek - section: \(message.sectionIndex), anchor: \(message.anchor)")
+        debugLog(
+            "[WebViewCommsBridge] sendSwiftMediaOverlaySeek - section: \(message.sectionIndex), anchor: \(message.anchor)"
+        )
         onMediaOverlaySeek?(message)
     }
 
     /// JS is sending Swift a media overlay progress update (audio playback position)
     func sendSwiftMediaOverlayProgress(_ message: MediaOverlayProgressMessage) {
-        debugLog("[WebViewCommsBridge] sendSwiftMediaOverlayProgress - section: \(message.sectionIndex)")
+        debugLog(
+            "[WebViewCommsBridge] sendSwiftMediaOverlayProgress - section: \(message.sectionIndex)"
+        )
         onMediaOverlayProgress?(message)
     }
 
     /// JS is reporting element visibility for page flip timing during audio narration
     func sendSwiftElementVisibility(_ message: ElementVisibilityMessage) {
-        debugLog("[WebViewCommsBridge] sendSwiftElementVisibility - textId: \(message.textId), visible: \(message.visibleRatio), offScreen: \(message.offScreenRatio)")
+        debugLog(
+            "[WebViewCommsBridge] sendSwiftElementVisibility - textId: \(message.textId), visible: \(message.visibleRatio), offScreen: \(message.offScreenRatio)"
+        )
         onElementVisibility?(message)
     }
 
@@ -148,7 +160,9 @@ class WebViewCommsBridge {
             throw WebViewCommsBridgeError.webViewNotAvailable
         }
 
-        debugLog("[WebViewCommsBridge] sendJsGoToFractionInSectionCommand(section: \(sectionIndex), fraction: \(fraction))")
+        debugLog(
+            "[WebViewCommsBridge] sendJsGoToFractionInSectionCommand(section: \(sectionIndex), fraction: \(fraction))"
+        )
 
         // goToFractionInSection is async, so we wrap it in an IIFE that returns undefined immediately
         // We fire-and-forget - we'll get the result via the Relocated message
@@ -196,7 +210,8 @@ class WebViewCommsBridge {
         )
 
         guard let jsonString = result as? String,
-              let jsonData = jsonString.data(using: .utf8) else {
+            let jsonData = jsonString.data(using: .utf8)
+        else {
             return nil
         }
 
@@ -216,7 +231,9 @@ class WebViewCommsBridge {
         let escapedHref = href.replacingOccurrences(of: "'", with: "\\'")
         let escapedTextId = textId.replacingOccurrences(of: "'", with: "\\'")
         debugLog("[WebViewCommsBridge] sendJsHighlightFragment(href: \(href), textId: \(textId))")
-        _ = try await webView.evaluateJavaScript("window.foliateManager.highlightFragment('\(escapedHref)', '\(escapedTextId)')")
+        _ = try await webView.evaluateJavaScript(
+            "window.foliateManager.highlightFragment('\(escapedHref)', '\(escapedTextId)')"
+        )
     }
 
     /// Swift commands JS to clear any active highlight
@@ -260,7 +277,7 @@ class WebViewCommsBridge {
             "backgroundColor": backgroundColor,
             "foregroundColor": foregroundColor,
             "customCSS": customCSS,
-            "singleColumnMode": singleColumnMode
+            "singleColumnMode": singleColumnMode,
         ]
 
         let jsonData = try JSONSerialization.data(withJSONObject: styles.compactMapValues { $0 })
@@ -276,7 +293,9 @@ class WebViewCommsBridge {
     // MARK: - Search dispatch methods (JS → Swift)
 
     func sendSwiftSearchResults(_ message: SearchResultsMessage) {
-        debugLog("[WebViewCommsBridge] sendSwiftSearchResults - \(message.results.count) results in \(message.sectionLabel)")
+        debugLog(
+            "[WebViewCommsBridge] sendSwiftSearchResults - \(message.results.count) results in \(message.sectionLabel)"
+        )
         onSearchResults?(message)
     }
 
@@ -308,14 +327,15 @@ class WebViewCommsBridge {
             throw WebViewCommsBridgeError.webViewNotAvailable
         }
 
-        let escapedQuery = query
+        let escapedQuery =
+            query
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "'", with: "\\'")
 
         let options: [String: Any] = [
             "matchCase": matchCase,
             "matchDiacritics": matchDiacritics,
-            "matchWholeWords": matchWholeWords
+            "matchWholeWords": matchWholeWords,
         ]
         let optionsJson = try JSONSerialization.data(withJSONObject: options)
         let optionsString = String(data: optionsJson, encoding: .utf8)!
@@ -342,7 +362,8 @@ class WebViewCommsBridge {
             throw WebViewCommsBridgeError.webViewNotAvailable
         }
 
-        let escapedCFI = cfi
+        let escapedCFI =
+            cfi
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "'", with: "\\'")
         debugLog("[WebViewCommsBridge] sendJsGoToCFICommand(cfi: \(cfi))")
@@ -357,8 +378,8 @@ enum WebViewCommsBridgeError: Error, LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .webViewNotAvailable:
-            return "WebView is not available"
+            case .webViewNotAvailable:
+                return "WebView is not available"
         }
     }
 }

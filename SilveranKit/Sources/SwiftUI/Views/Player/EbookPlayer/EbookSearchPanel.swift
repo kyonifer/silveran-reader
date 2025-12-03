@@ -111,11 +111,13 @@ struct EbookSearchPanel: View {
             }
 
             if searchManager.totalResultCount > 0 {
-                Text("\(searchManager.totalResultCount) result\(searchManager.totalResultCount == 1 ? "" : "s")")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .padding(.horizontal)
-                    .padding(.vertical, 4)
+                Text(
+                    "\(searchManager.totalResultCount) result\(searchManager.totalResultCount == 1 ? "" : "s")"
+                )
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .padding(.horizontal)
+                .padding(.vertical, 4)
             }
 
             List {

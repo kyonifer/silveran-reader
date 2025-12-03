@@ -61,7 +61,8 @@ struct HomeView: View {
                     ToolbarItem(placement: .topBarTrailing) {
                         HStack(spacing: 12) {
                             if mediaViewModel.lastNetworkOpSucceeded == false,
-                               let showOfflineSheet {
+                                let showOfflineSheet
+                            {
                                 Button {
                                     showOfflineSheet.wrappedValue = true
                                 } label: {
@@ -84,11 +85,17 @@ struct HomeView: View {
                 )
                 .navigationDestination(for: SectionFilter.self) { filter in
                     sectionFilterView(for: filter)
-                        .iOSLibraryToolbar(showSettings: $showSettings, showOfflineSheet: showOfflineSheet ?? .constant(false))
+                        .iOSLibraryToolbar(
+                            showSettings: $showSettings,
+                            showOfflineSheet: showOfflineSheet ?? .constant(false)
+                        )
                 }
                 .navigationDestination(for: BookMetadata.self) { item in
                     iOSBookDetailView(item: item, mediaKind: .ebook)
-                        .iOSLibraryToolbar(showSettings: $showSettings, showOfflineSheet: showOfflineSheet ?? .constant(false))
+                        .iOSLibraryToolbar(
+                            showSettings: $showSettings,
+                            showOfflineSheet: showOfflineSheet ?? .constant(false)
+                        )
                 }
                 .navigationDestination(for: PlayerBookData.self) { bookData in
                     playerView(for: bookData)
@@ -118,15 +125,19 @@ struct HomeView: View {
                                         .font(.title)
                                         .foregroundStyle(.secondary)
                                     #if os(iOS)
-                                    Text("To add some media, go to Settings to connect a Storyteller server.")
-                                        .font(.body)
-                                        .foregroundStyle(.tertiary)
-                                        .multilineTextAlignment(.center)
+                                    Text(
+                                        "To add some media, go to Settings to connect a Storyteller server."
+                                    )
+                                    .font(.body)
+                                    .foregroundStyle(.tertiary)
+                                    .multilineTextAlignment(.center)
                                     #else
-                                    Text("To add some media, use the Media Sources on the left to load either local files or a remote Storyteller server.")
-                                        .font(.body)
-                                        .foregroundStyle(.tertiary)
-                                        .multilineTextAlignment(.center)
+                                    Text(
+                                        "To add some media, use the Media Sources on the left to load either local files or a remote Storyteller server."
+                                    )
+                                    .font(.body)
+                                    .foregroundStyle(.tertiary)
+                                    .multilineTextAlignment(.center)
                                     #endif
                                 }
                                 .frame(maxWidth: 500)
@@ -134,7 +145,9 @@ struct HomeView: View {
                                 .padding(.top, 60)
                                 .padding(.horizontal, horizontalPadding)
                             } else {
-                                ForEach(Array(sections.enumerated()), id: \.offset) { index, section in
+                                ForEach(Array(sections.enumerated()), id: \.offset) {
+                                    index,
+                                    section in
                                     #if os(iOS)
                                     HomeSectionRow(
                                         sectionIndex: index,
@@ -525,12 +538,12 @@ struct HomeView: View {
     @ViewBuilder
     private func playerView(for bookData: PlayerBookData) -> some View {
         switch bookData.category {
-        case .audio:
-            AudiobookPlayerView(bookData: bookData)
-                .navigationBarTitleDisplayMode(.inline)
-        case .ebook, .synced:
-            EbookPlayerView(bookData: bookData)
-                .navigationBarTitleDisplayMode(.inline)
+            case .audio:
+                AudiobookPlayerView(bookData: bookData)
+                    .navigationBarTitleDisplayMode(.inline)
+            case .ebook, .synced:
+                EbookPlayerView(bookData: bookData)
+                    .navigationBarTitleDisplayMode(.inline)
         }
     }
     #endif
@@ -828,9 +841,19 @@ private struct StatePreviewWrapper: View {
     #endif
     var body: some View {
         #if os(iOS)
-        HomeView(searchText: $searchText, sidebarSections: $sections, selectedSidebarItem: $selectedItem, showSettings: $showSettings)
+        HomeView(
+            searchText: $searchText,
+            sidebarSections: $sections,
+            selectedSidebarItem: $selectedItem,
+            showSettings: $showSettings
+        )
         #else
-        HomeView(searchText: "", sidebarSections: $sections, selectedSidebarItem: $selectedItem, showSettings: $showSettings)
+        HomeView(
+            searchText: "",
+            sidebarSections: $sections,
+            selectedSidebarItem: $selectedItem,
+            showSettings: $showSettings
+        )
         #endif
     }
 }

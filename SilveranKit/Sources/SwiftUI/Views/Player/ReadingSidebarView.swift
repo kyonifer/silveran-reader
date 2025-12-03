@@ -226,21 +226,29 @@ public struct ReadingSidebarView: View {
         let chapterElapsed = chapterElapsedRaw / rate
         let chapterTotal = chapterTotalRaw / rate
         let rawRemaining = max(chapterTotal - chapterElapsed, 0)
-        let chapterRemainingAtRate = timeRemaining(atRate: model.playbackRate, total: chapterTotalRaw, elapsed: chapterElapsedRaw)
+        let chapterRemainingAtRate = timeRemaining(
+            atRate: model.playbackRate,
+            total: chapterTotalRaw,
+            elapsed: chapterElapsedRaw
+        )
 
         return VStack(alignment: .leading, spacing: 16) {
-            Slider(value: sliderBinding, in: 0...1, onEditingChanged: { editing in
-                isDraggingSlider = editing
-                if editing {
-                    seekDebounceUntil = nil
-                    draggedSliderValue = min(max(chapterProgress, 0), 1)
-                } else {
-                    seekDebounceUntil = Date().addingTimeInterval(0.5)
-                    if !seekWhileDragging {
-                        onProgressSeek?(draggedSliderValue)
+            Slider(
+                value: sliderBinding,
+                in: 0...1,
+                onEditingChanged: { editing in
+                    isDraggingSlider = editing
+                    if editing {
+                        seekDebounceUntil = nil
+                        draggedSliderValue = min(max(chapterProgress, 0), 1)
+                    } else {
+                        seekDebounceUntil = Date().addingTimeInterval(0.5)
+                        if !seekWhileDragging {
+                            onProgressSeek?(draggedSliderValue)
+                        }
                     }
                 }
-            })
+            )
             .tint(Color.primary)
             .padding(.horizontal, 8)
 
@@ -409,7 +417,11 @@ public struct ReadingSidebarView: View {
                     let rate = max(model.playbackRate, 0.01)
                     let bookElapsed = bookElapsedRaw.map { $0 / rate }
                     let bookTotal = bookTotalRaw.map { $0 / rate }
-                    let bookRemaining = timeRemaining(atRate: model.playbackRate, total: bookTotalRaw, elapsed: bookElapsedRaw)
+                    let bookRemaining = timeRemaining(
+                        atRate: model.playbackRate,
+                        total: bookTotalRaw,
+                        elapsed: bookElapsedRaw
+                    )
 
                     if mode != .audiobook {
                         statRow(
@@ -439,7 +451,6 @@ public struct ReadingSidebarView: View {
             .foregroundStyle(.secondary)
         }
     }
-
 
     private var volumePopover: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -611,7 +622,6 @@ public struct ReadingSidebarView: View {
         }
     }
 
-
     private func statRow(_ title: String, _ value: String) -> some View {
         HStack {
             Text(title)
@@ -621,7 +631,6 @@ public struct ReadingSidebarView: View {
                 .font(.body.monospacedDigit())
         }
     }
-
 
     private func progressHasContent(_ data: ProgressData) -> Bool {
         let hasChapterFraction =
@@ -643,7 +652,6 @@ public struct ReadingSidebarView: View {
             || normalizedSeconds(data.chapterTotalSecondsAudio) != nil
         return hasChapterFraction || hasBookFraction || hasPages || hasAudio
     }
-
 
     private var playbackRateDescription: String {
         SilveranKitSwiftUI.playbackRateDescription(for: model.playbackRate)

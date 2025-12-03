@@ -329,10 +329,12 @@ struct MediaGridView: View {
                         .foregroundStyle(.tertiary)
                         .multilineTextAlignment(.center)
                     #else
-                    Text("To add some media, use the Media Sources on the left to load either local files or a remote Storyteller server.")
-                        .font(.body)
-                        .foregroundStyle(.tertiary)
-                        .multilineTextAlignment(.center)
+                    Text(
+                        "To add some media, use the Media Sources on the left to load either local files or a remote Storyteller server."
+                    )
+                    .font(.body)
+                    .foregroundStyle(.tertiary)
+                    .multilineTextAlignment(.center)
                     #endif
                 }
                 .frame(maxWidth: 500)

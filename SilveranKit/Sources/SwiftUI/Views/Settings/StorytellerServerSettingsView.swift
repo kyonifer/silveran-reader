@@ -29,9 +29,11 @@ public struct StorytellerServerSettingsView: View {
                     HStack(spacing: 8) {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .foregroundColor(.red)
-                        Text("You are currently in offline mode. Press \"Go Online\" to reconnect to the server.")
-                            .foregroundColor(.red)
-                            .font(.subheadline)
+                        Text(
+                            "You are currently in offline mode. Press \"Go Online\" to reconnect to the server."
+                        )
+                        .foregroundColor(.red)
+                        .font(.subheadline)
                     }
                     .listRowBackground(Color.red.opacity(0.1))
                 }
@@ -154,7 +156,9 @@ public struct StorytellerServerSettingsView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This will delete all downloaded media, covers, and library metadata from the Storyteller server. Your credentials will remain saved. This action cannot be undone.")
+            Text(
+                "This will delete all downloaded media, covers, and library metadata from the Storyteller server. Your credentials will remain saved. This action cannot be undone."
+            )
         }
         .scrollContentBackground(.hidden)
         .modifier(SoftScrollEdgeModifier())
@@ -184,7 +188,9 @@ public struct StorytellerServerSettingsView: View {
                 }
             }
         } catch {
-            debugLog("[StorytellerServerSettingsView] Failed to load credentials: \(error.localizedDescription)")
+            debugLog(
+                "[StorytellerServerSettingsView] Failed to load credentials: \(error.localizedDescription)"
+            )
             await MainActor.run {
                 hasSavedCredentials = false
             }
@@ -226,7 +232,9 @@ public struct StorytellerServerSettingsView: View {
             } catch {
                 await MainActor.run {
                     isLoading = false
-                    connectionStatus = .failure("Connected but failed to save: \(error.localizedDescription)")
+                    connectionStatus = .failure(
+                        "Connected but failed to save: \(error.localizedDescription)"
+                    )
                 }
             }
         } else {

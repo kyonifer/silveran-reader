@@ -150,7 +150,9 @@ struct MediaItemCardTopTabsButtonOverlay: View {
         .alert("Server Not Connected", isPresented: $showOfflineAlert) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text("Cannot download media while disconnected from the server. Please check your connection and try again.")
+            Text(
+                "Cannot download media while disconnected from the server. Please check your connection and try again."
+            )
         }
     }
 

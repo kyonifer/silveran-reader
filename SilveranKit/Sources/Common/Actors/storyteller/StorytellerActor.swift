@@ -69,21 +69,29 @@ public actor StorytellerActor {
         self.observers = callback
     }
 
-    public func registerSyncNotificationCallback(callback: @Sendable @MainActor @escaping (Int, Int) -> Void) {
+    public func registerSyncNotificationCallback(
+        callback: @Sendable @MainActor @escaping (Int, Int) -> Void
+    ) {
         self.syncNotificationCallback = callback
     }
 
     private func updateConnectionStatus(_ status: ConnectionStatus) async {
         let wasNotConnected = connectionStatus != .connected
-        debugLog("[StorytellerActor] updateConnectionStatus: \(connectionStatus) -> \(status), wasNotConnected: \(wasNotConnected)")
+        debugLog(
+            "[StorytellerActor] updateConnectionStatus: \(connectionStatus) -> \(status), wasNotConnected: \(wasNotConnected)"
+        )
         connectionStatus = status
         await observers?()
 
         if status == .connected && wasNotConnected {
-            debugLog("[StorytellerActor] updateConnectionStatus: Connection established, triggering queue sync")
+            debugLog(
+                "[StorytellerActor] updateConnectionStatus: Connection established, triggering queue sync"
+            )
             Task {
                 let (synced, failed) = await syncPendingProgressQueue()
-                debugLog("[StorytellerActor] updateConnectionStatus: Queue sync complete - synced: \(synced), failed: \(failed)")
+                debugLog(
+                    "[StorytellerActor] updateConnectionStatus: Queue sync complete - synced: \(synced), failed: \(failed)"
+                )
                 if synced > 0 || failed > 0 {
                     await syncNotificationCallback?(synced, failed)
                     await observers?()
@@ -255,14 +263,20 @@ public actor StorytellerActor {
             }
 
             do {
-                let wrapper = try decoder.decode(LenientArrayWrapper<BookMetadata>.self, from: response.data)
+                let wrapper = try decoder.decode(
+                    LenientArrayWrapper<BookMetadata>.self,
+                    from: response.data
+                )
                 libraryMetadata = wrapper.values
 
-                if let jsonArray = try? JSONSerialization.jsonObject(with: response.data) as? [Any] {
+                if let jsonArray = try? JSONSerialization.jsonObject(with: response.data) as? [Any]
+                {
                     let totalCount = jsonArray.count
                     if totalCount > libraryMetadata.count {
                         let skipped = totalCount - libraryMetadata.count
-                        debugLog("[StorytellerActor] WARNING: Skipped \(skipped) book(s) due to decode errors (loaded \(libraryMetadata.count)/\(totalCount))")
+                        debugLog(
+                            "[StorytellerActor] WARNING: Skipped \(skipped) book(s) due to decode errors (loaded \(libraryMetadata.count)/\(totalCount))"
+                        )
                     }
                 }
             } catch {
@@ -1686,7 +1700,9 @@ public actor StorytellerActor {
                 debugLog("[StorytellerActor] \(methodName) \(context) not modified.")
                 return .notModified
             case 401, 403:
-                debugLog("[StorytellerActor] \(methodName) \(context) unauthorized (\(statusCode)).")
+                debugLog(
+                    "[StorytellerActor] \(methodName) \(context) unauthorized (\(statusCode))."
+                )
                 accessToken = nil
                 Task { await self.updateConnectionStatus(.error("Unauthorized")) }
                 return .unauthorized
@@ -1699,7 +1715,9 @@ public actor StorytellerActor {
                         "[StorytellerActor] \(methodName) \(context) unexpected status \(statusCode): \(body)"
                     )
                 } else {
-                    debugLog("[StorytellerActor] \(methodName) \(context) unexpected status \(statusCode).")
+                    debugLog(
+                        "[StorytellerActor] \(methodName) \(context) unexpected status \(statusCode)."
+                    )
                 }
                 return .unexpected(statusCode)
         }
@@ -1781,14 +1799,20 @@ public actor StorytellerActor {
         locator: BookLocator,
         timestamp: Double
     ) async -> SyncResult {
-        debugLog("[StorytellerActor] updateReadingPosition: bookId: \(bookId), timestamp: \(timestamp)")
+        debugLog(
+            "[StorytellerActor] updateReadingPosition: bookId: \(bookId), timestamp: \(timestamp)"
+        )
 
         if bookId == "14749693-3d16-4076-b3b3-c8593040fa74" {
             debugLog("[StorytellerActor] Sending position for target book")
             debugLog("[StorytellerActor]   locator.href: \(locator.href)")
-            debugLog("[StorytellerActor]   locator.locations: \(locator.locations != nil ? "exists" : "nil")")
+            debugLog(
+                "[StorytellerActor]   locator.locations: \(locator.locations != nil ? "exists" : "nil")"
+            )
             if let locations = locator.locations {
-                debugLog("[StorytellerActor]     totalProgression: \(locations.totalProgression ?? -1)")
+                debugLog(
+                    "[StorytellerActor]     totalProgression: \(locations.totalProgression ?? -1)"
+                )
                 debugLog("[StorytellerActor]     progression: \(locations.progression ?? -1)")
                 debugLog("[StorytellerActor]     position: \(locations.position ?? -1)")
             }
@@ -1835,67 +1859,99 @@ public actor StorytellerActor {
             let (_, response) = try await urlSession.data(for: request)
 
             guard let httpResponse = response as? HTTPURLResponse else {
-                debugLog("[StorytellerActor] updateReadingPosition: Invalid response type, queueing")
+                debugLog(
+                    "[StorytellerActor] updateReadingPosition: Invalid response type, queueing"
+                )
                 await LocalMediaActor.shared.queueOfflineProgress(
                     bookId: bookId,
                     locator: locator,
                     timestamp: timestamp
                 )
-                debugLog("[StorytellerActor] updateReadingPosition: Returning .queued (invalid response)")
+                debugLog(
+                    "[StorytellerActor] updateReadingPosition: Returning .queued (invalid response)"
+                )
                 return .queued
             }
 
-            debugLog("[StorytellerActor] updateReadingPosition: Response status: \(httpResponse.statusCode)")
+            debugLog(
+                "[StorytellerActor] updateReadingPosition: Response status: \(httpResponse.statusCode)"
+            )
 
             switch httpResponse.statusCode {
                 case 204:
-                    debugLog("[StorytellerActor] updateReadingPosition: 204 success, fetching updated metadata")
+                    debugLog(
+                        "[StorytellerActor] updateReadingPosition: 204 success, fetching updated metadata"
+                    )
 
                     if let updatedMetadata = await fetchBookDetails(for: bookId) {
                         if bookId == "14749693-3d16-4076-b3b3-c8593040fa74" {
                             debugLog("[StorytellerActor] Fetched updated metadata for target book")
                             debugLog("[StorytellerActor]   progress: \(updatedMetadata.progress)")
-                            debugLog("[StorytellerActor]   position: \(updatedMetadata.position != nil ? "exists" : "nil")")
+                            debugLog(
+                                "[StorytellerActor]   position: \(updatedMetadata.position != nil ? "exists" : "nil")"
+                            )
                             if let position = updatedMetadata.position {
-                                debugLog("[StorytellerActor]   locator: \(position.locator != nil ? "exists" : "nil")")
+                                debugLog(
+                                    "[StorytellerActor]   locator: \(position.locator != nil ? "exists" : "nil")"
+                                )
                                 if let locator = position.locator {
                                     debugLog("[StorytellerActor]     href: \(locator.href)")
-                                    debugLog("[StorytellerActor]     locations: \(locator.locations != nil ? "exists" : "nil")")
+                                    debugLog(
+                                        "[StorytellerActor]     locations: \(locator.locations != nil ? "exists" : "nil")"
+                                    )
                                     if let locations = locator.locations {
-                                        debugLog("[StorytellerActor]       totalProgression: \(locations.totalProgression ?? -1)")
-                                        debugLog("[StorytellerActor]       progression: \(locations.progression ?? -1)")
+                                        debugLog(
+                                            "[StorytellerActor]       totalProgression: \(locations.totalProgression ?? -1)"
+                                        )
+                                        debugLog(
+                                            "[StorytellerActor]       progression: \(locations.progression ?? -1)"
+                                        )
                                     }
                                 }
                             }
                         }
                         if let index = libraryMetadata.firstIndex(where: { $0.uuid == bookId }) {
                             libraryMetadata[index] = updatedMetadata
-                            debugLog("[StorytellerActor] updateReadingPosition: Updated local metadata cache")
+                            debugLog(
+                                "[StorytellerActor] updateReadingPosition: Updated local metadata cache"
+                            )
                             await observers?()
                             debugLog("[StorytellerActor] updateReadingPosition: Notified observers")
                         } else {
-                            debugLog("[StorytellerActor] updateReadingPosition: WARNING - Book not in local cache")
+                            debugLog(
+                                "[StorytellerActor] updateReadingPosition: WARNING - Book not in local cache"
+                            )
                         }
                     } else {
-                        debugLog("[StorytellerActor] updateReadingPosition: WARNING - Failed to fetch updated metadata")
+                        debugLog(
+                            "[StorytellerActor] updateReadingPosition: WARNING - Failed to fetch updated metadata"
+                        )
                     }
 
                     debugLog("[StorytellerActor] updateReadingPosition: Returning .success")
                     return .success
                 case 409:
-                    debugLog("[StorytellerActor] updateReadingPosition: 409 conflict, returning .failed")
+                    debugLog(
+                        "[StorytellerActor] updateReadingPosition: 409 conflict, returning .failed"
+                    )
                     return .failed
                 case 404:
-                    debugLog("[StorytellerActor] updateReadingPosition: 404 not found, returning .failed")
+                    debugLog(
+                        "[StorytellerActor] updateReadingPosition: 404 not found, returning .failed"
+                    )
                     return .failed
                 default:
-                    debugLog("[StorytellerActor] updateReadingPosition: Unexpected status \(httpResponse.statusCode), queueing")
+                    debugLog(
+                        "[StorytellerActor] updateReadingPosition: Unexpected status \(httpResponse.statusCode), queueing"
+                    )
                     await LocalMediaActor.shared.queueOfflineProgress(
                         bookId: bookId,
                         locator: locator,
                         timestamp: timestamp
                     )
-                    debugLog("[StorytellerActor] updateReadingPosition: Returning .queued (status \(httpResponse.statusCode))")
+                    debugLog(
+                        "[StorytellerActor] updateReadingPosition: Returning .queued (status \(httpResponse.statusCode))"
+                    )
                     return .queued
             }
         } catch {
@@ -1918,16 +1974,22 @@ public actor StorytellerActor {
             return (0, 0)
         }
 
-        debugLog("[StorytellerActor] syncPendingProgressQueue: Starting with \(pendingSyncs.count) pending syncs")
+        debugLog(
+            "[StorytellerActor] syncPendingProgressQueue: Starting with \(pendingSyncs.count) pending syncs"
+        )
         for (index, pending) in pendingSyncs.enumerated() {
-            debugLog("[StorytellerActor] syncPendingProgressQueue: [\(index)] bookId: \(pending.bookId), attempts: \(pending.attemptCount)")
+            debugLog(
+                "[StorytellerActor] syncPendingProgressQueue: [\(index)] bookId: \(pending.bookId), attempts: \(pending.attemptCount)"
+            )
         }
 
         var syncedCount = 0
         var failedCount = 0
 
         for pending in pendingSyncs {
-            debugLog("[StorytellerActor] syncPendingProgressQueue: Syncing bookId: \(pending.bookId)")
+            debugLog(
+                "[StorytellerActor] syncPendingProgressQueue: Syncing bookId: \(pending.bookId)"
+            )
             let result = await updateReadingPosition(
                 bookId: pending.bookId,
                 locator: pending.locator,
@@ -1936,21 +1998,29 @@ public actor StorytellerActor {
 
             switch result {
                 case .success:
-                    debugLog("[StorytellerActor] syncPendingProgressQueue: SUCCESS for \(pending.bookId), calling removeSyncedProgress")
+                    debugLog(
+                        "[StorytellerActor] syncPendingProgressQueue: SUCCESS for \(pending.bookId), calling removeSyncedProgress"
+                    )
                     await LocalMediaActor.shared.removeSyncedProgress(bookId: pending.bookId)
                     syncedCount += 1
                 case .queued:
-                    debugLog("[StorytellerActor] syncPendingProgressQueue: QUEUED for \(pending.bookId), incrementing attempt")
+                    debugLog(
+                        "[StorytellerActor] syncPendingProgressQueue: QUEUED for \(pending.bookId), incrementing attempt"
+                    )
                     await LocalMediaActor.shared.incrementSyncAttempt(bookId: pending.bookId)
                     failedCount += 1
                 case .failed:
-                    debugLog("[StorytellerActor] syncPendingProgressQueue: FAILED for \(pending.bookId), removing from queue")
+                    debugLog(
+                        "[StorytellerActor] syncPendingProgressQueue: FAILED for \(pending.bookId), removing from queue"
+                    )
                     await LocalMediaActor.shared.removeSyncedProgress(bookId: pending.bookId)
                     failedCount += 1
             }
         }
 
-        debugLog("[StorytellerActor] syncPendingProgressQueue: Complete - synced: \(syncedCount), failed: \(failedCount)")
+        debugLog(
+            "[StorytellerActor] syncPendingProgressQueue: Complete - synced: \(syncedCount), failed: \(failedCount)"
+        )
         return (syncedCount, failedCount)
     }
 
@@ -2212,17 +2282,17 @@ private final class StorytellerDownloadDelegate: NSObject, URLSessionDownloadDel
 
         if let urlError = error as? URLError {
             switch urlError.code {
-            case .notConnectedToInternet,
-                 .networkConnectionLost,
-                 .cannotFindHost,
-                 .cannotConnectToHost,
-                 .timedOut,
-                 .dnsLookupFailed:
-                Task {
-                    await StorytellerActor.shared.setLastNetworkOpSucceeded(false)
-                }
-            default:
-                break
+                case .notConnectedToInternet,
+                    .networkConnectionLost,
+                    .cannotFindHost,
+                    .cannotConnectToHost,
+                    .timedOut,
+                    .dnsLookupFailed:
+                    Task {
+                        await StorytellerActor.shared.setLastNetworkOpSucceeded(false)
+                    }
+                default:
+                    break
             }
         }
 
@@ -2261,50 +2331,59 @@ func logStorytellerError(_ message: String, error: Error) {
 
     if let urlError = error as? URLError {
         switch urlError.code {
-        case .notConnectedToInternet,
-             .networkConnectionLost,
-             .cannotFindHost,
-             .cannotConnectToHost,
-             .timedOut,
-             .dnsLookupFailed:
-            Task {
-                await StorytellerActor.shared.setLastNetworkOpSucceeded(false)
-            }
-        default:
-            break
+            case .notConnectedToInternet,
+                .networkConnectionLost,
+                .cannotFindHost,
+                .cannotConnectToHost,
+                .timedOut,
+                .dnsLookupFailed:
+                Task {
+                    await StorytellerActor.shared.setLastNetworkOpSucceeded(false)
+                }
+            default:
+                break
         }
     }
 }
 
 func logDetailedDecodingError(_ error: DecodingError, data: Data) {
     switch error {
-    case .typeMismatch(let type, let context):
-        debugLog("[StorytellerActor] Type mismatch for type \(type)")
-        debugLog("[StorytellerActor] Coding path: \(context.codingPath.map { $0.stringValue }.joined(separator: " -> "))")
-        debugLog("[StorytellerActor] Context: \(context.debugDescription)")
-        printJSONSnippet(data: data, codingPath: context.codingPath)
-    case .valueNotFound(let type, let context):
-        debugLog("[StorytellerActor] Value not found for type \(type)")
-        debugLog("[StorytellerActor] Coding path: \(context.codingPath.map { $0.stringValue }.joined(separator: " -> "))")
-        debugLog("[StorytellerActor] Context: \(context.debugDescription)")
-        printJSONSnippet(data: data, codingPath: context.codingPath)
-    case .keyNotFound(let key, let context):
-        debugLog("[StorytellerActor] Key not found: \(key.stringValue)")
-        debugLog("[StorytellerActor] Coding path: \(context.codingPath.map { $0.stringValue }.joined(separator: " -> "))")
-        debugLog("[StorytellerActor] Context: \(context.debugDescription)")
-    case .dataCorrupted(let context):
-        debugLog("[StorytellerActor] Data corrupted")
-        debugLog("[StorytellerActor] Coding path: \(context.codingPath.map { $0.stringValue }.joined(separator: " -> "))")
-        debugLog("[StorytellerActor] Context: \(context.debugDescription)")
-        printJSONSnippet(data: data, codingPath: context.codingPath)
-    @unknown default:
-        debugLog("[StorytellerActor] Unknown decoding error: \(error)")
+        case .typeMismatch(let type, let context):
+            debugLog("[StorytellerActor] Type mismatch for type \(type)")
+            debugLog(
+                "[StorytellerActor] Coding path: \(context.codingPath.map { $0.stringValue }.joined(separator: " -> "))"
+            )
+            debugLog("[StorytellerActor] Context: \(context.debugDescription)")
+            printJSONSnippet(data: data, codingPath: context.codingPath)
+        case .valueNotFound(let type, let context):
+            debugLog("[StorytellerActor] Value not found for type \(type)")
+            debugLog(
+                "[StorytellerActor] Coding path: \(context.codingPath.map { $0.stringValue }.joined(separator: " -> "))"
+            )
+            debugLog("[StorytellerActor] Context: \(context.debugDescription)")
+            printJSONSnippet(data: data, codingPath: context.codingPath)
+        case .keyNotFound(let key, let context):
+            debugLog("[StorytellerActor] Key not found: \(key.stringValue)")
+            debugLog(
+                "[StorytellerActor] Coding path: \(context.codingPath.map { $0.stringValue }.joined(separator: " -> "))"
+            )
+            debugLog("[StorytellerActor] Context: \(context.debugDescription)")
+        case .dataCorrupted(let context):
+            debugLog("[StorytellerActor] Data corrupted")
+            debugLog(
+                "[StorytellerActor] Coding path: \(context.codingPath.map { $0.stringValue }.joined(separator: " -> "))"
+            )
+            debugLog("[StorytellerActor] Context: \(context.debugDescription)")
+            printJSONSnippet(data: data, codingPath: context.codingPath)
+        @unknown default:
+            debugLog("[StorytellerActor] Unknown decoding error: \(error)")
     }
 }
 
 func printJSONSnippet(data: Data, codingPath: [CodingKey]) {
     guard let jsonString = String(data: data, encoding: .utf8),
-          let jsonData = try? JSONSerialization.jsonObject(with: data) else {
+        let jsonData = try? JSONSerialization.jsonObject(with: data)
+    else {
         debugLog("[StorytellerActor] Could not parse JSON for snippet")
         return
     }
@@ -2319,14 +2398,22 @@ func printJSONSnippet(data: Data, codingPath: [CodingKey]) {
         } else if let array = current as? [Any], let index = key.intValue, index < array.count {
             current = array[index]
         } else {
-            debugLog("[StorytellerActor] Could not navigate to path: \(pathSoFar.joined(separator: " -> "))")
+            debugLog(
+                "[StorytellerActor] Could not navigate to path: \(pathSoFar.joined(separator: " -> "))"
+            )
             return
         }
     }
 
-    if let snippetData = try? JSONSerialization.data(withJSONObject: current, options: [.prettyPrinted, .sortedKeys]),
-       let snippetString = String(data: snippetData, encoding: .utf8) {
-        debugLog("[StorytellerActor] JSON at error location (\(pathSoFar.joined(separator: " -> "))):")
+    if let snippetData = try? JSONSerialization.data(
+        withJSONObject: current,
+        options: [.prettyPrinted, .sortedKeys]
+    ),
+        let snippetString = String(data: snippetData, encoding: .utf8)
+    {
+        debugLog(
+            "[StorytellerActor] JSON at error location (\(pathSoFar.joined(separator: " -> "))):"
+        )
         let lines = snippetString.split(separator: "\n")
         for (index, line) in lines.prefix(20).enumerated() {
             debugLog("[StorytellerActor]   \(line)")

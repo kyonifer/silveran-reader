@@ -226,7 +226,9 @@ public actor SettingsActor {
         if let backgroundColor { updated.reading.backgroundColor = backgroundColor }
         if let foregroundColor { updated.reading.foregroundColor = foregroundColor }
         if let customCSS { updated.reading.customCSS = customCSS }
-        if let enableMarginClickNavigation { updated.reading.enableMarginClickNavigation = enableMarginClickNavigation }
+        if let enableMarginClickNavigation {
+            updated.reading.enableMarginClickNavigation = enableMarginClickNavigation
+        }
         if let singleColumnMode { updated.reading.singleColumnMode = singleColumnMode }
         if let defaultPlaybackSpeed { updated.playback.defaultPlaybackSpeed = defaultPlaybackSpeed }
         if let defaultVolume { updated.playback.defaultVolume = defaultVolume }
@@ -244,11 +246,15 @@ public actor SettingsActor {
         if let showPageNumber { updated.readingBar.showPageNumber = showPageNumber }
         if let overlayTransparency { updated.readingBar.overlayTransparency = overlayTransparency }
         if let progressSyncIntervalSeconds {
-            debugLog("[SettingsActor] Updating progressSyncIntervalSeconds to \(progressSyncIntervalSeconds)s")
+            debugLog(
+                "[SettingsActor] Updating progressSyncIntervalSeconds to \(progressSyncIntervalSeconds)s"
+            )
             updated.sync.progressSyncIntervalSeconds = progressSyncIntervalSeconds
         }
         if let metadataRefreshIntervalSeconds {
-            debugLog("[SettingsActor] Updating metadataRefreshIntervalSeconds to \(metadataRefreshIntervalSeconds)s")
+            debugLog(
+                "[SettingsActor] Updating metadataRefreshIntervalSeconds to \(metadataRefreshIntervalSeconds)s"
+            )
             updated.sync.metadataRefreshIntervalSeconds = metadataRefreshIntervalSeconds
         }
         if let isManuallyOffline {
@@ -261,7 +267,9 @@ public actor SettingsActor {
 
         config = updated
         try persistCurrentConfig()
-        debugLog("[SettingsActor] Config updated and persisted - Progress: \(config.sync.progressSyncIntervalSeconds)s, Metadata: \(config.sync.metadataRefreshIntervalSeconds)s")
+        debugLog(
+            "[SettingsActor] Config updated and persisted - Progress: \(config.sync.progressSyncIntervalSeconds)s, Metadata: \(config.sync.metadataRefreshIntervalSeconds)s"
+        )
 
         let observersList = Array(observers.values)
         Task { @MainActor in

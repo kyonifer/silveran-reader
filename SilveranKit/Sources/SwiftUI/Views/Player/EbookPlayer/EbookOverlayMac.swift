@@ -64,7 +64,12 @@ struct EbookOverlayMac: View {
                         Circle()
                             .fill(Color.white.opacity(0.2 * readingBarConfig.overlayTransparency))
                     )
-                    .shadow(color: .black.opacity(0.3 * readingBarConfig.overlayTransparency), radius: 2, x: 0, y: 1)
+                    .shadow(
+                        color: .black.opacity(0.3 * readingBarConfig.overlayTransparency),
+                        radius: 2,
+                        x: 0,
+                        y: 1
+                    )
             }
             .buttonStyle(.plain)
             .help("Restart chapter / Previous chapter")
@@ -78,7 +83,12 @@ struct EbookOverlayMac: View {
                         Circle()
                             .fill(Color.white.opacity(0.2 * readingBarConfig.overlayTransparency))
                     )
-                    .shadow(color: .black.opacity(0.3 * readingBarConfig.overlayTransparency), radius: 2, x: 0, y: 1)
+                    .shadow(
+                        color: .black.opacity(0.3 * readingBarConfig.overlayTransparency),
+                        radius: 2,
+                        x: 0,
+                        y: 1
+                    )
             }
             .buttonStyle(.plain)
             .help("Previous sentence")
@@ -87,12 +97,17 @@ struct EbookOverlayMac: View {
                 Image(systemName: isPlaying ? "pause.fill" : "play.fill")
                     .font(.system(size: iconSize))
                     .foregroundColor(.white.opacity(readingBarConfig.overlayTransparency))
-                    .frame(width: buttonSize*1.2, height: buttonSize*1.2)
+                    .frame(width: buttonSize * 1.2, height: buttonSize * 1.2)
                     .background(
                         Circle()
                             .fill(Color.white.opacity(0.3 * readingBarConfig.overlayTransparency))
                     )
-                    .shadow(color: .black.opacity(0.3 * readingBarConfig.overlayTransparency), radius: 2, x: 0, y: 1)
+                    .shadow(
+                        color: .black.opacity(0.3 * readingBarConfig.overlayTransparency),
+                        radius: 2,
+                        x: 0,
+                        y: 1
+                    )
             }
             .buttonStyle(.plain)
             .help("Play/pause")
@@ -106,7 +121,12 @@ struct EbookOverlayMac: View {
                         Circle()
                             .fill(Color.white.opacity(0.2 * readingBarConfig.overlayTransparency))
                     )
-                    .shadow(color: .black.opacity(0.3 * readingBarConfig.overlayTransparency), radius: 2, x: 0, y: 1)
+                    .shadow(
+                        color: .black.opacity(0.3 * readingBarConfig.overlayTransparency),
+                        radius: 2,
+                        x: 0,
+                        y: 1
+                    )
             }
             .buttonStyle(.plain)
             .help("Next sentence")
@@ -120,7 +140,12 @@ struct EbookOverlayMac: View {
                         Circle()
                             .fill(Color.white.opacity(0.2 * readingBarConfig.overlayTransparency))
                     )
-                    .shadow(color: .black.opacity(0.3 * readingBarConfig.overlayTransparency), radius: 2, x: 0, y: 1)
+                    .shadow(
+                        color: .black.opacity(0.3 * readingBarConfig.overlayTransparency),
+                        radius: 2,
+                        x: 0,
+                        y: 1
+                    )
             }
             .buttonStyle(.plain)
             .help("Next chapter")
@@ -169,35 +194,39 @@ struct EbookOverlayMac: View {
             }
         )
 
-        return Slider(value: sliderBinding, in: 0...1, onEditingChanged: { editing in
-            isDraggingSlider = editing
-            if editing {
-                seekDebounceUntil = nil
-                let audioFraction = chapterAudioFraction(
-                    current: progressData?.chapterCurrentSecondsAudio,
-                    total: progressData?.chapterTotalSecondsAudio
-                )
-                let pagesFraction = chapterPagesFraction(
-                    current: progressData?.chapterCurrentPage,
-                    total: progressData?.chapterTotalPages
-                )
+        return Slider(
+            value: sliderBinding,
+            in: 0...1,
+            onEditingChanged: { editing in
+                isDraggingSlider = editing
+                if editing {
+                    seekDebounceUntil = nil
+                    let audioFraction = chapterAudioFraction(
+                        current: progressData?.chapterCurrentSecondsAudio,
+                        total: progressData?.chapterTotalSecondsAudio
+                    )
+                    let pagesFraction = chapterPagesFraction(
+                        current: progressData?.chapterCurrentPage,
+                        total: progressData?.chapterTotalPages
+                    )
 
-                let initialFraction: Double
-                if isPlaying, let audio = audioFraction {
-                    initialFraction = audio
-                } else if let pages = pagesFraction {
-                    initialFraction = pages
-                } else if let audio = audioFraction {
-                    initialFraction = audio
+                    let initialFraction: Double
+                    if isPlaying, let audio = audioFraction {
+                        initialFraction = audio
+                    } else if let pages = pagesFraction {
+                        initialFraction = pages
+                    } else if let audio = audioFraction {
+                        initialFraction = audio
+                    } else {
+                        initialFraction = chapterProgress
+                    }
+
+                    draggedSliderValue = min(max(initialFraction, 0), 1)
                 } else {
-                    initialFraction = chapterProgress
+                    seekDebounceUntil = Date().addingTimeInterval(0.5)
                 }
-
-                draggedSliderValue = min(max(initialFraction, 0), 1)
-            } else {
-                seekDebounceUntil = Date().addingTimeInterval(0.5)
             }
-        })
+        )
         .tint(Color.white.opacity(0.9 * readingBarConfig.overlayTransparency))
         .opacity(readingBarConfig.overlayTransparency)
     }
@@ -207,7 +236,11 @@ struct EbookOverlayMac: View {
         let baseChapterTotal = normalizedSeconds(progressData?.chapterTotalSecondsAudio) ?? 0
         let chapterTotal = max(baseChapterTotal, chapterElapsed)
         let rawRemaining = max(chapterTotal - chapterElapsed, 0)
-        let chapterRemainingAtRate = timeRemaining(atRate: playbackRate, total: chapterTotal, elapsed: chapterElapsed)
+        let chapterRemainingAtRate = timeRemaining(
+            atRate: playbackRate,
+            total: chapterTotal,
+            elapsed: chapterElapsed
+        )
 
         return VStack(alignment: .leading, spacing: 4) {
             seekBar
@@ -217,9 +250,11 @@ struct EbookOverlayMac: View {
                     .font(.caption2.monospacedDigit())
                     .foregroundColor(.white.opacity(0.7 * readingBarConfig.overlayTransparency))
                 Spacer()
-                Text("-\(formatOptionalTime(chapterRemainingAtRate ?? rawRemaining)) (\(formatPlaybackRate(playbackRate)))")
-                    .font(.caption2)
-                    .foregroundColor(.white.opacity(0.6 * readingBarConfig.overlayTransparency))
+                Text(
+                    "-\(formatOptionalTime(chapterRemainingAtRate ?? rawRemaining)) (\(formatPlaybackRate(playbackRate)))"
+                )
+                .font(.caption2)
+                .foregroundColor(.white.opacity(0.6 * readingBarConfig.overlayTransparency))
                 Spacer()
                 Text(formatOptionalTime(chapterTotal))
                     .font(.caption2.monospacedDigit())
@@ -229,10 +264,11 @@ struct EbookOverlayMac: View {
     }
 
     private var hasStatsToDisplay: Bool {
-        (readingBarConfig.showProgress && bookFraction != nil) ||
-        (readingBarConfig.showTimeRemainingInBook && bookTimeRemaining != nil) ||
-        (readingBarConfig.showTimeRemainingInChapter && chapterTimeRemaining != nil) ||
-        (readingBarConfig.showPageNumber && progressData?.chapterCurrentPage != nil && progressData?.chapterTotalPages != nil)
+        (readingBarConfig.showProgress && bookFraction != nil)
+            || (readingBarConfig.showTimeRemainingInBook && bookTimeRemaining != nil)
+            || (readingBarConfig.showTimeRemainingInChapter && chapterTimeRemaining != nil)
+            || (readingBarConfig.showPageNumber && progressData?.chapterCurrentPage != nil
+                && progressData?.chapterTotalPages != nil)
     }
 
     private var leftStatsColumn: some View {
@@ -243,7 +279,8 @@ struct EbookOverlayMac: View {
                     .foregroundColor(.white.opacity(0.7 * readingBarConfig.overlayTransparency))
             }
 
-            if readingBarConfig.showTimeRemainingInChapter, let timeRemaining = chapterTimeRemaining {
+            if readingBarConfig.showTimeRemainingInChapter, let timeRemaining = chapterTimeRemaining
+            {
                 Text("\(formatTimeMinutesSeconds(timeRemaining)) in Chapter")
                     .font(.caption2.monospacedDigit())
                     .foregroundColor(.white.opacity(0.7 * readingBarConfig.overlayTransparency))
@@ -260,7 +297,8 @@ struct EbookOverlayMac: View {
             }
 
             if readingBarConfig.showPageNumber, let current = progressData?.chapterCurrentPage,
-               let total = progressData?.chapterTotalPages, total > 0 {
+                let total = progressData?.chapterTotalPages, total > 0
+            {
                 Text("\(current)/\(total)")
                     .font(.caption2.monospacedDigit())
                     .foregroundColor(.white.opacity(0.7 * readingBarConfig.overlayTransparency))
@@ -269,13 +307,16 @@ struct EbookOverlayMac: View {
     }
 
     private var bookFraction: Double? {
-        guard let fraction = progressData?.bookCurrentFraction, fraction.isFinite else { return nil }
+        guard let fraction = progressData?.bookCurrentFraction, fraction.isFinite else {
+            return nil
+        }
         return min(max(fraction, 0), 1)
     }
 
     private var bookTimeRemaining: TimeInterval? {
         guard let bookTotal = normalizedSeconds(progressData?.bookTotalSecondsAudio),
-              let bookElapsed = normalizedSeconds(progressData?.bookCurrentSecondsAudio) else {
+            let bookElapsed = normalizedSeconds(progressData?.bookCurrentSecondsAudio)
+        else {
             return nil
         }
         let remaining = max(bookTotal - bookElapsed, 0)
@@ -285,7 +326,8 @@ struct EbookOverlayMac: View {
 
     private var chapterTimeRemaining: TimeInterval? {
         guard let chapterTotal = normalizedSeconds(progressData?.chapterTotalSecondsAudio),
-              let chapterElapsed = normalizedSeconds(progressData?.chapterCurrentSecondsAudio) else {
+            let chapterElapsed = normalizedSeconds(progressData?.chapterCurrentSecondsAudio)
+        else {
             return nil
         }
         let remaining = max(chapterTotal - chapterElapsed, 0)

@@ -3,7 +3,8 @@ import SwiftUI
 
 extension KeyedDecodingContainer {
     func decodeLenient<T: Decodable>(_ type: T.Type, forKey key: Key) -> T? {
-        return (try? decode(T.self, forKey: key)) ?? (try? decodeIfPresent(T.self, forKey: key)) ?? nil
+        return (try? decode(T.self, forKey: key)) ?? (try? decodeIfPresent(T.self, forKey: key))
+            ?? nil
     }
 
     func decodeLenientBoolAsInt(forKey key: Key, defaultValue: Int = 0) -> Int {
@@ -44,20 +45,28 @@ public struct LenientArrayWrapper<T: Decodable>: Decodable {
                 if let decodingError = error as? DecodingError {
                     debugLog("[MediaModels] Decoding error details:")
                     switch decodingError {
-                    case .typeMismatch(let type, let context):
-                        debugLog("[MediaModels]   Type mismatch for \(type)")
-                        debugLog("[MediaModels]   Path: \(context.codingPath.map { $0.stringValue }.joined(separator: " -> "))")
-                    case .valueNotFound(let type, let context):
-                        debugLog("[MediaModels]   Value not found for \(type)")
-                        debugLog("[MediaModels]   Path: \(context.codingPath.map { $0.stringValue }.joined(separator: " -> "))")
-                    case .keyNotFound(let key, let context):
-                        debugLog("[MediaModels]   Key not found: \(key.stringValue)")
-                        debugLog("[MediaModels]   Path: \(context.codingPath.map { $0.stringValue }.joined(separator: " -> "))")
-                    case .dataCorrupted(let context):
-                        debugLog("[MediaModels]   Data corrupted")
-                        debugLog("[MediaModels]   Path: \(context.codingPath.map { $0.stringValue }.joined(separator: " -> "))")
-                    @unknown default:
-                        debugLog("[MediaModels]   Unknown error")
+                        case .typeMismatch(let type, let context):
+                            debugLog("[MediaModels]   Type mismatch for \(type)")
+                            debugLog(
+                                "[MediaModels]   Path: \(context.codingPath.map { $0.stringValue }.joined(separator: " -> "))"
+                            )
+                        case .valueNotFound(let type, let context):
+                            debugLog("[MediaModels]   Value not found for \(type)")
+                            debugLog(
+                                "[MediaModels]   Path: \(context.codingPath.map { $0.stringValue }.joined(separator: " -> "))"
+                            )
+                        case .keyNotFound(let key, let context):
+                            debugLog("[MediaModels]   Key not found: \(key.stringValue)")
+                            debugLog(
+                                "[MediaModels]   Path: \(context.codingPath.map { $0.stringValue }.joined(separator: " -> "))"
+                            )
+                        case .dataCorrupted(let context):
+                            debugLog("[MediaModels]   Data corrupted")
+                            debugLog(
+                                "[MediaModels]   Path: \(context.codingPath.map { $0.stringValue }.joined(separator: " -> "))"
+                            )
+                        @unknown default:
+                            debugLog("[MediaModels]   Unknown error")
                     }
                 }
                 _ = try? container.decode(FailableDecodable.self)
@@ -157,7 +166,13 @@ public struct BookAsset: Codable, Sendable, Hashable {
         return missing == 1
     }
 
-    public init(uuid: String?, filepath: String, missing: Int, createdAt: String?, updatedAt: String?) {
+    public init(
+        uuid: String?,
+        filepath: String,
+        missing: Int,
+        createdAt: String?,
+        updatedAt: String?
+    ) {
         self.uuid = uuid
         self.filepath = filepath
         self.missing = missing
@@ -277,7 +292,15 @@ public struct BookLocator: Codable, Sendable, Hashable {
         public let partialCfi: String?
         public let domRange: DomRange?
 
-        public init(fragments: [String]?, progression: Double?, position: Int?, totalProgression: Double?, cssSelector: String?, partialCfi: String?, domRange: DomRange?) {
+        public init(
+            fragments: [String]?,
+            progression: Double?,
+            position: Int?,
+            totalProgression: Double?,
+            cssSelector: String?,
+            partialCfi: String?,
+            domRange: DomRange?
+        ) {
             self.fragments = fragments
             self.progression = progression
             self.position = position

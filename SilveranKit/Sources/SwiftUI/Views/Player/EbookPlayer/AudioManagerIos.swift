@@ -61,14 +61,16 @@ class AudioManagerIos {
 
     @objc nonisolated private func handleAudioSessionInterruption(_ notification: Notification) {
         guard let userInfo = notification.userInfo,
-              let typeValue = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,
-              let type = AVAudioSession.InterruptionType(rawValue: typeValue) else {
+            let typeValue = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,
+            let type = AVAudioSession.InterruptionType(rawValue: typeValue)
+        else {
             return
         }
 
         let shouldResume: Bool
         if type == .ended,
-           let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt {
+            let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt
+        {
             let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
             shouldResume = options.contains(.shouldResume)
         } else {
@@ -77,43 +79,46 @@ class AudioManagerIos {
 
         Task { @MainActor in
             switch type {
-            case .began:
-                debugLog("[AudioManagerIos] Audio session interrupted - notifying MOM")
-                await mediaOverlayManager?.handleExternalPauseCommand()
-            case .ended:
-                if shouldResume {
-                    debugLog("[AudioManagerIos] Audio session interruption ended - should resume")
-                    await mediaOverlayManager?.handleExternalPlayCommand()
-                } else {
-                    debugLog("[AudioManagerIos] Audio session interruption ended - no resume")
-                }
-            @unknown default:
-                break
+                case .began:
+                    debugLog("[AudioManagerIos] Audio session interrupted - notifying MOM")
+                    await mediaOverlayManager?.handleExternalPauseCommand()
+                case .ended:
+                    if shouldResume {
+                        debugLog(
+                            "[AudioManagerIos] Audio session interruption ended - should resume"
+                        )
+                        await mediaOverlayManager?.handleExternalPlayCommand()
+                    } else {
+                        debugLog("[AudioManagerIos] Audio session interruption ended - no resume")
+                    }
+                @unknown default:
+                    break
             }
         }
     }
 
     @objc nonisolated private func handleAudioRouteChange(_ notification: Notification) {
         guard let userInfo = notification.userInfo,
-              let reasonValue = userInfo[AVAudioSessionRouteChangeReasonKey] as? UInt,
-              let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue) else {
+            let reasonValue = userInfo[AVAudioSessionRouteChangeReasonKey] as? UInt,
+            let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue)
+        else {
             return
         }
 
         Task { @MainActor in
             switch reason {
-            case .oldDeviceUnavailable:
-                debugLog("[AudioManagerIos] Audio route lost (device unavailable) - pausing")
-                await mediaOverlayManager?.handleExternalPauseCommand()
+                case .oldDeviceUnavailable:
+                    debugLog("[AudioManagerIos] Audio route lost (device unavailable) - pausing")
+                    await mediaOverlayManager?.handleExternalPauseCommand()
 
-            case .newDeviceAvailable:
-                debugLog("[AudioManagerIos] New audio device available")
+                case .newDeviceAvailable:
+                    debugLog("[AudioManagerIos] New audio device available")
 
-            case .routeConfigurationChange:
-                debugLog("[AudioManagerIos] Audio route configuration changed")
+                case .routeConfigurationChange:
+                    debugLog("[AudioManagerIos] Audio route configuration changed")
 
-            default:
-                debugLog("[AudioManagerIos] Audio route change reason: \(reason.rawValue)")
+                default:
+                    debugLog("[AudioManagerIos] Audio route change reason: \(reason.rawValue)")
             }
         }
     }
@@ -162,7 +167,9 @@ class AudioManagerIos {
                 return .commandFailed
             }
             Task { @MainActor in
-                debugLog("[AudioManagerIos] Remote seek command received: \(positionEvent.positionTime)")
+                debugLog(
+                    "[AudioManagerIos] Remote seek command received: \(positionEvent.positionTime)"
+                )
                 await self?.mediaOverlayManager?.handleExternalSeek(to: positionEvent.positionTime)
             }
             return .success
@@ -201,8 +208,16 @@ class AudioManagerIos {
     func cleanup() {
         debugLog("[AudioManagerIos] Cleanup")
 
-        NotificationCenter.default.removeObserver(self, name: AVAudioSession.interruptionNotification, object: nil)
-        NotificationCenter.default.removeObserver(self, name: AVAudioSession.routeChangeNotification, object: nil)
+        NotificationCenter.default.removeObserver(
+            self,
+            name: AVAudioSession.interruptionNotification,
+            object: nil
+        )
+        NotificationCenter.default.removeObserver(
+            self,
+            name: AVAudioSession.routeChangeNotification,
+            object: nil
+        )
 
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
 

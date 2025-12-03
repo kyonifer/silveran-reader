@@ -11,7 +11,6 @@ extension Scene {
     }
 }
 
-
 // TODO: Remove most of this when proper book opening is implemented.
 // This is debug code
 struct SilveranReaderApp: App {
@@ -30,13 +29,17 @@ struct SilveranReaderApp: App {
                     )
                 }
             } catch {
-                debugLog("[SilveranReaderApp] Failed to load credentials: \(error.localizedDescription)")
+                debugLog(
+                    "[SilveranReaderApp] Failed to load credentials: \(error.localizedDescription)"
+                )
             }
 
             do {
                 try await FilesystemActor.shared.copyWebResourcesFromBundle()
             } catch {
-                debugLog("[SilveranReaderApp] Failed to copy web resources: \(error.localizedDescription)")
+                debugLog(
+                    "[SilveranReaderApp] Failed to copy web resources: \(error.localizedDescription)"
+                )
             }
 
             await FilesystemActor.shared.cleanupExtractedEpubDirectories()
@@ -63,9 +66,9 @@ struct SilveranReaderApp: App {
         LibraryView()
             .environment(mediaViewModel)
             #if os(macOS)
-            .background(Color(nsColor: .windowBackgroundColor))
+        .background(Color(nsColor: .windowBackgroundColor))
             #else
-            .background(Color(uiColor: .systemBackground))
+        .background(Color(uiColor: .systemBackground))
             #endif
             .task {
                 guard !didOpenSecondaryWindows else { return }
@@ -74,7 +77,8 @@ struct SilveranReaderApp: App {
     }
 
     private var audiobookScene: some Scene {
-        WindowGroup("Audiobook Player", id: "AudiobookPlayer", for: PlayerBookData.self) { bookData in
+        WindowGroup("Audiobook Player", id: "AudiobookPlayer", for: PlayerBookData.self) {
+            bookData in
             AudiobookPlayerView(bookData: bookData.wrappedValue)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }

@@ -1,5 +1,6 @@
 import SwiftUI
 import WebKit
+
 #if os(iOS)
 import UIKit
 #elseif os(macOS)
@@ -81,7 +82,6 @@ class EbookPlayerViewModel {
         self.settingsVM = settingsVM
     }
 
-
     func handleChapterSelectionByHref(_ href: String) {
         debugLog("[EbookPlayerViewModel] Chapter selected by href: \(href)")
 
@@ -104,19 +104,24 @@ class EbookPlayerViewModel {
         let currentProgress = progressManager?.chapterSeekBarValue ?? 0.0
         let now = Date()
 
-        let justRestarted = if let lastRestart = lastRestartTime {
-            now.timeIntervalSince(lastRestart) < 2.0
-        } else {
-            false
-        }
+        let justRestarted =
+            if let lastRestart = lastRestartTime {
+                now.timeIntervalSince(lastRestart) < 2.0
+            } else {
+                false
+            }
 
         if currentProgress > 0.01 && !justRestarted {
-            debugLog("[EbookPlayerViewModel] Restarting current chapter: \(currentChapter?.label ?? "nil") (was at \(Int(currentProgress * 100))%)")
+            debugLog(
+                "[EbookPlayerViewModel] Restarting current chapter: \(currentChapter?.label ?? "nil") (was at \(Int(currentProgress * 100))%)"
+            )
             handleProgressSeek(0.0)
             lastRestartTime = now
         } else if currentIndex > 0 {
             let prevChapter = bookStructure[safe: currentIndex - 1]
-            debugLog("[EbookPlayerViewModel] Navigating to previous chapter: \(prevChapter?.label ?? "nil")")
+            debugLog(
+                "[EbookPlayerViewModel] Navigating to previous chapter: \(prevChapter?.label ?? "nil")"
+            )
             progressManager?.handleUserChapterSelected(currentIndex - 1)
             lastRestartTime = nil
         } else {
@@ -128,13 +133,18 @@ class EbookPlayerViewModel {
 
     func handleNextChapter() {
         guard let currentIndex = progressManager?.selectedChapterId,
-              currentIndex < bookStructure.count - 1 else {
-            debugLog("[EbookPlayerViewModel] Cannot go to next chapter - at last chapter or no selection")
+            currentIndex < bookStructure.count - 1
+        else {
+            debugLog(
+                "[EbookPlayerViewModel] Cannot go to next chapter - at last chapter or no selection"
+            )
             return
         }
 
         let nextChapter = bookStructure[safe: currentIndex + 1]
-        debugLog("[EbookPlayerViewModel] Navigating to next chapter: \(nextChapter?.label ?? "nil")")
+        debugLog(
+            "[EbookPlayerViewModel] Navigating to next chapter: \(nextChapter?.label ?? "nil")"
+        )
         progressManager?.handleUserChapterSelected(currentIndex + 1)
     }
 
@@ -167,7 +177,9 @@ class EbookPlayerViewModel {
     }
 
     func handleSleepTimerStart(_ duration: TimeInterval?, _ type: SleepTimerType) {
-        debugLog("[EbookPlayerViewModel] Starting sleep timer - type: \(type), duration: \(duration?.description ?? "N/A")")
+        debugLog(
+            "[EbookPlayerViewModel] Starting sleep timer - type: \(type), duration: \(duration?.description ?? "N/A")"
+        )
         mediaOverlayManager?.startSleepTimer(duration: duration, type: type)
     }
 
@@ -200,7 +212,9 @@ class EbookPlayerViewModel {
     }
 
     func handleAppBackgrounding() async {
-        debugLog("[EbookPlayerViewModel] App backgrounding - syncing progress (audio continues in background)")
+        debugLog(
+            "[EbookPlayerViewModel] App backgrounding - syncing progress (audio continues in background)"
+        )
 
         await progressManager?.syncProgressToServer(force: true)
 
@@ -233,7 +247,9 @@ class EbookPlayerViewModel {
                             forceExtract: needsNativeAudio
                         )
                         self.extractedEbookPath = processedPath
-                        debugLog("[EbookPlayerViewModel] EPUB processed for loading: \(processedPath.path)")
+                        debugLog(
+                            "[EbookPlayerViewModel] EPUB processed for loading: \(processedPath.path)"
+                        )
                     } catch {
                         debugLog("[EbookPlayerViewModel] Failed to extract EPUB: \(error)")
                         self.extractedEbookPath = localPath
@@ -261,20 +277,22 @@ class EbookPlayerViewModel {
 
     func handleScenePhaseChange(_ phase: ScenePhase) {
         switch phase {
-        case .active:
-            smilPlayerManager?.reconcilePositionFromPlayer()
-            if let syncData = smilPlayerManager?.getBackgroundSyncData() {
-                debugLog("[EbookPlayerViewModel] Resuming from background - syncing view to audio position")
-                Task { @MainActor in
-                    await progressManager?.handleBackgroundSyncHandoff(syncData)
+            case .active:
+                smilPlayerManager?.reconcilePositionFromPlayer()
+                if let syncData = smilPlayerManager?.getBackgroundSyncData() {
+                    debugLog(
+                        "[EbookPlayerViewModel] Resuming from background - syncing view to audio position"
+                    )
+                    Task { @MainActor in
+                        await progressManager?.handleBackgroundSyncHandoff(syncData)
+                    }
                 }
-            }
-        case .background:
-            debugLog("[EbookPlayerViewModel] Entering background - audio continues natively")
-        case .inactive:
-            break
-        @unknown default:
-            break
+            case .background:
+                debugLog("[EbookPlayerViewModel] Entering background - audio continues natively")
+            case .inactive:
+                break
+            @unknown default:
+                break
         }
     }
 
@@ -285,7 +303,9 @@ class EbookPlayerViewModel {
         recoveryManager?.setBridge(bridge)
 
         if recoveryManager?.isInRecovery == true {
-            debugLog("[EbookPlayerViewModel] Recovery mode - updating existing managers with new bridge")
+            debugLog(
+                "[EbookPlayerViewModel] Recovery mode - updating existing managers with new bridge"
+            )
             progressManager?.commsBridge = bridge
             mediaOverlayManager?.commsBridge = bridge
             styleManager?.updateBridge(bridge)
@@ -329,12 +349,15 @@ class EbookPlayerViewModel {
         setupBridgeCallbacks(bridge, initialColorScheme: initialColorScheme)
     }
 
-    private func setupBridgeCallbacks(_ bridge: WebViewCommsBridge, initialColorScheme: ColorScheme) {
+    private func setupBridgeCallbacks(_ bridge: WebViewCommsBridge, initialColorScheme: ColorScheme)
+    {
 
         bridge.onBookStructureReady = { [weak self] message in
             guard let self else { return }
             Task { @MainActor in
-                debugLog("[EbookPlayerViewModel] BookStructureReady - \(message.sections.count) sections")
+                debugLog(
+                    "[EbookPlayerViewModel] BookStructureReady - \(message.sections.count) sections"
+                )
                 self.bookStructure = message.sections
 
                 #if os(iOS)
@@ -347,14 +370,21 @@ class EbookPlayerViewModel {
 
                 if isRecovering {
                     #if os(iOS)
-                    debugLog("[EbookPlayerViewModel] Recovery mode - reusing existing MOM/SMILPlayerManager")
+                    debugLog(
+                        "[EbookPlayerViewModel] Recovery mode - reusing existing MOM/SMILPlayerManager"
+                    )
                     self.mediaOverlayManager?.commsBridge = bridge
                     _ = self.recoveryManager?.handleBookStructureReadyIfRecovering()
                     #endif
                 } else {
-                    let manager = MediaOverlayManager(bookStructure: message.sections, bridge: bridge)
+                    let manager = MediaOverlayManager(
+                        bookStructure: message.sections,
+                        bridge: bridge
+                    )
                     if manager.hasMediaOverlay {
-                        debugLog("[EbookPlayerViewModel] Book has media overlay - MediaOverlayManager created")
+                        debugLog(
+                            "[EbookPlayerViewModel] Book has media overlay - MediaOverlayManager created"
+                        )
                         manager.setPlaybackRate(self.settingsVM.defaultPlaybackSpeed)
                         self.mediaOverlayManager = manager
                         self.hasAudioNarration = true
@@ -368,11 +398,15 @@ class EbookPlayerViewModel {
                         )
                         smilPlayer.setVolume(self.settingsVM.defaultVolume)
                         self.smilPlayerManager = smilPlayer
-                        debugLog("[EbookPlayerViewModel] SMILPlayerManager created for native audio")
+                        debugLog(
+                            "[EbookPlayerViewModel] SMILPlayerManager created for native audio"
+                        )
 
                         manager.smilPlayerManager = smilPlayer
                         smilPlayer.delegate = manager
-                        debugLog("[EbookPlayerViewModel] MOM connected to SMILPlayerManager (direct control)")
+                        debugLog(
+                            "[EbookPlayerViewModel] MOM connected to SMILPlayerManager (direct control)"
+                        )
 
                         #if os(iOS)
                         let audioManager = AudioManagerIos()
@@ -381,14 +415,21 @@ class EbookPlayerViewModel {
                         audioManager.bookAuthor = self.bookData?.metadata.authors?.first?.name
                         manager.audioManagerIos = audioManager
                         self.audioManagerIos = audioManager
-                        debugLog("[EbookPlayerViewModel] AudioManagerIos created and connected to MOM")
+                        debugLog(
+                            "[EbookPlayerViewModel] AudioManagerIos created and connected to MOM"
+                        )
 
                         if let uuid = self.bookData?.metadata.uuid {
                             Task {
-                                if let coverData = await FilesystemActor.shared.loadCoverImage(uuid: uuid, variant: "standard") {
+                                if let coverData = await FilesystemActor.shared.loadCoverImage(
+                                    uuid: uuid,
+                                    variant: "standard"
+                                ) {
                                     await MainActor.run {
                                         self.audioManagerIos?.coverImage = UIImage(data: coverData)
-                                        debugLog("[EbookPlayerViewModel] Cover image set on AudioManagerIos")
+                                        debugLog(
+                                            "[EbookPlayerViewModel] Cover image set on AudioManagerIos"
+                                        )
                                     }
                                 }
                             }
@@ -405,7 +446,8 @@ class EbookPlayerViewModel {
                     self.progressManager?.handleBookStructureReady()
 
                     Task { @MainActor in
-                        let syncInterval = await SettingsActor.shared.config.sync.progressSyncIntervalSeconds
+                        let syncInterval = await SettingsActor.shared.config.sync
+                            .progressSyncIntervalSeconds
                         self.progressManager?.startPeriodicSync(syncInterval: syncInterval)
                     }
                 }

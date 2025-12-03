@@ -1,5 +1,5 @@
-import SwiftUI
 import Observation
+import SwiftUI
 
 @MainActor
 @Observable
@@ -50,7 +50,9 @@ class ReaderStyleManager {
     }
 
     func handleColorSchemeChange(_ newColorScheme: ColorScheme) {
-        debugLog("[ReaderStyleManager] Color scheme changed to \(newColorScheme == .dark ? "dark" : "light")")
+        debugLog(
+            "[ReaderStyleManager] Color scheme changed to \(newColorScheme == .dark ? "dark" : "light")"
+        )
         colorScheme = newColorScheme
         Task { @MainActor in
             await sendStyleUpdate()

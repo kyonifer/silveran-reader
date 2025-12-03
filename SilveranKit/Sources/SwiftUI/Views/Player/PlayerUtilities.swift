@@ -58,7 +58,8 @@ func normalizedTotalPage(_ value: Int?) -> Int? {
 
 func bookAudioFraction(current: Double?, total: Double?) -> Double? {
     guard let elapsed = normalizedSeconds(current),
-          let total = normalizedSeconds(total), total > 0 else {
+        let total = normalizedSeconds(total), total > 0
+    else {
         return nil
     }
     return min(max(elapsed / total, 0), 1)
@@ -66,7 +67,8 @@ func bookAudioFraction(current: Double?, total: Double?) -> Double? {
 
 func chapterAudioFraction(current: Double?, total: Double?) -> Double? {
     guard let elapsed = normalizedSeconds(current),
-          let total = normalizedSeconds(total), total > 0 else {
+        let total = normalizedSeconds(total), total > 0
+    else {
         return nil
     }
     return min(max(elapsed / total, 0), 1)
@@ -158,10 +160,13 @@ func playbackRateDescription(for rate: Double) -> String {
     return formatted
 }
 
-func timeRemaining(atRate playbackRate: Double, total: TimeInterval?, elapsed: TimeInterval?) -> TimeInterval? {
+func timeRemaining(atRate playbackRate: Double, total: TimeInterval?, elapsed: TimeInterval?)
+    -> TimeInterval?
+{
     guard let total, total.isFinite,
-          let elapsed, elapsed.isFinite,
-          playbackRate > 0 else {
+        let elapsed, elapsed.isFinite,
+        playbackRate > 0
+    else {
         return nil
     }
     let remaining = max(total - elapsed, 0)

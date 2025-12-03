@@ -179,7 +179,10 @@ public actor FilesystemActor {
         let domainDir = getDomainDirectory(for: .storyteller)
         try ensureDirectoryExists(at: domainDir)
 
-        let metadataURL = domainDir.appendingPathComponent("library_metadata.json", isDirectory: false)
+        let metadataURL = domainDir.appendingPathComponent(
+            "library_metadata.json",
+            isDirectory: false
+        )
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let data = try encoder.encode(metadata)
@@ -188,7 +191,10 @@ public actor FilesystemActor {
 
     public func loadStorytellerLibraryMetadata() throws -> [BookMetadata]? {
         let domainDir = getDomainDirectory(for: .storyteller)
-        let metadataURL = domainDir.appendingPathComponent("library_metadata.json", isDirectory: false)
+        let metadataURL = domainDir.appendingPathComponent(
+            "library_metadata.json",
+            isDirectory: false
+        )
 
         let fm = FileManager.default
         guard fm.fileExists(atPath: metadataURL.path) else {
@@ -208,7 +214,10 @@ public actor FilesystemActor {
 
     public func loadProgressQueue() throws -> [PendingProgressSync] {
         let configDir = getConfigDirectory()
-        let queueURL = configDir.appendingPathComponent("offline_progress_queue.json", isDirectory: false)
+        let queueURL = configDir.appendingPathComponent(
+            "offline_progress_queue.json",
+            isDirectory: false
+        )
 
         let fm = FileManager.default
         guard fm.fileExists(atPath: queueURL.path) else {
@@ -225,13 +234,19 @@ public actor FilesystemActor {
         let configDir = getConfigDirectory()
         try ensureDirectoryExists(at: configDir)
 
-        let queueURL = configDir.appendingPathComponent("offline_progress_queue.json", isDirectory: false)
+        let queueURL = configDir.appendingPathComponent(
+            "offline_progress_queue.json",
+            isDirectory: false
+        )
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
         let data = try encoder.encode(queue)
 
-        let tempURL = configDir.appendingPathComponent("offline_progress_queue.tmp", isDirectory: false)
+        let tempURL = configDir.appendingPathComponent(
+            "offline_progress_queue.tmp",
+            isDirectory: false
+        )
         try data.write(to: tempURL, options: .atomic)
 
         let fm = FileManager.default
@@ -426,7 +441,11 @@ public actor FilesystemActor {
         }
         try fm.copyItem(at: foliateJSURL, to: foliateJSDestination)
 
-        guard let jsFileURLs = Bundle.main.urls(forResourcesWithExtension: "js", subdirectory: "WebResources")
+        guard
+            let jsFileURLs = Bundle.main.urls(
+                forResourcesWithExtension: "js",
+                subdirectory: "WebResources"
+            )
         else {
             throw NSError(
                 domain: "FilesystemActor",
@@ -445,7 +464,9 @@ public actor FilesystemActor {
         }
     }
 
-    private static let audioExtensions: Set<String> = ["mp3", "m4a", "m4b", "mp4", "wav", "ogg", "opus", "aac", "flac"]
+    private static let audioExtensions: Set<String> = [
+        "mp3", "m4a", "m4b", "mp4", "wav", "ogg", "opus", "aac", "flac",
+    ]
 
     public func cleanupExtractedEpubDirectories() {
         let fm = FileManager.default
@@ -453,18 +474,22 @@ public actor FilesystemActor {
 
         for domain in LocalMediaDomain.allCases {
             let domainDir = getDomainDirectory(for: domain)
-            guard let bookFolders = try? fm.contentsOfDirectory(
-                at: domainDir,
-                includingPropertiesForKeys: [.isDirectoryKey],
-                options: [.skipsHiddenFiles]
-            ) else { continue }
+            guard
+                let bookFolders = try? fm.contentsOfDirectory(
+                    at: domainDir,
+                    includingPropertiesForKeys: [.isDirectoryKey],
+                    options: [.skipsHiddenFiles]
+                )
+            else { continue }
 
             for bookFolder in bookFolders {
                 guard let values = try? bookFolder.resourceValues(forKeys: [.isDirectoryKey]),
-                      values.isDirectory == true else { continue }
+                    values.isDirectory == true
+                else { continue }
 
                 for category in LocalMediaCategory.allCases {
-                    let extractedDir = bookFolder
+                    let extractedDir =
+                        bookFolder
                         .appendingPathComponent(category.rawValue, isDirectory: true)
                         .appendingPathComponent("extracted", isDirectory: true)
 
@@ -473,7 +498,9 @@ public actor FilesystemActor {
                             try fm.removeItem(at: extractedDir)
                             cleanedCount += 1
                         } catch {
-                            debugLog("[FilesystemActor] Failed to clean up extracted dir: \(extractedDir.path) - \(error)")
+                            debugLog(
+                                "[FilesystemActor] Failed to clean up extracted dir: \(extractedDir.path) - \(error)"
+                            )
                         }
                     }
                 }
@@ -485,7 +512,11 @@ public actor FilesystemActor {
         }
     }
 
-    public func extractEpubIfNeeded(epubPath: URL, sizeThresholdMB: Int = 200, forceExtract: Bool = false) async throws -> URL {
+    public func extractEpubIfNeeded(
+        epubPath: URL,
+        sizeThresholdMB: Int = 200,
+        forceExtract: Bool = false
+    ) async throws -> URL {
         let fm = FileManager.default
 
         let fileSize = try fm.attributesOfItem(atPath: epubPath.path)[.size] as? Int ?? 0
@@ -504,7 +535,9 @@ public actor FilesystemActor {
             .appendingPathComponent("extracted", isDirectory: true)
 
         if fm.fileExists(atPath: extractedDir.path) {
-            debugLog("[FilesystemActor] Extracted directory already exists, reusing: \(extractedDir.path)")
+            debugLog(
+                "[FilesystemActor] Extracted directory already exists, reusing: \(extractedDir.path)"
+            )
             return URL(fileURLWithPath: extractedDir.path, isDirectory: true)
         }
 
@@ -519,7 +552,10 @@ public actor FilesystemActor {
             throw NSError(
                 domain: "FilesystemActor",
                 code: 4,
-                userInfo: [NSLocalizedDescriptionKey: "Failed to open EPUB archive: \(epubPath.path) - \(error)"]
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "Failed to open EPUB archive: \(epubPath.path) - \(error)"
+                ]
             )
         }
 
@@ -542,7 +578,9 @@ public actor FilesystemActor {
         let sizesData = try JSONSerialization.data(withJSONObject: fileSizes)
         try sizesData.write(to: sizesURL)
 
-        debugLog("[FilesystemActor] EPUB extracted successfully (skipped \(skippedAudioFiles) audio files, wrote \(fileSizes.count) sizes)")
+        debugLog(
+            "[FilesystemActor] EPUB extracted successfully (skipped \(skippedAudioFiles) audio files, wrote \(fileSizes.count) sizes)"
+        )
 
         return URL(fileURLWithPath: extractedDir.path, isDirectory: true)
     }
@@ -555,7 +593,10 @@ public actor FilesystemActor {
             throw NSError(
                 domain: "FilesystemActor",
                 code: 5,
-                userInfo: [NSLocalizedDescriptionKey: "Failed to open EPUB archive for audio: \(epubPath.path) - \(error)"]
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "Failed to open EPUB archive for audio: \(epubPath.path) - \(error)"
+                ]
             )
         }
 
@@ -567,7 +608,9 @@ public actor FilesystemActor {
                 _ = try archive.extract(entry, skipCRC32: true) { chunk in
                     data.append(chunk)
                 }
-                debugLog("[FilesystemActor] Extracted audio from EPUB: \(path) (\(data.count) bytes)")
+                debugLog(
+                    "[FilesystemActor] Extracted audio from EPUB: \(path) (\(data.count) bytes)"
+                )
                 return data
             }
         }

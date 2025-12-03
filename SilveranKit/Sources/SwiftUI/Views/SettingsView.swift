@@ -75,7 +75,9 @@ public struct SettingsView: View {
                 resetAllSettings()
             }
         } message: {
-            Text("This will reset all settings across all tabs to their default values. This action cannot be undone.")
+            Text(
+                "This will reset all settings across all tabs to their default values. This action cannot be undone."
+            )
         }
     }
 
@@ -108,7 +110,9 @@ public struct SettingsView: View {
         guard isLoaded else { return }
         Task {
             do {
-                debugLog("[SettingsView] Persisting config - Progress: \(newValue.sync.progressSyncIntervalSeconds)s, Metadata: \(newValue.sync.metadataRefreshIntervalSeconds)s")
+                debugLog(
+                    "[SettingsView] Persisting config - Progress: \(newValue.sync.progressSyncIntervalSeconds)s, Metadata: \(newValue.sync.metadataRefreshIntervalSeconds)s"
+                )
                 try await SettingsActor.shared.updateConfig(
                     fontSize: newValue.reading.fontSize,
                     fontFamily: newValue.reading.fontFamily,
@@ -260,13 +264,17 @@ private struct MacGeneralSettingsView: View {
                             Slider(
                                 value: Binding(
                                     get: {
-                                        let index = indexForInterval(sync.progressSyncIntervalSeconds)
+                                        let index = indexForInterval(
+                                            sync.progressSyncIntervalSeconds
+                                        )
                                         //debugLog(.settingsView, "Progress Sync GET - current value: \(sync.progressSyncIntervalSeconds)s, index: \(index)")
                                         return index
                                     },
                                     set: { newIndex in
                                         let newValue = syncIntervals[Int(newIndex)]
-                                        debugLog("[SettingsView] Progress Sync SET - index: \(newIndex) -> value: \(newValue)s")
+                                        debugLog(
+                                            "[SettingsView] Progress Sync SET - index: \(newIndex) -> value: \(newValue)s"
+                                        )
                                         sync.progressSyncIntervalSeconds = newValue
                                     }
                                 ),
@@ -287,13 +295,17 @@ private struct MacGeneralSettingsView: View {
                             Slider(
                                 value: Binding(
                                     get: {
-                                        let index = indexForInterval(sync.metadataRefreshIntervalSeconds)
+                                        let index = indexForInterval(
+                                            sync.metadataRefreshIntervalSeconds
+                                        )
                                         //debugLog(.settingsView, "Metadata Refresh GET - current value: \(sync.metadataRefreshIntervalSeconds)s, index: \(index)")
                                         return index
                                     },
                                     set: { newIndex in
                                         let newValue = syncIntervals[Int(newIndex)]
-                                        debugLog("[SettingsView] Metadata Refresh SET - index: \(newIndex) -> value: \(newValue)s")
+                                        debugLog(
+                                            "[SettingsView] Metadata Refresh SET - index: \(newIndex) -> value: \(newValue)s"
+                                        )
                                         sync.metadataRefreshIntervalSeconds = newValue
                                     }
                                 ),
@@ -325,7 +337,9 @@ private struct MacGeneralSettingsView: View {
         if seconds < 0 {
             return Double(syncIntervals.count - 1)
         }
-        let closest = syncIntervals.enumerated().min(by: { abs($0.element - seconds) < abs($1.element - seconds) })
+        let closest = syncIntervals.enumerated().min(by: {
+            abs($0.element - seconds) < abs($1.element - seconds)
+        })
         return Double(closest?.offset ?? 0)
     }
 
@@ -437,8 +451,11 @@ private struct MacReaderSettingsView: View {
                 Text("Navigation")
                     .font(.headline)
 
-                Toggle("Enable margin click to turn pages", isOn: $reading.enableMarginClickNavigation)
-                    .help("Click on the left or right margins of the page to navigate between pages")
+                Toggle(
+                    "Enable margin click to turn pages",
+                    isOn: $reading.enableMarginClickNavigation
+                )
+                .help("Click on the left or right margins of the page to navigate between pages")
             }
 
             Divider()
@@ -468,10 +485,12 @@ private struct MacReaderSettingsView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Custom CSS")
                         .foregroundStyle(.secondary)
-                    TextEditor(text: Binding(
-                        get: { reading.customCSS ?? "" },
-                        set: { reading.customCSS = $0.isEmpty ? nil : $0 }
-                    ))
+                    TextEditor(
+                        text: Binding(
+                            get: { reading.customCSS ?? "" },
+                            set: { reading.customCSS = $0.isEmpty ? nil : $0 }
+                        )
+                    )
                     .font(.system(.body, design: .monospaced))
                     .frame(height: 100)
                     .border(Color.secondary.opacity(0.3), width: 1)
@@ -653,10 +672,13 @@ private struct GeneralSettingsFields: View {
                 .font(.subheadline)
                 .foregroundStyle(.primary)
             HStack(spacing: 12) {
-                Picker("", selection: Binding(
-                    get: { sync.progressSyncIntervalSeconds },
-                    set: { sync.progressSyncIntervalSeconds = $0 }
-                )) {
+                Picker(
+                    "",
+                    selection: Binding(
+                        get: { sync.progressSyncIntervalSeconds },
+                        set: { sync.progressSyncIntervalSeconds = $0 }
+                    )
+                ) {
                     ForEach(syncIntervals, id: \.self) { interval in
                         Text(formatInterval(interval)).tag(interval)
                     }
@@ -671,10 +693,13 @@ private struct GeneralSettingsFields: View {
                 .font(.subheadline)
                 .foregroundStyle(.primary)
             HStack(spacing: 12) {
-                Picker("", selection: Binding(
-                    get: { sync.metadataRefreshIntervalSeconds },
-                    set: { sync.metadataRefreshIntervalSeconds = $0 }
-                )) {
+                Picker(
+                    "",
+                    selection: Binding(
+                        get: { sync.metadataRefreshIntervalSeconds },
+                        set: { sync.metadataRefreshIntervalSeconds = $0 }
+                    )
+                ) {
                     ForEach(syncIntervals, id: \.self) { interval in
                         Text(formatInterval(interval)).tag(interval)
                     }

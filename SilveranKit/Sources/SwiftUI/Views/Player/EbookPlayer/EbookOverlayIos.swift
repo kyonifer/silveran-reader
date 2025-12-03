@@ -17,8 +17,8 @@ struct EbookOverlayIos: View {
     let onTogglePlaying: () -> Void
 
     private var hasLargeStatsToDisplay: Bool {
-        (showTimeRemainingInBook && bookTimeRemaining != nil) ||
-        (showTimeRemainingInChapter && chapterTimeRemaining != nil)
+        (showTimeRemainingInBook && bookTimeRemaining != nil)
+            || (showTimeRemainingInChapter && chapterTimeRemaining != nil)
     }
 
     var body: some View {

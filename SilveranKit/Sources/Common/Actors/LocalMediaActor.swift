@@ -93,10 +93,14 @@ public actor LocalMediaActor: GlobalActor {
     private func loadProgressQueue() async {
         do {
             pendingProgressQueue = try await filesystem.loadProgressQueue()
-            debugLog("[LocalMediaActor] loadProgressQueue: Loaded \(pendingProgressQueue.count) pending progress syncs")
+            debugLog(
+                "[LocalMediaActor] loadProgressQueue: Loaded \(pendingProgressQueue.count) pending progress syncs"
+            )
             if !pendingProgressQueue.isEmpty {
                 for (index, item) in pendingProgressQueue.enumerated() {
-                    debugLog("[LocalMediaActor] loadProgressQueue: [\(index)] bookId: \(item.bookId), timestamp: \(item.timestamp), attempts: \(item.attemptCount)")
+                    debugLog(
+                        "[LocalMediaActor] loadProgressQueue: [\(index)] bookId: \(item.bookId), timestamp: \(item.timestamp), attempts: \(item.attemptCount)"
+                    )
                 }
             }
         } catch {
@@ -107,7 +111,9 @@ public actor LocalMediaActor: GlobalActor {
 
     private func saveProgressQueue() async {
         do {
-            debugLog("[LocalMediaActor] saveProgressQueue: Saving queue with \(pendingProgressQueue.count) items")
+            debugLog(
+                "[LocalMediaActor] saveProgressQueue: Saving queue with \(pendingProgressQueue.count) items"
+            )
             if !pendingProgressQueue.isEmpty {
                 let bookIds = pendingProgressQueue.map { $0.bookId }.joined(separator: ", ")
                 debugLog("[LocalMediaActor] saveProgressQueue: bookIds: [\(bookIds)]")
@@ -119,7 +125,8 @@ public actor LocalMediaActor: GlobalActor {
         }
     }
 
-    public func queueOfflineProgress(bookId: String, locator: BookLocator, timestamp: Double) async {
+    public func queueOfflineProgress(bookId: String, locator: BookLocator, timestamp: Double) async
+    {
         let wasInQueue = pendingProgressQueue.contains { $0.bookId == bookId }
         let queueCountBefore = pendingProgressQueue.count
         pendingProgressQueue.removeAll { $0.bookId == bookId }
@@ -131,7 +138,9 @@ public actor LocalMediaActor: GlobalActor {
         )
         pendingProgressQueue.append(pending)
 
-        debugLog("[LocalMediaActor] queueOfflineProgress: bookId: \(bookId), wasInQueue: \(wasInQueue), queueCount: \(queueCountBefore) -> \(pendingProgressQueue.count)")
+        debugLog(
+            "[LocalMediaActor] queueOfflineProgress: bookId: \(bookId), wasInQueue: \(wasInQueue), queueCount: \(queueCountBefore) -> \(pendingProgressQueue.count)"
+        )
 
         await saveProgressQueue()
 
@@ -185,7 +194,9 @@ public actor LocalMediaActor: GlobalActor {
         pendingProgressQueue.removeAll { $0.bookId == bookId }
         let queueCountAfter = pendingProgressQueue.count
 
-        debugLog("[LocalMediaActor] removeSyncedProgress: bookId: \(bookId), wasInQueue: \(wasInQueue), queueCount: \(queueCountBefore) -> \(queueCountAfter)")
+        debugLog(
+            "[LocalMediaActor] removeSyncedProgress: bookId: \(bookId), wasInQueue: \(wasInQueue), queueCount: \(queueCountBefore) -> \(queueCountAfter)"
+        )
 
         await saveProgressQueue()
         viewModelUpdateCallback?()
@@ -195,7 +206,9 @@ public actor LocalMediaActor: GlobalActor {
         if let index = pendingProgressQueue.firstIndex(where: { $0.bookId == bookId }) {
             let oldCount = pendingProgressQueue[index].attemptCount
             pendingProgressQueue[index].attemptCount += 1
-            debugLog("[LocalMediaActor] incrementSyncAttempt: bookId: \(bookId), attemptCount: \(oldCount) -> \(pendingProgressQueue[index].attemptCount)")
+            debugLog(
+                "[LocalMediaActor] incrementSyncAttempt: bookId: \(bookId), attemptCount: \(oldCount) -> \(pendingProgressQueue[index].attemptCount)"
+            )
             await saveProgressQueue()
         } else {
             debugLog("[LocalMediaActor] incrementSyncAttempt: bookId: \(bookId) NOT FOUND in queue")
@@ -575,7 +588,9 @@ public actor LocalMediaActor: GlobalActor {
                         do {
                             try await scanForMedia()
                         } catch {
-                            debugLog("[LocalMediaActor] scanForMedia post-download failed: \(error)")
+                            debugLog(
+                                "[LocalMediaActor] scanForMedia post-download failed: \(error)"
+                            )
                         }
                         return
                 }

@@ -161,7 +161,9 @@ struct iOSBookDetailView: View {
         outputFormatter.timeZone = TimeZone.current
         outputFormatter.locale = Locale.current
 
-        let timeZoneName = TimeZone.current.localizedName(for: .shortStandard, locale: .current) ?? TimeZone.current.identifier
+        let timeZoneName =
+            TimeZone.current.localizedName(for: .shortStandard, locale: .current)
+            ?? TimeZone.current.identifier
         return "\(outputFormatter.string(from: date)) (\(timeZoneName))"
     }
 }

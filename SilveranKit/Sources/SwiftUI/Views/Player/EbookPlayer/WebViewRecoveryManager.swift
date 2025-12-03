@@ -29,7 +29,9 @@ final class WebViewRecoveryManager {
         savedChapterId = vm.progressManager?.selectedChapterId
         savedFraction = vm.progressManager?.chapterSeekBarValue ?? 0
 
-        debugLog("[RecoveryManager] Saved view state: chapter=\(savedChapterId ?? -1), fraction=\(savedFraction)")
+        debugLog(
+            "[RecoveryManager] Saved view state: chapter=\(savedChapterId ?? -1), fraction=\(savedFraction)"
+        )
 
         let path = vm.extractedEbookPath
         vm.extractedEbookPath = nil
@@ -43,12 +45,15 @@ final class WebViewRecoveryManager {
     func handleBookStructureReadyIfRecovering() -> Bool {
         guard isRecovering else { return false }
 
-        debugLog("[RecoveryManager] Book reloaded, restoring view position to chapter \(savedChapterId ?? -1), fraction \(savedFraction)")
+        debugLog(
+            "[RecoveryManager] Book reloaded, restoring view position to chapter \(savedChapterId ?? -1), fraction \(savedFraction)"
+        )
 
         Task { @MainActor in
             if let chapterId = savedChapterId,
-               let vm = viewModel,
-               chapterId < vm.bookStructure.count {
+                let vm = viewModel,
+                chapterId < vm.bookStructure.count
+            {
                 try? await bridge?.sendJsGoToFractionInSectionCommand(
                     sectionIndex: chapterId,
                     fraction: savedFraction

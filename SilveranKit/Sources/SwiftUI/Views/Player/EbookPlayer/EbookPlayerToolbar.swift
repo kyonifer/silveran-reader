@@ -36,7 +36,11 @@ struct EbookPlayerToolbar: ToolbarContent {
                         }
                 }
                 .buttonStyle(.plain)
-                .help(viewModel.isSynced ? "Audio and view are synced - click to detach" : "Audio and view are detached - click to sync")
+                .help(
+                    viewModel.isSynced
+                        ? "Audio and view are synced - click to detach"
+                        : "Audio and view are detached - click to sync"
+                )
             }
         }
         ToolbarItem(id: "search-toggle") {

@@ -133,28 +133,45 @@ public final class MediaViewModel {
                         debugLog("[MediaViewModel] Callback self is nil")
                         return
                     }
-                    debugLog("[MediaViewModel] Observer callback triggered - fetching updated metadata")
+                    debugLog(
+                        "[MediaViewModel] Observer callback triggered - fetching updated metadata"
+                    )
                     Task { @MainActor [weak self] in
                         guard let self else { return }
                         await self.refreshMetadata()
                     }
                 }
 
-                await StorytellerActor.shared.registerSyncNotificationCallback { @MainActor [weak self] synced, failed in
+                await StorytellerActor.shared.registerSyncNotificationCallback {
+                    @MainActor [weak self] synced, failed in
                     guard let self else { return }
                     if synced > 0 {
-                        let message = synced == 1 ? "Synced reading progress for 1 book" : "Synced reading progress for \(synced) books"
-                        self.showSyncNotification(SyncNotification(message: message, type: .success))
+                        let message =
+                            synced == 1
+                            ? "Synced reading progress for 1 book"
+                            : "Synced reading progress for \(synced) books"
+                        self.showSyncNotification(
+                            SyncNotification(message: message, type: .success)
+                        )
                     } else if failed > 0 {
-                        self.showSyncNotification(SyncNotification(message: "Failed to sync \(failed) book(s)", type: .error))
+                        self.showSyncNotification(
+                            SyncNotification(
+                                message: "Failed to sync \(failed) book(s)",
+                                type: .error
+                            )
+                        )
                     }
                 }
 
                 let initialStatus = await StorytellerActor.shared.connectionStatus
-                debugLog("[MediaViewModel] init: Setting initial connectionStatus to \(initialStatus)")
+                debugLog(
+                    "[MediaViewModel] init: Setting initial connectionStatus to \(initialStatus)"
+                )
                 await MainActor.run { [weak self] in
                     self?.connectionStatus = initialStatus
-                    debugLog("[MediaViewModel] init: connectionStatus is now \(self?.connectionStatus ?? .disconnected)")
+                    debugLog(
+                        "[MediaViewModel] init: connectionStatus is now \(self?.connectionStatus ?? .disconnected)"
+                    )
                 }
 
                 await self?.refreshMetadata()
@@ -171,7 +188,9 @@ public final class MediaViewModel {
         let paths = await LocalMediaActor.shared.localStorytellerBookPaths
         let pendingSyncs = await LocalMediaActor.shared.getAllPendingProgressSyncs()
 
-        debugLog("[MediaViewModel] refreshMetadata: Status: \(status), pendingSyncs count: \(pendingSyncs.count)")
+        debugLog(
+            "[MediaViewModel] refreshMetadata: Status: \(status), pendingSyncs count: \(pendingSyncs.count)"
+        )
         if !pendingSyncs.isEmpty {
             let bookIds = pendingSyncs.map { $0.bookId }.joined(separator: ", ")
             debugLog("[MediaViewModel] refreshMetadata: Pending bookIds: [\(bookIds)]")
@@ -180,23 +199,33 @@ public final class MediaViewModel {
         let metadata: [BookMetadata]
         if status == .connected {
             metadata = await StorytellerActor.shared.libraryMetadata
-            debugLog("[MediaViewModel] refreshMetadata: Using online metadata (\(metadata.count) books)")
+            debugLog(
+                "[MediaViewModel] refreshMetadata: Using online metadata (\(metadata.count) books)"
+            )
         } else {
             let localMetadata = await LocalMediaActor.shared.localStorytellerMetadata
             let standaloneMetadata = await LocalMediaActor.shared.localStandaloneMetadata
             metadata = localMetadata + standaloneMetadata
-            debugLog("[MediaViewModel] refreshMetadata: Using offline metadata (\(metadata.count) books)")
+            debugLog(
+                "[MediaViewModel] refreshMetadata: Using offline metadata (\(metadata.count) books)"
+            )
         }
 
         booksWithUnsyncedProgress = Set(pendingSyncs.map { $0.bookId })
-        debugLog("[MediaViewModel] refreshMetadata: Set booksWithUnsyncedProgress to \(booksWithUnsyncedProgress.count) books")
+        debugLog(
+            "[MediaViewModel] refreshMetadata: Set booksWithUnsyncedProgress to \(booksWithUnsyncedProgress.count) books"
+        )
 
         applyLibraryMetadata(metadata)
         cachedBookPaths = paths
         connectionStatus = status
         lastNetworkOpSucceeded = await StorytellerActor.shared.lastNetworkOpSucceeded
-        debugLog("[MediaViewModel] refreshMetadata: connectionStatus=\(status), lastNetworkOpSucceeded=\(String(describing: lastNetworkOpSucceeded))")
-        debugLog("[MediaViewModel] refreshMetadata: Complete - library has \(library.bookMetaData.count) books")
+        debugLog(
+            "[MediaViewModel] refreshMetadata: connectionStatus=\(status), lastNetworkOpSucceeded=\(String(describing: lastNetworkOpSucceeded))"
+        )
+        debugLog(
+            "[MediaViewModel] refreshMetadata: Complete - library has \(library.bookMetaData.count) books"
+        )
 
         await loadCachedCoversFromDisk()
     }
@@ -230,7 +259,9 @@ public final class MediaViewModel {
                     return
                 }
 
-                debugLog("[MediaViewModel] Periodic metadata refresh (interval: \(Int(refreshInterval))s)")
+                debugLog(
+                    "[MediaViewModel] Periodic metadata refresh (interval: \(Int(refreshInterval))s)"
+                )
 
                 let status = await StorytellerActor.shared.connectionStatus
                 if status == .connected {
@@ -299,18 +330,27 @@ public final class MediaViewModel {
     private func applyLibraryMetadata(_ metadata: [BookMetadata]) {
         debugLog("[MediaViewModel] applyLibraryMetadata called with \(metadata.count) books")
 
-        if let debugBook = metadata.first(where: { $0.id == "14749693-3d16-4076-b3b3-c8593040fa74" }) {
+        if let debugBook = metadata.first(where: { $0.id == "14749693-3d16-4076-b3b3-c8593040fa74" }
+        ) {
             debugLog("[MediaViewModel] Found target book: \(debugBook.title)")
             debugLog("[MediaViewModel]   progress: \(debugBook.progress)")
             debugLog("[MediaViewModel]   position: \(debugBook.position != nil ? "exists" : "nil")")
             if let position = debugBook.position {
-                debugLog("[MediaViewModel]   locator: \(position.locator != nil ? "exists" : "nil")")
+                debugLog(
+                    "[MediaViewModel]   locator: \(position.locator != nil ? "exists" : "nil")"
+                )
                 if let locator = position.locator {
                     debugLog("[MediaViewModel]     href: \(locator.href)")
-                    debugLog("[MediaViewModel]     locations: \(locator.locations != nil ? "exists" : "nil")")
+                    debugLog(
+                        "[MediaViewModel]     locations: \(locator.locations != nil ? "exists" : "nil")"
+                    )
                     if let locations = locator.locations {
-                        debugLog("[MediaViewModel]       totalProgression: \(locations.totalProgression ?? -1)")
-                        debugLog("[MediaViewModel]       progression: \(locations.progression ?? -1)")
+                        debugLog(
+                            "[MediaViewModel]       totalProgression: \(locations.totalProgression ?? -1)"
+                        )
+                        debugLog(
+                            "[MediaViewModel]       progression: \(locations.progression ?? -1)"
+                        )
                     }
                 }
             }
