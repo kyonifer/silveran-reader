@@ -26,6 +26,7 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.books
         INFOPLIST_KEY_NSLocalNetworkUsageDescription: "Silveran Reader needs local network access to connect to your Storyteller server."
+        INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
         MARKETING_VERSION: 0.1
         PRODUCT_BUNDLE_IDENTIFIER: com.kyonifer.SilveranReader
         #INFOPLIST_KEY_CFBundleDisplayName: Silveran Reader
@@ -110,6 +111,7 @@ targets:
           - UIInterfaceOrientationLandscapeRight
         UIBackgroundModes:
           - audio
+        ITSAppUsesNonExemptEncryption: false
     sources:
       - path: XCodeWrapper
         excludes:

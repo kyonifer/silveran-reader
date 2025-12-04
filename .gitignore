@@ -17,3 +17,4 @@ Package.resolved
 !SilveranKit/Package.resolved
 .cache
 icon*.png
+XCodeWrapper/Info-iOS.plist
