@@ -97,6 +97,7 @@ public actor AudiobookActor {
     private var artworkImage: UIImage?
     private var remoteCommandsConfigured = false
     private var nowPlayingUpdateTimer: Timer?
+    private var audioSessionObserversConfigured = false
     #endif
 
     private init() {}
@@ -256,9 +257,8 @@ public actor AudiobookActor {
 
         do {
             #if os(iOS)
-            let audioSession = AVAudioSession.sharedInstance()
-            try audioSession.setCategory(.playback, mode: .default, options: [])
-            try audioSession.setActive(true)
+            setupAudioSession()
+            configureAudioSessionObservers()
             #endif
 
             let player = try AVAudioPlayer(contentsOf: url)
@@ -284,6 +284,9 @@ public actor AudiobookActor {
             }
         }
 
+        #if os(iOS)
+        ensureAudioSessionActive()
+        #endif
         player?.play()
         await notifyStateChange()
     }
@@ -496,6 +499,134 @@ public actor AudiobookActor {
         debugLog("[AudiobookActor] Remote commands configured")
     }
 
+    // MARK: - Audio Session Management
+
+    private func setupAudioSession() {
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playback, mode: .spokenAudio, options: [])
+            try session.setActive(true)
+            debugLog("[AudiobookActor] Audio session configured for playback")
+        } catch {
+            debugLog("[AudiobookActor] Failed to configure audio session: \(error)")
+        }
+    }
+
+    private func ensureAudioSessionActive() {
+        do {
+            try AVAudioSession.sharedInstance().setActive(true)
+            debugLog("[AudiobookActor] Audio session re-activated before play")
+        } catch {
+            debugLog("[AudiobookActor] Failed to re-activate audio session: \(error)")
+        }
+    }
+
+    private func configureAudioSessionObservers() {
+        guard !audioSessionObserversConfigured else { return }
+
+        let session = AVAudioSession.sharedInstance()
+
+        NotificationCenter.default.addObserver(
+            forName: AVAudioSession.interruptionNotification,
+            object: session,
+            queue: nil
+        ) { [weak self] notification in
+            self?.handleAudioSessionInterruption(notification)
+        }
+
+        NotificationCenter.default.addObserver(
+            forName: AVAudioSession.routeChangeNotification,
+            object: session,
+            queue: nil
+        ) { [weak self] notification in
+            self?.handleAudioRouteChange(notification)
+        }
+
+        audioSessionObserversConfigured = true
+        debugLog("[AudiobookActor] Audio session observers registered")
+    }
+
+    nonisolated private func handleAudioSessionInterruption(_ notification: Notification) {
+        guard let userInfo = notification.userInfo,
+            let typeValue = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,
+            let type = AVAudioSession.InterruptionType(rawValue: typeValue)
+        else {
+            return
+        }
+
+        let shouldResume: Bool
+        if type == .ended,
+            let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt
+        {
+            let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
+            shouldResume = options.contains(.shouldResume)
+        } else {
+            shouldResume = false
+        }
+
+        Task { @AudiobookActor in
+            switch type {
+                case .began:
+                    debugLog("[AudiobookActor] Audio session interrupted - pausing")
+                    await AudiobookActor.shared.pause()
+                case .ended:
+                    if shouldResume {
+                        debugLog("[AudiobookActor] Audio session interruption ended - resuming")
+                        do {
+                            try await AudiobookActor.shared.play()
+                        } catch {
+                            debugLog("[AudiobookActor] Failed to resume after interruption: \(error)")
+                        }
+                    } else {
+                        debugLog("[AudiobookActor] Audio session interruption ended - no resume")
+                    }
+                @unknown default:
+                    break
+            }
+        }
+    }
+
+    nonisolated private func handleAudioRouteChange(_ notification: Notification) {
+        guard let userInfo = notification.userInfo,
+            let reasonValue = userInfo[AVAudioSessionRouteChangeReasonKey] as? UInt,
+            let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue)
+        else {
+            return
+        }
+
+        Task { @AudiobookActor in
+            switch reason {
+                case .oldDeviceUnavailable:
+                    debugLog("[AudiobookActor] Audio route lost (device unavailable) - pausing")
+                    await AudiobookActor.shared.pause()
+
+                case .newDeviceAvailable:
+                    debugLog("[AudiobookActor] New audio device available")
+
+                case .routeConfigurationChange:
+                    debugLog("[AudiobookActor] Audio route configuration changed")
+
+                default:
+                    debugLog("[AudiobookActor] Audio route change reason: \(reason.rawValue)")
+            }
+        }
+    }
+
+    private func removeAudioSessionObservers() {
+        NotificationCenter.default.removeObserver(
+            self,
+            name: AVAudioSession.interruptionNotification,
+            object: nil
+        )
+        NotificationCenter.default.removeObserver(
+            self,
+            name: AVAudioSession.routeChangeNotification,
+            object: nil
+        )
+        audioSessionObserversConfigured = false
+        debugLog("[AudiobookActor] Audio session observers removed")
+    }
+
     private func updateNowPlayingInfo() {
         guard let player = player else {
             MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
@@ -616,6 +747,7 @@ public actor AudiobookActor {
         #if os(iOS)
         stopNowPlayingUpdateTimer()
         clearRemoteCommands()
+        removeAudioSessionObservers()
         artworkImage = nil
 
         do {
