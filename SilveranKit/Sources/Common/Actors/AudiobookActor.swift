@@ -95,7 +95,6 @@ public actor AudiobookActor {
 
     #if os(iOS)
     private var artworkImage: UIImage?
-    private var remoteCommandsConfigured = false
     private var nowPlayingUpdateTimer: Timer?
     private var audioSessionObserversConfigured = false
     #endif
@@ -267,7 +266,7 @@ public actor AudiobookActor {
             self.player = player
 
             #if os(iOS)
-            configureRemoteCommands()
+            await configureRemoteCommands()
             updateNowPlayingInfo()
             startNowPlayingUpdateTimer()
             #endif
@@ -412,15 +411,21 @@ public actor AudiobookActor {
     }
 
     #if os(iOS)
+    @MainActor
     private func configureRemoteCommands() {
-        guard !remoteCommandsConfigured else { return }
-
         let commandCenter = MPRemoteCommandCenter.shared()
+
+        commandCenter.playCommand.removeTarget(nil)
+        commandCenter.pauseCommand.removeTarget(nil)
+        commandCenter.skipForwardCommand.removeTarget(nil)
+        commandCenter.skipBackwardCommand.removeTarget(nil)
+        commandCenter.changePlaybackPositionCommand.removeTarget(nil)
 
         commandCenter.playCommand.isEnabled = true
         commandCenter.playCommand.addTarget { _ in
             Task { @AudiobookActor in
                 do {
+                    debugLog("[AudiobookActor] Remote play command received")
                     try await AudiobookActor.shared.play()
                 } catch {
                     debugLog("[AudiobookActor] Remote play failed: \(error)")
@@ -432,19 +437,8 @@ public actor AudiobookActor {
         commandCenter.pauseCommand.isEnabled = true
         commandCenter.pauseCommand.addTarget { _ in
             Task { @AudiobookActor in
+                debugLog("[AudiobookActor] Remote pause command received")
                 await AudiobookActor.shared.pause()
-            }
-            return .success
-        }
-
-        commandCenter.togglePlayPauseCommand.isEnabled = true
-        commandCenter.togglePlayPauseCommand.addTarget { _ in
-            Task { @AudiobookActor in
-                do {
-                    try await AudiobookActor.shared.togglePlayPause()
-                } catch {
-                    debugLog("[AudiobookActor] Remote toggle play/pause failed: \(error)")
-                }
             }
             return .success
         }
@@ -453,6 +447,7 @@ public actor AudiobookActor {
         commandCenter.skipForwardCommand.preferredIntervals = [15]
         commandCenter.skipForwardCommand.addTarget { _ in
             Task { @AudiobookActor in
+                debugLog("[AudiobookActor] Remote skip forward command received")
                 await AudiobookActor.shared.skipForward()
             }
             return .success
@@ -462,23 +457,8 @@ public actor AudiobookActor {
         commandCenter.skipBackwardCommand.preferredIntervals = [15]
         commandCenter.skipBackwardCommand.addTarget { _ in
             Task { @AudiobookActor in
+                debugLog("[AudiobookActor] Remote skip backward command received")
                 await AudiobookActor.shared.skipBackward()
-            }
-            return .success
-        }
-
-        commandCenter.nextTrackCommand.isEnabled = true
-        commandCenter.nextTrackCommand.addTarget { _ in
-            Task { @AudiobookActor in
-                await AudiobookActor.shared.skipToNextChapter()
-            }
-            return .success
-        }
-
-        commandCenter.previousTrackCommand.isEnabled = true
-        commandCenter.previousTrackCommand.addTarget { _ in
-            Task { @AudiobookActor in
-                await AudiobookActor.shared.skipToPreviousChapter()
             }
             return .success
         }
@@ -488,14 +468,14 @@ public actor AudiobookActor {
             guard let positionEvent = event as? MPChangePlaybackPositionCommandEvent else {
                 return .commandFailed
             }
-            let position = positionEvent.positionTime
+            let positionInChapter = positionEvent.positionTime
             Task { @AudiobookActor in
-                await AudiobookActor.shared.seek(to: position)
+                debugLog("[AudiobookActor] Remote seek command received: \(positionInChapter)")
+                await AudiobookActor.shared.seekWithinCurrentChapter(to: positionInChapter)
             }
             return .success
         }
 
-        remoteCommandsConfigured = true
         debugLog("[AudiobookActor] Remote commands configured")
     }
 
@@ -633,29 +613,27 @@ public actor AudiobookActor {
             return
         }
 
-        var nowPlayingInfo: [String: Any] = [
-            MPMediaItemPropertyPlaybackDuration: player.duration,
-            MPNowPlayingInfoPropertyElapsedPlaybackTime: player.currentTime,
-            MPNowPlayingInfoPropertyPlaybackRate: Double(player.rate != 0 ? player.rate : 1.0),
-            MPNowPlayingInfoPropertyDefaultPlaybackRate: 1.0,
-        ]
+        var nowPlayingInfo = [String: Any]()
 
-        if let title = metadata?.title {
-            nowPlayingInfo[MPMediaItemPropertyTitle] = title
-        }
-
-        if let author = metadata?.author {
-            nowPlayingInfo[MPMediaItemPropertyArtist] = author
-        }
+        nowPlayingInfo[MPMediaItemPropertyTitle] = metadata?.title ?? "Audiobook"
+        nowPlayingInfo[MPMediaItemPropertyAlbumTitle] = metadata?.author ?? ""
 
         if let chapters = metadata?.chapters,
             let currentIndex = getCurrentChapterIndexSync(),
             currentIndex < chapters.count
         {
             let chapter = chapters[currentIndex]
-            nowPlayingInfo[MPMediaItemPropertyTitle] =
-                "\(metadata?.title ?? "Audiobook") - \(chapter.title)"
+            let timeInChapter = player.currentTime - chapter.startTime
+
+            nowPlayingInfo[MPMediaItemPropertyArtist] = chapter.title
+            nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = chapter.duration
+            nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = max(0, timeInChapter)
+        } else {
+            nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = player.duration
+            nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = player.currentTime
         }
+
+        nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = player.isPlaying ? Double(player.rate) : 0.0
 
         if let artwork = artworkImage {
             nowPlayingInfo[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(
@@ -687,16 +665,32 @@ public actor AudiobookActor {
 
         commandCenter.playCommand.removeTarget(nil)
         commandCenter.pauseCommand.removeTarget(nil)
-        commandCenter.togglePlayPauseCommand.removeTarget(nil)
         commandCenter.skipForwardCommand.removeTarget(nil)
         commandCenter.skipBackwardCommand.removeTarget(nil)
-        commandCenter.nextTrackCommand.removeTarget(nil)
-        commandCenter.previousTrackCommand.removeTarget(nil)
         commandCenter.changePlaybackPositionCommand.removeTarget(nil)
 
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
-        remoteCommandsConfigured = false
         debugLog("[AudiobookActor] Remote commands cleared")
+    }
+
+    public func seekWithinCurrentChapter(to timeInChapter: TimeInterval) async {
+        guard let chapters = metadata?.chapters,
+            let currentIndex = await getCurrentChapterIndex(),
+            currentIndex < chapters.count
+        else {
+            debugLog("[AudiobookActor] seekWithinCurrentChapter - no valid chapter")
+            return
+        }
+
+        let chapter = chapters[currentIndex]
+        // Clamp to stay strictly within chapter bounds
+        let minTime = 0.1
+        let maxTime = max(0.1, chapter.duration - 0.5)
+        let clampedTime = max(minTime, min(timeInChapter, maxTime))
+        let absoluteTime = chapter.startTime + clampedTime
+
+        debugLog("[AudiobookActor] seekWithinCurrentChapter: \(timeInChapter)s in chapter \(currentIndex) (\(chapter.title)) -> \(absoluteTime)s absolute")
+        await seek(to: absoluteTime)
     }
 
     public func skipToNextChapter() async {
@@ -718,7 +712,9 @@ public actor AudiobookActor {
     private func startNowPlayingUpdateTimer() {
         stopNowPlayingUpdateTimer()
 
-        let timer = Timer(timeInterval: 30.0, repeats: true) { _ in
+        // Update Now Playing every second to keep the lock screen UI in sync,
+        // especially for chapter transitions during playback
+        let timer = Timer(timeInterval: 1.0, repeats: true) { _ in
             Task { @AudiobookActor in
                 await AudiobookActor.shared.refreshNowPlayingInfo()
             }
@@ -728,6 +724,7 @@ public actor AudiobookActor {
     }
 
     private func refreshNowPlayingInfo() {
+        guard player?.isPlaying == true else { return }
         updateNowPlayingInfo()
     }
 
