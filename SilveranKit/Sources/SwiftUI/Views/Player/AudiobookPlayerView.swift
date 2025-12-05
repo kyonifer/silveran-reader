@@ -16,7 +16,6 @@ public struct AudiobookPlayerView: View {
     @State private var sleepTimerActive = false
     @State private var sleepTimerRemaining: TimeInterval? = nil
     @State private var sleepTimerType: SleepTimerType? = nil
-    @State private var isStatsExpanded = false
     @State private var settingsInitialized = false
 
     @State private var metadata: AudiobookMetadata?
@@ -58,7 +57,6 @@ public struct AudiobookPlayerView: View {
                         let config = await SettingsActor.shared.config
                         playbackRate = config.playback.defaultPlaybackSpeed
                         volume = config.playback.defaultVolume
-                        isStatsExpanded = config.playback.statsExpanded
                         settingsInitialized = true
                     }
                 }
@@ -110,20 +108,6 @@ public struct AudiobookPlayerView: View {
                     }
                 }
             }
-            .onChange(of: isStatsExpanded) { _, newValue in
-                if settingsInitialized {
-                    Task {
-                        do {
-                            try await SettingsActor.shared.updateConfig(statsExpanded: newValue)
-                            debugLog("[AudiobookPlayerView] Auto-saved stats expanded: \(newValue)")
-                        } catch {
-                            debugLog(
-                                "[AudiobookPlayerView] Failed to auto-save stats expanded: \(error)"
-                            )
-                        }
-                    }
-                }
-            }
     }
 
     private var readingSidebarView: some View {
@@ -148,7 +132,6 @@ public struct AudiobookPlayerView: View {
             ),
             mode: .audiobook,
             chapterProgress: $chapterProgress,
-            isStatsExpanded: $isStatsExpanded,
             chapters: chapters,
             progressData: progressMessage.map { msg in
                 ProgressData(

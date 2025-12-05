@@ -10,14 +10,9 @@ public final class SettingsViewModel {
     public var marginTopBottom: Double = 8
     public var wordSpacing: Double = 0
     public var letterSpacing: Double = 0
-    public var highlightColor: String = "#333333"
-    #if os(iOS)
-    public var backgroundColor: String? = kDefaultBackgroundColorIOS
-    public var foregroundColor: String? = kDefaultForegroundColorIOS
-    #else
+    public var highlightColor: String? = nil
     public var backgroundColor: String? = nil
     public var foregroundColor: String? = nil
-    #endif
     public var customCSS: String? = nil
     public var enableMarginClickNavigation: Bool = true
     #if os(iOS)
@@ -42,6 +37,9 @@ public final class SettingsViewModel {
     public var showTimeRemainingInChapter: Bool = true
     public var showPageNumber: Bool = true
     public var overlayTransparency: Double = 0.8
+    #if os(iOS)
+    public var alwaysShowMiniPlayer: Bool = false
+    #endif
 
     public var progressSyncIntervalSeconds: Double = 30
     public var metadataRefreshIntervalSeconds: Double = 300
@@ -106,6 +104,9 @@ public final class SettingsViewModel {
         showTimeRemainingInChapter = config.readingBar.showTimeRemainingInChapter
         showPageNumber = config.readingBar.showPageNumber
         overlayTransparency = config.readingBar.overlayTransparency
+        #if os(iOS)
+        alwaysShowMiniPlayer = config.readingBar.alwaysShowMiniPlayer
+        #endif
 
         progressSyncIntervalSeconds = config.sync.progressSyncIntervalSeconds
         metadataRefreshIntervalSeconds = config.sync.metadataRefreshIntervalSeconds
@@ -152,8 +153,15 @@ public final class SettingsViewModel {
             showTimeRemainingInChapter: showTimeRemainingInChapter,
             showPageNumber: showPageNumber,
             overlayTransparency: overlayTransparency,
+            alwaysShowMiniPlayer: alwaysShowMiniPlayerValue,
             progressSyncIntervalSeconds: progressSyncIntervalSeconds,
             metadataRefreshIntervalSeconds: metadataRefreshIntervalSeconds
         )
     }
+
+    #if os(iOS)
+    private var alwaysShowMiniPlayerValue: Bool { alwaysShowMiniPlayer }
+    #else
+    private var alwaysShowMiniPlayerValue: Bool { false }
+    #endif
 }

@@ -117,31 +117,24 @@ func formatTime(_ time: TimeInterval) -> String {
 }
 
 func formatOptionalTime(_ time: TimeInterval?) -> String {
-    guard let time, time.isFinite else { return "--:--" }
+    guard let time, time.isFinite else { return "—:—" }
     return formatTime(time)
 }
 
 func formatTimeHoursMinutes(_ time: TimeInterval?) -> String {
-    guard let time, time.isFinite else { return "--h--m" }
+    guard let time, time.isFinite else { return "—h—m" }
     let totalSeconds = max(Int(time.rounded()), 0)
     let hours = totalSeconds / 3600
     let minutes = (totalSeconds % 3600) / 60
-    if hours > 0 {
-        return "\(hours)h\(minutes)m"
-    } else {
-        return "\(minutes)m"
-    }
+    return "\(hours)h\(minutes)m"
 }
 
-func formatTimeMinutesSeconds(_ time: TimeInterval) -> String {
+func formatTimeMinutesSeconds(_ time: TimeInterval?) -> String {
+    guard let time, time.isFinite else { return "—m—s" }
     let totalSeconds = max(Int(time.rounded()), 0)
     let minutes = totalSeconds / 60
     let seconds = totalSeconds % 60
-    if minutes > 0 {
-        return "\(minutes)m\(seconds)s"
-    } else {
-        return "\(seconds)s"
-    }
+    return "\(minutes)m\(seconds)s"
 }
 
 func formatPlaybackRate(_ rate: Double) -> String {

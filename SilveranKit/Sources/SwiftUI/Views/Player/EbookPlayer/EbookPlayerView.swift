@@ -45,6 +45,8 @@ public struct EbookPlayerView: View {
         }
         .background(readerBackgroundColor)
         #if os(iOS)
+        .statusBarHidden(!viewModel.isTopBarVisible)
+        .persistentSystemOverlays(viewModel.isTopBarVisible ? .automatic : .hidden)
         .navigationBarHidden(true)
         .toolbar(.hidden, for: .tabBar)
         .onReceive(NotificationCenter.default.publisher(for: .appWillResignActive)) { _ in
@@ -66,11 +68,6 @@ public struct EbookPlayerView: View {
                     backgroundTask = .invalid
                 }
             }
-        }
-        .sheet(isPresented: $viewModel.showAudioSheet) {
-            audiobookSidebar
-            .presentationDetents([.large])
-            .presentationDragIndicator(.visible)
         }
         #else
         .onKeyPress(.leftArrow) {
@@ -163,10 +160,20 @@ public struct EbookPlayerView: View {
         #endif
     }
 
+    #if os(iOS)
+    private var webViewBackgroundColor: Color {
+        if let bgColor = viewModel.settingsVM.backgroundColor, let color = Color(hex: bgColor) {
+            return color
+        }
+        let defaultHex = colorScheme == .dark ? kDefaultBackgroundColorIOSDark : kDefaultBackgroundColorIOSLight
+        return Color(hex: defaultHex) ?? .white
+    }
+    #endif
+
     private var readerContent: some View {
         ZStack(alignment: .bottom) {
             #if os(iOS)
-            Color(viewModel.settingsVM.backgroundColor.flatMap { Color(hex: $0) } ?? .white)
+            webViewBackgroundColor
                 .ignoresSafeArea(.all)
             #endif
 
@@ -210,18 +217,10 @@ public struct EbookPlayerView: View {
             }
 
             #if os(iOS)
-            let shouldShowBar = !viewModel.showAudioSidebar && viewModel.isReadingBarVisible
+            let alwaysShowMini = viewModel.settingsVM.alwaysShowMiniPlayer
             let shouldShowStatsOverlay =
-                !viewModel.showAudioSidebar && !viewModel.isReadingBarVisible
-            #else
-            let shouldShowBar = viewModel.settingsVM.enableReadingBar && !viewModel.showAudioSidebar
-            #endif
+                !viewModel.showAudioSidebar && !viewModel.isTopBarVisible
 
-            if shouldShowBar {
-                readingBottomBar
-            }
-
-            #if os(iOS)
             if shouldShowStatsOverlay {
                 EbookOverlayIos(
                     showProgress: viewModel.settingsVM.showProgress,
@@ -236,6 +235,7 @@ public struct EbookPlayerView: View {
                     totalPages: viewModel.progressManager?.chapterTotalPages,
                     isPlaying: viewModel.mediaOverlayManager?.isPlaying ?? false,
                     hasAudioNarration: viewModel.hasAudioNarration,
+                    positionAtTop: alwaysShowMini,
                     onTogglePlaying: {
                         Task { await viewModel.progressManager?.togglePlaying() }
                     }
@@ -243,27 +243,39 @@ public struct EbookPlayerView: View {
                 .transition(.opacity)
             }
 
-            if viewModel.isReadingBarVisible {
+            if viewModel.isTopBarVisible {
                 EbookPlayerTopToolbar(
                     hasAudioNarration: viewModel.hasAudioNarration,
                     playbackSpeed: viewModel.settingsVM.defaultPlaybackSpeed,
                     chapters: viewModel.chapterList,
                     selectedChapterId: viewModel.selectedChapterHref,
                     isSynced: viewModel.isSynced,
+                    sleepTimerActive: viewModel.mediaOverlayManager?.sleepTimerActive ?? false,
+                    sleepTimerRemaining: viewModel.mediaOverlayManager?.sleepTimerRemaining,
+                    sleepTimerType: viewModel.mediaOverlayManager?.sleepTimerType,
                     showCustomizePopover: $viewModel.showCustomizePopover,
                     showSearchSheet: $viewModel.showSearchPanel,
                     searchManager: viewModel.searchManager,
                     onDismiss: { dismiss() },
-                    onPlaybackRateChange: viewModel.handlePlaybackRateChange,
                     onChapterSelected: viewModel.handleChapterSelectionByHref,
                     onSyncToggle: { enabled in
                         viewModel.isSynced = enabled
                         viewModel.mediaOverlayManager?.setSyncMode(enabled: enabled)
                     },
                     onSearchResultSelected: viewModel.handleSearchResultNavigation,
+                    onSleepTimerStart: viewModel.handleSleepTimerStart,
+                    onSleepTimerCancel: viewModel.handleSleepTimerCancel,
                     settingsVM: viewModel.settingsVM
                 )
                 .transition(.opacity)
+            }
+
+            draggableAudioCard
+            #else
+            let shouldShowBar = viewModel.settingsVM.enableReadingBar && !viewModel.showAudioSidebar
+
+            if shouldShowBar {
+                readingBottomBar
             }
             #endif
         }
@@ -281,6 +293,70 @@ public struct EbookPlayerView: View {
             leading: window.safeAreaInsets.left,
             bottom: window.safeAreaInsets.bottom,
             trailing: window.safeAreaInsets.right
+        )
+    }
+
+    @ViewBuilder
+    private var draggableAudioCard: some View {
+        let pm = viewModel.progressManager
+        let mom = viewModel.mediaOverlayManager
+        let currentChapterTitle = pm?.selectedChapterId.flatMap { index in
+            viewModel.bookStructure[safe: index]?.label
+        }
+        let alwaysShow = viewModel.settingsVM.alwaysShowMiniPlayer
+        let isPresentedBinding = Binding(
+            get: { alwaysShow || self.viewModel.isReadingBarVisible },
+            set: { newValue in
+                if !alwaysShow {
+                    self.viewModel.isReadingBarVisible = newValue
+                }
+            }
+        )
+
+        DraggableAudioCard(
+            isPresented: isPresentedBinding,
+            alwaysShow: alwaysShow,
+            collapseTrigger: viewModel.collapseCardTrigger,
+            bookTitle: viewModel.bookData?.metadata.title,
+            coverArt: viewModel.bookData?.coverArt,
+            chapterTitle: currentChapterTitle,
+            isPlaying: mom?.isPlaying ?? false,
+            chapterProgress: viewModel.chapterProgressBinding.wrappedValue,
+            chapterElapsedSeconds: mom?.chapterElapsedSeconds,
+            chapterTotalSeconds: mom?.chapterTotalSeconds,
+            playbackRate: mom?.playbackRate ?? viewModel.settingsVM.defaultPlaybackSpeed,
+            hasAudioNarration: viewModel.hasAudioNarration,
+            chapters: viewModel.chapterList,
+            selectedChapterHref: viewModel.selectedChapterHref,
+            sleepTimerActive: mom?.sleepTimerActive ?? false,
+            sleepTimerRemaining: mom?.sleepTimerRemaining,
+            sleepTimerType: mom?.sleepTimerType,
+            onPlayPause: {
+                Task { await pm?.togglePlaying() }
+            },
+            onSkipBackward: {
+                viewModel.handlePrevSentence()
+            },
+            onSkipForward: {
+                viewModel.handleNextSentence()
+            },
+            onPrevChapter: {
+                viewModel.handlePrevChapter()
+            },
+            onNextChapter: {
+                viewModel.handleNextChapter()
+            },
+            onProgressSeek: viewModel.handleProgressSeek,
+            onPlaybackRateChange: viewModel.handlePlaybackRateChange,
+            onChapterSelected: viewModel.handleChapterSelectionByHref,
+            onSleepTimerStart: viewModel.handleSleepTimerStart,
+            onSleepTimerCancel: viewModel.handleSleepTimerCancel,
+            onDismiss: {
+                viewModel.isReadingBarVisible = false
+            },
+            fullContent: {
+                audiobookSidebar
+            }
         )
     }
     #endif
@@ -408,7 +484,6 @@ public struct EbookPlayerView: View {
             ),
             mode: readingMode,
             chapterProgress: viewModel.chapterProgressBinding,
-            isStatsExpanded: $viewModel.settingsVM.statsExpanded,
             chapters: viewModel.chapterList,
             progressData: progressData,
             onChapterSelected: { href in

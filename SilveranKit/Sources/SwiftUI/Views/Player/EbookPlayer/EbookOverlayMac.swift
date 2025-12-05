@@ -274,16 +274,24 @@ struct EbookOverlayMac: View {
     private var leftStatsColumn: some View {
         VStack(alignment: .leading, spacing: 2) {
             if readingBarConfig.showTimeRemainingInBook, let timeRemaining = bookTimeRemaining {
-                Text("\(formatTimeHoursMinutes(timeRemaining)) in Book")
-                    .font(.caption2.monospacedDigit())
-                    .foregroundColor(.white.opacity(0.7 * readingBarConfig.overlayTransparency))
+                HStack(spacing: 4) {
+                    Image(systemName: "book.fill")
+                        .font(.caption2)
+                    Text(formatTimeHoursMinutes(timeRemaining))
+                        .font(.caption2.monospacedDigit())
+                }
+                .foregroundColor(.white.opacity(0.7 * readingBarConfig.overlayTransparency))
             }
 
             if readingBarConfig.showTimeRemainingInChapter, let timeRemaining = chapterTimeRemaining
             {
-                Text("\(formatTimeMinutesSeconds(timeRemaining)) in Chapter")
-                    .font(.caption2.monospacedDigit())
-                    .foregroundColor(.white.opacity(0.7 * readingBarConfig.overlayTransparency))
+                HStack(spacing: 4) {
+                    Image(systemName: "bookmark.fill")
+                        .font(.caption2)
+                    Text(formatTimeMinutesSeconds(timeRemaining))
+                        .font(.caption2.monospacedDigit())
+                }
+                .foregroundColor(.white.opacity(0.7 * readingBarConfig.overlayTransparency))
             }
         }
     }
@@ -291,17 +299,25 @@ struct EbookOverlayMac: View {
     private var rightStatsColumn: some View {
         VStack(alignment: .trailing, spacing: 2) {
             if readingBarConfig.showProgress, let bookFraction = bookFraction {
-                Text(formatPercent(bookFraction))
-                    .font(.caption2.monospacedDigit())
-                    .foregroundColor(.white.opacity(0.7 * readingBarConfig.overlayTransparency))
+                HStack(spacing: 4) {
+                    Text(formatPercent(bookFraction))
+                        .font(.caption2.monospacedDigit())
+                    Image(systemName: "book.fill")
+                        .font(.caption2)
+                }
+                .foregroundColor(.white.opacity(0.7 * readingBarConfig.overlayTransparency))
             }
 
             if readingBarConfig.showPageNumber, let current = progressData?.chapterCurrentPage,
                 let total = progressData?.chapterTotalPages, total > 0
             {
-                Text("\(current)/\(total)")
-                    .font(.caption2.monospacedDigit())
-                    .foregroundColor(.white.opacity(0.7 * readingBarConfig.overlayTransparency))
+                HStack(spacing: 4) {
+                    Text("\(current)/\(total)")
+                        .font(.caption2.monospacedDigit())
+                    Image(systemName: "bookmark.fill")
+                        .font(.caption2)
+                }
+                .foregroundColor(.white.opacity(0.7 * readingBarConfig.overlayTransparency))
             }
         }
     }

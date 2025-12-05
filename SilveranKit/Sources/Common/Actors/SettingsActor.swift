@@ -1,8 +1,10 @@
 import Foundation
 
 #if os(iOS)
-public let kDefaultBackgroundColorIOS = "#1A1A1A"
-public let kDefaultForegroundColorIOS = "#EEEEEE"
+public let kDefaultBackgroundColorIOSLight = "#FFFFFF"
+public let kDefaultForegroundColorIOSLight = "#000000"
+public let kDefaultBackgroundColorIOSDark = "#1A1A1A"
+public let kDefaultForegroundColorIOSDark = "#EEEEEE"
 #endif
 
 public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
@@ -30,7 +32,7 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
         public var marginTopBottom: Double
         public var wordSpacing: Double
         public var letterSpacing: Double
-        public var highlightColor: String
+        public var highlightColor: String?
         public var backgroundColor: String?
         public var foregroundColor: String?
         public var customCSS: String?
@@ -44,7 +46,7 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
             marginTopBottom: Double = 8,
             wordSpacing: Double = 0,
             letterSpacing: Double = 0,
-            highlightColor: String = "#333333",
+            highlightColor: String? = nil,
             backgroundColor: String? = nil,
             foregroundColor: String? = nil,
             customCSS: String? = nil,
@@ -58,13 +60,11 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
             self.wordSpacing = wordSpacing
             self.letterSpacing = letterSpacing
             self.highlightColor = highlightColor
-            #if os(iOS)
-            self.backgroundColor = backgroundColor ?? kDefaultBackgroundColorIOS
-            self.foregroundColor = foregroundColor ?? kDefaultForegroundColorIOS
-            self.singleColumnMode = singleColumnMode ?? true
-            #else
             self.backgroundColor = backgroundColor
             self.foregroundColor = foregroundColor
+            #if os(iOS)
+            self.singleColumnMode = singleColumnMode ?? true
+            #else
             self.singleColumnMode = singleColumnMode ?? false
             #endif
             self.customCSS = customCSS
@@ -97,6 +97,7 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
         public var showTimeRemainingInChapter: Bool
         public var showPageNumber: Bool
         public var overlayTransparency: Double
+        public var alwaysShowMiniPlayer: Bool
 
         public init(
             enabled: Bool = true,
@@ -106,7 +107,8 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
             showTimeRemainingInBook: Bool = true,
             showTimeRemainingInChapter: Bool = true,
             showPageNumber: Bool = true,
-            overlayTransparency: Double = 0.8
+            overlayTransparency: Double = 0.8,
+            alwaysShowMiniPlayer: Bool = false
         ) {
             self.enabled = enabled
             #if os(iOS)
@@ -120,6 +122,7 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
             self.showTimeRemainingInChapter = showTimeRemainingInChapter
             self.showPageNumber = showPageNumber
             self.overlayTransparency = overlayTransparency
+            self.alwaysShowMiniPlayer = alwaysShowMiniPlayer
         }
     }
 
@@ -210,6 +213,7 @@ public actor SettingsActor {
         showTimeRemainingInChapter: Bool? = nil,
         showPageNumber: Bool? = nil,
         overlayTransparency: Double? = nil,
+        alwaysShowMiniPlayer: Bool? = nil,
         progressSyncIntervalSeconds: Double? = nil,
         metadataRefreshIntervalSeconds: Double? = nil,
         isManuallyOffline: Bool? = nil
@@ -245,6 +249,7 @@ public actor SettingsActor {
         }
         if let showPageNumber { updated.readingBar.showPageNumber = showPageNumber }
         if let overlayTransparency { updated.readingBar.overlayTransparency = overlayTransparency }
+        if let alwaysShowMiniPlayer { updated.readingBar.alwaysShowMiniPlayer = alwaysShowMiniPlayer }
         if let progressSyncIntervalSeconds {
             debugLog(
                 "[SettingsActor] Updating progressSyncIntervalSeconds to \(progressSyncIntervalSeconds)s"

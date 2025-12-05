@@ -10,6 +10,7 @@ public struct PlaybackRateButton: View {
     private let buttonSize: CGFloat
     private let showBackground: Bool
     private let compactLabel: Bool
+    private let iconFont: Font
 
     @State private var showCustomInput = false
     @State private var customPlaybackRate: String = ""
@@ -23,7 +24,8 @@ public struct PlaybackRateButton: View {
         showLabel: Bool = true,
         buttonSize: CGFloat = 38,
         showBackground: Bool = true,
-        compactLabel: Bool = false
+        compactLabel: Bool = false,
+        iconFont: Font = .callout.weight(.semibold)
     ) {
         self.currentRate = currentRate
         self.onRateChange = onRateChange
@@ -34,6 +36,7 @@ public struct PlaybackRateButton: View {
         self.buttonSize = buttonSize
         self.showBackground = showBackground
         self.compactLabel = compactLabel
+        self.iconFont = iconFont
     }
 
     public var body: some View {
@@ -41,7 +44,7 @@ public struct PlaybackRateButton: View {
             #if os(iOS)
             Button(action: { showCustomInput = true }) {
                 Image(systemName: "speedometer")
-                    .font(.callout.weight(.semibold))
+                    .font(iconFont)
                     .foregroundColor(foregroundColor.opacity(transparency))
                     .frame(width: buttonSize, height: buttonSize)
                     .background(
@@ -80,7 +83,7 @@ public struct PlaybackRateButton: View {
                 }
             } label: {
                 Image(systemName: "speedometer")
-                    .font(.callout.weight(.semibold))
+                    .font(iconFont)
                     .foregroundColor(foregroundColor.opacity(transparency))
                     .frame(width: buttonSize, height: buttonSize)
                     .background(
@@ -111,11 +114,18 @@ public struct PlaybackRateButton: View {
             }
             #endif
 
-            if showLabel {
+            if showLabel && !compactLabel {
                 Text(playbackRateDescription)
                     .font(.footnote)
                     .foregroundColor(foregroundColor.opacity(0.7 * transparency))
-                    .offset(y: compactLabel ? -6 : 0)
+            }
+        }
+        .overlay(alignment: .bottom) {
+            if showLabel && compactLabel {
+                Text(playbackRateDescription)
+                    .font(.caption2)
+                    .foregroundColor(foregroundColor.opacity(0.7 * transparency))
+                    .offset(y: 9)
             }
         }
     }

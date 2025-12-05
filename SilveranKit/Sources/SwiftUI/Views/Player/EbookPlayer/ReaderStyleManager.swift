@@ -67,12 +67,22 @@ class ReaderStyleManager {
 
         let isDarkMode = colorScheme == .dark
 
+        let effectiveHighlightColor = settingsVM.highlightColor ?? (isDarkMode ? "#333333" : "#CCCCCC")
+
+        #if os(iOS)
+        let effectiveBackgroundColor = settingsVM.backgroundColor ?? (isDarkMode ? kDefaultBackgroundColorIOSDark : kDefaultBackgroundColorIOSLight)
+        let effectiveForegroundColor = settingsVM.foregroundColor ?? (isDarkMode ? kDefaultForegroundColorIOSDark : kDefaultForegroundColorIOSLight)
+        #else
+        let effectiveBackgroundColor = settingsVM.backgroundColor
+        let effectiveForegroundColor = settingsVM.foregroundColor
+        #endif
+
         debugLog("[ReaderStyleManager] Sending style update:")
         debugLog("[ReaderStyleManager]   fontSize: \(settingsVM.fontSize)")
         debugLog("[ReaderStyleManager]   fontFamily: \(settingsVM.fontFamily)")
         debugLog("[ReaderStyleManager]   isDarkMode: \(isDarkMode)")
-        debugLog("[ReaderStyleManager]   backgroundColor: \(settingsVM.backgroundColor ?? "nil")")
-        debugLog("[ReaderStyleManager]   foregroundColor: \(settingsVM.foregroundColor ?? "nil")")
+        debugLog("[ReaderStyleManager]   backgroundColor: \(effectiveBackgroundColor ?? "nil")")
+        debugLog("[ReaderStyleManager]   foregroundColor: \(effectiveForegroundColor ?? "nil")")
 
         do {
             try await bridge.sendJsUpdateStyles(
@@ -83,9 +93,9 @@ class ReaderStyleManager {
                 marginTopBottom: settingsVM.marginTopBottom,
                 wordSpacing: settingsVM.wordSpacing,
                 letterSpacing: settingsVM.letterSpacing,
-                highlightColor: settingsVM.highlightColor,
-                backgroundColor: settingsVM.backgroundColor,
-                foregroundColor: settingsVM.foregroundColor,
+                highlightColor: effectiveHighlightColor,
+                backgroundColor: effectiveBackgroundColor,
+                foregroundColor: effectiveForegroundColor,
                 customCSS: settingsVM.customCSS,
                 singleColumnMode: settingsVM.singleColumnMode
             )

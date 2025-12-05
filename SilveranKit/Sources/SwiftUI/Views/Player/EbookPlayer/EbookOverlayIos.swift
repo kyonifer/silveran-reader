@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// iOS stats overlay showing progress and time remaining when bottom bar is hidden
+/// iOS stats overlay showing progress and time remaining
+/// Supports both bottom position (default) and top position (when mini player covers bottom)
 struct EbookOverlayIos: View {
     let showProgress: Bool
     let showTimeRemainingInBook: Bool
@@ -14,117 +15,137 @@ struct EbookOverlayIos: View {
     let totalPages: Int?
     let isPlaying: Bool
     let hasAudioNarration: Bool
+    let positionAtTop: Bool
     let onTogglePlaying: () -> Void
 
-    private var hasLargeStatsToDisplay: Bool {
-        (showTimeRemainingInBook && bookTimeRemaining != nil)
-            || (showTimeRemainingInChapter && chapterTimeRemaining != nil)
+    private var hasTimeStatsToDisplay: Bool {
+        hasAudioNarration && (showTimeRemainingInBook || showTimeRemainingInChapter)
+    }
+
+    private var hasBookStatsToDisplay: Bool {
+        (showProgress && bookFraction != nil)
+            || (showPageNumber && currentPage != nil && totalPages != nil && totalPages! > 0)
     }
 
     var body: some View {
-        ZStack(alignment: .bottomTrailing) {
-            VStack(spacing: 0) {
-                Spacer(minLength: 0)
+        if positionAtTop {
+            topPositionedLayout
+        } else {
+            bottomPositionedLayout
+        }
+    }
 
-                HStack(alignment: .center, spacing: 0) {
-                    HStack {
-                        smallStatsSection
-                        Spacer()
-                    }
-                    .frame(maxWidth: .infinity)
+    // MARK: - Top Position Layout (when mini player covers bottom)
 
-                    if hasLargeStatsToDisplay {
-                        largeStatsSection
-                    }
-
-                    HStack {
-                        Spacer()
-                    }
-                    .frame(maxWidth: .infinity)
+    private var topPositionedLayout: some View {
+        VStack {
+            HStack(alignment: .top) {
+                if hasBookStatsToDisplay {
+                    bookStatsWithIcons
                 }
-                .padding(.horizontal, 20)
-                .padding(.bottom, 20)
+                Spacer()
+                if hasTimeStatsToDisplay {
+                    timeStatsWithIcons
+                }
             }
-            .frame(maxHeight: .infinity, alignment: .bottom)
+            .padding(.horizontal, 38)
+            .padding(.top, 16)
 
-            if hasAudioNarration {
-                playPauseButton
-            }
+            Spacer()
         }
         .ignoresSafeArea(.all)
     }
 
-    private var smallStatsSection: some View {
+    private var bookStatsWithIcons: some View {
         VStack(alignment: .leading, spacing: 2) {
             if showProgress, let bookFraction = bookFraction {
-                Text(formatPercent(bookFraction))
-                    .font(.caption2.monospacedDigit())
-                    .foregroundColor(.gray.opacity(overlayTransparency))
+                HStack(spacing: 4) {
+                    Image(systemName: "book.fill")
+                        .font(.caption2)
+                    Text(formatPercent(bookFraction))
+                        .font(.caption2.monospacedDigit())
+                }
+                .foregroundColor(.gray.opacity(overlayTransparency))
             }
 
             if showPageNumber, let current = currentPage, let total = totalPages, total > 0 {
-                Text("Page \(current) of \(total)")
-                    .font(.caption2.monospacedDigit())
-                    .foregroundColor(.gray.opacity(overlayTransparency))
+                HStack(spacing: 4) {
+                    Image(systemName: "bookmark.fill")
+                        .font(.caption2)
+                    Text("Page \(current) of \(total)")
+                        .font(.caption2.monospacedDigit())
+                }
+                .foregroundColor(.gray.opacity(overlayTransparency))
             }
         }
     }
 
-    private var largeStatsSection: some View {
-        VStack(alignment: .center, spacing: 2) {
-            if showTimeRemainingInBook, let timeRemaining = bookTimeRemaining {
-                Text("\(formatTimeHoursMinutes(timeRemaining)) in Book")
-                    .font(.caption2.monospacedDigit())
-                    .foregroundColor(.gray.opacity(overlayTransparency))
+    private var timeStatsWithIcons: some View {
+        VStack(alignment: .trailing, spacing: 2) {
+            if showTimeRemainingInBook {
+                HStack(spacing: 4) {
+                    Text(formatTimeHoursMinutes(bookTimeRemaining))
+                        .font(.caption2.monospacedDigit())
+                    Image(systemName: "book.fill")
+                        .font(.caption2)
+                }
+                .foregroundColor(.gray.opacity(overlayTransparency))
             }
 
-            if showTimeRemainingInChapter, let timeRemaining = chapterTimeRemaining {
-                Text("\(formatTimeMinutesSeconds(timeRemaining)) in Chapter")
-                    .font(.caption2.monospacedDigit())
-                    .foregroundColor(.gray.opacity(overlayTransparency))
+            if showTimeRemainingInChapter {
+                HStack(spacing: 4) {
+                    Text(formatTimeMinutesSeconds(chapterTimeRemaining))
+                        .font(.caption2.monospacedDigit())
+                    Image(systemName: "bookmark.fill")
+                        .font(.caption2)
+                }
+                .foregroundColor(.gray.opacity(overlayTransparency))
             }
         }
     }
+
+    // MARK: - Bottom Position Layout (original/default)
+
+    private var bottomPositionedLayout: some View {
+        VStack {
+            Spacer()
+            ZStack {
+                HStack {
+                    if hasBookStatsToDisplay {
+                        bookStatsWithIcons
+                    }
+                    Spacer()
+                    if hasTimeStatsToDisplay {
+                        timeStatsWithIcons
+                    }
+                }
+
+                if hasAudioNarration {
+                    playPauseButton
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 20)
+        }
+        .ignoresSafeArea(.all)
+    }
+
+    // MARK: - Shared Components
 
     private var playPauseButton: some View {
         Button(action: onTogglePlaying) {
-            HStack(alignment: .bottom, spacing: 0) {
-                Spacer()
-                Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 20))
-                    .foregroundColor(.gray.opacity(overlayTransparency))
-                    .padding(.trailing, 25)
-                    .padding(.bottom, 30)
-            }
-            .frame(width: 100, height: 100, alignment: .bottomTrailing)
-            .contentShape(Rectangle())
+            Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                .font(.system(size: 20))
+                .foregroundColor(.gray.opacity(overlayTransparency))
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
 
+    // MARK: - Formatting
+
     private func formatPercent(_ value: Double) -> String {
         String(format: "%.0f%%", max(min(value, 1), 0) * 100)
-    }
-
-    private func formatTimeHoursMinutes(_ time: TimeInterval) -> String {
-        let totalSeconds = max(Int(time.rounded()), 0)
-        let hours = totalSeconds / 3600
-        let minutes = (totalSeconds % 3600) / 60
-        if hours > 0 {
-            return "\(hours)h\(minutes)m"
-        } else {
-            return "\(minutes)m"
-        }
-    }
-
-    private func formatTimeMinutesSeconds(_ time: TimeInterval) -> String {
-        let totalSeconds = max(Int(time.rounded()), 0)
-        let minutes = totalSeconds / 60
-        let seconds = totalSeconds % 60
-        if minutes > 0 {
-            return "\(minutes)m\(seconds)s"
-        } else {
-            return "\(seconds)s"
-        }
     }
 }

@@ -66,7 +66,6 @@ public struct ReadingSidebarView: View {
 
     @State private var showVolumePopover = false
     @State private var showSleepTimerPopover = false
-    @Binding private var isStatsExpanded: Bool
     @State private var currentPlayerHeight: CGFloat = 0
     @State private var isDraggingSlider = false
     @State private var draggedSliderValue: Double = 0.0
@@ -87,7 +86,6 @@ public struct ReadingSidebarView: View {
         model: Model,
         mode: ReadingMode = .readaloud,
         chapterProgress: Binding<Double>,
-        isStatsExpanded: Binding<Bool>,
         chapters: [ChapterItem] = [],
         progressData: ProgressData? = nil,
         onChapterSelected: @escaping (String) -> Void = { _ in },
@@ -108,7 +106,6 @@ public struct ReadingSidebarView: View {
         self.mode = mode
         self.progressData = progressData
         _chapterProgress = chapterProgress
-        _isStatsExpanded = isStatsExpanded
         self.chapters = chapters
         self.onChapterSelected = onChapterSelected
         self.onPrevChapter = onPrevChapter
@@ -131,10 +128,10 @@ public struct ReadingSidebarView: View {
             if mode != .ebook {
                 transportControls
             }
+            statsSection
             secondaryControls
-            progressDetails
         }
-        .frame(minHeight: isStatsExpanded ? 500 : 400)
+        .frame(minHeight: 400)
         .frame(maxHeight: .infinity)
         .padding(.vertical, 2)
         .padding(.horizontal, 20)
@@ -148,8 +145,8 @@ public struct ReadingSidebarView: View {
     }
 
     private var coverScale: CGFloat? {
-        let upperThreshold: CGFloat = isStatsExpanded ? 800 : 800
-        let lowerThreshold: CGFloat = isStatsExpanded ? 600 : 650
+        let upperThreshold: CGFloat = 800
+        let lowerThreshold: CGFloat = 650
 
         if currentPlayerHeight >= upperThreshold {
             return 1.0
@@ -393,62 +390,89 @@ public struct ReadingSidebarView: View {
     }
 
     @ViewBuilder
-    private var progressDetails: some View {
-        if let data = progressData,
-            progressHasContent(data)
-        {
-            DisclosureGroup("Reading Stats", isExpanded: $isStatsExpanded) {
-                VStack(alignment: .leading, spacing: 8) {
-                    let chapterFraction = chapterPagesFraction(
-                        current: data.chapterCurrentPage,
-                        total: data.chapterTotalPages
-                    )
-                    let bookFraction =
-                        normalizedFraction(data.bookCurrentFraction)
-                        ?? bookAudioFraction(
-                            current: data.bookCurrentSecondsAudio,
-                            total: data.bookTotalSecondsAudio
-                        )
-                    let pagesCurrent = normalizedCurrentPage(data.chapterCurrentPage)
-                    let pagesTotal = normalizedTotalPage(data.chapterTotalPages)
-                    let bookElapsedRaw = normalizedSeconds(data.bookCurrentSecondsAudio)
-                    let bookTotalRaw = normalizedSeconds(data.bookTotalSecondsAudio)
+    private var statsSection: some View {
+        let data = progressData
+        let bookFraction = data.flatMap { d in
+            normalizedFraction(d.bookCurrentFraction)
+                ?? bookAudioFraction(
+                    current: d.bookCurrentSecondsAudio,
+                    total: d.bookTotalSecondsAudio
+                )
+        }
+        let pagesCurrent = data.flatMap { normalizedCurrentPage($0.chapterCurrentPage) }
+        let pagesTotal = data.flatMap { normalizedTotalPage($0.chapterTotalPages) }
+        let bookElapsedRaw = data.flatMap { normalizedSeconds($0.bookCurrentSecondsAudio) }
+        let bookTotalRaw = data.flatMap { normalizedSeconds($0.bookTotalSecondsAudio) }
+        let chapterElapsedRaw = data.flatMap { normalizedSeconds($0.chapterCurrentSecondsAudio) }
+        let chapterTotalRaw = data.flatMap { normalizedSeconds($0.chapterTotalSecondsAudio) }
 
-                    let rate = max(model.playbackRate, 0.01)
-                    let bookElapsed = bookElapsedRaw.map { $0 / rate }
-                    let bookTotal = bookTotalRaw.map { $0 / rate }
-                    let bookRemaining = timeRemaining(
-                        atRate: model.playbackRate,
-                        total: bookTotalRaw,
-                        elapsed: bookElapsedRaw
-                    )
+        let bookRemaining = timeRemaining(
+            atRate: model.playbackRate,
+            total: bookTotalRaw,
+            elapsed: bookElapsedRaw
+        )
+        let chapterRemaining = timeRemaining(
+            atRate: model.playbackRate,
+            total: chapterTotalRaw,
+            elapsed: chapterElapsedRaw
+        )
 
-                    if mode != .audiobook {
-                        statRow(
-                            "Chapter Progress",
-                            formatChapterProgress(
-                                pagesCurrent: pagesCurrent,
-                                pagesTotal: pagesTotal,
-                                fraction: chapterFraction
-                            )
-                        )
-                    }
-                    statRow("Book Progress", formatPercent(bookFraction))
-                    if mode != .ebook {
-                        statRow(
-                            "Listening Progress @ \(playbackRateDescription)",
-                            "\(formatOptionalTime(bookElapsed)) / \(formatOptionalTime(bookTotal))"
-                        )
-                        statRow(
-                            "Time Remaining @ \(playbackRateDescription)",
-                            formatTimeHoursMinutes(bookRemaining)
-                        )
-                    }
+        let hasLeftStats = bookFraction != nil || (pagesCurrent != nil && pagesTotal != nil && pagesTotal! > 0)
+        let hasRightStats = mode != .ebook
+
+        if hasLeftStats || hasRightStats {
+            HStack(alignment: .top) {
+                leftStatsColumn(bookFraction: bookFraction, pagesCurrent: pagesCurrent, pagesTotal: pagesTotal)
+                Spacer()
+                if hasRightStats {
+                    rightStatsColumn(bookRemaining: bookRemaining, chapterRemaining: chapterRemaining)
                 }
-                .padding(.top, 8)
             }
-            .font(.headline)
-            .foregroundStyle(.secondary)
+            .padding(.horizontal, 8)
+        }
+    }
+
+    private func leftStatsColumn(bookFraction: Double?, pagesCurrent: Int?, pagesTotal: Int?) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if let fraction = bookFraction {
+                HStack(spacing: 6) {
+                    Image(systemName: "book.fill")
+                        .font(.footnote)
+                    Text(formatPercent(fraction))
+                        .font(.footnote.monospacedDigit())
+                }
+                .foregroundColor(.secondary)
+            }
+
+            if let current = pagesCurrent, let total = pagesTotal, total > 0 {
+                HStack(spacing: 6) {
+                    Image(systemName: "bookmark.fill")
+                        .font(.footnote)
+                    Text("Page \(current) of \(total)")
+                        .font(.footnote.monospacedDigit())
+                }
+                .foregroundColor(.secondary)
+            }
+        }
+    }
+
+    private func rightStatsColumn(bookRemaining: TimeInterval?, chapterRemaining: TimeInterval?) -> some View {
+        VStack(alignment: .trailing, spacing: 4) {
+            HStack(spacing: 6) {
+                Text(formatTimeHoursMinutes(bookRemaining))
+                    .font(.footnote.monospacedDigit())
+                Image(systemName: "book.fill")
+                    .font(.footnote)
+            }
+            .foregroundColor(.secondary)
+
+            HStack(spacing: 6) {
+                Text(formatTimeMinutesSeconds(chapterRemaining))
+                    .font(.footnote.monospacedDigit())
+                Image(systemName: "bookmark.fill")
+                    .font(.footnote)
+            }
+            .foregroundColor(.secondary)
         }
     }
 
@@ -622,16 +646,6 @@ public struct ReadingSidebarView: View {
         }
     }
 
-    private func statRow(_ title: String, _ value: String) -> some View {
-        HStack {
-            Text(title)
-                .foregroundStyle(.secondary)
-            Spacer()
-            Text(value)
-                .font(.body.monospacedDigit())
-        }
-    }
-
     private func progressHasContent(_ data: ProgressData) -> Bool {
         let hasChapterFraction =
             chapterPagesFraction(
@@ -689,7 +703,6 @@ public struct ReadingSidebarView: View {
         model: model,
         mode: .readaloud,
         chapterProgress: .constant(Double((4 * 60) + 7) / Double((12 * 60) + 27)),
-        isStatsExpanded: .constant(false),
         progressData: progress
     )
     .frame(maxWidth: 420)

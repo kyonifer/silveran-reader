@@ -2,11 +2,16 @@ import SwiftUI
 
 #if os(iOS)
 struct EbookPlayerTopToolbar: View {
+    @Environment(\.colorScheme) private var colorScheme
+
     let hasAudioNarration: Bool
     let playbackSpeed: Double
     let chapters: [ChapterItem]
     let selectedChapterId: String?
     let isSynced: Bool
+    let sleepTimerActive: Bool
+    let sleepTimerRemaining: TimeInterval?
+    let sleepTimerType: SleepTimerType?
 
     @Binding var showCustomizePopover: Bool
     @Binding var showSearchSheet: Bool
@@ -14,12 +19,30 @@ struct EbookPlayerTopToolbar: View {
     let searchManager: EbookSearchManager?
 
     let onDismiss: () -> Void
-    let onPlaybackRateChange: (Double) -> Void
     let onChapterSelected: (String) -> Void
     let onSyncToggle: (Bool) async throws -> Void
     let onSearchResultSelected: (SearchResult) -> Void
+    let onSleepTimerStart: (TimeInterval?, SleepTimerType) -> Void
+    let onSleepTimerCancel: () -> Void
 
     let settingsVM: SettingsViewModel
+
+    @State private var showSleepTimerSheet = false
+
+    private var toolbarForegroundColor: Color {
+        let bgHex = settingsVM.backgroundColor ?? (colorScheme == .dark ? kDefaultBackgroundColorIOSDark : kDefaultBackgroundColorIOSLight)
+        return isLightColor(hex: bgHex) ? .black : .white
+    }
+
+    private func isLightColor(hex: String) -> Bool {
+        guard let color = Color(hex: hex),
+              let components = UIColor(color).cgColor.components,
+              components.count >= 3 else {
+            return colorScheme == .light
+        }
+        let brightness = (components[0] * 299 + components[1] * 587 + components[2] * 114) / 1000
+        return brightness > 0.5
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -29,7 +52,7 @@ struct EbookPlayerTopToolbar: View {
                 } label: {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 20, weight: .semibold))
-                        .foregroundColor(.white)
+                        .foregroundColor(toolbarForegroundColor)
                         .contentShape(Rectangle())
                 }
                 .frame(width: 44, height: 44)
@@ -38,28 +61,15 @@ struct EbookPlayerTopToolbar: View {
 
                 HStack(spacing: 20) {
                     if hasAudioNarration {
-                        PlaybackRateButton(
-                            currentRate: playbackSpeed,
-                            onRateChange: onPlaybackRateChange,
-                            backgroundColor: .white,
-                            foregroundColor: .white,
-                            transparency: 1.0,
-                            showLabel: true,
-                            buttonSize: 44,
-                            showBackground: false,
-                            compactLabel: true
-                        )
-                        .alignmentGuide(VerticalAlignment.center) { d in
-                            d[VerticalAlignment.top] + 22
-                        }
+                        sleepTimerButton
                     }
 
                     ChaptersButton(
                         chapters: chapters,
                         selectedChapterId: selectedChapterId,
                         onChapterSelected: onChapterSelected,
-                        backgroundColor: .white,
-                        foregroundColor: .white,
+                        backgroundColor: toolbarForegroundColor,
+                        foregroundColor: toolbarForegroundColor,
                         transparency: 1.0,
                         showLabel: false,
                         buttonSize: 44,
@@ -71,7 +81,7 @@ struct EbookPlayerTopToolbar: View {
                     } label: {
                         Image(systemName: "magnifyingglass")
                             .font(.system(size: 20, weight: .regular))
-                            .foregroundColor(.white)
+                            .foregroundColor(toolbarForegroundColor)
                             .contentShape(Rectangle())
                     }
                     .frame(width: 44, height: 44)
@@ -105,7 +115,7 @@ struct EbookPlayerTopToolbar: View {
                     } label: {
                         Image(systemName: "textformat.size")
                             .font(.system(size: 20, weight: .regular))
-                            .foregroundColor(.white)
+                            .foregroundColor(toolbarForegroundColor)
                             .contentShape(Rectangle())
                     }
                     .frame(width: 44, height: 44)
@@ -131,8 +141,8 @@ struct EbookPlayerTopToolbar: View {
                         .presentationDetents([.medium, .large])
                     }
 
-                    if hasAudioNarration {
-                        Menu {
+                    Menu {
+                        if hasAudioNarration {
                             Button(role: isSynced ? .destructive : nil) {
                                 Task {
                                     try? await onSyncToggle(!isSynced)
@@ -143,14 +153,72 @@ struct EbookPlayerTopToolbar: View {
                                     systemImage: "link"
                                 )
                             }
-                        } label: {
-                            Image(systemName: "ellipsis.circle")
-                                .font(.system(size: 20, weight: .regular))
-                                .foregroundColor(.white)
-                                .contentShape(Rectangle())
+
+                            Divider()
                         }
-                        .frame(width: 44, height: 44)
+
+                        if hasAudioNarration {
+                            Toggle(isOn: Binding(
+                                get: { settingsVM.alwaysShowMiniPlayer },
+                                set: { newValue in
+                                    settingsVM.alwaysShowMiniPlayer = newValue
+                                    Task { try? await settingsVM.save() }
+                                }
+                            )) {
+                                Label("Always Show Mini Player", systemImage: "rectangle.bottomhalf.inset.filled")
+                            }
+
+                            Divider()
+                        }
+
+                        Toggle(isOn: Binding(
+                            get: { settingsVM.showProgress },
+                            set: { newValue in
+                                settingsVM.showProgress = newValue
+                                Task { try? await settingsVM.save() }
+                            }
+                        )) {
+                            Label("Show Book Progress", systemImage: "percent")
+                        }
+
+                        Toggle(isOn: Binding(
+                            get: { settingsVM.showPageNumber },
+                            set: { newValue in
+                                settingsVM.showPageNumber = newValue
+                                Task { try? await settingsVM.save() }
+                            }
+                        )) {
+                            Label("Show Page Number", systemImage: "book.pages")
+                        }
+
+                        if hasAudioNarration {
+                            Toggle(isOn: Binding(
+                                get: { settingsVM.showTimeRemainingInBook },
+                                set: { newValue in
+                                    settingsVM.showTimeRemainingInBook = newValue
+                                    Task { try? await settingsVM.save() }
+                                }
+                            )) {
+                                Label("Show Time in Book", systemImage: "clock")
+                            }
+
+                            Toggle(isOn: Binding(
+                                get: { settingsVM.showTimeRemainingInChapter },
+                                set: { newValue in
+                                    settingsVM.showTimeRemainingInChapter = newValue
+                                    Task { try? await settingsVM.save() }
+                                }
+                            )) {
+                                Label("Show Time in Chapter", systemImage: "clock.badge")
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                            .font(.system(size: 20, weight: .regular))
+                            .foregroundColor(toolbarForegroundColor)
+                            .contentShape(Rectangle())
                     }
+                    .frame(width: 44, height: 44)
                 }
             }
             .padding(.horizontal, 8)
@@ -160,6 +228,94 @@ struct EbookPlayerTopToolbar: View {
             )
 
             Spacer()
+        }
+        .sheet(isPresented: $showSleepTimerSheet) {
+            sleepTimerSheet
+        }
+    }
+
+    private var sleepTimerButton: some View {
+        Button(action: {
+            if sleepTimerActive {
+                onSleepTimerCancel()
+            } else {
+                showSleepTimerSheet = true
+            }
+        }) {
+            Image(systemName: sleepTimerActive ? "moon.zzz.fill" : "moon.zzz")
+                .font(.system(size: 20, weight: .regular))
+                .foregroundColor(sleepTimerActive ? .accentColor : toolbarForegroundColor)
+                .contentShape(Rectangle())
+        }
+        .frame(width: 44, height: 44)
+        .overlay(alignment: .bottom) {
+            if sleepTimerActive {
+                Group {
+                    if sleepTimerType == .endOfChapter {
+                        Text("End Ch.")
+                    } else if let remaining = sleepTimerRemaining {
+                        Text(formatSleepTimerRemaining(remaining))
+                    }
+                }
+                .font(.caption2)
+                .foregroundColor(toolbarForegroundColor.opacity(0.7))
+                .offset(y: 10)
+            }
+        }
+    }
+
+    private func formatSleepTimerRemaining(_ time: TimeInterval) -> String {
+        let totalSeconds = max(Int(time.rounded()), 0)
+        let minutes = totalSeconds / 60
+        let seconds = totalSeconds % 60
+        return String(format: "%d:%02d", minutes, seconds)
+    }
+
+    private var sleepTimerSheet: some View {
+        NavigationStack {
+            List {
+                Section {
+                    sleepTimerOption(title: "10 minutes", duration: 10 * 60)
+                    sleepTimerOption(title: "15 minutes", duration: 15 * 60)
+                    sleepTimerOption(title: "30 minutes", duration: 30 * 60)
+                    sleepTimerOption(title: "1 hour", duration: 60 * 60)
+                }
+
+                Section {
+                    sleepTimerOption(title: "At End of Chapter", duration: nil, type: .endOfChapter)
+                }
+            }
+            .navigationTitle("Sleep Timer")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") {
+                        showSleepTimerSheet = false
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium])
+    }
+
+    private func sleepTimerOption(
+        title: String,
+        duration: TimeInterval?,
+        type: SleepTimerType = .duration
+    ) -> some View {
+        Button(action: {
+            onSleepTimerStart(duration, type)
+            showSleepTimerSheet = false
+        }) {
+            HStack {
+                Text(title)
+                    .foregroundColor(.primary)
+                Spacer()
+                if sleepTimerActive && sleepTimerType == type {
+                    Image(systemName: "checkmark")
+                        .foregroundColor(.accentColor)
+                }
+            }
         }
     }
 }

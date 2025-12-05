@@ -41,6 +41,8 @@ class EbookPlayerViewModel {
     var showAudioSidebar = false
     var showAudioSheet = false
     var isReadingBarVisible = true
+    var isTopBarVisible = true
+    var collapseCardTrigger = 0
     #endif
     var showCustomizePopover = false
     var commsBridge: WebViewCommsBridge? = nil
@@ -190,8 +192,17 @@ class EbookPlayerViewModel {
 
     func handleToggleOverlay() {
         #if os(iOS)
-        isReadingBarVisible.toggle()
-        debugLog("[EbookPlayerViewModel] Toggled overlay visibility: \(isReadingBarVisible)")
+        if settingsVM.alwaysShowMiniPlayer {
+            isTopBarVisible.toggle()
+            if !isTopBarVisible {
+                collapseCardTrigger += 1
+            }
+            debugLog("[EbookPlayerViewModel] Toggled top bar visibility: \(isTopBarVisible)")
+        } else {
+            isReadingBarVisible.toggle()
+            isTopBarVisible = isReadingBarVisible
+            debugLog("[EbookPlayerViewModel] Toggled overlay visibility: \(isReadingBarVisible)")
+        }
         #endif
     }
 

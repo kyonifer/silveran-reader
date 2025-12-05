@@ -135,6 +135,7 @@ public struct SettingsView: View {
                     showTimeRemainingInChapter: newValue.readingBar.showTimeRemainingInChapter,
                     showPageNumber: newValue.readingBar.showPageNumber,
                     overlayTransparency: newValue.readingBar.overlayTransparency,
+                    alwaysShowMiniPlayer: newValue.readingBar.alwaysShowMiniPlayer,
                     progressSyncIntervalSeconds: newValue.sync.progressSyncIntervalSeconds,
                     metadataRefreshIntervalSeconds: newValue.sync.metadataRefreshIntervalSeconds
                 )
@@ -656,7 +657,10 @@ private struct ReadingSettingsFields: View {
             Text("Highlight Color")
                 .font(.subheadline)
                 .foregroundStyle(.primary)
-            HighlightColorControl(hex: $reading.highlightColor)
+            HighlightColorControl(hex: Binding(
+                get: { reading.highlightColor ?? "#333333" },
+                set: { reading.highlightColor = $0 }
+            ))
         }
     }
 }
