@@ -218,7 +218,7 @@ struct MoreMenuView: View {
                     Label("Downloaded", systemImage: "arrow.down.circle.fill")
                 }
                 NavigationLink(value: MoreDestination.addLocalFile) {
-                    Label("Add Local File", systemImage: "folder.badge.plus")
+                    Label("Manage Local Files", systemImage: "folder.badge.plus")
                 }
             }
         }
@@ -276,7 +276,7 @@ struct MoreMenuView: View {
                     )
                 case .addLocalFile:
                     ImportLocalFileView()
-                        .navigationTitle("Add Local File")
+                        .navigationTitle("Manage Local Files")
                         .navigationBarTitleDisplayMode(.inline)
                         .iOSLibraryToolbar(
                             showSettings: $showSettings,
@@ -350,11 +350,32 @@ struct AuthorsListView: View {
         let filteredGroups = filterAuthors(authorGroups)
         let columns = calculateColumns(contentWidth: contentWidth)
 
-        LazyVGrid(columns: columns, spacing: 24) {
-            ForEach(Array(filteredGroups.enumerated()), id: \.offset) { _, group in
-                authorCard(author: group.author, books: group.books)
+        if filteredGroups.isEmpty {
+            emptyStateView
+        } else {
+            LazyVGrid(columns: columns, spacing: 24) {
+                ForEach(Array(filteredGroups.enumerated()), id: \.offset) { _, group in
+                    authorCard(author: group.author, books: group.books)
+                }
             }
         }
+    }
+
+    private var emptyStateView: some View {
+        VStack(spacing: 12) {
+            Text("No authors found")
+                .font(.title)
+                .foregroundStyle(.secondary)
+            Text(
+                "Books with author information will appear here. Add media via Settings or the More tab."
+            )
+            .font(.body)
+            .foregroundStyle(.tertiary)
+            .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: 500)
+        .frame(maxWidth: .infinity, alignment: .center)
+        .padding(.top, 60)
     }
 
     private func calculateColumns(contentWidth: CGFloat) -> [GridItem] {

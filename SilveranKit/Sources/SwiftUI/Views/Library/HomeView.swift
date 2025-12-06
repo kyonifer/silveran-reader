@@ -126,7 +126,7 @@ struct HomeView: View {
                                         .foregroundStyle(.secondary)
                                     #if os(iOS)
                                     Text(
-                                        "To add some media, go to Settings to connect a Storyteller server."
+                                        "To get started, go to Settings to connect a Storyteller server, or use \"Manage Local Files\" in the More tab to add files from your device."
                                     )
                                     .font(.body)
                                     .foregroundStyle(.tertiary)

@@ -382,12 +382,27 @@ public actor LocalMediaActor: GlobalActor {
     }
 
     public func deleteLocalStandaloneMedia(for uuid: String) async throws {
-        for category in LocalMediaCategory.allCases {
-            try await filesystem.deleteMedia(
-                for: uuid,
-                category: category,
-                in: .local
-            )
+        guard let paths = localStandaloneBookPaths[uuid] else {
+            localStandaloneMetadata.removeAll { $0.uuid == uuid }
+            try await filesystem.saveLocalLibraryMetadata(localStandaloneMetadata)
+            viewModelUpdateCallback?()
+            return
+        }
+
+        var bookFolder: URL?
+        if let ebookPath = paths.ebookPath {
+            bookFolder = ebookPath.deletingLastPathComponent().deletingLastPathComponent()
+        } else if let audioPath = paths.audioPath {
+            bookFolder = audioPath.deletingLastPathComponent().deletingLastPathComponent()
+        } else if let syncedPath = paths.syncedPath {
+            bookFolder = syncedPath.deletingLastPathComponent().deletingLastPathComponent()
+        }
+
+        if let folder = bookFolder {
+            let fm = FileManager.default
+            if fm.fileExists(atPath: folder.path) {
+                try fm.removeItem(at: folder)
+            }
         }
 
         localStandaloneBookPaths.removeValue(forKey: uuid)

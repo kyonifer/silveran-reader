@@ -254,9 +254,9 @@ struct ImportLocalFileView: View {
         ScrollView {
             VStack(spacing: 20) {
                 VStack(spacing: 8) {
-                    Text("Add Local Media")
+                    Text("Local Media")
                         .font(.title2.weight(.semibold))
-                    Text("Tap the button below to import an EPUB or M4B file from the Files app.")
+                    Text("Import EPUB or M4B files from the Files app.")
                         .font(.body)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)

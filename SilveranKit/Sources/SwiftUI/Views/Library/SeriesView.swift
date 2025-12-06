@@ -146,13 +146,43 @@ struct SeriesView: View {
         let seriesGroups = mediaViewModel.booksBySeries(for: mediaKind)
         let filteredGroups = filterSeries(seriesGroups)
 
-        ForEach(Array(filteredGroups.enumerated()), id: \.offset) { _, group in
-            seriesSection(
-                series: group.series,
-                books: group.books,
-                contentWidth: contentWidth
-            )
+        if filteredGroups.isEmpty {
+            emptyStateView
+        } else {
+            ForEach(Array(filteredGroups.enumerated()), id: \.offset) { _, group in
+                seriesSection(
+                    series: group.series,
+                    books: group.books,
+                    contentWidth: contentWidth
+                )
+            }
         }
+    }
+
+    private var emptyStateView: some View {
+        VStack(spacing: 12) {
+            Text("No series found")
+                .font(.title)
+                .foregroundStyle(.secondary)
+            #if os(iOS)
+            Text(
+                "Books with series information will appear here. Add media via Settings or the More tab."
+            )
+            .font(.body)
+            .foregroundStyle(.tertiary)
+            .multilineTextAlignment(.center)
+            #else
+            Text(
+                "Books with series information will appear here once you add media."
+            )
+            .font(.body)
+            .foregroundStyle(.tertiary)
+            .multilineTextAlignment(.center)
+            #endif
+        }
+        .frame(maxWidth: 500)
+        .frame(maxWidth: .infinity, alignment: .center)
+        .padding(.top, 60)
     }
 
     private func filterSeries(_ groups: [(series: BookSeries?, books: [BookMetadata])]) -> [(
