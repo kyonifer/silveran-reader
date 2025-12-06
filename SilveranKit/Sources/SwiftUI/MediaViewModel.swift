@@ -31,6 +31,7 @@ public final class MediaViewModel {
     @ObservationIgnored private var downloadTasks: [DownloadKey: Task<Void, Never>] = [:]
     var downloadStatuses: [String: DownloadProgressState] = [:]
     private var cachedBookPaths: [String: MediaPaths] = [:]
+    private var localStandaloneBookIds: Set<String> = []
     @ObservationIgnored private var metadataRefreshTask: Task<Void, Never>?
 
     struct DownloadProgressState: Equatable {
@@ -185,7 +186,9 @@ public final class MediaViewModel {
     private func refreshMetadata() async {
         debugLog("[MediaViewModel] refreshMetadata: Starting")
         let status = await StorytellerActor.shared.connectionStatus
-        let paths = await LocalMediaActor.shared.localStorytellerBookPaths
+        let storytellerPaths = await LocalMediaActor.shared.localStorytellerBookPaths
+        let standalonePaths = await LocalMediaActor.shared.localStandaloneBookPaths
+        let paths = storytellerPaths.merging(standalonePaths) { _, new in new }
         let pendingSyncs = await LocalMediaActor.shared.getAllPendingProgressSyncs()
 
         debugLog(
@@ -196,18 +199,19 @@ public final class MediaViewModel {
             debugLog("[MediaViewModel] refreshMetadata: Pending bookIds: [\(bookIds)]")
         }
 
+        let standaloneMetadata = await LocalMediaActor.shared.localStandaloneMetadata
         let metadata: [BookMetadata]
         if status == .connected {
-            metadata = await StorytellerActor.shared.libraryMetadata
+            let serverMetadata = await StorytellerActor.shared.libraryMetadata
+            metadata = serverMetadata + standaloneMetadata
             debugLog(
-                "[MediaViewModel] refreshMetadata: Using online metadata (\(metadata.count) books)"
+                "[MediaViewModel] refreshMetadata: Using online metadata (\(serverMetadata.count) server + \(standaloneMetadata.count) local = \(metadata.count) books)"
             )
         } else {
             let localMetadata = await LocalMediaActor.shared.localStorytellerMetadata
-            let standaloneMetadata = await LocalMediaActor.shared.localStandaloneMetadata
             metadata = localMetadata + standaloneMetadata
             debugLog(
-                "[MediaViewModel] refreshMetadata: Using offline metadata (\(metadata.count) books)"
+                "[MediaViewModel] refreshMetadata: Using offline metadata (\(localMetadata.count) cached + \(standaloneMetadata.count) local = \(metadata.count) books)"
             )
         }
 
@@ -218,6 +222,7 @@ public final class MediaViewModel {
 
         applyLibraryMetadata(metadata)
         cachedBookPaths = paths
+        localStandaloneBookIds = Set(standaloneMetadata.map { $0.uuid })
         connectionStatus = status
         lastNetworkOpSucceeded = await StorytellerActor.shared.lastNetworkOpSucceeded
         debugLog(
@@ -380,9 +385,9 @@ public final class MediaViewModel {
     private func metadataMatchesKind(_ metadata: BookMetadata, kind: MediaKind) -> Bool {
         switch kind {
             case .ebook:
-                return metadata.hasAvailableEbook
+                return metadata.hasAvailableEbook || metadata.hasAvailableReadaloud
             case .audiobook:
-                return !metadata.hasAvailableEbook && metadata.hasAvailableAudiobook
+                return !metadata.hasAvailableEbook && !metadata.hasAvailableReadaloud && metadata.hasAvailableAudiobook
         }
     }
     func items(for kind: MediaKind, narrationFilter: NarrationFilter, tagFilter: String?)
@@ -673,6 +678,18 @@ public final class MediaViewModel {
         }
     }
 
+    func isLocalStandaloneBook(_ bookID: String) -> Bool {
+        localStandaloneBookIds.contains(bookID)
+    }
+
+    func sourceLabel(for bookID: String) -> String {
+        if localStandaloneBookIds.contains(bookID) {
+            return "Local File"
+        } else {
+            return "Storyteller"
+        }
+    }
+
     func downloadProgressFraction(
         for item: BookMetadata,
         category: LocalMediaCategory
@@ -847,22 +864,48 @@ public final class MediaViewModel {
             return
         }
 
-        if connectionStatus != .connected {
-            return
-        }
-
-        let params = variant.requestParameters
         coverTasks[key] = Task { [weak self] in
-            let cover = await self?.sta.fetchCoverImage(
-                for: item.id,
-                audio: params.audio,
-                width: params.width,
-                height: params.height
-            )
-            await MainActor.run {
-                guard let self else { return }
-                self.registerCover(cover, for: item, variant: variant)
-                self.coverTasks[key] = nil
+            guard let self else { return }
+
+            let isLocalBook = await LocalMediaActor.shared.isLocalStandaloneBook(item.id)
+
+            if isLocalBook {
+                let coverData = await LocalMediaActor.shared.extractLocalCover(for: item.id)
+                await MainActor.run {
+                    if let data = coverData {
+                        let cover = BookCover(
+                            data: data,
+                            contentType: nil,
+                            etag: nil,
+                            lastModified: nil,
+                            cacheControl: nil,
+                            contentDisposition: nil
+                        )
+                        self.registerCover(cover, for: item, variant: variant)
+                    } else {
+                        self.missingCoverKeys.insert(key)
+                    }
+                    self.coverTasks[key] = nil
+                }
+            } else {
+                guard self.connectionStatus == .connected else {
+                    await MainActor.run {
+                        self.coverTasks[key] = nil
+                    }
+                    return
+                }
+
+                let params = variant.requestParameters
+                let cover = await self.sta.fetchCoverImage(
+                    for: item.id,
+                    audio: params.audio,
+                    width: params.width,
+                    height: params.height
+                )
+                await MainActor.run {
+                    self.registerCover(cover, for: item, variant: variant)
+                    self.coverTasks[key] = nil
+                }
             }
         }
     }

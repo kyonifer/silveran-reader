@@ -92,6 +92,24 @@ public struct BookCreator: Codable, Sendable, Hashable {
     public let role: String?
     public let createdAt: String?
     public let updatedAt: String?
+
+    public init(
+        uuid: String?,
+        id: Int?,
+        name: String?,
+        fileAs: String?,
+        role: String?,
+        createdAt: String?,
+        updatedAt: String?
+    ) {
+        self.uuid = uuid
+        self.id = id
+        self.name = name
+        self.fileAs = fileAs
+        self.role = role
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
 }
 
 public struct BookSeries: Codable, Sendable, Hashable {

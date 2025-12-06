@@ -207,6 +207,38 @@ public actor FilesystemActor {
         return try decoder.decode([BookMetadata].self, from: data)
     }
 
+    public func saveLocalLibraryMetadata(_ metadata: [BookMetadata]) throws {
+        let domainDir = getDomainDirectory(for: .local)
+        try ensureDirectoryExists(at: domainDir)
+
+        let metadataURL = domainDir.appendingPathComponent(
+            "library_metadata.json",
+            isDirectory: false
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let data = try encoder.encode(metadata)
+        try write(data: data, to: metadataURL)
+    }
+
+    public func loadLocalLibraryMetadata() throws -> [BookMetadata]? {
+        let domainDir = getDomainDirectory(for: .local)
+        let metadataURL = domainDir.appendingPathComponent(
+            "library_metadata.json",
+            isDirectory: false
+        )
+
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: metadataURL.path) else {
+            return nil
+        }
+
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let data = try Data(contentsOf: metadataURL)
+        return try decoder.decode([BookMetadata].self, from: data)
+    }
+
     public func getConfigDirectory() -> URL {
         applicationSupportBaseDirectory()
             .appendingPathComponent("Config", isDirectory: true)

@@ -377,10 +377,11 @@ private struct SourceBadge: View {
 
     var body: some View {
         Text(label)
-            .font(.system(size: 14, weight: .semibold))
+            .font(.system(size: 10, weight: .semibold))
             .foregroundStyle(.white)
-            .frame(width: 24, height: 24)
-            .background(Circle().fill(Color.black.opacity(0.7)))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(Capsule().fill(Color.black.opacity(0.7)))
     }
 }
 

@@ -396,7 +396,7 @@ struct MediaGridView: View {
 
     @ViewBuilder
     private func card(for item: BookMetadata, metrics: MediaItemCardMetrics) -> some View {
-        let sourceLabel = showSourceBadge ? "S" : nil
+        let sourceLabel = showSourceBadge ? mediaViewModel.sourceLabel(for: item.id) : nil
         #if os(macOS)
         MediaItemCardView(
             item: item,
@@ -596,7 +596,9 @@ struct MediaGridView: View {
             case .downloaded:
                 return hasAnyDownloadedCategory(for: item)
             case .serverOnly:
-                return !hasAnyDownloadedCategory(for: item)
+                return !hasAnyDownloadedCategory(for: item) && !mediaViewModel.isLocalStandaloneBook(item.id)
+            case .localFiles:
+                return mediaViewModel.isLocalStandaloneBook(item.id)
         }
     }
 
@@ -958,6 +960,7 @@ struct MediaGridView: View {
         case all
         case downloaded
         case serverOnly
+        case localFiles
 
         var id: String { rawValue }
 
@@ -969,6 +972,8 @@ struct MediaGridView: View {
                     "Downloaded"
                 case .serverOnly:
                     "Server Only"
+                case .localFiles:
+                    "Local Files"
             }
         }
 
@@ -980,6 +985,8 @@ struct MediaGridView: View {
                     "Downloaded"
                 case .serverOnly:
                     "Server Only"
+                case .localFiles:
+                    "Local Files"
             }
         }
 
@@ -991,6 +998,8 @@ struct MediaGridView: View {
                     "play.circle"
                 case .serverOnly:
                     "arrow.down.circle"
+                case .localFiles:
+                    "folder"
             }
         }
     }

@@ -30,7 +30,9 @@ public actor LocalMediaActor: GlobalActor {
     private(set) public var localStandaloneMetadata: [BookMetadata] = []
     private(set) public var localStorytellerMetadata: [BookMetadata] = []
     private(set) public var localStorytellerBookPaths: [String: MediaPaths] = [:]
+    private(set) public var localStandaloneBookPaths: [String: MediaPaths] = [:]
     private let filesystem: FilesystemActor
+    private let localLibrary: LocalLibraryManager
     private var periodicScanTask: Task<Void, Never>?
     private var pendingProgressQueue: [PendingProgressSync] = []
 
@@ -47,10 +49,12 @@ public actor LocalMediaActor: GlobalActor {
 
     public init(
         viewModelUpdateCallback: (@Sendable () -> Void)? = nil,
-        filesystem: FilesystemActor = .shared
+        filesystem: FilesystemActor = .shared,
+        localLibrary: LocalLibraryManager = LocalLibraryManager()
     ) {
         self.viewModelUpdateCallback = viewModelUpdateCallback
         self.filesystem = filesystem
+        self.localLibrary = localLibrary
         Task { [weak self] in
             try? await filesystem.ensureLocalStorageDirectories()
             await self?.loadProgressQueue()
@@ -82,7 +86,7 @@ public actor LocalMediaActor: GlobalActor {
 
         var paths: [String: MediaPaths] = [:]
         for book in enrichedMetadata {
-            let mediaPaths = await scanBookPaths(for: book.uuid)
+            let mediaPaths = await scanBookPaths(for: book.uuid, domain: .storyteller)
             paths[book.uuid] = mediaPaths
         }
         localStorytellerBookPaths = paths
@@ -127,6 +131,9 @@ public actor LocalMediaActor: GlobalActor {
 
     public func queueOfflineProgress(bookId: String, locator: BookLocator, timestamp: Double) async
     {
+        debugLog("[LocalMediaActor] queueOfflineProgress CALLED for bookId: \(bookId)")
+        Thread.callStackSymbols.prefix(10).forEach { debugLog("[LocalMediaActor] STACK: \($0)") }
+
         let wasInQueue = pendingProgressQueue.contains { $0.bookId == bookId }
         let queueCountBefore = pendingProgressQueue.count
         pendingProgressQueue.removeAll { $0.bookId == bookId }
@@ -258,26 +265,30 @@ public actor LocalMediaActor: GlobalActor {
     public func scanForMedia() async throws {
         try await filesystem.ensureLocalStorageDirectories()
 
-        var metadata: [BookMetadata]
+        var storytellerMetadata: [BookMetadata]
         if let loaded = try await filesystem.loadStorytellerLibraryMetadata() {
-            metadata = loaded
+            storytellerMetadata = loaded
         } else {
-            metadata = []
+            storytellerMetadata = []
         }
 
-        localStorytellerMetadata = applyOfflineProgressToMetadata(metadata)
+        localStorytellerMetadata = applyOfflineProgressToMetadata(storytellerMetadata)
 
-        var paths: [String: MediaPaths] = [:]
+        var storytellerPaths: [String: MediaPaths] = [:]
         for book in localStorytellerMetadata {
-            let mediaPaths = await scanBookPaths(for: book.uuid)
-            paths[book.uuid] = mediaPaths
+            let mediaPaths = await scanBookPaths(for: book.uuid, domain: .storyteller)
+            storytellerPaths[book.uuid] = mediaPaths
         }
-        localStorytellerBookPaths = paths
+        localStorytellerBookPaths = storytellerPaths
+
+        let localScanResult = try await localLibrary.scanLocalMedia(filesystem: filesystem)
+        localStandaloneMetadata = localScanResult.metadata
+        localStandaloneBookPaths = localScanResult.paths
 
         viewModelUpdateCallback?()
     }
 
-    private func scanBookPaths(for uuid: String) async -> MediaPaths {
+    private func scanBookPaths(for uuid: String, domain: LocalMediaDomain) async -> MediaPaths {
         var paths = MediaPaths()
         let fm = FileManager.default
 
@@ -286,7 +297,7 @@ public actor LocalMediaActor: GlobalActor {
                 let categoryDir = await filesystem.mediaDirectory(
                     for: uuid,
                     category: category,
-                    in: .storyteller
+                    in: domain
                 )
             else {
                 continue
@@ -364,7 +375,7 @@ public actor LocalMediaActor: GlobalActor {
             in: .storyteller
         )
 
-        let updatedPaths = await scanBookPaths(for: uuid)
+        let updatedPaths = await scanBookPaths(for: uuid, domain: .storyteller)
         localStorytellerBookPaths[uuid] = updatedPaths
 
         viewModelUpdateCallback?()
@@ -404,6 +415,36 @@ public actor LocalMediaActor: GlobalActor {
         return category
     }
 
+    public func extractLocalCover(for bookId: String) async -> Data? {
+        guard let paths = localStandaloneBookPaths[bookId] else {
+            return nil
+        }
+
+        if let ebookPath = paths.ebookPath {
+            if let data = localLibrary.extractCoverFromEpub(at: ebookPath) {
+                return data
+            }
+        }
+
+        if let syncedPath = paths.syncedPath {
+            if let data = localLibrary.extractCoverFromEpub(at: syncedPath) {
+                return data
+            }
+        }
+
+        if let audioPath = paths.audioPath {
+            if let data = await localLibrary.extractCoverFromAudiobook(at: audioPath) {
+                return data
+            }
+        }
+
+        return nil
+    }
+
+    public func isLocalStandaloneBook(_ bookId: String) -> Bool {
+        localStandaloneMetadata.contains { $0.uuid == bookId }
+    }
+
     public func importMedia(
         from sourceFileURL: URL,
         domain: LocalMediaDomain,
@@ -416,28 +457,62 @@ public actor LocalMediaActor: GlobalActor {
         let fm = FileManager.default
         try await filesystem.ensureLocalStorageDirectories()
 
-        let destinationDirectory = await filesystem.getMediaDirectory(
-            domain: domain,
-            category: category,
-            bookName: bookName,
-            uuidIdentifier: nil
-        )
-        let bookRoot = destinationDirectory.deletingLastPathComponent()
-        try await filesystem.ensureDirectoryExists(at: bookRoot)
-        try await filesystem.ensureDirectoryExists(at: destinationDirectory)
+        if domain == .local {
+            let metadata = try await localLibrary.extractMetadata(from: sourceFileURL, category: category)
 
-        let destinationURL = destinationDirectory.appendingPathComponent(
-            sourceFileURL.lastPathComponent
-        )
-        if fm.fileExists(atPath: destinationURL.path) {
-            try fm.removeItem(at: destinationURL)
+            let destinationDirectory = await filesystem.getMediaDirectory(
+                domain: domain,
+                category: category,
+                bookName: metadata.title,
+                uuidIdentifier: metadata.uuid
+            )
+            let bookRoot = destinationDirectory.deletingLastPathComponent()
+            try await filesystem.ensureDirectoryExists(at: bookRoot)
+            try await filesystem.ensureDirectoryExists(at: destinationDirectory)
+
+            let destinationURL = destinationDirectory.appendingPathComponent(
+                sourceFileURL.lastPathComponent
+            )
+            if fm.fileExists(atPath: destinationURL.path) {
+                try fm.removeItem(at: destinationURL)
+            }
+
+            try fm.copyItem(at: sourceFileURL, to: destinationURL)
+
+            localStandaloneMetadata.removeAll { $0.uuid == metadata.uuid }
+            localStandaloneMetadata.append(metadata)
+            try await filesystem.saveLocalLibraryMetadata(localStandaloneMetadata)
+
+            let mediaPaths = await scanBookPaths(for: metadata.uuid, domain: .local)
+            localStandaloneBookPaths[metadata.uuid] = mediaPaths
+
+            viewModelUpdateCallback?()
+
+            return destinationURL
+        } else {
+            let destinationDirectory = await filesystem.getMediaDirectory(
+                domain: domain,
+                category: category,
+                bookName: bookName,
+                uuidIdentifier: nil
+            )
+            let bookRoot = destinationDirectory.deletingLastPathComponent()
+            try await filesystem.ensureDirectoryExists(at: bookRoot)
+            try await filesystem.ensureDirectoryExists(at: destinationDirectory)
+
+            let destinationURL = destinationDirectory.appendingPathComponent(
+                sourceFileURL.lastPathComponent
+            )
+            if fm.fileExists(atPath: destinationURL.path) {
+                try fm.removeItem(at: destinationURL)
+            }
+
+            try fm.copyItem(at: sourceFileURL, to: destinationURL)
+
+            viewModelUpdateCallback?()
+
+            return destinationURL
         }
-
-        try fm.copyItem(at: sourceFileURL, to: destinationURL)
-
-        viewModelUpdateCallback?()
-
-        return destinationURL
     }
 
     public func importMedia(

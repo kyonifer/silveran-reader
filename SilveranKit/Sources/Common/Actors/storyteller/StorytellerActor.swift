@@ -1799,6 +1799,14 @@ public actor StorytellerActor {
         locator: BookLocator,
         timestamp: Double
     ) async -> SyncResult {
+        let isLocalBook = await LocalMediaActor.shared.isLocalStandaloneBook(bookId)
+        let localBookIds = await LocalMediaActor.shared.localStandaloneMetadata.map { $0.uuid }
+        debugLog("[StorytellerActor] updateReadingPosition: bookId: \(bookId), isLocalBook: \(isLocalBook), localBookIds: \(localBookIds)")
+        if isLocalBook {
+            debugLog("[StorytellerActor] updateReadingPosition: Skipping local book \(bookId)")
+            return .success
+        }
+
         debugLog(
             "[StorytellerActor] updateReadingPosition: bookId: \(bookId), timestamp: \(timestamp)"
         )
@@ -1968,6 +1976,9 @@ public actor StorytellerActor {
 
     public func syncPendingProgressQueue() async -> (synced: Int, failed: Int) {
         let pendingSyncs = await LocalMediaActor.shared.getAllPendingProgressSyncs()
+        let localBookIds = await LocalMediaActor.shared.localStandaloneMetadata.map { $0.uuid }
+
+        debugLog("[StorytellerActor] syncPendingProgressQueue: pendingSyncs count: \(pendingSyncs.count), localBookIds: \(localBookIds)")
 
         guard !pendingSyncs.isEmpty else {
             debugLog("[StorytellerActor] syncPendingProgressQueue: No pending syncs")
@@ -1978,8 +1989,9 @@ public actor StorytellerActor {
             "[StorytellerActor] syncPendingProgressQueue: Starting with \(pendingSyncs.count) pending syncs"
         )
         for (index, pending) in pendingSyncs.enumerated() {
+            let isLocal = localBookIds.contains(pending.bookId)
             debugLog(
-                "[StorytellerActor] syncPendingProgressQueue: [\(index)] bookId: \(pending.bookId), attempts: \(pending.attemptCount)"
+                "[StorytellerActor] syncPendingProgressQueue: [\(index)] bookId: \(pending.bookId), attempts: \(pending.attemptCount), isLocal: \(isLocal)"
             )
         }
 
