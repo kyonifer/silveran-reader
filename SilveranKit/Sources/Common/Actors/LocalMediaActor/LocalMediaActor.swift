@@ -381,6 +381,22 @@ public actor LocalMediaActor: GlobalActor {
         viewModelUpdateCallback?()
     }
 
+    public func deleteLocalStandaloneMedia(for uuid: String) async throws {
+        for category in LocalMediaCategory.allCases {
+            try await filesystem.deleteMedia(
+                for: uuid,
+                category: category,
+                in: .local
+            )
+        }
+
+        localStandaloneBookPaths.removeValue(forKey: uuid)
+        localStandaloneMetadata.removeAll { $0.uuid == uuid }
+        try await filesystem.saveLocalLibraryMetadata(localStandaloneMetadata)
+
+        viewModelUpdateCallback?()
+    }
+
     /// Returns the base directory for the given domain, e.g. `<ApplicationSupport>/storyteller_media`.
     public func getDomainDirectory(for domain: LocalMediaDomain) async -> URL {
         await filesystem.getDomainDirectory(for: domain)

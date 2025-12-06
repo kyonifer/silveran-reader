@@ -205,6 +205,7 @@ struct MoreMenuView: View {
     enum MoreDestination: Hashable {
         case authors
         case downloaded
+        case addLocalFile
     }
 
     var body: some View {
@@ -215,6 +216,9 @@ struct MoreMenuView: View {
                 }
                 NavigationLink(value: MoreDestination.downloaded) {
                     Label("Downloaded", systemImage: "arrow.down.circle.fill")
+                }
+                NavigationLink(value: MoreDestination.addLocalFile) {
+                    Label("Add Local File", systemImage: "folder.badge.plus")
                 }
             }
         }
@@ -270,6 +274,14 @@ struct MoreMenuView: View {
                         showSettings: $showSettings,
                         showOfflineSheet: $showOfflineSheet
                     )
+                case .addLocalFile:
+                    ImportLocalFileView()
+                        .navigationTitle("Add Local File")
+                        .navigationBarTitleDisplayMode(.inline)
+                        .iOSLibraryToolbar(
+                            showSettings: $showSettings,
+                            showOfflineSheet: $showOfflineSheet
+                        )
             }
         }
         .navigationDestination(for: String.self) { authorName in

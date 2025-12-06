@@ -7,7 +7,10 @@ import AppKit
 #endif
 
 struct ImportLocalFileView: View {
+    @Environment(MediaViewModel.self) private var mediaViewModel
     @State private var showFileImporter = false
+    @State private var importedBookId: String?
+    @State private var localFiles: [BookMetadata] = []
 
     private var allowedContentTypes: [UTType] {
         let types = LocalMediaActor.allowedExtensions.compactMap { UTType(filenameExtension: $0) }
@@ -19,7 +22,7 @@ struct ImportLocalFileView: View {
             .fileImporter(
                 isPresented: $showFileImporter,
                 allowedContentTypes: allowedContentTypes,
-                allowsMultipleSelection: false,
+                allowsMultipleSelection: false
             ) { result in
                 switch result {
                     case .success(let urls):
@@ -27,15 +30,88 @@ struct ImportLocalFileView: View {
                             importSelectedFile(from: url)
                         }
                     case .failure:
-                        // TODO: handle this
                         break
+                }
+            }
+            .task {
+                await refreshLocalFiles()
+            }
+            .onChange(of: mediaViewModel.library.bookMetaData.count) {
+                Task {
+                    await refreshLocalFiles()
                 }
             }
     }
 
+    private func refreshLocalFiles() async {
+        let metadata = await LocalMediaActor.shared.localStandaloneMetadata
+        await MainActor.run {
+            localFiles = metadata.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+        }
+    }
+
+    private func importSelectedFile(from sourceURL: URL) {
+        Task {
+            do {
+                let accessing = sourceURL.startAccessingSecurityScopedResource()
+                defer {
+                    if accessing {
+                        sourceURL.stopAccessingSecurityScopedResource()
+                    }
+                }
+
+                let category = try LocalMediaActor.category(forFileURL: sourceURL)
+                var bookName = sourceURL.deletingPathExtension().lastPathComponent
+                if bookName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    bookName = sourceURL.lastPathComponent
+                }
+                _ = try await LocalMediaActor.shared.importMedia(
+                    from: sourceURL,
+                    domain: .local,
+                    category: category,
+                    bookName: bookName
+                )
+                await refreshLocalFiles()
+                await MainActor.run {
+                    if let newBook = localFiles.first(where: {
+                        $0.title.localizedCaseInsensitiveCompare(bookName) == .orderedSame
+                    }) {
+                        importedBookId = newBook.id
+                        Task {
+                            try? await Task.sleep(for: .seconds(2))
+                            await MainActor.run {
+                                if importedBookId == newBook.id {
+                                    importedBookId = nil
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch {
+                debugLog("[ImportLocalFileView] Failed to import file: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private func deleteLocalFile(_ book: BookMetadata) {
+        Task {
+            do {
+                try await LocalMediaActor.shared.deleteLocalStandaloneMedia(for: book.id)
+                await refreshLocalFiles()
+            } catch {
+                debugLog("[ImportLocalFileView] Failed to delete file: \(error.localizedDescription)")
+            }
+        }
+    }
+
     private var content: some View {
         #if os(macOS)
-        MacContent(showFileImporter: $showFileImporter)
+        MacContent(
+            showFileImporter: $showFileImporter,
+            localFiles: localFiles,
+            importedBookId: importedBookId,
+            onDelete: deleteLocalFile
+        )
         #else
         iOSContent
         #endif
@@ -44,29 +120,43 @@ struct ImportLocalFileView: View {
     #if os(macOS)
     private struct MacContent: View {
         @Binding var showFileImporter: Bool
+        let localFiles: [BookMetadata]
+        let importedBookId: String?
+        let onDelete: (BookMetadata) -> Void
         @State private var isDropTargeted = false
         private let dropTypeIdentifier: String = "public.file-url"
 
         var body: some View {
-            VStack(spacing: 20) {
-                dropZone
-                Text(
-                    "Alternatively, you can directly manage the Local Media folder:",
-                )
-                .multilineTextAlignment(.center)
-                Button {
-                    openLocalMediaDirectory()
-                } label: {
-                    Label("Open Local Media Folder", systemImage: "folder")
-                        .frame(maxWidth: .infinity, alignment: .leading)
+            ScrollView {
+                VStack(spacing: 20) {
+                    dropZone
+                    Text(
+                        "Alternatively, you can directly manage the Local Media folder:"
+                    )
+                    .multilineTextAlignment(.center)
+                    Button {
+                        openLocalMediaDirectory()
+                    } label: {
+                        Label("Open Local Media Folder", systemImage: "folder")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.bordered)
+                    Text("Supports .epub and .m4b files.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+
+                    if !localFiles.isEmpty {
+                        LocalFilesList(
+                            localFiles: localFiles,
+                            importedBookId: importedBookId,
+                            onDelete: onDelete
+                        )
+                    }
                 }
-                .buttonStyle(.bordered)
-                Text("Supports .epub and .m4b files.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                .padding(32)
+                .frame(maxWidth: 500)
             }
-            .padding(32)
-            .frame(maxWidth: 500, maxHeight: .infinity, alignment: .top)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
 
         private func openLocalMediaDirectory() {
@@ -88,7 +178,7 @@ struct ImportLocalFileView: View {
                 RoundedRectangle(cornerRadius: 16)
                     .fill(
                         isDropTargeted
-                            ? Color.accentColor.opacity(0.1) : Color.secondary.opacity(0.05),
+                            ? Color.accentColor.opacity(0.1) : Color.secondary.opacity(0.05)
                     )
                 RoundedRectangle(cornerRadius: 16)
                     .stroke(style: StrokeStyle(lineWidth: 2, dash: [10]))
@@ -115,7 +205,7 @@ struct ImportLocalFileView: View {
             .onDrop(
                 of: [dropTypeIdentifier],
                 isTargeted: $isDropTargeted,
-                perform: handleDrop(providers:),
+                perform: handleDrop(providers:)
             )
         }
 
@@ -130,7 +220,7 @@ struct ImportLocalFileView: View {
                         guard Self.isAllowed(url: url) else { return }
 
                         Task { @MainActor [url] in
-                            importSelectedFile(from: url)
+                            importSelectedFileMac(from: url)
                         }
                     }
                     return true
@@ -157,37 +247,178 @@ struct ImportLocalFileView: View {
             return LocalMediaActor.allowedExtensions.contains(ext)
         }
     }
+    #endif
 
-    #else
-    // TODO: finish iOS file import
+    #if os(iOS)
     private var iOSContent: some View {
-        VStack(spacing: 20) {
-            VStack(spacing: 8) {
-                Text("Add Local Media")
-                    .font(.title2.weight(.semibold))
-                Text("Tap the button below to import an EPUB or M4B file from the Files app.")
-                    .font(.body)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-            }
+        ScrollView {
+            VStack(spacing: 20) {
+                VStack(spacing: 8) {
+                    Text("Add Local Media")
+                        .font(.title2.weight(.semibold))
+                    Text("Tap the button below to import an EPUB or M4B file from the Files app.")
+                        .font(.body)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
 
-            Button {
-                showFileImporter = true
-            } label: {
-                Label("Choose File…", systemImage: "doc")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
+                Button {
+                    showFileImporter = true
+                } label: {
+                    Label("Choose File...", systemImage: "doc.badge.plus")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
 
-            Spacer()
+                if !localFiles.isEmpty {
+                    LocalFilesList(
+                        localFiles: localFiles,
+                        importedBookId: importedBookId,
+                        onDelete: deleteLocalFile
+                    )
+                }
+            }
+            .padding(24)
+            .frame(maxWidth: 500)
         }
-        .padding(24)
-        .frame(maxWidth: 420, maxHeight: .infinity, alignment: .top)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
     #endif
 }
 
-private func importSelectedFile(from sourceURL: URL) {
+private struct LocalFilesList: View {
+    @Environment(MediaViewModel.self) private var mediaViewModel
+    let localFiles: [BookMetadata]
+    let importedBookId: String?
+    let onDelete: (BookMetadata) -> Void
+    @State private var bookToDelete: BookMetadata?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Local Files")
+                .font(.headline)
+                .padding(.top, 8)
+
+            ForEach(localFiles) { book in
+                LocalFileRow(
+                    book: book,
+                    isNewlyImported: book.id == importedBookId,
+                    onDelete: { bookToDelete = book }
+                )
+            }
+        }
+        .confirmationDialog(
+            "Delete \(bookToDelete?.title ?? "this file")?",
+            isPresented: Binding(
+                get: { bookToDelete != nil },
+                set: { if !$0 { bookToDelete = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                if let book = bookToDelete {
+                    onDelete(book)
+                }
+                bookToDelete = nil
+            }
+            Button("Cancel", role: .cancel) {
+                bookToDelete = nil
+            }
+        } message: {
+            Text("This will permanently remove the file from your device.")
+        }
+    }
+}
+
+private struct LocalFileRow: View {
+    @Environment(MediaViewModel.self) private var mediaViewModel
+    let book: BookMetadata
+    let isNewlyImported: Bool
+    let onDelete: () -> Void
+
+    private let coverSize: CGFloat = 50
+
+    var body: some View {
+        HStack(spacing: 12) {
+            coverImage
+                .frame(width: coverSize, height: coverSize * 1.5)
+                .clipShape(RoundedRectangle(cornerRadius: 4))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(book.title)
+                    .font(.body)
+                    .lineLimit(2)
+                if let author = book.authors?.first?.name {
+                    Text(author)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                mediaTypeLabel
+            }
+
+            Spacer()
+
+            Button(role: .destructive) {
+                onDelete()
+            } label: {
+                Image(systemName: "trash")
+                    .foregroundStyle(.red)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(12)
+        .background {
+            RoundedRectangle(cornerRadius: 8)
+                .fill(isNewlyImported ? Color.green.opacity(0.15) : Color.secondary.opacity(0.08))
+        }
+        .overlay {
+            if isNewlyImported {
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.green, lineWidth: 2)
+            }
+        }
+        .animation(.easeInOut(duration: 0.3), value: isNewlyImported)
+    }
+
+    @ViewBuilder
+    private var coverImage: some View {
+        let image = mediaViewModel.coverImage(for: book, variant: .standard)
+        ZStack {
+            Color.secondary.opacity(0.2)
+            if let image {
+                image
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                Image(systemName: "book.closed.fill")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .task {
+            mediaViewModel.ensureCoverLoaded(for: book, variant: .standard)
+        }
+    }
+
+    @ViewBuilder
+    private var mediaTypeLabel: some View {
+        HStack(spacing: 4) {
+            if book.hasAvailableEbook {
+                Label("eBook", systemImage: "book.closed")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            if book.hasAvailableAudiobook {
+                Label("Audio", systemImage: "headphones")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+#if os(macOS)
+private func importSelectedFileMac(from sourceURL: URL) {
     Task {
         do {
             let category = try LocalMediaActor.category(forFileURL: sourceURL)
@@ -195,15 +426,16 @@ private func importSelectedFile(from sourceURL: URL) {
             if bookName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 bookName = sourceURL.lastPathComponent
             }
-            let destinationURL = try await LocalMediaActor.shared.importMedia(
+            _ = try await LocalMediaActor.shared.importMedia(
                 from: sourceURL,
                 domain: .local,
                 category: category,
                 bookName: bookName
             )
-            debugLog("[ImportLocalFileView] Imported file to: \(destinationURL.path)")
+            debugLog("[ImportLocalFileView] Imported file to local media")
         } catch {
             debugLog("[ImportLocalFileView] Failed to import file: \(error.localizedDescription)")
         }
     }
 }
+#endif
