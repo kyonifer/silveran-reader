@@ -56,7 +56,7 @@ struct SilveranReaderApp: App {
     }
 
     private var libraryScene: some Scene {
-        WindowGroup("Library", id: "MyLibrary") {
+        Window("Library", id: "MyLibrary") {
             libraryViewContent
         }
         .windowStyle(.hiddenTitleBar)
