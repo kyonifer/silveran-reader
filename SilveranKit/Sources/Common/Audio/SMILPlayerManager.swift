@@ -1,17 +1,34 @@
+#if canImport(AVFoundation)
 import AVFoundation
 import Foundation
 
-struct AudioPositionSyncData {
-    let sectionIndex: Int
-    let entryIndex: Int
-    let currentTime: Double
-    let audioFile: String
-    let href: String
-    let fragment: String
+public struct AudioPositionSyncData: Sendable {
+    public let sectionIndex: Int
+    public let entryIndex: Int
+    public let currentTime: Double
+    public let audioFile: String
+    public let href: String
+    public let fragment: String
+
+    public init(
+        sectionIndex: Int,
+        entryIndex: Int,
+        currentTime: Double,
+        audioFile: String,
+        href: String,
+        fragment: String
+    ) {
+        self.sectionIndex = sectionIndex
+        self.entryIndex = entryIndex
+        self.currentTime = currentTime
+        self.audioFile = audioFile
+        self.href = href
+        self.fragment = fragment
+    }
 }
 
 @MainActor
-protocol SMILPlayerManagerDelegate: AnyObject {
+public protocol SMILPlayerManagerDelegate: AnyObject {
     func smilPlayerDidAdvanceToEntry(sectionIndex: Int, entryIndex: Int, entry: SMILEntry)
     func smilPlayerDidFinishBook()
     func smilPlayerDidUpdateTime(currentTime: Double, sectionIndex: Int, entryIndex: Int)
@@ -20,10 +37,10 @@ protocol SMILPlayerManagerDelegate: AnyObject {
 
 @MainActor
 @Observable
-class SMILPlayerManager: NSObject, AVAudioPlayerDelegate {
+public class SMILPlayerManager: NSObject, AVAudioPlayerDelegate {
     // MARK: - State
 
-    enum PlayerState {
+    public enum PlayerState: Sendable {
         case idle
         case loading
         case ready
@@ -31,9 +48,9 @@ class SMILPlayerManager: NSObject, AVAudioPlayerDelegate {
         case paused
     }
 
-    private(set) var state: PlayerState = .idle
-    private(set) var currentTime: Double = 0
-    private(set) var duration: Double = 0
+    public private(set) var state: PlayerState = .idle
+    public private(set) var currentTime: Double = 0
+    public private(set) var duration: Double = 0
     private var lastPausedWhilePlayingTime: Date?
 
     // MARK: - SMIL Tracking
@@ -54,12 +71,12 @@ class SMILPlayerManager: NSObject, AVAudioPlayerDelegate {
 
     // MARK: - Delegate
 
-    weak var delegate: SMILPlayerManagerDelegate?
+    public weak var delegate: SMILPlayerManagerDelegate?
     private var lastProgressUpdateTime: Date = .distantPast
 
     // MARK: - Initialization
 
-    init(bookStructure: [SectionInfo], epubPath: URL?, initialPlaybackRate: Double = 1.0) {
+    public init(bookStructure: [SectionInfo], epubPath: URL?, initialPlaybackRate: Double = 1.0) {
         self.bookStructure = bookStructure
         self.epubPath = epubPath
         self.currentPlaybackRate = Float(initialPlaybackRate)
@@ -71,7 +88,7 @@ class SMILPlayerManager: NSObject, AVAudioPlayerDelegate {
 
     // MARK: - Entry Management
 
-    func setCurrentEntry(
+    public func setCurrentEntry(
         sectionIndex: Int,
         entryIndex: Int,
         audioFile: String,
@@ -82,7 +99,6 @@ class SMILPlayerManager: NSObject, AVAudioPlayerDelegate {
             "[SMILPlayerManager] setCurrentEntry: section=\(sectionIndex), entry=\(entryIndex), file=\(audioFile), begin=\(beginTime), end=\(endTime)"
         )
 
-        // Check if we were recently playing (paused within last 500ms for seek)
         let wasRecentlyPlaying: Bool
         if let pauseTime = lastPausedWhilePlayingTime {
             let elapsed = Date().timeIntervalSince(pauseTime)
@@ -117,8 +133,7 @@ class SMILPlayerManager: NSObject, AVAudioPlayerDelegate {
         }
     }
 
-    /// Seek to a specific fragment by textId within a section
-    func seekToFragment(sectionIndex: Int, textId: String) async -> Bool {
+    public func seekToFragment(sectionIndex: Int, textId: String) async -> Bool {
         guard sectionIndex >= 0 && sectionIndex < bookStructure.count else {
             debugLog("[SMILPlayerManager] seekToFragment - invalid section: \(sectionIndex)")
             return false
@@ -142,14 +157,14 @@ class SMILPlayerManager: NSObject, AVAudioPlayerDelegate {
         return true
     }
 
-    func getCurrentEntry() -> SMILEntry? {
+    public func getCurrentEntry() -> SMILEntry? {
         guard currentSectionIndex < bookStructure.count else { return nil }
         let section = bookStructure[currentSectionIndex]
         guard currentEntryIndex < section.mediaOverlay.count else { return nil }
         return section.mediaOverlay[currentEntryIndex]
     }
 
-    func getCurrentPosition() -> (sectionIndex: Int, entryIndex: Int) {
+    public func getCurrentPosition() -> (sectionIndex: Int, entryIndex: Int) {
         return (currentSectionIndex, currentEntryIndex)
     }
 
@@ -188,7 +203,7 @@ class SMILPlayerManager: NSObject, AVAudioPlayerDelegate {
 
     // MARK: - Playback Control
 
-    func play() {
+    public func play() {
         guard let player = audioPlayer else {
             debugLog("[SMILPlayerManager] play() - no audio player")
             return
@@ -200,10 +215,9 @@ class SMILPlayerManager: NSObject, AVAudioPlayerDelegate {
         startUpdateTimer()
     }
 
-    func pause() {
+    public func pause() {
         guard let player = audioPlayer else { return }
 
-        // Track when we were playing before pausing (for seek-resume detection)
         if state == .playing {
             lastPausedWhilePlayingTime = Date()
         }
@@ -214,7 +228,7 @@ class SMILPlayerManager: NSObject, AVAudioPlayerDelegate {
         stopUpdateTimer()
     }
 
-    func seek(to time: Double) {
+    public func seek(to time: Double) {
         guard let player = audioPlayer else {
             debugLog("[SMILPlayerManager] seek(to: \(time)) - no audio player")
             return
@@ -225,12 +239,12 @@ class SMILPlayerManager: NSObject, AVAudioPlayerDelegate {
         currentTime = time
     }
 
-    func setVolume(_ volume: Double) {
+    public func setVolume(_ volume: Double) {
         audioPlayer?.volume = Float(volume)
         debugLog("[SMILPlayerManager] setVolume(\(volume))")
     }
 
-    func setPlaybackRate(_ rate: Double) {
+    public func setPlaybackRate(_ rate: Double) {
         currentPlaybackRate = Float(rate)
         audioPlayer?.rate = currentPlaybackRate
         debugLog("[SMILPlayerManager] setPlaybackRate(\(rate))")
@@ -257,12 +271,10 @@ class SMILPlayerManager: NSObject, AVAudioPlayerDelegate {
 
         currentTime = player.currentTime
 
-        // Check if we've passed the current entry boundary (use >= for exact match)
         if currentTime >= currentEntryEndTime {
             advanceToNextEntry()
         }
 
-        // Send time updates to delegate (throttled to ~5 per second)
         let now = Date()
         if now.timeIntervalSince(lastProgressUpdateTime) >= 0.2 {
             lastProgressUpdateTime = now
@@ -276,7 +288,7 @@ class SMILPlayerManager: NSObject, AVAudioPlayerDelegate {
 
     // MARK: - AVAudioPlayerDelegate
 
-    nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+    nonisolated public func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
         Task { @MainActor in
             debugLog(
                 "[SMILPlayerManager] Audio file finished playing (delegate callback, success=\(flag))"
@@ -287,8 +299,7 @@ class SMILPlayerManager: NSObject, AVAudioPlayerDelegate {
 
     // MARK: - Background Sync
 
-    /// Get current audio position data for syncing view after returning from background
-    func getBackgroundSyncData() -> AudioPositionSyncData? {
+    public func getBackgroundSyncData() -> AudioPositionSyncData? {
         guard state == .playing || state == .paused else { return nil }
         guard currentSectionIndex < bookStructure.count else { return nil }
         let section = bookStructure[currentSectionIndex]
@@ -310,11 +321,7 @@ class SMILPlayerManager: NSObject, AVAudioPlayerDelegate {
         )
     }
 
-    /// Reconcile cached position from actual player state (call after returning from background).
-    /// Timers may have not been fired while backgrounded, so the audio player may have freewheeled
-    /// forward without updating the currentEntry (which happens on a timer). So we manually
-    /// force the location after we resume from being backgrounded.
-    func reconcilePositionFromPlayer() {
+    public func reconcilePositionFromPlayer() {
         guard let player = audioPlayer else { return }
         guard currentSectionIndex < bookStructure.count else { return }
 
@@ -343,8 +350,7 @@ class SMILPlayerManager: NSObject, AVAudioPlayerDelegate {
 
     // MARK: - Entry Navigation
 
-    /// Advance to the next SMIL entry (called by timer or externally)
-    func advanceToNextEntry() {
+    public func advanceToNextEntry() {
         guard currentSectionIndex < bookStructure.count else {
             debugLog("[SMILPlayerManager] End of book")
             pause()
@@ -423,8 +429,7 @@ class SMILPlayerManager: NSObject, AVAudioPlayerDelegate {
         }
     }
 
-    /// Go back to the previous SMIL entry
-    func goToPreviousEntry() {
+    public func goToPreviousEntry() {
         if currentEntryIndex > 0 {
             let section = bookStructure[currentSectionIndex]
             let prevEntry = section.mediaOverlay[currentEntryIndex - 1]
@@ -489,7 +494,7 @@ class SMILPlayerManager: NSObject, AVAudioPlayerDelegate {
 
     // MARK: - Cleanup
 
-    func cleanup() {
+    public func cleanup() {
         debugLog("[SMILPlayerManager] Cleanup")
         stopUpdateTimer()
         audioPlayer?.stop()
@@ -497,3 +502,4 @@ class SMILPlayerManager: NSObject, AVAudioPlayerDelegate {
         state = .idle
     }
 }
+#endif

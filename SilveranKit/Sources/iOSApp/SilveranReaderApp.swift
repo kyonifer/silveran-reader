@@ -33,6 +33,8 @@ struct SilveranReaderApp: App {
             }
 
             await FilesystemActor.shared.cleanupExtractedEpubDirectories()
+
+            await AppleWatchActor.shared.activate()
         }
     }
 

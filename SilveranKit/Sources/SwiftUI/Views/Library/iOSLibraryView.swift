@@ -201,11 +201,13 @@ struct MoreMenuView: View {
     @Binding var showSettings: Bool
     @Binding var showOfflineSheet: Bool
     @Environment(MediaViewModel.self) private var mediaViewModel
+    @State private var isWatchPaired = false
 
     enum MoreDestination: Hashable {
         case authors
         case downloaded
         case addLocalFile
+        case appleWatch
     }
 
     var body: some View {
@@ -220,7 +222,15 @@ struct MoreMenuView: View {
                 NavigationLink(value: MoreDestination.addLocalFile) {
                     Label("Manage Local Files", systemImage: "folder.badge.plus")
                 }
+                if isWatchPaired {
+                    NavigationLink(value: MoreDestination.appleWatch) {
+                        Label("Apple Watch", systemImage: "applewatch")
+                    }
+                }
             }
+        }
+        .task {
+            isWatchPaired = await AppleWatchActor.shared.isWatchPaired()
         }
         .navigationTitle("More")
         .navigationBarTitleDisplayMode(.inline)
@@ -278,6 +288,12 @@ struct MoreMenuView: View {
                     ImportLocalFileView()
                         .navigationTitle("Manage Local Files")
                         .navigationBarTitleDisplayMode(.inline)
+                        .iOSLibraryToolbar(
+                            showSettings: $showSettings,
+                            showOfflineSheet: $showOfflineSheet
+                        )
+                case .appleWatch:
+                    WatchTransferView()
                         .iOSLibraryToolbar(
                             showSettings: $showSettings,
                             showOfflineSheet: $showOfflineSheet

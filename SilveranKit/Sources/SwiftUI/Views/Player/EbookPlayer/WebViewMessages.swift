@@ -44,24 +44,7 @@ struct MediaOverlaySeekMessage: Codable {
     let anchor: String
 }
 
-/// Section info combining TOC data and SMIL metadata
-struct SectionInfo: Codable, Identifiable {
-    let index: Int
-    let id: String
-    let label: String?
-    let level: Int?
-    let mediaOverlay: [SMILEntry]
-}
-
-/// SMIL media overlay entry with cumulative timing
-struct SMILEntry: Codable {
-    let textId: String
-    let textHref: String
-    let audioFile: String
-    let begin: Double
-    let end: Double
-    let cumSumAtEnd: Double
-}
+// SectionInfo and SMILEntry are defined in Common/Models/SMILTypes.swift
 
 /// Sent when media overlay makes progress during audio playback
 struct MediaOverlayProgressMessage: Codable {

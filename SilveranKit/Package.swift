@@ -7,12 +7,14 @@ let package = Package(
     platforms: [
         .macOS(.v14),
         .iOS(.v17),
+        .watchOS(.v10),
     ],
     products: [
         .library(name: "SilveranKitCommon", targets: ["SilveranKitCommon"]),
         .library(name: "SilveranKitSwiftUI", targets: ["SilveranKitSwiftUI"]),
         .library(name: "SilveranKitiOSApp", targets: ["SilveranKitiOSApp"]),
         .library(name: "SilveranKitMacApp", targets: ["SilveranKitMacApp"]),
+        .library(name: "SilveranKitWatchApp", targets: ["SilveranKitWatchApp"]),
         .executable(name: "SilveranKitLinuxApp", targets: ["SilveranKitLinuxApp"]),
     ],
     dependencies: [
@@ -22,6 +24,7 @@ let package = Package(
         ),
         .package(url: "https://github.com/swiftlang/swift-syntax.git", from: "600.0.0"),
         .package(url: "https://github.com/weichsel/ZIPFoundation.git", from: "0.9.0"),
+        .package(url: "https://github.com/scinfu/SwiftSoup.git", from: "2.7.0"),
     ],
     targets: [
         .target(
@@ -29,6 +32,7 @@ let package = Package(
             dependencies: [
                 "SilveranKitMacros",
                 .product(name: "ZIPFoundation", package: "ZIPFoundation"),
+                .product(name: "SwiftSoup", package: "SwiftSoup"),
             ],
             path: "Sources/Common",
             exclude: ["Macros"]
@@ -64,6 +68,13 @@ let package = Package(
                 "SilveranKitSwiftUI",
             ],
             path: "Sources/macApp"
+        ),
+        .target(
+            name: "SilveranKitWatchApp",
+            dependencies: [
+                "SilveranKitCommon",
+            ],
+            path: "Sources/watchApp"
         ),
         .executableTarget(
             name: "SilveranKitLinuxApp",
