@@ -32,6 +32,7 @@ class ReaderStyleManager {
         withObservationTracking {
             _ = settingsVM.fontSize
             _ = settingsVM.fontFamily
+            _ = settingsVM.lineSpacing
             _ = settingsVM.marginLeftRight
             _ = settingsVM.marginTopBottom
             _ = settingsVM.wordSpacing
@@ -88,6 +89,7 @@ class ReaderStyleManager {
             try await bridge.sendJsUpdateStyles(
                 fontSize: settingsVM.fontSize,
                 fontFamily: settingsVM.fontFamily,
+                lineSpacing: settingsVM.lineSpacing,
                 isDarkMode: isDarkMode,
                 marginLeftRight: settingsVM.marginLeftRight,
                 marginTopBottom: settingsVM.marginTopBottom,

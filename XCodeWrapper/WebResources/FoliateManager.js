@@ -2,7 +2,7 @@ import "./foliate-js/view.js";
 import { debugLog } from "./DebugConfig.js";
 
 const getCSS = ({
-  spacing,
+  lineSpacing = 1.4,
   justify,
   hyphenate,
   mediaActiveClass,
@@ -48,10 +48,10 @@ const getCSS = ({
         ${backgroundColorCSS}
         ${foregroundColorCSS}
     }
-    p, li, blockquote, dd {
+    p, li, blockquote, dd, div {
         font-size: ${fontSize}px !important;
         ${fontFamilyCSS}
-        line-height: ${spacing};
+        line-height: ${lineSpacing} !important;
         text-align: ${justify ? "justify" : "start"};
         -webkit-hyphens: ${hyphenate ? "auto" : "manual"};
         hyphens: ${hyphenate ? "auto" : "manual"};
@@ -60,6 +60,14 @@ const getCSS = ({
         -webkit-hyphenate-limit-lines: 2;
         hanging-punctuation: allow-end last;
         widows: 2;
+        word-spacing: ${wordSpacing}em !important;
+        letter-spacing: ${letterSpacing}em !important;
+        ${foregroundColorCSS}
+    }
+    span, em, strong, i, b {
+        font-size: ${fontSize}px !important;
+        line-height: ${lineSpacing} !important;
+        ${fontFamilyCSS}
         word-spacing: ${wordSpacing}em !important;
         letter-spacing: ${letterSpacing}em !important;
         ${foregroundColorCSS}
@@ -106,6 +114,7 @@ class FoliateManager {
   #view;
   #fontSize = 20;
   #fontFamily = "System Default";
+  #lineSpacing = 1.4;
   #isDarkMode = false;
   #marginLeftRight = 0;
   #marginTopBottom = 8;
@@ -458,6 +467,9 @@ class FoliateManager {
     if (styles.fontFamily !== undefined && styles.fontFamily !== null) {
       this.#fontFamily = styles.fontFamily;
     }
+    if (styles.lineSpacing !== undefined && styles.lineSpacing !== null) {
+      this.#lineSpacing = styles.lineSpacing;
+    }
     if (styles.isDarkMode !== undefined && styles.isDarkMode !== null) {
       this.#isDarkMode = styles.isDarkMode;
     }
@@ -510,7 +522,7 @@ class FoliateManager {
 
     this.#view.renderer.setStyles?.(
       getCSS({
-        spacing: 1.4,
+        lineSpacing: this.#lineSpacing,
         justify: true,
         hyphenate: true,
         mediaActiveClass,

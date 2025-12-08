@@ -250,6 +250,7 @@ class WebViewCommsBridge {
     func sendJsUpdateStyles(
         fontSize: Double,
         fontFamily: String,
+        lineSpacing: Double,
         isDarkMode: Bool,
         marginLeftRight: Double,
         marginTopBottom: Double,
@@ -268,6 +269,7 @@ class WebViewCommsBridge {
         let styles: [String: Any?] = [
             "fontSize": fontSize,
             "fontFamily": fontFamily,
+            "lineSpacing": lineSpacing,
             "isDarkMode": isDarkMode,
             "marginLeftRight": marginLeftRight,
             "marginTopBottom": marginTopBottom,

@@ -6,6 +6,7 @@ import Observation
 public final class SettingsViewModel {
     public var fontSize: Double = 24
     public var fontFamily: String = "System Default"
+    public var lineSpacing: Double = 1.4
     public var marginLeftRight: Double = 8
     public var marginTopBottom: Double = 8
     public var wordSpacing: Double = 0
@@ -81,6 +82,7 @@ public final class SettingsViewModel {
 
         fontSize = config.reading.fontSize
         fontFamily = config.reading.fontFamily
+        lineSpacing = config.reading.lineSpacing
         marginLeftRight = config.reading.marginLeftRight
         marginTopBottom = config.reading.marginTopBottom
         wordSpacing = config.reading.wordSpacing
@@ -132,6 +134,7 @@ public final class SettingsViewModel {
         try await SettingsActor.shared.updateConfig(
             fontSize: fontSize,
             fontFamily: fontFamily,
+            lineSpacing: lineSpacing,
             marginLeftRight: marginLeftRight,
             marginTopBottom: marginTopBottom,
             wordSpacing: wordSpacing,

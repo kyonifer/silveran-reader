@@ -119,6 +119,16 @@ struct EbookPlayerSettings: View {
                     Task { try? await settingsVM.save() }
                 }
 
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Line Spacing: \(String(format: "%.1f", settingsVM.lineSpacing))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Slider(value: $settingsVM.lineSpacing, in: 1.0...2.5, step: 0.1)
+                    .onChange(of: settingsVM.lineSpacing) { _, _ in
+                        Task { try? await settingsVM.save() }
+                    }
+            }
+
             Divider()
 
             VStack(alignment: .leading, spacing: 8) {
@@ -465,6 +475,7 @@ struct EbookPlayerSettings: View {
     private func resetToDefaults() {
         settingsVM.fontSize = 24
         settingsVM.fontFamily = "System Default"
+        settingsVM.lineSpacing = 1.4
         settingsVM.marginLeftRight = 8
         settingsVM.marginTopBottom = 8
         settingsVM.wordSpacing = 0

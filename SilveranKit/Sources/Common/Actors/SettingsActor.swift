@@ -28,6 +28,7 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
     public struct Reading: Codable, Equatable, Sendable {
         public var fontSize: Double
         public var fontFamily: String
+        public var lineSpacing: Double
         public var marginLeftRight: Double
         public var marginTopBottom: Double
         public var wordSpacing: Double
@@ -42,6 +43,7 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
         public init(
             fontSize: Double = 24,
             fontFamily: String = "System Default",
+            lineSpacing: Double = 1.4,
             marginLeftRight: Double = 8,
             marginTopBottom: Double = 8,
             wordSpacing: Double = 0,
@@ -55,6 +57,7 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
         ) {
             self.fontSize = fontSize
             self.fontFamily = fontFamily
+            self.lineSpacing = lineSpacing
             self.marginLeftRight = marginLeftRight
             self.marginTopBottom = marginTopBottom
             self.wordSpacing = wordSpacing
@@ -192,6 +195,7 @@ public actor SettingsActor {
     public func updateConfig(
         fontSize: Double? = nil,
         fontFamily: String? = nil,
+        lineSpacing: Double? = nil,
         marginLeftRight: Double? = nil,
         marginTopBottom: Double? = nil,
         wordSpacing: Double? = nil,
@@ -222,6 +226,7 @@ public actor SettingsActor {
 
         if let fontSize { updated.reading.fontSize = fontSize }
         if let fontFamily { updated.reading.fontFamily = fontFamily }
+        if let lineSpacing { updated.reading.lineSpacing = lineSpacing }
         if let marginLeftRight { updated.reading.marginLeftRight = marginLeftRight }
         if let marginTopBottom { updated.reading.marginTopBottom = marginTopBottom }
         if let wordSpacing { updated.reading.wordSpacing = wordSpacing }
