@@ -29,6 +29,21 @@ public enum SMILPlayerError: Error, LocalizedError {
     }
 }
 
+// MARK: - Audio Player Delegate
+
+private class SMILAudioPlayerDelegate: NSObject, AVAudioPlayerDelegate {
+    func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        debugLog("[SMILPlayerActor] Audio file finished playing (success: \(flag))")
+        Task { @SMILPlayerActor in
+            await SMILPlayerActor.shared.handleAudioFinished()
+        }
+    }
+
+    func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
+        debugLog("[SMILPlayerActor] Audio decode error: \(error?.localizedDescription ?? "unknown")")
+    }
+}
+
 // MARK: - State Snapshot
 
 public struct SMILPlaybackState: Sendable {
@@ -89,6 +104,7 @@ public actor SMILPlayerActor {
     // MARK: - Player State
 
     private var player: AVAudioPlayer?
+    private let audioDelegate = SMILAudioPlayerDelegate()
     private var bookStructure: [SectionInfo] = []
     private var epubPath: URL?
     private var bookId: String?
@@ -108,6 +124,7 @@ public actor SMILPlayerActor {
     private var updateTimer: Timer?
     private var lastPausedWhilePlayingTime: Date?
     private var lastProgressNotifyTime: Date = .distantPast
+    private var isAdvancing: Bool = false
 
     // MARK: - Observer Pattern
 
@@ -513,6 +530,7 @@ public actor SMILPlayerActor {
                 audioPath: relativeAudioFile
             )
             let newPlayer = try AVAudioPlayer(data: audioData)
+            newPlayer.delegate = audioDelegate
             newPlayer.enableRate = true
             newPlayer.rate = Float(playbackRate)
             newPlayer.volume = Float(volume)
@@ -544,13 +562,20 @@ public actor SMILPlayerActor {
     }
 
     private func timerFired() async {
-        guard let player = player, isPlaying else { return }
+        guard let player = player else { return }
 
         let currentTime = player.currentTime
+        let duration = player.duration
         let tolerance = 0.02
-        let shouldAdvance = currentTime >= currentEntryEndTime - tolerance
 
-        if shouldAdvance {
+        let reachedEntryEnd = currentTime >= currentEntryEndTime - tolerance
+        let reachedFileEnd = duration > 0 && currentTime >= duration - tolerance
+
+        if isPlaying && (reachedEntryEnd || reachedFileEnd) {
+            await advanceToNextEntry()
+        } else if !isPlaying && reachedFileEnd && !player.isPlaying {
+            debugLog("[SMILPlayerActor] Audio file ended naturally, advancing...")
+            isPlaying = true
             await advanceToNextEntry()
         }
 
@@ -561,9 +586,26 @@ public actor SMILPlayerActor {
         }
     }
 
+    func handleAudioFinished() async {
+        guard isPlaying else {
+            debugLog("[SMILPlayerActor] handleAudioFinished called but not playing, ignoring")
+            return
+        }
+
+        debugLog("[SMILPlayerActor] handleAudioFinished - advancing to next entry/chapter")
+        await advanceToNextEntry()
+    }
+
     // MARK: - Private: Entry Navigation
 
     private func advanceToNextEntry() async {
+        guard !isAdvancing else {
+            debugLog("[SMILPlayerActor] advanceToNextEntry already in progress, skipping")
+            return
+        }
+        isAdvancing = true
+        defer { isAdvancing = false }
+
         guard currentSectionIndex < bookStructure.count else {
             debugLog("[SMILPlayerActor] End of book - currentSectionIndex \(currentSectionIndex) >= count \(bookStructure.count)")
             await pause()
@@ -645,26 +687,6 @@ public actor SMILPlayerActor {
         var chapterLabel: String? = nil
         var chapterElapsed: Double = 0
         var chapterTotal: Double = 0
-
-        if currentSectionIndex < bookStructure.count {
-            let section = bookStructure[currentSectionIndex]
-            chapterLabel = section.label
-
-            if !section.mediaOverlay.isEmpty {
-                if let lastEntry = section.mediaOverlay.last {
-                    chapterTotal = lastEntry.cumSumAtEnd
-                }
-                if currentEntryIndex < section.mediaOverlay.count {
-                    let entry = section.mediaOverlay[currentEntryIndex]
-                    let prevCumSum = currentEntryIndex > 0
-                        ? section.mediaOverlay[currentEntryIndex - 1].cumSumAtEnd
-                        : 0
-                    let timeInEntry = currentTime - entry.begin
-                    chapterElapsed = prevCumSum + max(0, timeInEntry)
-                }
-            }
-        }
-
         var bookElapsed: Double = 0
         var bookTotal: Double = 0
 
@@ -677,12 +699,29 @@ public actor SMILPlayerActor {
 
         if currentSectionIndex < bookStructure.count {
             let section = bookStructure[currentSectionIndex]
+            chapterLabel = section.label
+
             if !section.mediaOverlay.isEmpty {
+                let chapterStartCumSum: Double
                 if let prevSection = bookStructure.prefix(currentSectionIndex).last(where: { !$0.mediaOverlay.isEmpty }),
                    let prevLastEntry = prevSection.mediaOverlay.last {
-                    bookElapsed = prevLastEntry.cumSumAtEnd + chapterElapsed
+                    chapterStartCumSum = prevLastEntry.cumSumAtEnd
                 } else {
-                    bookElapsed = chapterElapsed
+                    chapterStartCumSum = 0
+                }
+
+                if let lastEntry = section.mediaOverlay.last {
+                    chapterTotal = lastEntry.cumSumAtEnd - chapterStartCumSum
+                }
+
+                if currentEntryIndex < section.mediaOverlay.count {
+                    let entry = section.mediaOverlay[currentEntryIndex]
+                    let entryCumSum = currentEntryIndex > 0
+                        ? section.mediaOverlay[currentEntryIndex - 1].cumSumAtEnd
+                        : chapterStartCumSum
+                    let timeInEntry = currentTime - entry.begin
+                    bookElapsed = entryCumSum + max(0, timeInEntry)
+                    chapterElapsed = bookElapsed - chapterStartCumSum
                 }
             }
         }
