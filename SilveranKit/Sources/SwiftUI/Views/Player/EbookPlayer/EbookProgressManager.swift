@@ -417,7 +417,7 @@ class EbookProgressManager {
 
         Task { @MainActor in
             do {
-                try await bridge.sendJsGoToHrefCommand(href: chapter.id)
+                try await bridge.sendJsGoToFractionInSectionCommand(sectionIndex: newId, fraction: 0)
 
                 if let mom = mediaOverlayManager {
                     await mom.handleUserChapterNavigation(sectionIndex: newId)

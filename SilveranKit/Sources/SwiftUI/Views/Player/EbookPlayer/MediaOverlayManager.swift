@@ -222,7 +222,7 @@ class MediaOverlayManager {
         if syncEnabled {
             Task {
                 try? await commsBridge?.sendJsGoToHrefCommand(href: "\(section.id)#\(entry.textId)")
-                await sendHighlightCommand(href: section.id, textId: entry.textId)
+                await sendHighlightCommand(sectionIndex: sectionIndex, textId: entry.textId)
             }
         }
     }
@@ -344,7 +344,7 @@ class MediaOverlayManager {
         )
         if success {
             debugLog("[MOM] handleSeekEvent - seek successful")
-            await sendHighlightCommand(href: section.id, textId: anchor)
+            await sendHighlightCommand(sectionIndex: sectionIndex, textId: anchor)
 
             if wasPlaying {
                 debugLog("[MOM] handleSeekEvent - resuming playback")
@@ -377,10 +377,8 @@ class MediaOverlayManager {
             isPlaying = true
 
             if let entry = await SMILPlayerActor.shared.getCurrentEntry() {
-                let (sectionIndex, _) = await SMILPlayerActor.shared.getCurrentPosition()
-                if let section = getSection(at: sectionIndex) {
-                    await sendHighlightCommand(href: section.id, textId: entry.textId)
-                }
+                let (currentSectionIndex, _) = await SMILPlayerActor.shared.getCurrentPosition()
+                await sendHighlightCommand(sectionIndex: currentSectionIndex, textId: entry.textId)
             }
             debugLog("[MOM] startPlaying() - started")
         } catch {
@@ -434,7 +432,7 @@ class MediaOverlayManager {
                     textId: entry.textId
                 )
                 try? await commsBridge?.sendJsGoToHrefCommand(href: "\(section.id)#\(entry.textId)")
-                await sendHighlightCommand(href: section.id, textId: entry.textId)
+                await sendHighlightCommand(sectionIndex: sectionIndex, textId: entry.textId)
                 if wasPlaying { try? await SMILPlayerActor.shared.play() }
             }
         } else {
@@ -452,7 +450,7 @@ class MediaOverlayManager {
                         try? await commsBridge?.sendJsGoToHrefCommand(
                             href: "\(nextSection.id)#\(entry.textId)"
                         )
-                        await sendHighlightCommand(href: nextSection.id, textId: entry.textId)
+                        await sendHighlightCommand(sectionIndex: nextSectionIndex, textId: entry.textId)
                         if wasPlaying { try? await SMILPlayerActor.shared.play() }
                     }
                     return
@@ -487,7 +485,7 @@ class MediaOverlayManager {
                     textId: entry.textId
                 )
                 try? await commsBridge?.sendJsGoToHrefCommand(href: "\(section.id)#\(entry.textId)")
-                await sendHighlightCommand(href: section.id, textId: entry.textId)
+                await sendHighlightCommand(sectionIndex: sectionIndex, textId: entry.textId)
                 if wasPlaying { try? await SMILPlayerActor.shared.play() }
             }
         } else {
@@ -508,7 +506,7 @@ class MediaOverlayManager {
                         try? await commsBridge?.sendJsGoToHrefCommand(
                             href: "\(prevSection.id)#\(entry.textId)"
                         )
-                        await sendHighlightCommand(href: prevSection.id, textId: entry.textId)
+                        await sendHighlightCommand(sectionIndex: prevSectionIndex, textId: entry.textId)
                         if wasPlaying { try? await SMILPlayerActor.shared.play() }
                     }
                     return
@@ -743,12 +741,12 @@ class MediaOverlayManager {
     // MARK: - Highlight and Page Flip
 
     /// Send highlight command to JS for the current fragment
-    private func sendHighlightCommand(href: String, textId: String) async {
+    private func sendHighlightCommand(sectionIndex: Int, textId: String) async {
         guard syncEnabled else { return }
 
         do {
-            try await commsBridge?.sendJsHighlightFragment(href: href, textId: textId)
-            debugLog("[MOM] Highlight command sent: \(href)#\(textId)")
+            try await commsBridge?.sendJsHighlightFragment(sectionIndex: sectionIndex, textId: textId)
+            debugLog("[MOM] Highlight command sent: section=\(sectionIndex), textId=\(textId)")
         } catch {
             debugLog("[MOM] Error sending highlight command: \(error)")
         }

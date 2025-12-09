@@ -528,14 +528,14 @@ public actor SMILPlayerActor {
 
     private func startUpdateTimer() {
         stopUpdateTimer()
-        let timer = Timer(timeInterval: 0.1, repeats: true) { [weak self] _ in
-            guard let self = self else { return }
+        let timer = Timer(timeInterval: 0.1, repeats: true) { _ in
             Task { @SMILPlayerActor in
-                await self.timerFired()
+                await SMILPlayerActor.shared.timerFired()
             }
         }
         RunLoop.main.add(timer, forMode: .common)
         updateTimer = timer
+        debugLog("[SMILPlayerActor] Update timer started")
     }
 
     private func stopUpdateTimer() {
@@ -547,8 +547,10 @@ public actor SMILPlayerActor {
         guard let player = player, isPlaying else { return }
 
         let currentTime = player.currentTime
+        let tolerance = 0.02
+        let shouldAdvance = currentTime >= currentEntryEndTime - tolerance
 
-        if currentTime >= currentEntryEndTime {
+        if shouldAdvance {
             await advanceToNextEntry()
         }
 
@@ -563,13 +565,15 @@ public actor SMILPlayerActor {
 
     private func advanceToNextEntry() async {
         guard currentSectionIndex < bookStructure.count else {
-            debugLog("[SMILPlayerActor] End of book")
+            debugLog("[SMILPlayerActor] End of book - currentSectionIndex \(currentSectionIndex) >= count \(bookStructure.count)")
             await pause()
             return
         }
 
         let section = bookStructure[currentSectionIndex]
         let nextEntryIndex = currentEntryIndex + 1
+
+        debugLog("[SMILPlayerActor] advanceToNextEntry: section=\(currentSectionIndex), nextEntry=\(nextEntryIndex), overlayCount=\(section.mediaOverlay.count)")
 
         if nextEntryIndex < section.mediaOverlay.count {
             let nextEntry = section.mediaOverlay[nextEntryIndex]
@@ -590,6 +594,7 @@ public actor SMILPlayerActor {
             await notifyStateChange()
         } else {
             let nextSectionIndex = currentSectionIndex + 1
+            debugLog("[SMILPlayerActor] Section \(currentSectionIndex) complete, looking for next section >= \(nextSectionIndex)")
             if let nextSection = bookStructure.first(where: { $0.index >= nextSectionIndex && !$0.mediaOverlay.isEmpty }) {
                 let nextEntry = nextSection.mediaOverlay[0]
                 currentSectionIndex = nextSection.index
@@ -663,18 +668,22 @@ public actor SMILPlayerActor {
         var bookElapsed: Double = 0
         var bookTotal: Double = 0
 
-        for section in bookStructure {
-            if !section.mediaOverlay.isEmpty {
-                if let lastEntry = section.mediaOverlay.last {
-                    bookTotal += lastEntry.cumSumAtEnd
-                }
+        for section in bookStructure.reversed() {
+            if !section.mediaOverlay.isEmpty, let lastEntry = section.mediaOverlay.last {
+                bookTotal = lastEntry.cumSumAtEnd
+                break
             }
-            if section.index < currentSectionIndex {
-                if let lastEntry = section.mediaOverlay.last {
-                    bookElapsed += lastEntry.cumSumAtEnd
+        }
+
+        if currentSectionIndex < bookStructure.count {
+            let section = bookStructure[currentSectionIndex]
+            if !section.mediaOverlay.isEmpty {
+                if let prevSection = bookStructure.prefix(currentSectionIndex).last(where: { !$0.mediaOverlay.isEmpty }),
+                   let prevLastEntry = prevSection.mediaOverlay.last {
+                    bookElapsed = prevLastEntry.cumSumAtEnd + chapterElapsed
+                } else {
+                    bookElapsed = chapterElapsed
                 }
-            } else if section.index == currentSectionIndex {
-                bookElapsed += chapterElapsed
             }
         }
 

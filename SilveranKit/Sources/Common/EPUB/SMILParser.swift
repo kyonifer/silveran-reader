@@ -195,7 +195,29 @@ public enum SMILParser {
         guard parser.parse() else {
             throw SMILParserError.parseError("Failed to parse SMIL")
         }
-        return delegate.entries
+
+        return delegate.entries.map { entry in
+            let resolvedTextHref = resolvePath(entry.textHref, relativeTo: smilDir)
+            let relativeTextHref = makePathRelative(resolvedTextHref, to: opfDir)
+            return RawSMILEntry(
+                textId: entry.textId,
+                textHref: relativeTextHref,
+                audioFile: entry.audioFile,
+                begin: entry.begin,
+                end: entry.end
+            )
+        }
+    }
+
+    private static func makePathRelative(_ path: String, to basePath: String) -> String {
+        if basePath.isEmpty {
+            return path
+        }
+        let prefix = basePath.hasSuffix("/") ? basePath : basePath + "/"
+        if path.hasPrefix(prefix) {
+            return String(path.dropFirst(prefix.count))
+        }
+        return path
     }
 
     private static func resolvePath(_ path: String, relativeTo base: String) -> String {

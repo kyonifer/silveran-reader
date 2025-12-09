@@ -19,6 +19,7 @@ class EbookPlayerViewModel {
     var styleManager: ReaderStyleManager? = nil
     var searchManager: EbookSearchManager? = nil
     var extractedEbookPath: URL? = nil
+    private var nativeLoadingTask: Task<Void, Never>? = nil
     #if os(iOS)
     private(set) var recoveryManager: WebViewRecoveryManager?
     #endif
@@ -249,7 +250,7 @@ class EbookPlayerViewModel {
             if let localPath = data.localMediaPath {
                 debugLog("[EbookPlayerViewModel] Local ebook file available")
                 let needsNativeAudio = data.category == .synced
-                Task { @MainActor in
+                nativeLoadingTask = Task { @MainActor in
                     do {
                         let processedPath = try await FilesystemActor.shared.extractEpubIfNeeded(
                             epubPath: localPath,
@@ -408,6 +409,12 @@ class EbookPlayerViewModel {
                 #else
                 let isRecovering = false
                 #endif
+
+                if self.bookData?.category == .synced, let loadingTask = self.nativeLoadingTask {
+                    debugLog("[EbookPlayerViewModel] Waiting for native SMIL parsing to complete...")
+                    await loadingTask.value
+                    debugLog("[EbookPlayerViewModel] Native SMIL parsing complete")
+                }
 
                 let useNativeStructure = self.bookData?.category == .synced && !self.bookStructure.isEmpty
                 let structureToUse = useNativeStructure ? self.bookStructure : message.sections

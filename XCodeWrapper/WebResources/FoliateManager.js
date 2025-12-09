@@ -127,6 +127,7 @@ class FoliateManager {
   #lastRelocateRange = null;
   #highlightedElement = null;
   #resizeHandler = null;
+  #pendingHighlight = null;
 
   async open(file) {
     debugLog("FoliateManager", "open() called with file:", file.name);
@@ -247,6 +248,14 @@ class FoliateManager {
     };
 
     window.webkit?.messageHandlers?.Relocated?.postMessage(payload);
+
+    if (this.#pendingHighlight) {
+      const { sectionIndex: pendingSectionIndex, textId } = this.#pendingHighlight;
+      debugLog("FoliateManager", `Checking pending highlight: section=${pendingSectionIndex}, textId=${textId}`);
+      setTimeout(() => {
+        this.highlightFragment(pendingSectionIndex, textId);
+      }, 50);
+    }
   }
 
   #reportBookStructureReady() {
@@ -658,8 +667,8 @@ class FoliateManager {
 
   // MARK: - Highlight methods (Swift controls audio directly)
 
-  highlightFragment(href, textId) {
-    debugLog("FoliateManager", `highlightFragment(href: ${href}, textId: ${textId})`);
+  highlightFragment(sectionIndex, textId) {
+    debugLog("FoliateManager", `highlightFragment(sectionIndex: ${sectionIndex}, textId: ${textId})`);
 
     this.clearHighlight();
 
@@ -668,9 +677,8 @@ class FoliateManager {
       return;
     }
 
-    const sectionIndex = this.#view.book?.sections?.findIndex(s => s.id === href);
-    if (sectionIndex === -1 || sectionIndex === undefined) {
-      console.warn("[FM2] highlightFragment: Could not find section for href:", href);
+    if (sectionIndex < 0 || sectionIndex >= (this.#view.book?.sections?.length ?? 0)) {
+      console.warn("[FM2] highlightFragment: Invalid section index:", sectionIndex);
       return;
     }
 
@@ -681,18 +689,24 @@ class FoliateManager {
     }
 
     const contents = renderer.getContents?.();
+    const sectionHref = this.#view.book?.sections?.[sectionIndex]?.id;
+
     if (!contents || !contents.length) {
-      debugLog("FoliateManager", "No contents loaded, navigating first");
-      this.#view.goTo(`${href}#${textId}`);
+      debugLog("FoliateManager", "No contents loaded, storing pending highlight and navigating");
+      this.#pendingHighlight = { sectionIndex, textId };
+      if (sectionHref) this.#view.goTo(`${sectionHref}#${textId}`);
       return;
     }
 
     const content = contents.find(c => c.index === sectionIndex);
     if (!content?.doc) {
-      debugLog("FoliateManager", `Section ${sectionIndex} not currently loaded, navigating first`);
-      this.#view.goTo(`${href}#${textId}`);
+      debugLog("FoliateManager", `Section ${sectionIndex} not currently loaded, storing pending highlight and navigating`);
+      this.#pendingHighlight = { sectionIndex, textId };
+      if (sectionHref) this.#view.goTo(`${sectionHref}#${textId}`);
       return;
     }
+
+    this.#pendingHighlight = null;
 
     const doc = content.doc;
     const el = doc.getElementById(textId);
