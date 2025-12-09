@@ -370,6 +370,38 @@ public enum SyncResult: Sendable {
     case failed
 }
 
+public enum SyncReason: String, Sendable, Codable {
+    // User-initiated events (ebook)
+    case userFlippedPage
+    case userSelectedChapter
+    case userDraggedSeekBar
+
+    // User-initiated events (audio)
+    case userPausedPlayback
+    case userStartedPlayback
+    case userSkippedForward
+    case userSkippedBackward
+
+    // Timer/system events
+    case periodicDuringActivePlayback
+    case periodicWhileReading
+
+    // User-initiated events (general)
+    case userClosedBook
+
+    // App lifecycle
+    case appBackgrounding
+    case appTerminating
+
+    // Connectivity/sync events
+    case connectionRestored
+    case watchReconnected
+
+    // Position fetch triggers
+    case initialLoad
+    case appWokeFromSleep
+}
+
 public struct PendingProgressSync: Codable, Sendable, Hashable {
     public let bookId: String
     public let locator: BookLocator

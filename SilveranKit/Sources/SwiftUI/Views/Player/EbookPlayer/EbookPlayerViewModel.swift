@@ -227,7 +227,7 @@ class EbookPlayerViewModel {
             "[EbookPlayerViewModel] App backgrounding - syncing progress (audio continues in background)"
         )
 
-        await progressManager?.syncProgressToServer(force: true)
+        await progressManager?.syncProgressToServer(reason: .appBackgrounding)
 
         debugLog("[EbookPlayerViewModel] Background sync complete")
     }
@@ -289,6 +289,9 @@ class EbookPlayerViewModel {
     func handleScenePhaseChange(_ phase: ScenePhase) {
         switch phase {
             case .active:
+                Task { @MainActor in
+                    await progressManager?.handleResume()
+                }
                 smilPlayerManager?.reconcilePositionFromPlayer()
                 if let syncData = smilPlayerManager?.getBackgroundSyncData() {
                     debugLog(

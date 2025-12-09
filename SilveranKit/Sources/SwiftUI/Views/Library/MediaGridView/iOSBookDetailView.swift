@@ -5,7 +5,10 @@ struct iOSBookDetailView: View {
     let item: BookMetadata
     let mediaKind: MediaKind
     @Environment(MediaViewModel.self) private var mediaViewModel: MediaViewModel
-    @State private var animatedProgress: Double = 0
+
+    private var currentItem: BookMetadata {
+        mediaViewModel.library.bookMetaData.first { $0.uuid == item.uuid } ?? item
+    }
 
     var body: some View {
         ScrollView {
@@ -23,14 +26,6 @@ struct iOSBookDetailView: View {
         }
         .navigationTitle("Book Details")
         .navigationBarTitleDisplayMode(.inline)
-        .onAppear {
-            animatedProgress = 0
-            DispatchQueue.main.async {
-                withAnimation(.easeOut(duration: 0.45)) {
-                    animatedProgress = item.progress
-                }
-            }
-        }
     }
 
     private var coverSection: some View {
@@ -99,14 +94,14 @@ struct iOSBookDetailView: View {
                     .font(.callout)
                     .fontWeight(.medium)
                 Spacer()
-                Text("\(Int((item.progress * 100).rounded()))%")
+                Text("\(Int((currentItem.progress * 100).rounded()))%")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
 
-            ProgressView(value: animatedProgress, total: 1)
+            ProgressView(value: currentItem.progress, total: 1)
                 .progressViewStyle(.linear)
-                .animation(.easeOut(duration: 0.45), value: animatedProgress)
+                .animation(.easeOut(duration: 0.45), value: currentItem.progress)
         }
     }
 
@@ -127,7 +122,7 @@ struct iOSBookDetailView: View {
 
     @ViewBuilder
     private var debugInfoSection: some View {
-        if let positionUpdatedAt = item.position?.updatedAt {
+        if let positionUpdatedAt = currentItem.position?.updatedAt {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Last Read Date")
                     .font(.callout)

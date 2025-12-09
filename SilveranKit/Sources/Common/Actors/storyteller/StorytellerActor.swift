@@ -11,12 +11,17 @@ public enum ConnectionStatus: Equatable, Sendable {
     case error(String)
 }
 
+public enum HTTPResult: Sendable {
+    case success
+    case failure
+    case noConnection
+}
+
 @globalActor
 public actor StorytellerActor {
 
     public static let shared = StorytellerActor()
     private var observers: (@Sendable @MainActor () -> Void)? = nil
-    private var syncNotificationCallback: (@Sendable @MainActor (Int, Int) -> Void)? = nil
 
     private var username: String?
     private var password: String?
@@ -69,12 +74,6 @@ public actor StorytellerActor {
         self.observers = callback
     }
 
-    public func registerSyncNotificationCallback(
-        callback: @Sendable @MainActor @escaping (Int, Int) -> Void
-    ) {
-        self.syncNotificationCallback = callback
-    }
-
     private func updateConnectionStatus(_ status: ConnectionStatus) async {
         let wasNotConnected = connectionStatus != .connected
         debugLog(
@@ -83,20 +82,10 @@ public actor StorytellerActor {
         connectionStatus = status
         await observers?()
 
-        if status == .connected && wasNotConnected {
-            debugLog(
-                "[StorytellerActor] updateConnectionStatus: Connection established, triggering queue sync"
-            )
-            Task {
-                let (synced, failed) = await syncPendingProgressQueue()
-                debugLog(
-                    "[StorytellerActor] updateConnectionStatus: Queue sync complete - synced: \(synced), failed: \(failed)"
-                )
-                if synced > 0 || failed > 0 {
-                    await syncNotificationCallback?(synced, failed)
-                    await observers?()
-                }
-            }
+        if wasNotConnected && status == .connected {
+            debugLog("[StorytellerActor] Connection restored, syncing pending progress queue")
+            let (synced, failed) = await ProgressSyncActor.shared.syncPendingQueue()
+            debugLog("[StorytellerActor] Pending queue sync: synced=\(synced), failed=\(failed)")
         }
     }
 
@@ -1794,248 +1783,6 @@ public actor StorytellerActor {
         return "null"
     }
 
-    public func updateReadingPosition(
-        bookId: String,
-        locator: BookLocator,
-        timestamp: Double
-    ) async -> SyncResult {
-        let isLocalBook = await LocalMediaActor.shared.isLocalStandaloneBook(bookId)
-        let localBookIds = await LocalMediaActor.shared.localStandaloneMetadata.map { $0.uuid }
-        debugLog("[StorytellerActor] updateReadingPosition: bookId: \(bookId), isLocalBook: \(isLocalBook), localBookIds: \(localBookIds)")
-        if isLocalBook {
-            debugLog("[StorytellerActor] updateReadingPosition: Skipping local book \(bookId)")
-            return .success
-        }
-
-        debugLog(
-            "[StorytellerActor] updateReadingPosition: bookId: \(bookId), timestamp: \(timestamp)"
-        )
-
-        if bookId == "14749693-3d16-4076-b3b3-c8593040fa74" {
-            debugLog("[StorytellerActor] Sending position for target book")
-            debugLog("[StorytellerActor]   locator.href: \(locator.href)")
-            debugLog(
-                "[StorytellerActor]   locator.locations: \(locator.locations != nil ? "exists" : "nil")"
-            )
-            if let locations = locator.locations {
-                debugLog(
-                    "[StorytellerActor]     totalProgression: \(locations.totalProgression ?? -1)"
-                )
-                debugLog("[StorytellerActor]     progression: \(locations.progression ?? -1)")
-                debugLog("[StorytellerActor]     position: \(locations.position ?? -1)")
-            }
-        }
-
-        guard let baseURL = apiBaseURL else {
-            debugLog("[StorytellerActor] updateReadingPosition: No API base URL, queueing")
-            await LocalMediaActor.shared.queueOfflineProgress(
-                bookId: bookId,
-                locator: locator,
-                timestamp: timestamp
-            )
-            debugLog("[StorytellerActor] updateReadingPosition: Returning .queued (no baseURL)")
-            return .queued
-        }
-
-        guard let token = accessToken?.accessToken else {
-            debugLog("[StorytellerActor] updateReadingPosition: No access token, queueing")
-            await LocalMediaActor.shared.queueOfflineProgress(
-                bookId: bookId,
-                locator: locator,
-                timestamp: timestamp
-            )
-            debugLog("[StorytellerActor] updateReadingPosition: Returning .queued (no token)")
-            return .queued
-        }
-
-        let url = baseURL.appendingPathComponent("books/\(bookId)/positions")
-        debugLog("[StorytellerActor] updateReadingPosition: POST \(url)")
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        let body: [String: Any] = [
-            "locator": encodeLocatorToDict(locator),
-            "timestamp": timestamp,
-        ]
-
-        do {
-            request.httpBody = try JSONSerialization.data(withJSONObject: body)
-
-            let (_, response) = try await urlSession.data(for: request)
-
-            guard let httpResponse = response as? HTTPURLResponse else {
-                debugLog(
-                    "[StorytellerActor] updateReadingPosition: Invalid response type, queueing"
-                )
-                await LocalMediaActor.shared.queueOfflineProgress(
-                    bookId: bookId,
-                    locator: locator,
-                    timestamp: timestamp
-                )
-                debugLog(
-                    "[StorytellerActor] updateReadingPosition: Returning .queued (invalid response)"
-                )
-                return .queued
-            }
-
-            debugLog(
-                "[StorytellerActor] updateReadingPosition: Response status: \(httpResponse.statusCode)"
-            )
-
-            switch httpResponse.statusCode {
-                case 204:
-                    debugLog(
-                        "[StorytellerActor] updateReadingPosition: 204 success, fetching updated metadata"
-                    )
-
-                    if let updatedMetadata = await fetchBookDetails(for: bookId) {
-                        if bookId == "14749693-3d16-4076-b3b3-c8593040fa74" {
-                            debugLog("[StorytellerActor] Fetched updated metadata for target book")
-                            debugLog("[StorytellerActor]   progress: \(updatedMetadata.progress)")
-                            debugLog(
-                                "[StorytellerActor]   position: \(updatedMetadata.position != nil ? "exists" : "nil")"
-                            )
-                            if let position = updatedMetadata.position {
-                                debugLog(
-                                    "[StorytellerActor]   locator: \(position.locator != nil ? "exists" : "nil")"
-                                )
-                                if let locator = position.locator {
-                                    debugLog("[StorytellerActor]     href: \(locator.href)")
-                                    debugLog(
-                                        "[StorytellerActor]     locations: \(locator.locations != nil ? "exists" : "nil")"
-                                    )
-                                    if let locations = locator.locations {
-                                        debugLog(
-                                            "[StorytellerActor]       totalProgression: \(locations.totalProgression ?? -1)"
-                                        )
-                                        debugLog(
-                                            "[StorytellerActor]       progression: \(locations.progression ?? -1)"
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                        if let index = libraryMetadata.firstIndex(where: { $0.uuid == bookId }) {
-                            libraryMetadata[index] = updatedMetadata
-                            debugLog(
-                                "[StorytellerActor] updateReadingPosition: Updated local metadata cache"
-                            )
-                            await observers?()
-                            debugLog("[StorytellerActor] updateReadingPosition: Notified observers")
-                        } else {
-                            debugLog(
-                                "[StorytellerActor] updateReadingPosition: WARNING - Book not in local cache"
-                            )
-                        }
-                    } else {
-                        debugLog(
-                            "[StorytellerActor] updateReadingPosition: WARNING - Failed to fetch updated metadata"
-                        )
-                    }
-
-                    debugLog("[StorytellerActor] updateReadingPosition: Returning .success")
-                    return .success
-                case 409:
-                    debugLog(
-                        "[StorytellerActor] updateReadingPosition: 409 conflict, returning .failed"
-                    )
-                    return .failed
-                case 404:
-                    debugLog(
-                        "[StorytellerActor] updateReadingPosition: 404 not found, returning .failed"
-                    )
-                    return .failed
-                default:
-                    debugLog(
-                        "[StorytellerActor] updateReadingPosition: Unexpected status \(httpResponse.statusCode), queueing"
-                    )
-                    await LocalMediaActor.shared.queueOfflineProgress(
-                        bookId: bookId,
-                        locator: locator,
-                        timestamp: timestamp
-                    )
-                    debugLog(
-                        "[StorytellerActor] updateReadingPosition: Returning .queued (status \(httpResponse.statusCode))"
-                    )
-                    return .queued
-            }
-        } catch {
-            debugLog("[StorytellerActor] updateReadingPosition: Request failed: \(error), queueing")
-            await LocalMediaActor.shared.queueOfflineProgress(
-                bookId: bookId,
-                locator: locator,
-                timestamp: timestamp
-            )
-            debugLog("[StorytellerActor] updateReadingPosition: Returning .queued (exception)")
-            return .queued
-        }
-    }
-
-    public func syncPendingProgressQueue() async -> (synced: Int, failed: Int) {
-        let pendingSyncs = await LocalMediaActor.shared.getAllPendingProgressSyncs()
-        let localBookIds = await LocalMediaActor.shared.localStandaloneMetadata.map { $0.uuid }
-
-        debugLog("[StorytellerActor] syncPendingProgressQueue: pendingSyncs count: \(pendingSyncs.count), localBookIds: \(localBookIds)")
-
-        guard !pendingSyncs.isEmpty else {
-            debugLog("[StorytellerActor] syncPendingProgressQueue: No pending syncs")
-            return (0, 0)
-        }
-
-        debugLog(
-            "[StorytellerActor] syncPendingProgressQueue: Starting with \(pendingSyncs.count) pending syncs"
-        )
-        for (index, pending) in pendingSyncs.enumerated() {
-            let isLocal = localBookIds.contains(pending.bookId)
-            debugLog(
-                "[StorytellerActor] syncPendingProgressQueue: [\(index)] bookId: \(pending.bookId), attempts: \(pending.attemptCount), isLocal: \(isLocal)"
-            )
-        }
-
-        var syncedCount = 0
-        var failedCount = 0
-
-        for pending in pendingSyncs {
-            debugLog(
-                "[StorytellerActor] syncPendingProgressQueue: Syncing bookId: \(pending.bookId)"
-            )
-            let result = await updateReadingPosition(
-                bookId: pending.bookId,
-                locator: pending.locator,
-                timestamp: pending.timestamp
-            )
-
-            switch result {
-                case .success:
-                    debugLog(
-                        "[StorytellerActor] syncPendingProgressQueue: SUCCESS for \(pending.bookId), calling removeSyncedProgress"
-                    )
-                    await LocalMediaActor.shared.removeSyncedProgress(bookId: pending.bookId)
-                    syncedCount += 1
-                case .queued:
-                    debugLog(
-                        "[StorytellerActor] syncPendingProgressQueue: QUEUED for \(pending.bookId), incrementing attempt"
-                    )
-                    await LocalMediaActor.shared.incrementSyncAttempt(bookId: pending.bookId)
-                    failedCount += 1
-                case .failed:
-                    debugLog(
-                        "[StorytellerActor] syncPendingProgressQueue: FAILED for \(pending.bookId), removing from queue"
-                    )
-                    await LocalMediaActor.shared.removeSyncedProgress(bookId: pending.bookId)
-                    failedCount += 1
-            }
-        }
-
-        debugLog(
-            "[StorytellerActor] syncPendingProgressQueue: Complete - synced: \(syncedCount), failed: \(failedCount)"
-        )
-        return (syncedCount, failedCount)
-    }
-
     private func encodeLocatorToDict(_ locator: BookLocator) -> [String: Any] {
         var dict: [String: Any] = [
             "href": locator.href,
@@ -2092,6 +1839,78 @@ public actor StorytellerActor {
 
         debugLog("[StorytellerActor] Encoded locator to dictionary")
         return dict
+    }
+
+    // MARK: - PSA REST Methods (Pure REST, no queue logic)
+
+    public func sendProgressToServer(
+        bookId: String,
+        locator: BookLocator,
+        timestamp: Double
+    ) async -> HTTPResult {
+        debugLog("[StorytellerActor] sendProgressToServer: bookId=\(bookId), timestamp=\(timestamp)")
+
+        guard let baseURL = apiBaseURL else {
+            debugLog("[StorytellerActor] sendProgressToServer: no API base URL")
+            return .noConnection
+        }
+
+        guard let token = accessToken?.accessToken else {
+            debugLog("[StorytellerActor] sendProgressToServer: no access token")
+            return .noConnection
+        }
+
+        let url = baseURL.appendingPathComponent("books/\(bookId)/positions")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: Any] = [
+            "locator": encodeLocatorToDict(locator),
+            "timestamp": timestamp,
+        ]
+
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+            let (_, response) = try await urlSession.data(for: request)
+
+            guard let httpResponse = response as? HTTPURLResponse else {
+                debugLog("[StorytellerActor] sendProgressToServer: invalid response type")
+                return .failure
+            }
+
+            debugLog("[StorytellerActor] sendProgressToServer: status=\(httpResponse.statusCode)")
+
+            switch httpResponse.statusCode {
+            case 204:
+                return .success
+            case 409, 404:
+                return .failure
+            default:
+                return .failure
+            }
+        } catch {
+            debugLog("[StorytellerActor] sendProgressToServer: request failed - \(error)")
+            return .noConnection
+        }
+    }
+
+    public func fetchBookPosition(bookId: String) async -> BookLocator? {
+        debugLog("[StorytellerActor] fetchBookPosition: bookId=\(bookId)")
+
+        guard let metadata = await fetchBookDetails(for: bookId) else {
+            debugLog("[StorytellerActor] fetchBookPosition: failed to fetch metadata")
+            return nil
+        }
+
+        guard let position = metadata.position, let locator = position.locator else {
+            debugLog("[StorytellerActor] fetchBookPosition: no position in metadata")
+            return nil
+        }
+
+        debugLog("[StorytellerActor] fetchBookPosition: found locator with href=\(locator.href)")
+        return locator
     }
 
     // TODO: Remaining API wrappers

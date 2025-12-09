@@ -57,15 +57,21 @@ struct SilveranReaderApp: App {
                 NotificationCenter.default.post(name: .appWillResignActive, object: nil)
 
             case .active:
-                debugLog("[SilveranReaderApp] App becoming active - refreshing metadata")
+                debugLog("[SilveranReaderApp] App becoming active - recording wake event")
                 Task {
+                    await ProgressSyncActor.shared.recordWakeEvent()
+
                     let status = await StorytellerActor.shared.connectionStatus
                     if status == .connected {
+                        debugLog("[SilveranReaderApp] Syncing pending progress queue")
+                        let (synced, failed) = await ProgressSyncActor.shared.syncPendingQueue()
+                        debugLog("[SilveranReaderApp] Queue sync: synced=\(synced), failed=\(failed)")
+
                         debugLog("[SilveranReaderApp] Fetching library information from server")
                         let _ = await StorytellerActor.shared.fetchLibraryInformation()
                     } else {
                         debugLog(
-                            "[SilveranReaderApp] Skipping metadata refresh - not connected to server"
+                            "[SilveranReaderApp] Skipping sync/refresh - not connected to server"
                         )
                     }
                 }

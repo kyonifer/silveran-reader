@@ -43,6 +43,13 @@ struct SilveranReaderApp: App {
             }
 
             await FilesystemActor.shared.cleanupExtractedEpubDirectories()
+
+            let status = await StorytellerActor.shared.connectionStatus
+            if status == .connected {
+                debugLog("[SilveranReaderApp] Syncing pending progress queue on launch")
+                let (synced, failed) = await ProgressSyncActor.shared.syncPendingQueue()
+                debugLog("[SilveranReaderApp] Queue sync: synced=\(synced), failed=\(failed)")
+            }
         }
     }
 

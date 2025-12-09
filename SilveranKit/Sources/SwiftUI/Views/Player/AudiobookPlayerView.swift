@@ -72,7 +72,7 @@ public struct AudiobookPlayerView: View {
                 syncTimer = nil
 
                 Task {
-                    await syncProgressToServer()
+                    await syncProgressToServer(reason: .userClosedBook)
 
                     if let observerID = stateObserverID {
                         await AudiobookActor.shared.removeStateObserver(id: observerID)
@@ -253,7 +253,7 @@ public struct AudiobookPlayerView: View {
                         if wasPlaying && !state.isPlaying {
                             debugLog("[AudiobookPlayerView] Playback stopped - syncing progress")
                             Task {
-                                await self.syncProgressToServer()
+                                await self.syncProgressToServer(reason: .userPausedPlayback)
                             }
                         }
                     }
@@ -345,7 +345,7 @@ public struct AudiobookPlayerView: View {
 
         let timer = Timer(timeInterval: 60.0, repeats: true) { _ in
             Task { @MainActor in
-                await self.syncProgressToServer()
+                await self.syncProgressToServer(reason: .periodicDuringActivePlayback)
             }
         }
 
@@ -420,10 +420,8 @@ public struct AudiobookPlayerView: View {
         }
     }
 
-    /// Sync audiobook progress to server using Readium-compliant locator format.
-    /// Server detects audio locators via type.includes("audio") - see:
-    /// storyteller/web/src/components/reader/BookService.ts:892 (translateLocator)
-    private func syncProgressToServer() async {
+    /// Sync audiobook progress to server via ProgressSyncActor
+    private func syncProgressToServer(reason: SyncReason) async {
         guard let bookId = bookData?.metadata.uuid else {
             return
         }
@@ -473,15 +471,16 @@ public struct AudiobookPlayerView: View {
         )
 
         debugLog(
-            "[AudiobookPlayerView] Syncing progress - href: \(audioHref), type: audio/mp4, t=\(String(format: "%.1f", timeOffset))s, chapterProg: \(String(format: "%.1f%%", chapterProgression * 100)), totalProg: \(String(format: "%.1f%%", currentProgress * 100))"
+            "[AudiobookPlayerView] Syncing progress (reason: \(reason.rawValue)) - href: \(audioHref), type: audio/mp4, t=\(String(format: "%.1f", timeOffset))s, chapterProg: \(String(format: "%.1f%%", chapterProgression * 100)), totalProg: \(String(format: "%.1f%%", currentProgress * 100))"
         )
 
         let timestamp = Date().timeIntervalSince1970 * 1000
 
-        let result = await StorytellerActor.shared.updateReadingPosition(
+        let result = await ProgressSyncActor.shared.syncProgress(
             bookId: bookId,
             locator: locator,
-            timestamp: timestamp
+            timestamp: timestamp,
+            reason: reason
         )
 
         switch result {

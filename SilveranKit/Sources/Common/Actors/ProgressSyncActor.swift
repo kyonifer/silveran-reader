@@ -1,0 +1,351 @@
+import Foundation
+
+public struct BookSyncState: Sendable {
+    public let bookId: String
+    public var lastSyncedTimestamp: Double?
+    public var lastSyncedLocator: BookLocator?
+    public var lastActivityTimestamp: Double?
+
+    public init(
+        bookId: String,
+        lastSyncedTimestamp: Double? = nil,
+        lastSyncedLocator: BookLocator? = nil,
+        lastActivityTimestamp: Double? = nil
+    ) {
+        self.bookId = bookId
+        self.lastSyncedTimestamp = lastSyncedTimestamp
+        self.lastSyncedLocator = lastSyncedLocator
+        self.lastActivityTimestamp = lastActivityTimestamp
+    }
+}
+
+@globalActor
+public actor ProgressSyncActor {
+    public static let shared = ProgressSyncActor()
+
+    private var pendingProgressQueue: [PendingProgressSync] = []
+    private var bookSyncStates: [String: BookSyncState] = [:]
+    private var lastWakeTimestamp: TimeInterval = Date().timeIntervalSince1970
+    private var queueLoaded = false
+
+    private var observers: [UUID: @Sendable @MainActor () -> Void] = [:]
+    private var syncNotificationCallback: (@Sendable @MainActor (Int, Int) -> Void)?
+
+    private let dedupeThresholdMs: Double = 1000
+    private let minProgressDelta: Double = 0.001
+
+    public init() {
+        Task {
+            await loadQueueFromDisk()
+        }
+    }
+
+    private func ensureQueueLoaded() async {
+        guard !queueLoaded else { return }
+        await loadQueueFromDisk()
+    }
+
+    // MARK: - Primary API
+
+    public func syncProgress(
+        bookId: String,
+        locator: BookLocator,
+        timestamp: Double,
+        reason: SyncReason
+    ) async -> SyncResult {
+        debugLog("[PSA] syncProgress: bookId=\(bookId), reason=\(reason.rawValue), timestamp=\(timestamp)")
+
+        if shouldDedupe(bookId: bookId, locator: locator, timestamp: timestamp) {
+            debugLog("[PSA] syncProgress: deduplicated, skipping")
+            return .success
+        }
+
+        let isLocalBook = await LocalMediaActor.shared.isLocalStandaloneBook(bookId)
+        if isLocalBook {
+            debugLog("[PSA] syncProgress: local-only book, updating state without server sync")
+            updateSyncState(bookId: bookId, locator: locator, timestamp: timestamp)
+            return .success
+        }
+
+        let connectionStatus = await StorytellerActor.shared.connectionStatus
+        debugLog("[PSA] syncProgress: connectionStatus=\(connectionStatus)")
+
+        if connectionStatus != .connected {
+            debugLog("[PSA] syncProgress: offline, queueing")
+            await queueOfflineProgress(bookId: bookId, locator: locator, timestamp: timestamp)
+            return .queued
+        }
+
+        let result = await StorytellerActor.shared.sendProgressToServer(
+            bookId: bookId,
+            locator: locator,
+            timestamp: timestamp
+        )
+
+        switch result {
+        case .success:
+            debugLog("[PSA] syncProgress: server sync succeeded")
+            updateSyncState(bookId: bookId, locator: locator, timestamp: timestamp)
+            await updateLocalMetadataProgress(bookId: bookId, locator: locator, timestamp: timestamp)
+            await notifyObservers()
+            return .success
+
+        case .noConnection, .failure:
+            debugLog("[PSA] syncProgress: server sync failed, queueing")
+            await queueOfflineProgress(bookId: bookId, locator: locator, timestamp: timestamp)
+            return .queued
+        }
+    }
+
+    public func getCurrentPosition(for bookId: String) async -> BookLocator? {
+        debugLog("[PSA] getCurrentPosition: bookId=\(bookId)")
+
+        if let pending = pendingProgressQueue.first(where: { $0.bookId == bookId }) {
+            debugLog("[PSA] getCurrentPosition: found pending queue entry")
+            return pending.locator
+        }
+
+        if let state = bookSyncStates[bookId], let locator = state.lastSyncedLocator {
+            debugLog("[PSA] getCurrentPosition: found cached state")
+            return locator
+        }
+
+        let connectionStatus = await StorytellerActor.shared.connectionStatus
+        if connectionStatus == .connected {
+            debugLog("[PSA] getCurrentPosition: fetching from server")
+            if let serverLocator = await StorytellerActor.shared.fetchBookPosition(bookId: bookId) {
+                updateSyncState(bookId: bookId, locator: serverLocator, timestamp: Date().timeIntervalSince1970 * 1000)
+                return serverLocator
+            }
+        }
+
+        debugLog("[PSA] getCurrentPosition: no position found")
+        return nil
+    }
+
+    // MARK: - Queue Management
+
+    public func syncPendingQueue() async -> (synced: Int, failed: Int) {
+        debugLog("[PSA] syncPendingQueue: starting with \(pendingProgressQueue.count) items")
+
+        guard !pendingProgressQueue.isEmpty else {
+            debugLog("[PSA] syncPendingQueue: queue empty")
+            return (0, 0)
+        }
+
+        let connectionStatus = await StorytellerActor.shared.connectionStatus
+        guard connectionStatus == .connected else {
+            debugLog("[PSA] syncPendingQueue: not connected, skipping")
+            return (0, 0)
+        }
+
+        var syncedCount = 0
+        var failedCount = 0
+
+        let itemsToSync = pendingProgressQueue
+        for pending in itemsToSync {
+            let isLocalBook = await LocalMediaActor.shared.isLocalStandaloneBook(pending.bookId)
+            if isLocalBook {
+                debugLog("[PSA] syncPendingQueue: \(pending.bookId) is local-only, removing from queue")
+                await removeFromQueue(bookId: pending.bookId)
+                syncedCount += 1
+                continue
+            }
+
+            debugLog("[PSA] syncPendingQueue: syncing \(pending.bookId)")
+            let result = await StorytellerActor.shared.sendProgressToServer(
+                bookId: pending.bookId,
+                locator: pending.locator,
+                timestamp: pending.timestamp
+            )
+
+            switch result {
+            case .success:
+                debugLog("[PSA] syncPendingQueue: \(pending.bookId) succeeded")
+                await removeFromQueue(bookId: pending.bookId)
+                updateSyncState(bookId: pending.bookId, locator: pending.locator, timestamp: pending.timestamp)
+                syncedCount += 1
+
+            case .noConnection:
+                debugLog("[PSA] syncPendingQueue: \(pending.bookId) no connection, stopping")
+                return (syncedCount, failedCount)
+
+            case .failure:
+                debugLog("[PSA] syncPendingQueue: \(pending.bookId) failed permanently, removing")
+                await removeFromQueue(bookId: pending.bookId)
+                failedCount += 1
+            }
+        }
+
+        debugLog("[PSA] syncPendingQueue: complete - synced=\(syncedCount), failed=\(failedCount)")
+
+        if syncedCount > 0 || failedCount > 0 {
+            await notifyObservers()
+            await syncNotificationCallback?(syncedCount, failedCount)
+        }
+
+        return (syncedCount, failedCount)
+    }
+
+    public func getPendingProgressSyncs() async -> [PendingProgressSync] {
+        await ensureQueueLoaded()
+        return pendingProgressQueue
+    }
+
+    public func hasPendingSync(for bookId: String) -> Bool {
+        pendingProgressQueue.contains { $0.bookId == bookId }
+    }
+
+    // MARK: - Position Fetch
+
+    /// Fetch current position for a book, refreshing from server if connected
+    public func fetchCurrentPosition(for bookId: String) async -> BookReadingPosition? {
+        debugLog("[PSA] fetchCurrentPosition: bookId=\(bookId)")
+
+        let connectionStatus = await StorytellerActor.shared.connectionStatus
+        if connectionStatus == .connected {
+            debugLog("[PSA] fetchCurrentPosition: connected, refreshing from server")
+            let _ = await StorytellerActor.shared.fetchLibraryInformation()
+        }
+
+        let storytellerMetadata = await LocalMediaActor.shared.localStorytellerMetadata
+        let standaloneMetadata = await LocalMediaActor.shared.localStandaloneMetadata
+        let allMetadata = storytellerMetadata + standaloneMetadata
+
+        guard let book = allMetadata.first(where: { $0.uuid == bookId }) else {
+            debugLog("[PSA] fetchCurrentPosition: book not found in LMA")
+            return nil
+        }
+
+        debugLog("[PSA] fetchCurrentPosition: returning position timestamp=\(book.position?.timestamp ?? 0)")
+        return book.position
+    }
+
+    // MARK: - Wake Detection
+
+    public func recordWakeEvent() {
+        let now = Date().timeIntervalSince1970
+        let sleepDuration = now - lastWakeTimestamp
+        debugLog("[PSA] recordWakeEvent: sleepDuration=\(sleepDuration)s")
+        lastWakeTimestamp = now
+    }
+
+    // MARK: - Observers
+
+    @discardableResult
+    public func addObserver(_ callback: @escaping @Sendable @MainActor () -> Void) -> UUID {
+        let id = UUID()
+        observers[id] = callback
+        debugLog("[PSA] addObserver: id=\(id), total observers=\(observers.count)")
+        return id
+    }
+
+    public func removeObserver(id: UUID) {
+        observers.removeValue(forKey: id)
+        debugLog("[PSA] removeObserver: id=\(id), total observers=\(observers.count)")
+    }
+
+    public func registerSyncNotificationCallback(
+        _ callback: @escaping @Sendable @MainActor (Int, Int) -> Void
+    ) {
+        syncNotificationCallback = callback
+    }
+
+    // MARK: - Private Helpers
+
+    private func shouldDedupe(bookId: String, locator: BookLocator, timestamp: Double) -> Bool {
+        guard let state = bookSyncStates[bookId] else { return false }
+
+        if let lastTimestamp = state.lastSyncedTimestamp {
+            let delta = abs(timestamp - lastTimestamp)
+            if delta < dedupeThresholdMs {
+                debugLog("[PSA] shouldDedupe: timestamp delta \(delta)ms < threshold \(dedupeThresholdMs)ms")
+                return true
+            }
+        }
+
+        if let lastLocator = state.lastSyncedLocator,
+           let lastProg = lastLocator.locations?.totalProgression,
+           let newProg = locator.locations?.totalProgression {
+            let delta = abs(newProg - lastProg)
+            if delta < minProgressDelta {
+                debugLog("[PSA] shouldDedupe: progress delta \(delta) < threshold \(minProgressDelta)")
+                return true
+            }
+        }
+
+        return false
+    }
+
+    private func updateSyncState(bookId: String, locator: BookLocator, timestamp: Double) {
+        var state = bookSyncStates[bookId] ?? BookSyncState(bookId: bookId)
+        state.lastSyncedTimestamp = timestamp
+        state.lastSyncedLocator = locator
+        state.lastActivityTimestamp = timestamp
+        bookSyncStates[bookId] = state
+        debugLog("[PSA] updateSyncState: bookId=\(bookId), timestamp=\(timestamp)")
+    }
+
+    private func queueOfflineProgress(bookId: String, locator: BookLocator, timestamp: Double) async {
+        pendingProgressQueue.removeAll { $0.bookId == bookId }
+
+        let pending = PendingProgressSync(
+            bookId: bookId,
+            locator: locator,
+            timestamp: timestamp
+        )
+        pendingProgressQueue.append(pending)
+
+        debugLog("[PSA] queueOfflineProgress: bookId=\(bookId), queueSize=\(pendingProgressQueue.count)")
+
+        await saveQueueToDisk()
+        await updateLocalMetadataProgress(bookId: bookId, locator: locator, timestamp: timestamp)
+        await notifyObservers()
+    }
+
+    private func removeFromQueue(bookId: String) async {
+        let before = pendingProgressQueue.count
+        pendingProgressQueue.removeAll { $0.bookId == bookId }
+        let after = pendingProgressQueue.count
+        debugLog("[PSA] removeFromQueue: bookId=\(bookId), queueSize \(before) -> \(after)")
+        await saveQueueToDisk()
+    }
+
+    private func updateLocalMetadataProgress(bookId: String, locator: BookLocator, timestamp: Double) async {
+        await LocalMediaActor.shared.updateBookProgress(
+            bookId: bookId,
+            locator: locator,
+            timestamp: timestamp
+        )
+    }
+
+    private func notifyObservers() async {
+        debugLog("[PSA] notifyObservers: notifying \(observers.count) observers")
+        for (_, callback) in observers {
+            await callback()
+        }
+    }
+
+    // MARK: - Persistence
+
+    private func loadQueueFromDisk() async {
+        guard !queueLoaded else { return }
+        do {
+            pendingProgressQueue = try await FilesystemActor.shared.loadProgressQueue()
+            debugLog("[PSA] loadQueueFromDisk: loaded \(pendingProgressQueue.count) items")
+        } catch {
+            debugLog("[PSA] loadQueueFromDisk: failed - \(error)")
+            pendingProgressQueue = []
+        }
+        queueLoaded = true
+    }
+
+    private func saveQueueToDisk() async {
+        do {
+            try await FilesystemActor.shared.saveProgressQueue(pendingProgressQueue)
+            debugLog("[PSA] saveQueueToDisk: saved \(pendingProgressQueue.count) items")
+        } catch {
+            debugLog("[PSA] saveQueueToDisk: failed - \(error)")
+        }
+    }
+}

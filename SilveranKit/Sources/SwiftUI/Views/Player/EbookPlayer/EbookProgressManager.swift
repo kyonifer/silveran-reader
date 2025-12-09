@@ -82,6 +82,10 @@ class EbookProgressManager {
     private var syncTimer: Timer? = nil
     private var bookId: String? = nil
 
+    /// Wake-from-sleep handling
+    private var lastResumeTime: Date?
+    private let resumeSuppressionDuration: TimeInterval = 30
+
     /// Book metadata for lockscreen display
     var bookTitle: String? = nil
     var bookAuthor: String? = nil
@@ -478,7 +482,7 @@ class EbookProgressManager {
             debugLog("[EPM] Failed to navigate to background sync position: \(error)")
         }
 
-        await syncProgressToServer(force: true)
+        await syncProgressToServer(reason: .periodicDuringActivePlayback)
     }
 
     // MARK: - Playback Control
@@ -498,7 +502,7 @@ class EbookProgressManager {
 
         if wasPlaying && !isNowPlaying {
             debugLog("[EPM] Playback stopped - syncing immediately")
-            await syncProgressToServer(force: true)
+            await syncProgressToServer(reason: .userPausedPlayback)
         }
     }
 
@@ -557,7 +561,10 @@ class EbookProgressManager {
         syncTimer = Timer.scheduledTimer(withTimeInterval: syncInterval, repeats: true) {
             [weak self] _ in
             Task { @MainActor in
-                await self?.syncProgressToServer()
+                guard let self else { return }
+                let isPlaying = self.mediaOverlayManager?.isPlaying ?? false
+                let reason: SyncReason = isPlaying ? .periodicDuringActivePlayback : .periodicWhileReading
+                await self.syncProgressToServer(reason: reason)
             }
         }
     }
@@ -568,8 +575,8 @@ class EbookProgressManager {
         debugLog("[EPM] Stopped periodic sync")
     }
 
-    /// Sync progress to server (with activity-based filtering)
-    func syncProgressToServer(force: Bool = false) async {
+    /// Sync progress to server via ProgressSyncActor
+    func syncProgressToServer(reason: SyncReason) async {
         guard let bookId = bookId else {
             debugLog("[EPM] Cannot sync: no bookId")
             return
@@ -584,18 +591,10 @@ class EbookProgressManager {
             return
         }
 
-        if !force, let lastSynced = lastSyncedTimestamp, lastActivity == lastSynced {
-            debugLog(
-                "[EPM] Skipping sync - already synced this position (timestamp: \(lastActivity))"
-            )
-            return
-        }
-
         let now = Date().timeIntervalSince1970
         let timeSinceActivity = now - lastActivity
-        let forceNote = force ? " (forced)" : ""
         debugLog(
-            "[EPM] Syncing progress\(forceNote) (activity \(String(format: "%.1f", timeSinceActivity))s ago)"
+            "[EPM] Syncing progress (reason: \(reason.rawValue), activity \(String(format: "%.1f", timeSinceActivity))s ago)"
         )
 
         let locator: BookLocator?
@@ -622,10 +621,11 @@ class EbookProgressManager {
         let timestampMs = lastActivity * 1000
         debugLog("[EPM] Sending timestamp: \(timestampMs) ms")
 
-        let result = await StorytellerActor.shared.updateReadingPosition(
+        let result = await ProgressSyncActor.shared.syncProgress(
             bookId: bookId,
             locator: finalLocator,
-            timestamp: timestampMs
+            timestamp: timestampMs,
+            reason: reason
         )
 
         debugLog("[EPM] Sync result: \(result)")
@@ -687,11 +687,53 @@ class EbookProgressManager {
         )
     }
 
+    // MARK: - Wake-from-Sleep Handling
+
+    /// Handle app resume - check PSA for newer position and suppress nav actions
+    func handleResume() async {
+        lastResumeTime = Date()
+        debugLog("[EPM] Resume detected - suppressing nav actions for \(resumeSuppressionDuration)s")
+
+        guard let bookId = bookId else {
+            debugLog("[EPM] No bookId, skipping position check")
+            return
+        }
+
+        guard let serverPosition = await ProgressSyncActor.shared.fetchCurrentPosition(for: bookId),
+              let serverTimestamp = serverPosition.timestamp else {
+            debugLog("[EPM] No position from PSA for book \(bookId)")
+            return
+        }
+
+        let localTimestampMs = (lastActivityTimestamp ?? 0) * 1000
+        guard serverTimestamp > localTimestampMs else {
+            debugLog("[EPM] Server position not newer (server=\(serverTimestamp) <= local=\(localTimestampMs))")
+            return
+        }
+
+        debugLog("[EPM] Server has newer position (server=\(serverTimestamp) > local=\(localTimestampMs)), navigating")
+        if let locator = serverPosition.locator {
+            do {
+                try await commsBridge?.sendJsGoToLocatorCommand(locator: locator)
+                debugLog("[EPM] Navigated to server position: \(locator.href)")
+            } catch {
+                debugLog("[EPM] Failed to navigate to server position: \(error)")
+            }
+        }
+    }
+
+    /// Check if user navigation should be suppressed (within 30s of resume)
+    private func shouldSuppressNavigation() -> Bool {
+        guard let resumeTime = lastResumeTime else { return false }
+        let elapsed = Date().timeIntervalSince(resumeTime)
+        return elapsed < resumeSuppressionDuration
+    }
+
     /// Cleanup and perform final sync (call on deinit or window close)
     func cleanup() async {
         debugLog("[EPM] Cleanup: performing final sync")
         stopPeriodicSync()
-        await syncProgressToServer(force: true)
+        await syncProgressToServer(reason: .userClosedBook)
     }
 }
 

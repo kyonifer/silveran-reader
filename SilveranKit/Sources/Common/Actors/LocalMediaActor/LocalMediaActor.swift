@@ -34,7 +34,6 @@ public actor LocalMediaActor: GlobalActor {
     private let filesystem: FilesystemActor
     private let localLibrary: LocalLibraryManager
     private var periodicScanTask: Task<Void, Never>?
-    private var pendingProgressQueue: [PendingProgressSync] = []
 
     private static let extensionCategoryMap: [String: LocalMediaCategory] = [
         "epub": .ebook,
@@ -57,7 +56,6 @@ public actor LocalMediaActor: GlobalActor {
         self.localLibrary = localLibrary
         Task { [weak self] in
             try? await filesystem.ensureLocalStorageDirectories()
-            await self?.loadProgressQueue()
             try? await self?.scanForMedia()
             await self?.startPeriodicScan()
         }
@@ -79,7 +77,9 @@ public actor LocalMediaActor: GlobalActor {
     }
 
     public func updateStorytellerMetadata(_ metadata: [BookMetadata]) async throws {
-        let enrichedMetadata = applyOfflineProgressToMetadata(metadata)
+        let mergedMetadata = mergeWithLocalTimestamps(metadata)
+        let pendingSyncs = await ProgressSyncActor.shared.getPendingProgressSyncs()
+        let enrichedMetadata = applyOfflineProgressToMetadata(mergedMetadata, pendingSyncs: pendingSyncs)
         localStorytellerMetadata = enrichedMetadata
 
         try await filesystem.saveStorytellerLibraryMetadata(metadata)
@@ -94,62 +94,10 @@ public actor LocalMediaActor: GlobalActor {
         viewModelUpdateCallback?()
     }
 
-    private func loadProgressQueue() async {
-        do {
-            pendingProgressQueue = try await filesystem.loadProgressQueue()
-            debugLog(
-                "[LocalMediaActor] loadProgressQueue: Loaded \(pendingProgressQueue.count) pending progress syncs"
-            )
-            if !pendingProgressQueue.isEmpty {
-                for (index, item) in pendingProgressQueue.enumerated() {
-                    debugLog(
-                        "[LocalMediaActor] loadProgressQueue: [\(index)] bookId: \(item.bookId), timestamp: \(item.timestamp), attempts: \(item.attemptCount)"
-                    )
-                }
-            }
-        } catch {
-            debugLog("[LocalMediaActor] loadProgressQueue: Failed to load progress queue: \(error)")
-            pendingProgressQueue = []
-        }
-    }
+    public func updateBookProgress(bookId: String, locator: BookLocator, timestamp: Double) async {
+        debugLog("[LocalMediaActor] updateBookProgress: bookId=\(bookId)")
 
-    private func saveProgressQueue() async {
-        do {
-            debugLog(
-                "[LocalMediaActor] saveProgressQueue: Saving queue with \(pendingProgressQueue.count) items"
-            )
-            if !pendingProgressQueue.isEmpty {
-                let bookIds = pendingProgressQueue.map { $0.bookId }.joined(separator: ", ")
-                debugLog("[LocalMediaActor] saveProgressQueue: bookIds: [\(bookIds)]")
-            }
-            try await filesystem.saveProgressQueue(pendingProgressQueue)
-            debugLog("[LocalMediaActor] saveProgressQueue: Save complete")
-        } catch {
-            debugLog("[LocalMediaActor] saveProgressQueue: FAILED to save: \(error)")
-        }
-    }
-
-    public func queueOfflineProgress(bookId: String, locator: BookLocator, timestamp: Double) async
-    {
-        debugLog("[LocalMediaActor] queueOfflineProgress CALLED for bookId: \(bookId)")
-        Thread.callStackSymbols.prefix(10).forEach { debugLog("[LocalMediaActor] STACK: \($0)") }
-
-        let wasInQueue = pendingProgressQueue.contains { $0.bookId == bookId }
-        let queueCountBefore = pendingProgressQueue.count
-        pendingProgressQueue.removeAll { $0.bookId == bookId }
-
-        let pending = PendingProgressSync(
-            bookId: bookId,
-            locator: locator,
-            timestamp: timestamp
-        )
-        pendingProgressQueue.append(pending)
-
-        debugLog(
-            "[LocalMediaActor] queueOfflineProgress: bookId: \(bookId), wasInQueue: \(wasInQueue), queueCount: \(queueCountBefore) -> \(pendingProgressQueue.count)"
-        )
-
-        await saveProgressQueue()
+        let updatedAtString = Date(timeIntervalSince1970: timestamp / 1000).ISO8601Format()
 
         if let index = localStorytellerMetadata.firstIndex(where: { $0.uuid == bookId }) {
             var updatedMetadata = localStorytellerMetadata[index]
@@ -157,8 +105,8 @@ public actor LocalMediaActor: GlobalActor {
                 uuid: updatedMetadata.position?.uuid,
                 locator: locator,
                 timestamp: timestamp,
-                createdAt: nil,
-                updatedAt: nil
+                createdAt: updatedMetadata.position?.createdAt,
+                updatedAt: updatedAtString
             )
             updatedMetadata = BookMetadata(
                 uuid: updatedMetadata.uuid,
@@ -182,60 +130,98 @@ public actor LocalMediaActor: GlobalActor {
                 position: newPosition
             )
             localStorytellerMetadata[index] = updatedMetadata
+            debugLog("[LocalMediaActor] updateBookProgress: updated storyteller metadata")
         }
 
-        viewModelUpdateCallback?()
-    }
-
-    public func getOfflineProgress(for bookId: String) -> PendingProgressSync? {
-        pendingProgressQueue.first { $0.bookId == bookId }
-    }
-
-    public func getAllPendingProgressSyncs() -> [PendingProgressSync] {
-        pendingProgressQueue
-    }
-
-    public func removeSyncedProgress(bookId: String) async {
-        let wasInQueue = pendingProgressQueue.contains { $0.bookId == bookId }
-        let queueCountBefore = pendingProgressQueue.count
-        pendingProgressQueue.removeAll { $0.bookId == bookId }
-        let queueCountAfter = pendingProgressQueue.count
-
-        debugLog(
-            "[LocalMediaActor] removeSyncedProgress: bookId: \(bookId), wasInQueue: \(wasInQueue), queueCount: \(queueCountBefore) -> \(queueCountAfter)"
-        )
-
-        await saveProgressQueue()
-        viewModelUpdateCallback?()
-    }
-
-    public func incrementSyncAttempt(bookId: String) async {
-        if let index = pendingProgressQueue.firstIndex(where: { $0.bookId == bookId }) {
-            let oldCount = pendingProgressQueue[index].attemptCount
-            pendingProgressQueue[index].attemptCount += 1
-            debugLog(
-                "[LocalMediaActor] incrementSyncAttempt: bookId: \(bookId), attemptCount: \(oldCount) -> \(pendingProgressQueue[index].attemptCount)"
+        if let index = localStandaloneMetadata.firstIndex(where: { $0.uuid == bookId }) {
+            var updatedMetadata = localStandaloneMetadata[index]
+            let newPosition = BookReadingPosition(
+                uuid: updatedMetadata.position?.uuid,
+                locator: locator,
+                timestamp: timestamp,
+                createdAt: updatedMetadata.position?.createdAt,
+                updatedAt: updatedAtString
             )
-            await saveProgressQueue()
-        } else {
-            debugLog("[LocalMediaActor] incrementSyncAttempt: bookId: \(bookId) NOT FOUND in queue")
+            updatedMetadata = BookMetadata(
+                uuid: updatedMetadata.uuid,
+                title: updatedMetadata.title,
+                subtitle: updatedMetadata.subtitle,
+                description: updatedMetadata.description,
+                language: updatedMetadata.language,
+                createdAt: updatedMetadata.createdAt,
+                updatedAt: updatedMetadata.updatedAt,
+                publicationDate: updatedMetadata.publicationDate,
+                authors: updatedMetadata.authors,
+                narrators: updatedMetadata.narrators,
+                creators: updatedMetadata.creators,
+                series: updatedMetadata.series,
+                tags: updatedMetadata.tags,
+                collections: updatedMetadata.collections,
+                ebook: updatedMetadata.ebook,
+                audiobook: updatedMetadata.audiobook,
+                readaloud: updatedMetadata.readaloud,
+                status: updatedMetadata.status,
+                position: newPosition
+            )
+            localStandaloneMetadata[index] = updatedMetadata
+            debugLog("[LocalMediaActor] updateBookProgress: updated standalone metadata")
         }
     }
 
-    private func applyOfflineProgressToMetadata(_ metadata: [BookMetadata]) -> [BookMetadata] {
-        guard !pendingProgressQueue.isEmpty else { return metadata }
+    private func mergeWithLocalTimestamps(_ serverMetadata: [BookMetadata]) -> [BookMetadata] {
+        return serverMetadata.map { serverBook in
+            guard let localBook = localStorytellerMetadata.first(where: { $0.uuid == serverBook.uuid }),
+                  let localTimestamp = localBook.position?.timestamp,
+                  let serverTimestamp = serverBook.position?.timestamp,
+                  localTimestamp > serverTimestamp else {
+                return serverBook
+            }
+
+            debugLog("[LocalMediaActor] mergeWithLocalTimestamps: keeping local position for \(serverBook.uuid) (local=\(localTimestamp) > server=\(serverTimestamp))")
+
+            return BookMetadata(
+                uuid: serverBook.uuid,
+                title: serverBook.title,
+                subtitle: serverBook.subtitle,
+                description: serverBook.description,
+                language: serverBook.language,
+                createdAt: serverBook.createdAt,
+                updatedAt: serverBook.updatedAt,
+                publicationDate: serverBook.publicationDate,
+                authors: serverBook.authors,
+                narrators: serverBook.narrators,
+                creators: serverBook.creators,
+                series: serverBook.series,
+                tags: serverBook.tags,
+                collections: serverBook.collections,
+                ebook: serverBook.ebook,
+                audiobook: serverBook.audiobook,
+                readaloud: serverBook.readaloud,
+                status: serverBook.status,
+                position: localBook.position
+            )
+        }
+    }
+
+    private func applyOfflineProgressToMetadata(
+        _ metadata: [BookMetadata],
+        pendingSyncs: [PendingProgressSync]
+    ) -> [BookMetadata] {
+        guard !pendingSyncs.isEmpty else { return metadata }
 
         return metadata.map { book in
-            guard let pending = pendingProgressQueue.first(where: { $0.bookId == book.uuid }) else {
+            guard let pending = pendingSyncs.first(where: { $0.bookId == book.uuid }) else {
                 return book
             }
+
+            let updatedAtString = Date(timeIntervalSince1970: pending.timestamp / 1000).ISO8601Format()
 
             let newPosition = BookReadingPosition(
                 uuid: book.position?.uuid,
                 locator: pending.locator,
                 timestamp: pending.timestamp,
-                createdAt: nil,
-                updatedAt: nil
+                createdAt: book.position?.createdAt,
+                updatedAt: updatedAtString
             )
 
             return BookMetadata(
@@ -272,7 +258,8 @@ public actor LocalMediaActor: GlobalActor {
             storytellerMetadata = []
         }
 
-        localStorytellerMetadata = applyOfflineProgressToMetadata(storytellerMetadata)
+        let pendingSyncs = await ProgressSyncActor.shared.getPendingProgressSyncs()
+        localStorytellerMetadata = applyOfflineProgressToMetadata(storytellerMetadata, pendingSyncs: pendingSyncs)
 
         var storytellerPaths: [String: MediaPaths] = [:]
         for book in localStorytellerMetadata {

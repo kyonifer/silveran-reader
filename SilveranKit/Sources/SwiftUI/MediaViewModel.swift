@@ -143,7 +143,7 @@ public final class MediaViewModel {
                     }
                 }
 
-                await StorytellerActor.shared.registerSyncNotificationCallback {
+                await ProgressSyncActor.shared.registerSyncNotificationCallback {
                     @MainActor [weak self] synced, failed in
                     guard let self else { return }
                     if synced > 0 {
@@ -189,7 +189,7 @@ public final class MediaViewModel {
         let storytellerPaths = await LocalMediaActor.shared.localStorytellerBookPaths
         let standalonePaths = await LocalMediaActor.shared.localStandaloneBookPaths
         let paths = storytellerPaths.merging(standalonePaths) { _, new in new }
-        let pendingSyncs = await LocalMediaActor.shared.getAllPendingProgressSyncs()
+        let pendingSyncs = await ProgressSyncActor.shared.getPendingProgressSyncs()
 
         debugLog(
             "[MediaViewModel] refreshMetadata: Status: \(status), pendingSyncs count: \(pendingSyncs.count)"
@@ -199,21 +199,12 @@ public final class MediaViewModel {
             debugLog("[MediaViewModel] refreshMetadata: Pending bookIds: [\(bookIds)]")
         }
 
+        let storytellerMetadata = await LocalMediaActor.shared.localStorytellerMetadata
         let standaloneMetadata = await LocalMediaActor.shared.localStandaloneMetadata
-        let metadata: [BookMetadata]
-        if status == .connected {
-            let serverMetadata = await StorytellerActor.shared.libraryMetadata
-            metadata = serverMetadata + standaloneMetadata
-            debugLog(
-                "[MediaViewModel] refreshMetadata: Using online metadata (\(serverMetadata.count) server + \(standaloneMetadata.count) local = \(metadata.count) books)"
-            )
-        } else {
-            let localMetadata = await LocalMediaActor.shared.localStorytellerMetadata
-            metadata = localMetadata + standaloneMetadata
-            debugLog(
-                "[MediaViewModel] refreshMetadata: Using offline metadata (\(localMetadata.count) cached + \(standaloneMetadata.count) local = \(metadata.count) books)"
-            )
-        }
+        let metadata = storytellerMetadata + standaloneMetadata
+        debugLog(
+            "[MediaViewModel] refreshMetadata: Using LMA metadata (\(storytellerMetadata.count) storyteller + \(standaloneMetadata.count) standalone = \(metadata.count) books)"
+        )
 
         booksWithUnsyncedProgress = Set(pendingSyncs.map { $0.bookId })
         debugLog(
@@ -302,6 +293,12 @@ public final class MediaViewModel {
             await LocalMediaActor.shared.setViewModelUpdateCallback { [weak self] in
                 Task { @MainActor in
                     await self?.syncPathCache()
+                    await self?.refreshMetadata()
+                }
+            }
+
+            await ProgressSyncActor.shared.addObserver { [weak self] in
+                Task { @MainActor in
                     await self?.refreshMetadata()
                 }
             }
