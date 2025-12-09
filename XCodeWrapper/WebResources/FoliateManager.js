@@ -249,25 +249,21 @@ class FoliateManager {
     window.webkit?.messageHandlers?.Relocated?.postMessage(payload);
   }
 
-  async #reportBookStructureReady() {
+  #reportBookStructureReady() {
     const bookSections = this.#view?.book?.sections || [];
     const toc = this.#view?.book?.toc || [];
 
     const tocMap = this.#buildTOCMap(toc);
 
-    const mediaOverlay = this.#view.book.getMediaOverlay();
-    const allSMILEntries = await mediaOverlay.getAllSMILEntries();
-
     const sections = bookSections.map((section, index) => {
       const tocEntry = tocMap.get(section.id);
-      const smilEntries = this.#transformSMILEntries(allSMILEntries[index] || []);
 
       return {
         index: index,
         id: section.id,
         label: tocEntry?.label || null,
         level: tocEntry?.level ?? null,
-        mediaOverlay: smilEntries,
+        mediaOverlay: [],
       };
     });
 
@@ -327,24 +323,6 @@ class FoliateManager {
       }
     }
     return map;
-  }
-
-  #transformSMILEntries(entries) {
-    let cumSum = 0;
-    return entries.map((entry) => {
-      const [textHref, textId] = entry.text.split("#");
-      const duration = (entry.end ?? 0) - (entry.begin ?? 0);
-      cumSum += duration;
-
-      return {
-        textId: textId || "",
-        textHref: textHref || "",
-        audioFile: entry.audioFile || "",
-        begin: entry.begin ?? 0,
-        end: entry.end ?? 0,
-        cumSumAtEnd: cumSum,
-      };
-    });
   }
 
   goLeft() {

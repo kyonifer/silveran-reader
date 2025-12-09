@@ -17,12 +17,10 @@ class EbookPlayerViewModel {
     var mediaOverlayManager: MediaOverlayManager? = nil
     var progressManager: EbookProgressManager? = nil
     var styleManager: ReaderStyleManager? = nil
-    var smilPlayerManager: SMILPlayerManager? = nil
     var searchManager: EbookSearchManager? = nil
     var extractedEbookPath: URL? = nil
     #if os(iOS)
     private(set) var recoveryManager: WebViewRecoveryManager?
-    var audioManagerIos: AudioManagerIos?
     #endif
 
     var chapterList: [ChapterItem] {
@@ -261,6 +259,10 @@ class EbookPlayerViewModel {
                         debugLog(
                             "[EbookPlayerViewModel] EPUB processed for loading: \(processedPath.path)"
                         )
+
+                        if needsNativeAudio {
+                            await loadBookIntoActor(epubPath: localPath)
+                        }
                     } catch {
                         debugLog("[EbookPlayerViewModel] Failed to extract EPUB: \(error)")
                         self.extractedEbookPath = localPath
@@ -272,17 +274,49 @@ class EbookPlayerViewModel {
         }
     }
 
+    private func loadBookIntoActor(epubPath: URL) async {
+        do {
+            try await SMILPlayerActor.shared.loadBook(
+                epubPath: epubPath,
+                bookId: bookData?.metadata.uuid ?? "unknown",
+                title: bookData?.metadata.title,
+                author: bookData?.metadata.authors?.first?.name
+            )
+            await SMILPlayerActor.shared.setPlaybackRate(settingsVM.defaultPlaybackSpeed)
+            await SMILPlayerActor.shared.setVolume(settingsVM.defaultVolume)
+
+            let nativeStructure = await SMILPlayerActor.shared.getBookStructure()
+            self.bookStructure = nativeStructure
+            debugLog(
+                "[EbookPlayerViewModel] Native book structure loaded: \(nativeStructure.count) sections"
+            )
+
+            #if os(iOS)
+            if let uuid = bookData?.metadata.uuid {
+                if let coverData = await FilesystemActor.shared.loadCoverImage(
+                    uuid: uuid,
+                    variant: "standard"
+                ) {
+                    if let image = UIImage(data: coverData) {
+                        await SMILPlayerActor.shared.setCoverImage(image)
+                        debugLog("[EbookPlayerViewModel] Cover image set on SMILPlayerActor")
+                    }
+                }
+            }
+            #endif
+        } catch {
+            debugLog("[EbookPlayerViewModel] Failed to load book into actor: \(error)")
+        }
+    }
+
     func handleOnDisappear() {
         debugLog("[EbookPlayerViewModel] View disappearing")
         debugLog("[EbookPlayerViewModel] Window closing")
 
         Task { @MainActor in
             await mediaOverlayManager?.cleanup()
-            smilPlayerManager?.cleanup()
-            #if os(iOS)
-            audioManagerIos?.cleanup()
-            #endif
             await progressManager?.cleanup()
+            await SMILPlayerActor.shared.cleanup()
         }
     }
 
@@ -291,13 +325,11 @@ class EbookPlayerViewModel {
             case .active:
                 Task { @MainActor in
                     await progressManager?.handleResume()
-                }
-                smilPlayerManager?.reconcilePositionFromPlayer()
-                if let syncData = smilPlayerManager?.getBackgroundSyncData() {
-                    debugLog(
-                        "[EbookPlayerViewModel] Resuming from background - syncing view to audio position"
-                    )
-                    Task { @MainActor in
+                    await SMILPlayerActor.shared.reconcilePositionFromPlayer()
+                    if let syncData = await SMILPlayerActor.shared.getBackgroundSyncData() {
+                        debugLog(
+                            "[EbookPlayerViewModel] Resuming from background - syncing view to audio position"
+                        )
                         await progressManager?.handleBackgroundSyncHandoff(syncData)
                     }
                 }
@@ -369,10 +401,7 @@ class EbookPlayerViewModel {
         bridge.onBookStructureReady = { [weak self] message in
             guard let self else { return }
             Task { @MainActor in
-                debugLog(
-                    "[EbookPlayerViewModel] BookStructureReady - \(message.sections.count) sections"
-                )
-                self.bookStructure = message.sections
+                debugLog("[EbookPlayerViewModel] WebView ready (BookStructureReady)")
 
                 #if os(iOS)
                 let isRecovering = self.recoveryManager?.isInRecovery == true
@@ -380,81 +409,44 @@ class EbookPlayerViewModel {
                 let isRecovering = false
                 #endif
 
-                self.progressManager?.bookStructure = message.sections
+                let useNativeStructure = self.bookData?.category == .synced && !self.bookStructure.isEmpty
+                let structureToUse = useNativeStructure ? self.bookStructure : message.sections
+
+                if !useNativeStructure {
+                    self.bookStructure = message.sections
+                }
+
+                self.progressManager?.bookStructure = structureToUse
 
                 if isRecovering {
                     #if os(iOS)
                     debugLog(
-                        "[EbookPlayerViewModel] Recovery mode - reusing existing MOM/SMILPlayerManager"
+                        "[EbookPlayerViewModel] Recovery mode - reusing existing MOM/SMILPlayerActor"
                     )
                     self.mediaOverlayManager?.commsBridge = bridge
                     _ = self.recoveryManager?.handleBookStructureReadyIfRecovering()
                     #endif
                 } else {
-                    let manager = MediaOverlayManager(
-                        bookStructure: message.sections,
-                        bridge: bridge
-                    )
-                    if manager.hasMediaOverlay {
+                    let hasMediaOverlay = structureToUse.contains { !$0.mediaOverlay.isEmpty }
+
+                    if hasMediaOverlay {
+                        let manager = MediaOverlayManager(
+                            bookStructure: structureToUse,
+                            bridge: bridge
+                        )
                         debugLog(
-                            "[EbookPlayerViewModel] Book has media overlay - MediaOverlayManager created"
+                            "[EbookPlayerViewModel] Book has media overlay - MediaOverlayManager created (native structure: \(useNativeStructure))"
                         )
                         manager.setPlaybackRate(self.settingsVM.defaultPlaybackSpeed)
                         self.mediaOverlayManager = manager
                         self.hasAudioNarration = true
                         self.progressManager?.mediaOverlayManager = manager
                         manager.progressManager = self.progressManager
-
-                        let smilPlayer = SMILPlayerManager(
-                            bookStructure: message.sections,
-                            epubPath: self.bookData?.localMediaPath,
-                            initialPlaybackRate: self.settingsVM.defaultPlaybackSpeed
-                        )
-                        smilPlayer.setVolume(self.settingsVM.defaultVolume)
-                        self.smilPlayerManager = smilPlayer
-                        debugLog(
-                            "[EbookPlayerViewModel] SMILPlayerManager created for native audio"
-                        )
-
-                        manager.smilPlayerManager = smilPlayer
-                        smilPlayer.delegate = manager
-                        debugLog(
-                            "[EbookPlayerViewModel] MOM connected to SMILPlayerManager (direct control)"
-                        )
-
-                        #if os(iOS)
-                        let audioManager = AudioManagerIos()
-                        audioManager.mediaOverlayManager = manager
-                        audioManager.bookTitle = self.bookData?.metadata.title
-                        audioManager.bookAuthor = self.bookData?.metadata.authors?.first?.name
-                        manager.audioManagerIos = audioManager
-                        self.audioManagerIos = audioManager
-                        debugLog(
-                            "[EbookPlayerViewModel] AudioManagerIos created and connected to MOM"
-                        )
-
-                        if let uuid = self.bookData?.metadata.uuid {
-                            Task {
-                                if let coverData = await FilesystemActor.shared.loadCoverImage(
-                                    uuid: uuid,
-                                    variant: "standard"
-                                ) {
-                                    await MainActor.run {
-                                        self.audioManagerIos?.coverImage = UIImage(data: coverData)
-                                        debugLog(
-                                            "[EbookPlayerViewModel] Cover image set on AudioManagerIos"
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                        #endif
                     } else {
                         debugLog("[EbookPlayerViewModel] Book has no media overlay")
                         self.mediaOverlayManager = nil
                         self.hasAudioNarration = false
                         self.progressManager?.mediaOverlayManager = nil
-                        self.smilPlayerManager = nil
                     }
 
                     self.progressManager?.handleBookStructureReady()

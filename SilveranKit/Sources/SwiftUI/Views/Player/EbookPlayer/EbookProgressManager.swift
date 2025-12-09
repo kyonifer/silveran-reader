@@ -460,7 +460,7 @@ class EbookProgressManager {
 
     // MARK: - Background Sync Handoff
 
-    /// Handle position handoff from SMILPlayerManager after returning from background
+    /// Handle position handoff from SMILPlayerActor after returning from background
     /// Syncs the view to current audio position and updates server
     func handleBackgroundSyncHandoff(_ syncData: AudioPositionSyncData) async {
         debugLog(
