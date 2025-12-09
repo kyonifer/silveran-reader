@@ -65,7 +65,6 @@ const getCSS = ({
         ${foregroundColorCSS}
     }
     span, em, strong, i, b {
-        font-size: ${fontSize}px !important;
         line-height: ${lineSpacing} !important;
         ${fontFamilyCSS}
         word-spacing: ${wordSpacing}em !important;
