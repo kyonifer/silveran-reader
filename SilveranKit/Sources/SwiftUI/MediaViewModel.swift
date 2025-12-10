@@ -12,7 +12,7 @@ import UIKit
 @MainActor
 @Observable
 public final class MediaViewModel {
-    var library: BookLibrary
+    public var library: BookLibrary
     var libraryVersion: Int = 0
     var connectionStatus: ConnectionStatus = .disconnected
     var lastNetworkOpSucceeded: Bool? = nil
@@ -290,7 +290,7 @@ public final class MediaViewModel {
 
     private func setupPathCacheSync() {
         Task {
-            await LocalMediaActor.shared.setViewModelUpdateCallback { [weak self] in
+            await LocalMediaActor.shared.addObserver { @MainActor [weak self] in
                 Task { @MainActor in
                     await self?.syncPathCache()
                     await self?.refreshMetadata()
@@ -651,7 +651,7 @@ public final class MediaViewModel {
         }
     }
 
-    func isCategoryDownloaded(_ category: LocalMediaCategory, for item: BookMetadata) -> Bool {
+    public func isCategoryDownloaded(_ category: LocalMediaCategory, for item: BookMetadata) -> Bool {
         guard let paths = cachedBookPaths[item.id] else { return false }
         switch category {
             case .ebook:
@@ -861,6 +861,10 @@ public final class MediaViewModel {
             return
         }
 
+        if item.hasAvailableAudiobook && variant != .audioSquare {
+            ensureCoverLoaded(for: item, variant: .audioSquare)
+        }
+
         coverTasks[key] = Task { [weak self] in
             guard let self else { return }
 
@@ -942,31 +946,37 @@ public final class MediaViewModel {
 
     private func loadCachedCoversFromDisk() async {
         for book in library.bookMetaData {
-            let variant = coverVariant(for: book)
-            let variantString = variant == .standard ? "standard" : "audioSquare"
+            var variantsToLoad: [CoverVariant] = [coverVariant(for: book)]
+            if book.hasAvailableAudiobook && !variantsToLoad.contains(.audioSquare) {
+                variantsToLoad.append(.audioSquare)
+            }
 
-            if let data = await FilesystemActor.shared.loadCoverImage(
-                uuid: book.id,
-                variant: variantString
-            ) {
-                let key = CoverKey(id: book.id, variant: variant)
-                if let image = Self.makeImage(from: data) {
-                    coverCache[key] = image
+            for variant in variantsToLoad {
+                let variantString = variant == .standard ? "standard" : "audioSquare"
 
-                    let cover = BookCover(
-                        data: data,
-                        contentType: nil,
-                        etag: nil,
-                        lastModified: nil,
-                        cacheControl: nil,
-                        contentDisposition: nil
-                    )
+                if let data = await FilesystemActor.shared.loadCoverImage(
+                    uuid: book.id,
+                    variant: variantString
+                ) {
+                    let key = CoverKey(id: book.id, variant: variant)
+                    if let image = Self.makeImage(from: data) {
+                        coverCache[key] = image
 
-                    switch variant {
-                        case .standard:
-                            library.ebookCoverCache[book.id] = cover
-                        case .audioSquare:
-                            library.audiobookCoverCache[book.id] = cover
+                        let cover = BookCover(
+                            data: data,
+                            contentType: nil,
+                            etag: nil,
+                            lastModified: nil,
+                            cacheControl: nil,
+                            contentDisposition: nil
+                        )
+
+                        switch variant {
+                            case .standard:
+                                library.ebookCoverCache[book.id] = cover
+                            case .audioSquare:
+                                library.audiobookCoverCache[book.id] = cover
+                        }
                     }
                 }
             }

@@ -310,6 +310,32 @@ class EbookPlayerViewModel {
         }
     }
 
+    private func reloadBookIntoActor() async {
+        guard let localPath = bookData?.localMediaPath else {
+            debugLog("[EbookPlayerViewModel] reloadBookIntoActor - no local path")
+            return
+        }
+
+        debugLog("[EbookPlayerViewModel] Reloading book into actor")
+
+        let savedSectionIndex = mediaOverlayManager?.cachedSectionIndex ?? 0
+        let savedEntryIndex = mediaOverlayManager?.cachedEntryIndex ?? 0
+
+        await loadBookIntoActor(epubPath: localPath)
+
+        if savedSectionIndex > 0 || savedEntryIndex > 0 {
+            do {
+                try await SMILPlayerActor.shared.seekToEntry(
+                    sectionIndex: savedSectionIndex,
+                    entryIndex: savedEntryIndex
+                )
+                debugLog("[EbookPlayerViewModel] Restored position to section \(savedSectionIndex), entry \(savedEntryIndex)")
+            } catch {
+                debugLog("[EbookPlayerViewModel] Failed to restore position: \(error)")
+            }
+        }
+    }
+
     func handleOnDisappear() {
         debugLog("[EbookPlayerViewModel] View disappearing")
         debugLog("[EbookPlayerViewModel] Window closing")
@@ -437,9 +463,14 @@ class EbookPlayerViewModel {
                     let hasMediaOverlay = structureToUse.contains { !$0.mediaOverlay.isEmpty }
 
                     if hasMediaOverlay {
+                        let currentBookId = self.bookData?.metadata.uuid ?? "unknown"
                         let manager = MediaOverlayManager(
                             bookStructure: structureToUse,
-                            bridge: bridge
+                            bookId: currentBookId,
+                            bridge: bridge,
+                            reloadBookIntoActor: { [weak self] in
+                                await self?.reloadBookIntoActor()
+                            }
                         )
                         debugLog(
                             "[EbookPlayerViewModel] Book has media overlay - MediaOverlayManager created (native structure: \(useNativeStructure))"

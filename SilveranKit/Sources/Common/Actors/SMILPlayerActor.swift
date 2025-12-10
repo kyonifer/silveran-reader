@@ -414,8 +414,6 @@ public actor SMILPlayerActor {
         currentAudioFile = ""
         isPlaying = false
 
-        stateObservers.removeAll()
-
         #if os(iOS)
         stopNowPlayingUpdateTimer()
         await cleanupAudioManagerIos()
@@ -989,6 +987,11 @@ class SMILAudioManagerIos {
         commandCenter.skipForwardCommand.removeTarget(nil)
         commandCenter.skipBackwardCommand.removeTarget(nil)
         commandCenter.changePlaybackPositionCommand.removeTarget(nil)
+        commandCenter.nextTrackCommand.removeTarget(nil)
+        commandCenter.previousTrackCommand.removeTarget(nil)
+
+        commandCenter.nextTrackCommand.isEnabled = false
+        commandCenter.previousTrackCommand.isEnabled = false
 
         commandCenter.playCommand.isEnabled = true
         commandCenter.playCommand.addTarget { _ in
@@ -1071,6 +1074,11 @@ class SMILAudioManagerIos {
         commandCenter.skipForwardCommand.removeTarget(nil)
         commandCenter.skipBackwardCommand.removeTarget(nil)
         commandCenter.changePlaybackPositionCommand.removeTarget(nil)
+        commandCenter.nextTrackCommand.removeTarget(nil)
+        commandCenter.previousTrackCommand.removeTarget(nil)
+
+        commandCenter.nextTrackCommand.isEnabled = true
+        commandCenter.previousTrackCommand.isEnabled = true
     }
 
     nonisolated private func createArtwork(from image: UIImage) -> MPMediaItemArtwork {

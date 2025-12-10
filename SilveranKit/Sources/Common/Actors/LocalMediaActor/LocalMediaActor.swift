@@ -44,14 +44,12 @@ public actor LocalMediaActor: GlobalActor {
         Array(extensionCategoryMap.keys).sorted()
     }
 
-    private var viewModelUpdateCallback: (@Sendable () -> Void)?
+    private var observers: [UUID: @Sendable @MainActor () -> Void] = [:]
 
     public init(
-        viewModelUpdateCallback: (@Sendable () -> Void)? = nil,
         filesystem: FilesystemActor = .shared,
         localLibrary: LocalLibraryManager = LocalLibraryManager()
     ) {
-        self.viewModelUpdateCallback = viewModelUpdateCallback
         self.filesystem = filesystem
         self.localLibrary = localLibrary
         Task { [weak self] in
@@ -72,8 +70,24 @@ public actor LocalMediaActor: GlobalActor {
         }
     }
 
-    public func setViewModelUpdateCallback(_ callback: @escaping @Sendable () -> Void) {
-        viewModelUpdateCallback = callback
+    @discardableResult
+    public func addObserver(_ callback: @escaping @Sendable @MainActor () -> Void) -> UUID {
+        let id = UUID()
+        observers[id] = callback
+        debugLog("[LMA] addObserver: id=\(id), total observers=\(observers.count)")
+        return id
+    }
+
+    public func removeObserver(id: UUID) {
+        observers.removeValue(forKey: id)
+        debugLog("[LMA] removeObserver: id=\(id), total observers=\(observers.count)")
+    }
+
+    private func notifyObservers() async {
+        debugLog("[LMA] notifyObservers: notifying \(observers.count) observers")
+        for (_, callback) in observers {
+            await callback()
+        }
     }
 
     public func updateStorytellerMetadata(_ metadata: [BookMetadata]) async throws {
@@ -91,7 +105,7 @@ public actor LocalMediaActor: GlobalActor {
         }
         localStorytellerBookPaths = paths
 
-        viewModelUpdateCallback?()
+        await notifyObservers()
     }
 
     public func updateBookProgress(bookId: String, locator: BookLocator, timestamp: Double) async {
@@ -272,7 +286,7 @@ public actor LocalMediaActor: GlobalActor {
         localStandaloneMetadata = localScanResult.metadata
         localStandaloneBookPaths = localScanResult.paths
 
-        viewModelUpdateCallback?()
+        await notifyObservers()
     }
 
     private func scanBookPaths(for uuid: String, domain: LocalMediaDomain) async -> MediaPaths {
@@ -365,14 +379,14 @@ public actor LocalMediaActor: GlobalActor {
         let updatedPaths = await scanBookPaths(for: uuid, domain: .storyteller)
         localStorytellerBookPaths[uuid] = updatedPaths
 
-        viewModelUpdateCallback?()
+        await notifyObservers()
     }
 
     public func deleteLocalStandaloneMedia(for uuid: String) async throws {
         guard let paths = localStandaloneBookPaths[uuid] else {
             localStandaloneMetadata.removeAll { $0.uuid == uuid }
             try await filesystem.saveLocalLibraryMetadata(localStandaloneMetadata)
-            viewModelUpdateCallback?()
+            await notifyObservers()
             return
         }
 
@@ -396,7 +410,7 @@ public actor LocalMediaActor: GlobalActor {
         localStandaloneMetadata.removeAll { $0.uuid == uuid }
         try await filesystem.saveLocalLibraryMetadata(localStandaloneMetadata)
 
-        viewModelUpdateCallback?()
+        await notifyObservers()
     }
 
     /// Returns the base directory for the given domain, e.g. `<ApplicationSupport>/storyteller_media`.
@@ -504,7 +518,7 @@ public actor LocalMediaActor: GlobalActor {
             let mediaPaths = await scanBookPaths(for: metadata.uuid, domain: .local)
             localStandaloneBookPaths[metadata.uuid] = mediaPaths
 
-            viewModelUpdateCallback?()
+            await notifyObservers()
 
             return destinationURL
         } else {
@@ -527,7 +541,7 @@ public actor LocalMediaActor: GlobalActor {
 
             try fm.copyItem(at: sourceFileURL, to: destinationURL)
 
-            viewModelUpdateCallback?()
+            await notifyObservers()
 
             return destinationURL
         }
@@ -706,7 +720,7 @@ public actor LocalMediaActor: GlobalActor {
         localStorytellerMetadata = []
         localStorytellerBookPaths = [:]
 
-        viewModelUpdateCallback?()
+        await notifyObservers()
     }
 
     private func storytellerAssetInfo(

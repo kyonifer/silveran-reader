@@ -5,10 +5,17 @@ extension Notification.Name {
 }
 
 struct SilveranReaderApp: App {
-    @State private var mediaViewModel = MediaViewModel()
+    @State private var mediaViewModel: MediaViewModel
+
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
+        let vm = MediaViewModel()
+        _mediaViewModel = State(initialValue: vm)
+
+        Task { @MainActor in
+            CarPlayCoordinator.shared.mediaViewModel = vm
+        }
         Task {
             do {
                 if let credentials = try await AuthenticationActor.shared.loadCredentials() {

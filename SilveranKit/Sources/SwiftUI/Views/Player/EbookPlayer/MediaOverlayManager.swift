@@ -18,6 +18,8 @@ class MediaOverlayManager {
     // MARK: - Properties
 
     private let bookStructure: [SectionInfo]
+    private let bookId: String
+    private let reloadBookIntoActor: () async -> Void
 
     weak var commsBridge: WebViewCommsBridge?
     weak var progressManager: EbookProgressManager?
@@ -26,8 +28,8 @@ class MediaOverlayManager {
     private var smilObserverId: UUID?
 
     /// Cached state from SMILPlayerActor
-    private var cachedSectionIndex: Int = 0
-    private var cachedEntryIndex: Int = 0
+    private(set) var cachedSectionIndex: Int = 0
+    private(set) var cachedEntryIndex: Int = 0
     private var lastObservedFragment: String = ""
 
     var isPlaying: Bool = false
@@ -102,10 +104,17 @@ class MediaOverlayManager {
 
     // MARK: - Initialization
 
-    init(bookStructure: [SectionInfo], bridge: WebViewCommsBridge) {
+    init(
+        bookStructure: [SectionInfo],
+        bookId: String,
+        bridge: WebViewCommsBridge,
+        reloadBookIntoActor: @escaping () async -> Void
+    ) {
         self.bookStructure = bookStructure
+        self.bookId = bookId
         self.commsBridge = bridge
-        debugLog("[MOM] MediaOverlayManager initialized")
+        self.reloadBookIntoActor = reloadBookIntoActor
+        debugLog("[MOM] MediaOverlayManager initialized for book: \(bookId)")
         debugLog("[MOM]   Total sections: \(bookStructure.count)")
         debugLog(
             "[MOM]   Sections with audio: \(bookStructure.filter { !$0.mediaOverlay.isEmpty }.count)"
@@ -372,6 +381,12 @@ class MediaOverlayManager {
         enableScreenWakeLock()
 
         do {
+            let loadedBookId = await SMILPlayerActor.shared.getLoadedBookId()
+            if loadedBookId != bookId {
+                debugLog("[MOM] Actor has different book (\(loadedBookId ?? "none")), reloading \(bookId)")
+                await reloadBookIntoActor()
+            }
+
             try await SMILPlayerActor.shared.play()
             isPlaying = true
 
