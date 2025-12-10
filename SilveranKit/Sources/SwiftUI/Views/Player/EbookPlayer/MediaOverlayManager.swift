@@ -221,7 +221,6 @@ class MediaOverlayManager {
 
         if syncEnabled {
             Task {
-                try? await commsBridge?.sendJsGoToHrefCommand(href: "\(section.id)#\(entry.textId)")
                 await sendHighlightCommand(sectionIndex: sectionIndex, textId: entry.textId)
             }
         }
@@ -431,7 +430,6 @@ class MediaOverlayManager {
                     sectionIndex: sectionIndex,
                     textId: entry.textId
                 )
-                try? await commsBridge?.sendJsGoToHrefCommand(href: "\(section.id)#\(entry.textId)")
                 await sendHighlightCommand(sectionIndex: sectionIndex, textId: entry.textId)
                 if wasPlaying { try? await SMILPlayerActor.shared.play() }
             }
@@ -446,9 +444,6 @@ class MediaOverlayManager {
                         _ = await SMILPlayerActor.shared.seekToFragment(
                             sectionIndex: nextSectionIndex,
                             textId: entry.textId
-                        )
-                        try? await commsBridge?.sendJsGoToHrefCommand(
-                            href: "\(nextSection.id)#\(entry.textId)"
                         )
                         await sendHighlightCommand(sectionIndex: nextSectionIndex, textId: entry.textId)
                         if wasPlaying { try? await SMILPlayerActor.shared.play() }
@@ -484,7 +479,6 @@ class MediaOverlayManager {
                     sectionIndex: sectionIndex,
                     textId: entry.textId
                 )
-                try? await commsBridge?.sendJsGoToHrefCommand(href: "\(section.id)#\(entry.textId)")
                 await sendHighlightCommand(sectionIndex: sectionIndex, textId: entry.textId)
                 if wasPlaying { try? await SMILPlayerActor.shared.play() }
             }
@@ -502,9 +496,6 @@ class MediaOverlayManager {
                         _ = await SMILPlayerActor.shared.seekToFragment(
                             sectionIndex: prevSectionIndex,
                             textId: entry.textId
-                        )
-                        try? await commsBridge?.sendJsGoToHrefCommand(
-                            href: "\(prevSection.id)#\(entry.textId)"
                         )
                         await sendHighlightCommand(sectionIndex: prevSectionIndex, textId: entry.textId)
                         if wasPlaying { try? await SMILPlayerActor.shared.play() }
