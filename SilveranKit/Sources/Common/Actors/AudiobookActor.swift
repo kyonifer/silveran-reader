@@ -291,6 +291,7 @@ public actor AudiobookActor {
     }
 
     public func pause() async {
+        debugLog("[AudiobookActor] pause() called")
         player?.pause()
         await notifyStateChange()
     }
@@ -375,7 +376,9 @@ public actor AudiobookActor {
         id: UUID = UUID(),
         observer: @escaping @Sendable @MainActor (AudiobookPlaybackState) -> Void
     ) async -> UUID {
+        debugLog("[AudiobookActor] addStateObserver called, id=\(id)")
         stateObservers[id] = observer
+        debugLog("[AudiobookActor] Observer stored, count=\(stateObservers.count)")
         if let state = await getCurrentState() {
             await observer(state)
         }
@@ -387,7 +390,12 @@ public actor AudiobookActor {
     }
 
     private func notifyStateChange() async {
-        guard let state = await getCurrentState() else { return }
+        guard let state = await getCurrentState() else {
+            debugLog("[AudiobookActor] notifyStateChange: no current state")
+            return
+        }
+
+        debugLog("[AudiobookActor] notifyStateChange: isPlaying=\(state.isPlaying), observers=\(stateObservers.count)")
 
         #if os(iOS)
         updateNowPlayingInfo()

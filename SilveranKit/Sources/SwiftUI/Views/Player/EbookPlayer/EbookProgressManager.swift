@@ -160,36 +160,14 @@ class EbookProgressManager {
     }
 
     /// Find the SMIL entry corresponding to a book fraction (0-1).
-    /// Uses cumSumAtEnd times in SMIL entries to locate the audio position.
-    /// Note: cumSumAtEnd is per-section (resets to 0 each section), so we track book-wide time ourselves.
-    private func findSmilEntryByBookFraction(_ fraction: Double) -> (
+    /// Delegates to SMILPlayerActor for consistent behavior across CarPlay and iOS app.
+    private func findSmilEntryByBookFraction(_ fraction: Double) async -> (
         sectionIndex: Int, anchor: String
     )? {
-        var totalAudioDuration: Double = 0
-        for section in bookStructure {
-            if let lastEntry = section.mediaOverlay.last {
-                totalAudioDuration += lastEntry.cumSumAtEnd
-            }
+        guard let result = await SMILPlayerActor.shared.findPositionByTotalProgression(fraction) else {
+            return nil
         }
-
-        guard totalAudioDuration > 0 else { return nil }
-
-        let targetSeconds = fraction * totalAudioDuration
-
-        var cumulativeTimeBeforeSection: Double = 0
-        for (sectionIndex, section) in bookStructure.enumerated() {
-            for entry in section.mediaOverlay {
-                let absoluteTime = cumulativeTimeBeforeSection + entry.cumSumAtEnd
-                if absoluteTime >= targetSeconds {
-                    return (sectionIndex, entry.textId)
-                }
-            }
-            if let lastEntry = section.mediaOverlay.last {
-                cumulativeTimeBeforeSection += lastEntry.cumSumAtEnd
-            }
-        }
-
-        return nil
+        return (sectionIndex: result.sectionIndex, anchor: result.textId)
     }
 
     // MARK: - Initial Navigation
@@ -225,7 +203,7 @@ class EbookProgressManager {
                             try await bridge.sendJsGoToBookFractionCommand(fraction: totalProg)
 
                             if let mom = mediaOverlayManager,
-                                let (sectionIndex, anchor) = findSmilEntryByBookFraction(totalProg)
+                                let (sectionIndex, anchor) = await findSmilEntryByBookFraction(totalProg)
                             {
                                 debugLog(
                                     "[EPM] Seeking media overlay to section \(sectionIndex), anchor: \(anchor)"
@@ -288,7 +266,7 @@ class EbookProgressManager {
 
                         if hasSMIL,
                             let mom = mediaOverlayManager,
-                            let (smilSection, anchor) = findSmilEntryByBookFraction(totalProg)
+                            let (smilSection, anchor) = await findSmilEntryByBookFraction(totalProg)
                         {
                             debugLog(
                                 "[EPM] Also seeking media overlay to section \(smilSection), anchor: \(anchor)"

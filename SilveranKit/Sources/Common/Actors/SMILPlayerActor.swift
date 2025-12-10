@@ -304,6 +304,55 @@ public actor SMILPlayerActor {
         return true
     }
 
+    public func seekToTotalProgression(_ progression: Double) async -> Bool {
+        guard let (sectionIndex, entryIndex, entry) = findEntryByTotalProgression(progression) else {
+            return false
+        }
+
+        await setCurrentEntry(
+            sectionIndex: sectionIndex,
+            entryIndex: entryIndex,
+            audioFile: entry.audioFile,
+            beginTime: entry.begin,
+            endTime: entry.end
+        )
+        return true
+    }
+
+    public func findPositionByTotalProgression(_ progression: Double) -> (sectionIndex: Int, textId: String)? {
+        guard let (sectionIndex, _, entry) = findEntryByTotalProgression(progression) else {
+            return nil
+        }
+        return (sectionIndex, entry.textId)
+    }
+
+    private func findEntryByTotalProgression(_ progression: Double) -> (sectionIndex: Int, entryIndex: Int, entry: SMILEntry)? {
+        guard !bookStructure.isEmpty else { return nil }
+
+        var totalDuration: Double = 0
+        for section in bookStructure.reversed() {
+            if let lastEntry = section.mediaOverlay.last {
+                totalDuration = lastEntry.cumSumAtEnd
+                break
+            }
+        }
+
+        guard totalDuration > 0 else { return nil }
+
+        let targetTime = progression * totalDuration
+        debugLog("[SMILPlayerActor] findEntryByTotalProgression: \(progression) -> targetTime \(targetTime)s of \(totalDuration)s")
+
+        for (sectionIndex, section) in bookStructure.enumerated() {
+            for (entryIndex, entry) in section.mediaOverlay.enumerated() {
+                if entry.cumSumAtEnd >= targetTime {
+                    return (sectionIndex, entryIndex, entry)
+                }
+            }
+        }
+
+        return nil
+    }
+
     public func skipForward(seconds: Double = 15) async {
         guard let player = player else { return }
         let newTime = min(player.currentTime + seconds, player.duration)
