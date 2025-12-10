@@ -223,15 +223,19 @@ class WebViewCommsBridge {
 
     /// Swift commands JS to highlight a specific text fragment
     /// JS will apply highlight CSS and report visibility for page flip timing
-    func sendJsHighlightFragment(sectionIndex: Int, textId: String) async throws {
+    /// - Parameters:
+    ///   - sectionIndex: The section index
+    ///   - textId: The text element ID to highlight
+    ///   - seekToLocation: If true, navigates the view to the element before highlighting
+    func sendJsHighlightFragment(sectionIndex: Int, textId: String, seekToLocation: Bool = false) async throws {
         guard let webView = webView else {
             throw WebViewCommsBridgeError.webViewNotAvailable
         }
 
         let escapedTextId = textId.replacingOccurrences(of: "'", with: "\\'")
-        debugLog("[WebViewCommsBridge] sendJsHighlightFragment(sectionIndex: \(sectionIndex), textId: \(textId))")
+        debugLog("[WebViewCommsBridge] sendJsHighlightFragment(sectionIndex: \(sectionIndex), textId: \(textId), seekToLocation: \(seekToLocation))")
         _ = try await webView.evaluateJavaScript(
-            "window.foliateManager.highlightFragment(\(sectionIndex), '\(escapedTextId)')"
+            "window.foliateManager.highlightFragment(\(sectionIndex), '\(escapedTextId)', \(seekToLocation))"
         )
     }
 

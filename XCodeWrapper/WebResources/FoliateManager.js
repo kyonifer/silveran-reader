@@ -667,8 +667,8 @@ class FoliateManager {
 
   // MARK: - Highlight methods (Swift controls audio directly)
 
-  highlightFragment(sectionIndex, textId) {
-    debugLog("FoliateManager", `highlightFragment(sectionIndex: ${sectionIndex}, textId: ${textId})`);
+  highlightFragment(sectionIndex, textId, seekToLocation = false) {
+    debugLog("FoliateManager", `highlightFragment(sectionIndex: ${sectionIndex}, textId: ${textId}, seekToLocation: ${seekToLocation})`);
 
     this.clearHighlight();
 
@@ -690,6 +690,13 @@ class FoliateManager {
 
     const contents = renderer.getContents?.();
     const sectionHref = this.#view.book?.sections?.[sectionIndex]?.id;
+
+    if (seekToLocation && sectionHref) {
+      debugLog("FoliateManager", `seekToLocation enabled, navigating to ${sectionHref}#${textId}`);
+      this.#pendingHighlight = { sectionIndex, textId };
+      this.#view.goTo(`${sectionHref}#${textId}`);
+      return;
+    }
 
     if (!contents || !contents.length) {
       debugLog("FoliateManager", "No contents loaded, storing pending highlight and navigating");
