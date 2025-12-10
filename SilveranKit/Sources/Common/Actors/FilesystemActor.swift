@@ -566,11 +566,19 @@ public actor FilesystemActor {
         let extractedDir = epubPath.deletingLastPathComponent()
             .appendingPathComponent("extracted", isDirectory: true)
 
+        let sizesFile = extractedDir.appendingPathComponent("_sizes.json")
         if fm.fileExists(atPath: extractedDir.path) {
-            debugLog(
-                "[FilesystemActor] Extracted directory already exists, reusing: \(extractedDir.path)"
-            )
-            return URL(fileURLWithPath: extractedDir.path, isDirectory: true)
+            if fm.fileExists(atPath: sizesFile.path) {
+                debugLog(
+                    "[FilesystemActor] Extracted directory already exists and complete, reusing: \(extractedDir.path)"
+                )
+                return URL(fileURLWithPath: extractedDir.path, isDirectory: true)
+            } else {
+                debugLog(
+                    "[FilesystemActor] Extracted directory exists but incomplete, removing: \(extractedDir.path)"
+                )
+                try? fm.removeItem(at: extractedDir)
+            }
         }
 
         try fm.createDirectory(at: extractedDir, withIntermediateDirectories: true)
@@ -592,6 +600,7 @@ public actor FilesystemActor {
         }
 
         var skippedAudioFiles = 0
+        var skippedErrors = 0
         var fileSizes: [String: UInt64] = [:]
 
         for entry in archive {
@@ -602,8 +611,13 @@ public actor FilesystemActor {
             }
 
             let destinationURL = extractedDir.appendingPathComponent(entry.path)
-            _ = try archive.extract(entry, to: destinationURL)
-            fileSizes[entry.path] = entry.uncompressedSize
+            do {
+                _ = try archive.extract(entry, to: destinationURL)
+                fileSizes[entry.path] = entry.uncompressedSize
+            } catch {
+                debugLog("[FilesystemActor] Skipping file due to extraction error: \(entry.path) - \(error.localizedDescription)")
+                skippedErrors += 1
+            }
         }
 
         let sizesURL = extractedDir.appendingPathComponent("_sizes.json")
@@ -611,7 +625,7 @@ public actor FilesystemActor {
         try sizesData.write(to: sizesURL)
 
         debugLog(
-            "[FilesystemActor] EPUB extracted successfully (skipped \(skippedAudioFiles) audio files, wrote \(fileSizes.count) sizes)"
+            "[FilesystemActor] EPUB extracted (skipped \(skippedAudioFiles) audio, \(skippedErrors) errors, wrote \(fileSizes.count) files)"
         )
 
         return URL(fileURLWithPath: extractedDir.path, isDirectory: true)

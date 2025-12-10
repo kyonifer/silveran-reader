@@ -85,6 +85,7 @@ public actor ProgressSyncActor {
         switch result {
         case .success:
             debugLog("[PSA] syncProgress: server sync succeeded")
+            await removeFromQueue(bookId: bookId)
             updateSyncState(bookId: bookId, locator: locator, timestamp: timestamp)
             await updateLocalMetadataProgress(bookId: bookId, locator: locator, timestamp: timestamp)
             await notifyObservers()

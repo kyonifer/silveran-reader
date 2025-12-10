@@ -266,7 +266,6 @@ class EbookPlayerViewModel {
                         }
                     } catch {
                         debugLog("[EbookPlayerViewModel] Failed to extract EPUB: \(error)")
-                        self.extractedEbookPath = localPath
                     }
                 }
             } else {
