@@ -31,9 +31,6 @@ public actor ProgressSyncActor {
     private var observers: [UUID: @Sendable @MainActor () -> Void] = [:]
     private var syncNotificationCallback: (@Sendable @MainActor (Int, Int) -> Void)?
 
-    private let dedupeThresholdMs: Double = 1000
-    private let minProgressDelta: Double = 0.001
-
     public init() {
         Task {
             await loadQueueFromDisk()
@@ -255,24 +252,13 @@ public actor ProgressSyncActor {
     // MARK: - Private Helpers
 
     private func shouldDedupe(bookId: String, locator: BookLocator, timestamp: Double) -> Bool {
-        guard let state = bookSyncStates[bookId] else { return false }
+        guard let state = bookSyncStates[bookId],
+              let lastLocator = state.lastSyncedLocator else { return false }
 
-        if let lastTimestamp = state.lastSyncedTimestamp {
-            let delta = abs(timestamp - lastTimestamp)
-            if delta < dedupeThresholdMs {
-                debugLog("[PSA] shouldDedupe: timestamp delta \(delta)ms < threshold \(dedupeThresholdMs)ms")
-                return true
-            }
-        }
-
-        if let lastLocator = state.lastSyncedLocator,
-           let lastProg = lastLocator.locations?.totalProgression,
-           let newProg = locator.locations?.totalProgression {
-            let delta = abs(newProg - lastProg)
-            if delta < minProgressDelta {
-                debugLog("[PSA] shouldDedupe: progress delta \(delta) < threshold \(minProgressDelta)")
-                return true
-            }
+        if locator.href == lastLocator.href &&
+           locator.locations?.fragments == lastLocator.locations?.fragments {
+            debugLog("[PSA] shouldDedupe: same href+fragments")
+            return true
         }
 
         return false

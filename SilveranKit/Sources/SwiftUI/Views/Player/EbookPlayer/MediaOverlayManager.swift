@@ -38,6 +38,11 @@ class MediaOverlayManager {
     /// (i.e. when a sentence is half on this page and half on the next)
     private var pageFlipTimer: Timer?
 
+    /// Last time we flipped a page, used to debounce rapid flips
+    /// (i.e. when a fractional sentence is paused then play starts again,
+    /// causing it to fire right when the next sentence sends a ElementVisibilityMessage)
+    private var lastFlipTime: Date?
+
     /// Whether audio is synced to view navigation (true) or detached (false)
     var syncEnabled: Bool = true
 
@@ -772,13 +777,13 @@ class MediaOverlayManager {
         if message.offScreenRatio >= 0.9 {
             debugLog("[MOM] Element almost fully off-screen, flipping immediately")
             Task {
-                try? await commsBridge?.sendJsGoRightCommand()
+                await self.flipPageIfNotDebounced()
             }
-        } else if message.offScreenRatio >= 0.1 && message.visibleRatio < 0.98 {
+        } else if message.offScreenRatio > 0 {
             Task {
                 guard let entry = await SMILPlayerActor.shared.getCurrentEntry() else { return }
                 let entryDuration = entry.end - entry.begin
-                let earlyOffset = 1.0
+                let earlyOffset = message.visibleRatio >= 0.98 ? 0.0 : 1.0
                 let delay = max(0, (entryDuration * message.visibleRatio / self.playbackRate) - earlyOffset)
 
                 debugLog(
@@ -789,13 +794,24 @@ class MediaOverlayManager {
                     self.pageFlipTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) {
                         [weak self] _ in
                         Task { @MainActor [weak self] in
-                            guard self?.isPlaying == true, self?.syncEnabled == true else { return }
-                            debugLog("[MOM] Page flip timer fired")
-                            try? await self?.commsBridge?.sendJsGoRightCommand()
+                            await self?.flipPageIfNotDebounced()
                         }
                     }
                 }
             }
         }
+    }
+
+    private func flipPageIfNotDebounced() async {
+        guard isPlaying, syncEnabled else { return }
+
+        if let last = lastFlipTime, Date().timeIntervalSince(last) < 0.3 {
+            debugLog("[MOM] Debouncing page flip")
+            return
+        }
+
+        lastFlipTime = Date()
+        debugLog("[MOM] Page flip")
+        try? await commsBridge?.sendJsGoRightCommand()
     }
 }
