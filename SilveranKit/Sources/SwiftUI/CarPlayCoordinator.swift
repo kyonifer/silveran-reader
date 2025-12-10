@@ -25,15 +25,6 @@ private enum ActivePlayer {
 public final class CarPlayCoordinator {
     public static let shared = CarPlayCoordinator()
 
-    public weak var mediaViewModel: MediaViewModel? {
-        didSet {
-            if mediaViewModel != nil {
-                onMediaViewModelReady?()
-            }
-        }
-    }
-
-    public var onMediaViewModelReady: (() -> Void)?
     public var onLibraryUpdated: (() -> Void)?
     public var onChaptersUpdated: (() -> Void)?
     public var onPlaybackStateChanged: (() -> Void)?
@@ -50,11 +41,23 @@ public final class CarPlayCoordinator {
     private var activePlayer: ActivePlayer?
     private var currentBookId: String?
     private var currentBookTitle: String?
+    private var isInitialized = false
 
     private init() {
         Task {
             await observeSMILPlayerActor()
             await observeLocalMediaActor()
+            await ensureLocalMediaScanned()
+            isInitialized = true
+        }
+    }
+
+    private func ensureLocalMediaScanned() async {
+        do {
+            try await LocalMediaActor.shared.scanForMedia()
+            debugLog("[CarPlayCoordinator] Local media scan complete")
+        } catch {
+            debugLog("[CarPlayCoordinator] Failed to scan local media: \(error)")
         }
     }
 
@@ -125,6 +128,40 @@ public final class CarPlayCoordinator {
         onChaptersUpdated?()
     }
 
+    // MARK: - Public API for CarPlay
+
+    public func getDownloadedBooks(category: LocalMediaCategory) async -> [BookMetadata] {
+        let storytellerMeta = await LocalMediaActor.shared.localStorytellerMetadata
+        let standaloneMeta = await LocalMediaActor.shared.localStandaloneMetadata
+        let allMetadata = storytellerMeta + standaloneMeta
+
+        var result: [BookMetadata] = []
+        for book in allMetadata {
+            let downloaded = await LocalMediaActor.shared.downloadedCategories(for: book.uuid)
+            if downloaded.contains(category) {
+                result.append(book)
+            }
+        }
+
+        return result.sorted { ($0.position?.updatedAt ?? "") > ($1.position?.updatedAt ?? "") }
+    }
+
+    public func getCoverImage(for bookId: String) async -> UIImage? {
+        // Try audioSquare first (preferred for CarPlay - square covers)
+        if let data = await FilesystemActor.shared.loadCoverImage(uuid: bookId, variant: "audioSquare") {
+            return UIImage(data: data)
+        }
+        // Fall back to standard cover
+        if let data = await FilesystemActor.shared.loadCoverImage(uuid: bookId, variant: "standard") {
+            return UIImage(data: data)
+        }
+        // Last resort: extract from local file (for standalone imports)
+        if let data = await LocalMediaActor.shared.extractLocalCover(for: bookId) {
+            return UIImage(data: data)
+        }
+        return nil
+    }
+
     public var chapters: [CarPlayChapter] {
         switch activePlayer {
         case .audiobook:
@@ -177,40 +214,33 @@ public final class CarPlayCoordinator {
         }
     }
 
-    public func loadAndPlayBook(_ metadata: BookMetadata, category: LocalMediaCategory) {
+    public func loadAndPlayBook(_ metadata: BookMetadata, category: LocalMediaCategory) async throws {
         debugLog("[CarPlayCoordinator] loadAndPlayBook: \(metadata.title), category: \(category)")
 
-        guard let mediaViewModel = mediaViewModel else {
-            debugLog("[CarPlayCoordinator] No mediaViewModel available")
-            return
+        guard let localPath = await LocalMediaActor.shared.mediaFilePath(for: metadata.uuid, category: category) else {
+            debugLog("[CarPlayCoordinator] No local path for book \(metadata.uuid)")
+            throw CarPlayError.noLocalPath
         }
+        debugLog("[CarPlayCoordinator] Found local path: \(localPath)")
 
-        guard let localPath = mediaViewModel.localMediaPath(for: metadata.id, category: category) else {
-            debugLog("[CarPlayCoordinator] No local path for book")
-            return
-        }
-
-        Task {
-            do {
-                if category == .audio {
-                    try await loadM4BAudiobook(metadata: metadata, localPath: localPath, mediaViewModel: mediaViewModel)
-                } else {
-                    try await loadSMILBook(metadata: metadata, localPath: localPath, mediaViewModel: mediaViewModel)
-                }
-            } catch {
-                debugLog("[CarPlayCoordinator] Failed to load/play book: \(error)")
-            }
+        if category == .audio {
+            try await loadM4BAudiobook(metadata: metadata, localPath: localPath)
+        } else {
+            try await loadSMILBook(metadata: metadata, localPath: localPath)
         }
     }
 
-    private func loadM4BAudiobook(metadata: BookMetadata, localPath: URL, mediaViewModel: MediaViewModel) async throws {
+    public enum CarPlayError: Error {
+        case noLocalPath
+    }
+
+    private func loadM4BAudiobook(metadata: BookMetadata, localPath: URL) async throws {
         await SMILPlayerActor.shared.cleanup()
         activePlayer = .audiobook
         currentBookId = metadata.uuid
         currentBookTitle = metadata.title
         wasPlaying = false
 
-        // Register observer before loading
         audiobookObserverId = await AudiobookActor.shared.addStateObserver { @MainActor [weak self] state in
             self?.handleAudiobookStateChange(state)
         }
@@ -222,17 +252,21 @@ public final class CarPlayCoordinator {
 
         try await AudiobookActor.shared.preparePlayer()
 
-        let freshMetadata = mediaViewModel.library.bookMetaData.first { $0.uuid == metadata.uuid }
-        if let locator = freshMetadata?.position?.locator,
+        if let image = await getCoverImage(for: metadata.id) {
+            await AudiobookActor.shared.setCoverImage(image)
+        }
+
+        if let locator = metadata.position?.locator,
            let totalProg = locator.locations?.totalProgression, totalProg > 0 {
             debugLog("[CarPlayCoordinator] Restoring audiobook position to \(totalProg * 100)%")
             await AudiobookActor.shared.seekToTotalProgressFraction(totalProg)
         }
 
-        debugLog("[CarPlayCoordinator] M4B audiobook loaded, ready for playback")
+        debugLog("[CarPlayCoordinator] M4B audiobook loaded, starting playback immediately")
+        try await AudiobookActor.shared.play()
     }
 
-    private func loadSMILBook(metadata: BookMetadata, localPath: URL, mediaViewModel: MediaViewModel) async throws {
+    private func loadSMILBook(metadata: BookMetadata, localPath: URL) async throws {
         await AudiobookActor.shared.cleanup()
         activePlayer = .smil
         currentBookId = metadata.uuid
@@ -253,14 +287,11 @@ public final class CarPlayCoordinator {
 
         await refreshBookStructure()
 
-        let coverData = mediaViewModel.library.audiobookCoverCache[metadata.id].flatMap { $0?.data }
-            ?? mediaViewModel.library.ebookCoverCache[metadata.id].flatMap { $0?.data }
-        if let data = coverData, let image = UIImage(data: data) {
+        if let image = await getCoverImage(for: metadata.id) {
             await SMILPlayerActor.shared.setCoverImage(image)
         }
 
-        let freshMetadata = mediaViewModel.library.bookMetaData.first { $0.uuid == metadata.uuid }
-        if let locator = freshMetadata?.position?.locator {
+        if let locator = metadata.position?.locator {
             let bookStructure = await SMILPlayerActor.shared.getBookStructure()
             if let sectionIndex = bookStructure.firstIndex(where: { $0.id == locator.href }),
                let fragment = locator.locations?.fragments?.first {
@@ -277,7 +308,8 @@ public final class CarPlayCoordinator {
             }
         }
 
-        debugLog("[CarPlayCoordinator] SMIL book loaded, ready for playback")
+        debugLog("[CarPlayCoordinator] SMIL book loaded, starting playback immediately")
+        try await SMILPlayerActor.shared.play()
     }
 
     public var isPlaying: Bool {

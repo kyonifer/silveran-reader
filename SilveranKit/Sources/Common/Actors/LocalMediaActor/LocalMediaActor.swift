@@ -369,6 +369,24 @@ public actor LocalMediaActor: GlobalActor {
         await filesystem.mediaDirectory(for: uuid, category: category, in: .storyteller)
     }
 
+    public func mediaFilePath(for uuid: String, category: LocalMediaCategory) -> URL? {
+        if let paths = localStorytellerBookPaths[uuid] {
+            switch category {
+            case .ebook: return paths.ebookPath
+            case .audio: return paths.audioPath
+            case .synced: return paths.syncedPath
+            }
+        }
+        if let paths = localStandaloneBookPaths[uuid] {
+            switch category {
+            case .ebook: return paths.ebookPath
+            case .audio: return paths.audioPath
+            case .synced: return paths.syncedPath
+            }
+        }
+        return nil
+    }
+
     public func deleteMedia(for uuid: String, category: LocalMediaCategory) async throws {
         try await filesystem.deleteMedia(
             for: uuid,

@@ -275,6 +275,12 @@ public actor AudiobookActor {
         }
     }
 
+    #if os(iOS)
+    public func setCoverImage(_ image: UIImage) {
+        artworkImage = image
+    }
+    #endif
+
     public func play() async throws {
         if player == nil {
             try await preparePlayer()

@@ -6,6 +6,7 @@ import UIKit
 
 class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     private var interfaceController: CPInterfaceController?
+    private var isLoadingBook = false
 
     func templateApplicationScene(
         _ templateApplicationScene: CPTemplateApplicationScene,
@@ -13,23 +14,11 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     ) {
         debugLog("[CarPlay] Connected to CarPlay")
         self.interfaceController = interfaceController
-        rebuildRootTemplate()
+
         configureNowPlayingTemplate()
 
         Task { @MainActor in
-            CarPlayCoordinator.shared.onMediaViewModelReady = { [weak self] in
-                debugLog("[CarPlay] MediaViewModel ready, rebuilding templates")
-                self?.rebuildRootTemplate()
-            }
-
-            CarPlayCoordinator.shared.onLibraryUpdated = { [weak self] in
-                debugLog("[CarPlay] Library updated, rebuilding templates")
-                self?.rebuildRootTemplate()
-            }
-
-            CarPlayCoordinator.shared.onChaptersUpdated = { [weak self] in
-                debugLog("[CarPlay] Chapters updated")
-            }
+            await setupAndShowRootTemplate()
         }
     }
 
@@ -40,14 +29,28 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
         debugLog("[CarPlay] Disconnected from CarPlay")
         self.interfaceController = nil
         Task { @MainActor in
-            CarPlayCoordinator.shared.onMediaViewModelReady = nil
             CarPlayCoordinator.shared.onLibraryUpdated = nil
             CarPlayCoordinator.shared.onChaptersUpdated = nil
         }
     }
 
-    private func rebuildRootTemplate() {
-        let tabBar = buildTabBarTemplate()
+    @MainActor
+    private func setupAndShowRootTemplate() async {
+        let coordinator = CarPlayCoordinator.shared
+
+        coordinator.onLibraryUpdated = { [weak self] in
+            debugLog("[CarPlay] Library updated, rebuilding templates")
+            Task { @MainActor in
+                await self?.rebuildRootTemplate()
+            }
+        }
+
+        await rebuildRootTemplate()
+    }
+
+    @MainActor
+    private func rebuildRootTemplate() async {
+        let tabBar = await buildTabBarTemplate()
         interfaceController?.setRootTemplate(tabBar, animated: false, completion: nil)
     }
 
@@ -96,13 +99,14 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
         }
     }
 
-    private func buildTabBarTemplate() -> CPTabBarTemplate {
-        let readalongTab = buildListTemplate(
+    @MainActor
+    private func buildTabBarTemplate() async -> CPTabBarTemplate {
+        let readalongTab = await buildListTemplate(
             title: "Readalongs",
             category: .synced,
             systemImage: "book.and.wrench"
         )
-        let audiobooksTab = buildListTemplate(
+        let audiobooksTab = await buildListTemplate(
             title: "Audiobooks",
             category: .audio,
             systemImage: "headphones"
@@ -115,39 +119,24 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
         title: String,
         category: LocalMediaCategory,
         systemImage: String
-    ) -> CPListTemplate {
-        guard let mediaViewModel = CarPlayCoordinator.shared.mediaViewModel else {
-            let emptySection = CPListSection(items: [])
-            let template = CPListTemplate(title: title, sections: [emptySection])
-            template.tabImage = UIImage(systemName: systemImage)
-            template.emptyViewTitleVariants = ["Open Silveran Reader"]
-            template.emptyViewSubtitleVariants = ["Open the app on your iPhone once to enable CarPlay"]
-            return template
-        }
+    ) async -> CPListTemplate {
+        let downloadedBooks = await CarPlayCoordinator.shared.getDownloadedBooks(category: category)
 
-        let downloadedBooks = mediaViewModel.library.bookMetaData.filter { book in
-            switch category {
-            case .audio:
-                return mediaViewModel.isCategoryDownloaded(.audio, for: book)
-            case .synced:
-                return mediaViewModel.isCategoryDownloaded(.synced, for: book)
-            case .ebook:
-                return mediaViewModel.isCategoryDownloaded(.ebook, for: book)
-            }
-        }.sorted { ($0.position?.updatedAt ?? "") > ($1.position?.updatedAt ?? "") }
+        var items: [CPListItem] = []
+        for book in downloadedBooks {
+            let coverImage = await CarPlayCoordinator.shared.getCoverImage(for: book.id)
+            let resizedCover = coverImage.map { resizeCoverImage($0) } ?? UIImage(systemName: "book.closed.fill")
 
-        let items: [CPListItem] = downloadedBooks.map { book in
             let item = CPListItem(
                 text: book.title,
                 detailText: book.authors?.first?.name,
-                image: coverImage(for: book, category: category, in: mediaViewModel)
+                image: resizedCover
             )
             item.handler = { [weak self] _, completion in
-                self?.handleBookSelection(book, category: category)
-                completion()
+                self?.handleBookSelection(book, category: category, completion: completion)
             }
             item.accessoryType = .disclosureIndicator
-            return item
+            items.append(item)
         }
 
         let section = CPListSection(items: items)
@@ -162,20 +151,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
         return template
     }
 
-    @MainActor
-    private func coverImage(
-        for book: BookMetadata,
-        category: LocalMediaCategory,
-        in mediaViewModel: MediaViewModel
-    ) -> UIImage? {
-        let audioCover = mediaViewModel.library.audiobookCoverCache[book.id].flatMap { $0?.data }
-        let ebookCover = mediaViewModel.library.ebookCoverCache[book.id].flatMap { $0?.data }
-        let coverData = audioCover ?? ebookCover
-
-        guard let data = coverData, let image = UIImage(data: data) else {
-            return UIImage(systemName: "book.closed.fill")
-        }
-
+    private func resizeCoverImage(_ image: UIImage) -> UIImage {
         let targetSize = CGSize(width: 80, height: 80)
         let renderer = UIGraphicsImageRenderer(size: targetSize)
         return renderer.image { _ in
@@ -183,15 +159,37 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
         }
     }
 
-    private func handleBookSelection(_ book: BookMetadata, category: LocalMediaCategory) {
-        debugLog("[CarPlay] Selected book: \(book.title), category: \(category)")
-
-        Task { @MainActor in
-            CarPlayCoordinator.shared.loadAndPlayBook(book, category: category)
+    private func handleBookSelection(_ book: BookMetadata, category: LocalMediaCategory, completion: @escaping () -> Void) {
+        guard !isLoadingBook else {
+            debugLog("[CarPlay] Already loading a book, ignoring selection")
+            completion()
+            return
         }
 
-        let nowPlayingTemplate = CPNowPlayingTemplate.shared
-        interfaceController?.pushTemplate(nowPlayingTemplate, animated: true, completion: nil)
+        debugLog("[CarPlay] Selected book: \(book.title), category: \(category)")
+        isLoadingBook = true
+
+        Task { @MainActor in
+            defer { isLoadingBook = false }
+
+            do {
+                try await CarPlayCoordinator.shared.loadAndPlayBook(book, category: category)
+                debugLog("[CarPlay] Book loaded successfully, pushing NowPlayingTemplate")
+
+                let nowPlayingTemplate = CPNowPlayingTemplate.shared
+                interfaceController?.pushTemplate(nowPlayingTemplate, animated: true) { success, error in
+                    if let error = error {
+                        debugLog("[CarPlay] Failed to push NowPlayingTemplate: \(error)")
+                    } else {
+                        debugLog("[CarPlay] NowPlayingTemplate pushed: \(success)")
+                    }
+                }
+            } catch {
+                debugLog("[CarPlay] Failed to load book: \(error)")
+            }
+
+            completion()
+        }
     }
 }
 #endif

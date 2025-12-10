@@ -13,9 +13,6 @@ struct SilveranReaderApp: App {
         let vm = MediaViewModel()
         _mediaViewModel = State(initialValue: vm)
 
-        Task { @MainActor in
-            CarPlayCoordinator.shared.mediaViewModel = vm
-        }
         Task {
             do {
                 if let credentials = try await AuthenticationActor.shared.loadCredentials() {
