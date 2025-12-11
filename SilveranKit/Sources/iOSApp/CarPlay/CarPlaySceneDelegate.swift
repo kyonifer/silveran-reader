@@ -7,6 +7,8 @@ import UIKit
 class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     private var interfaceController: CPInterfaceController?
     private var isLoadingBook = false
+    private var readalongListTemplate: CPListTemplate?
+    private var audiobookListTemplate: CPListTemplate?
 
     func templateApplicationScene(
         _ templateApplicationScene: CPTemplateApplicationScene,
@@ -39,19 +41,26 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
         let coordinator = CarPlayCoordinator.shared
 
         coordinator.onLibraryUpdated = { [weak self] in
-            debugLog("[CarPlay] Library updated, rebuilding templates")
+            debugLog("[CarPlay] Library updated, refreshing list contents")
             Task { @MainActor in
-                await self?.rebuildRootTemplate()
+                await self?.refreshListTemplates()
             }
         }
 
-        await rebuildRootTemplate()
+        let tabBar = await buildTabBarTemplate()
+        interfaceController?.setRootTemplate(tabBar, animated: false, completion: nil)
     }
 
     @MainActor
-    private func rebuildRootTemplate() async {
-        let tabBar = await buildTabBarTemplate()
-        interfaceController?.setRootTemplate(tabBar, animated: false, completion: nil)
+    private func refreshListTemplates() async {
+        if let readalongTemplate = readalongListTemplate {
+            let sections = await buildListSections(category: .synced)
+            readalongTemplate.updateSections(sections)
+        }
+        if let audiobookTemplate = audiobookListTemplate {
+            let sections = await buildListSections(category: .audio)
+            audiobookTemplate.updateSections(sections)
+        }
     }
 
     private func configureNowPlayingTemplate() {
@@ -106,20 +115,20 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
             category: .synced,
             systemImage: "book.and.wrench"
         )
+        readalongListTemplate = readalongTab
+
         let audiobooksTab = await buildListTemplate(
             title: "Audiobooks",
             category: .audio,
             systemImage: "headphones"
         )
+        audiobookListTemplate = audiobooksTab
+
         return CPTabBarTemplate(templates: [readalongTab, audiobooksTab])
     }
 
     @MainActor
-    private func buildListTemplate(
-        title: String,
-        category: LocalMediaCategory,
-        systemImage: String
-    ) async -> CPListTemplate {
+    private func buildListSections(category: LocalMediaCategory) async -> [CPListSection] {
         let downloadedBooks = await CarPlayCoordinator.shared.getDownloadedBooks(category: category)
 
         var items: [CPListItem] = []
@@ -139,11 +148,20 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
             items.append(item)
         }
 
-        let section = CPListSection(items: items)
-        let template = CPListTemplate(title: title, sections: [section])
+        return [CPListSection(items: items)]
+    }
+
+    @MainActor
+    private func buildListTemplate(
+        title: String,
+        category: LocalMediaCategory,
+        systemImage: String
+    ) async -> CPListTemplate {
+        let sections = await buildListSections(category: category)
+        let template = CPListTemplate(title: title, sections: sections)
         template.tabImage = UIImage(systemName: systemImage)
 
-        if items.isEmpty {
+        if sections.first?.items.isEmpty == true {
             template.emptyViewTitleVariants = ["No Downloaded \(title)"]
             template.emptyViewSubtitleVariants = ["Download books on your iPhone first"]
         }
