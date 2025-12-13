@@ -100,6 +100,11 @@ public final class CarPlayCoordinator {
                         await self.startPeriodicSync()
                     }
                 }
+            } else if previousBookId != nil {
+                debugLog("[CarPlayCoordinator] SMIL book unloaded")
+                self.currentBookId = nil
+                self.activePlayer = nil
+                self.stopPeriodicSync()
             }
 
             self.onPlaybackStateChanged?()

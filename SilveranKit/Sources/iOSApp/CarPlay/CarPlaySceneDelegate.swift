@@ -191,8 +191,50 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     private func handleBookSelection(_ book: BookMetadata, category: LocalMediaCategory, completion: @escaping () -> Void) {
         let coordinator = CarPlayCoordinator.shared
 
-        if coordinator.isBookCurrentlyLoaded(book.uuid) {
-            debugLog("[CarPlay] Book already loaded, navigating to NowPlaying: \(book.title)")
+        Task { @MainActor in
+            let actualLoadedBookId = await SMILPlayerActor.shared.getLoadedBookId()
+            let isActuallyLoaded = actualLoadedBookId == book.uuid
+
+            if isActuallyLoaded {
+                debugLog("[CarPlay] Book actually loaded in actor, navigating to NowPlaying: \(book.title)")
+
+                if !coordinator.isPlaying {
+                    debugLog("[CarPlay] Book is paused, resuming playback")
+                    try? await SMILPlayerActor.shared.play()
+                }
+
+                let nowPlayingTemplate = CPNowPlayingTemplate.shared
+                self.interfaceController?.pushTemplate(nowPlayingTemplate, animated: true) { success, error in
+                    if let error = error {
+                        debugLog("[CarPlay] Failed to push NowPlayingTemplate: \(error)")
+                    } else {
+                        debugLog("[CarPlay] NowPlayingTemplate pushed: \(success)")
+                    }
+                }
+                completion()
+                return
+            }
+
+            await self.loadNewBook(book, category: category, completion: completion)
+        }
+    }
+
+    @MainActor
+    private func loadNewBook(_ book: BookMetadata, category: LocalMediaCategory, completion: @escaping () -> Void) async {
+        guard !isLoadingBook else {
+            debugLog("[CarPlay] Already loading a book, ignoring selection")
+            completion()
+            return
+        }
+
+        debugLog("[CarPlay] Loading new book: \(book.title), category: \(category)")
+        isLoadingBook = true
+        defer { isLoadingBook = false }
+
+        do {
+            try await CarPlayCoordinator.shared.loadAndPlayBook(book, category: category)
+            debugLog("[CarPlay] Book loaded successfully, pushing NowPlayingTemplate")
+
             let nowPlayingTemplate = CPNowPlayingTemplate.shared
             interfaceController?.pushTemplate(nowPlayingTemplate, animated: true) { success, error in
                 if let error = error {
@@ -201,40 +243,11 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
                     debugLog("[CarPlay] NowPlayingTemplate pushed: \(success)")
                 }
             }
-            completion()
-            return
+        } catch {
+            debugLog("[CarPlay] Failed to load book: \(error)")
         }
 
-        guard !isLoadingBook else {
-            debugLog("[CarPlay] Already loading a book, ignoring selection")
-            completion()
-            return
-        }
-
-        debugLog("[CarPlay] Selected book: \(book.title), category: \(category)")
-        isLoadingBook = true
-
-        Task { @MainActor in
-            defer { isLoadingBook = false }
-
-            do {
-                try await coordinator.loadAndPlayBook(book, category: category)
-                debugLog("[CarPlay] Book loaded successfully, pushing NowPlayingTemplate")
-
-                let nowPlayingTemplate = CPNowPlayingTemplate.shared
-                interfaceController?.pushTemplate(nowPlayingTemplate, animated: true) { success, error in
-                    if let error = error {
-                        debugLog("[CarPlay] Failed to push NowPlayingTemplate: \(error)")
-                    } else {
-                        debugLog("[CarPlay] NowPlayingTemplate pushed: \(success)")
-                    }
-                }
-            } catch {
-                debugLog("[CarPlay] Failed to load book: \(error)")
-            }
-
-            completion()
-        }
+        completion()
     }
 }
 #endif
