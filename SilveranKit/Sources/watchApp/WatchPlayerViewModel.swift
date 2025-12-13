@@ -7,7 +7,7 @@ import SwiftUI
 
 @MainActor
 @Observable
-public final class WatchPlayerViewModel: NSObject, SMILPlayerManagerDelegate {
+public final class WatchPlayerViewModel: NSObject {
     // MARK: - Playback State
 
     var isPlaying = false
@@ -31,7 +31,7 @@ public final class WatchPlayerViewModel: NSObject, SMILPlayerManagerDelegate {
 
     // MARK: - Private
 
-    private var smilPlayer: SMILPlayerManager?
+    private var stateObserverId: UUID?
     private var bookStructure: [SectionInfo] = []
     private var epubURL: URL?
 
@@ -108,72 +108,92 @@ public final class WatchPlayerViewModel: NSObject, SMILPlayerManagerDelegate {
         }
 
         do {
-            bookStructure = try SMILParser.parseEPUB(at: url)
-            debugLog("[WatchPlayerViewModel] Parsed \(bookStructure.count) sections")
+            try await SMILPlayerActor.shared.loadBook(
+                epubPath: url,
+                bookId: entry.uuid,
+                title: entry.title,
+                author: nil
+            )
 
-            smilPlayer = SMILPlayerManager(bookStructure: bookStructure, epubPath: url)
-            smilPlayer?.delegate = self
+            bookStructure = await SMILPlayerActor.shared.getBookStructure()
+            debugLog("[WatchPlayerViewModel] Loaded book with \(bookStructure.count) sections")
+
+            stateObserverId = await SMILPlayerActor.shared.addStateObserver { [weak self] state in
+                self?.handleStateUpdate(state)
+            }
 
             if let firstSection = bookStructure.first(where: { !$0.mediaOverlay.isEmpty }) {
                 currentSectionIndex = firstSection.index
                 chapterTitle = chapterLabel(forSectionIndex: firstSection.index)
-
-                if let firstEntry = firstSection.mediaOverlay.first {
-                    await smilPlayer?.setCurrentEntry(
-                        sectionIndex: firstSection.index,
-                        entryIndex: 0,
-                        audioFile: firstEntry.audioFile,
-                        beginTime: firstEntry.begin,
-                        endTime: firstEntry.end
-                    )
-                    updateChapterDuration()
-                }
+                updateChapterDuration()
             }
 
             await loadCurrentSectionHTML()
         } catch {
-            debugLog("[WatchPlayerViewModel] Failed to parse EPUB: \(error)")
+            debugLog("[WatchPlayerViewModel] Failed to load book: \(error)")
         }
+    }
+
+    private func handleStateUpdate(_ state: SMILPlaybackState) {
+        let sectionChanged = state.currentSectionIndex != currentSectionIndex
+
+        isPlaying = state.isPlaying
+        currentTime = state.chapterElapsed
+        currentSectionIndex = state.currentSectionIndex
+        currentEntryIndex = state.currentEntryIndex
+
+        if sectionChanged {
+            chapterTitle = state.chapterLabel ?? chapterLabel(forSectionIndex: state.currentSectionIndex)
+            chapterDuration = state.chapterTotal
+            Task {
+                await loadCurrentSectionHTML()
+            }
+        }
+
+        updateNowPlayingInfo()
     }
 
     // MARK: - Playback Controls
 
     func playPause() {
-        guard let player = smilPlayer else { return }
-
-        if isPlaying {
-            player.pause()
-            isPlaying = false
-        } else {
-            player.play()
-            isPlaying = true
+        Task { @SMILPlayerActor in
+            try? await SMILPlayerActor.shared.togglePlayPause()
         }
-        updateNowPlayingInfo()
     }
 
     func skipForward() {
-        smilPlayer?.seek(to: currentTime + 30)
+        Task { @SMILPlayerActor in
+            await SMILPlayerActor.shared.skipForward(seconds: 30)
+        }
     }
 
     func skipBackward() {
-        smilPlayer?.seek(to: max(0, currentTime - 30))
+        Task { @SMILPlayerActor in
+            await SMILPlayerActor.shared.skipBackward(seconds: 30)
+        }
     }
 
     func setVolume(_ newVolume: Double) {
         volume = newVolume
         isMuted = false
-        smilPlayer?.setVolume(volume)
+        Task { @SMILPlayerActor in
+            await SMILPlayerActor.shared.setVolume(newVolume)
+        }
     }
 
     func toggleMute() {
         if isMuted {
             isMuted = false
-            smilPlayer?.setVolume(volumeBeforeMute)
             volume = volumeBeforeMute
+            Task { @SMILPlayerActor in
+                await SMILPlayerActor.shared.setVolume(self.volumeBeforeMute)
+            }
         } else {
             volumeBeforeMute = volume
             isMuted = true
-            smilPlayer?.setVolume(0)
+            Task { @SMILPlayerActor in
+                await SMILPlayerActor.shared.setVolume(0)
+            }
         }
     }
 
@@ -211,23 +231,13 @@ public final class WatchPlayerViewModel: NSObject, SMILPlayerManagerDelegate {
         guard sectionIndex >= 0, sectionIndex < bookStructure.count else { return }
 
         let section = bookStructure[sectionIndex]
-        guard let firstEntry = section.mediaOverlay.first else { return }
+        guard !section.mediaOverlay.isEmpty else { return }
 
-        currentSectionIndex = sectionIndex
-        currentEntryIndex = 0
-        chapterTitle = chapterLabel(forSectionIndex: sectionIndex)
-
-        await smilPlayer?.setCurrentEntry(
-            sectionIndex: sectionIndex,
-            entryIndex: 0,
-            audioFile: firstEntry.audioFile,
-            beginTime: firstEntry.begin,
-            endTime: firstEntry.end
-        )
-
-        updateChapterDuration()
-        await loadCurrentSectionHTML()
-        updateNowPlayingInfo()
+        do {
+            try await SMILPlayerActor.shared.seekToEntry(sectionIndex: sectionIndex, entryIndex: 0)
+        } catch {
+            debugLog("[WatchPlayerViewModel] Failed to jump to chapter: \(error)")
+        }
     }
 
     // MARK: - Text Display
@@ -267,42 +277,6 @@ public final class WatchPlayerViewModel: NSObject, SMILPlayerManagerDelegate {
             debugLog("[WatchPlayerViewModel] Failed to load section HTML: \(error)")
             currentSectionHTML = ""
         }
-    }
-
-    // MARK: - SMILPlayerManagerDelegate
-
-    nonisolated public func smilPlayerDidAdvanceToEntry(sectionIndex: Int, entryIndex: Int, entry: SMILEntry) {
-        Task { @MainActor in
-            let sectionChanged = sectionIndex != currentSectionIndex
-            currentSectionIndex = sectionIndex
-            currentEntryIndex = entryIndex
-
-            if sectionChanged {
-                if sectionIndex < bookStructure.count {
-                    chapterTitle = chapterLabel(forSectionIndex: sectionIndex)
-                }
-                updateChapterDuration()
-                await loadCurrentSectionHTML()
-            }
-        }
-    }
-
-    nonisolated public func smilPlayerDidFinishBook() {
-        Task { @MainActor in
-            isPlaying = false
-            updateNowPlayingInfo()
-        }
-    }
-
-    nonisolated public func smilPlayerDidUpdateTime(currentTime: Double, sectionIndex: Int, entryIndex: Int) {
-        Task { @MainActor in
-            self.currentTime = currentTime
-            self.currentEntryIndex = entryIndex
-        }
-    }
-
-    nonisolated public func smilPlayerShouldAdvanceToNextSection(fromSection: Int) -> Bool {
-        return true
     }
 
     // MARK: - Audio Session
@@ -403,8 +377,13 @@ public final class WatchPlayerViewModel: NSObject, SMILPlayerManagerDelegate {
     // MARK: - Cleanup
 
     func cleanup() {
-        smilPlayer?.cleanup()
-        smilPlayer = nil
+        if let observerId = stateObserverId {
+            Task { @SMILPlayerActor in
+                await SMILPlayerActor.shared.removeStateObserver(id: observerId)
+                await SMILPlayerActor.shared.cleanup()
+            }
+        }
+        stateObserverId = nil
         isPlaying = false
     }
 }

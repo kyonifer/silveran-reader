@@ -7,6 +7,33 @@ import MediaPlayer
 import UIKit
 #endif
 
+// MARK: - Audio Position Sync
+
+public struct AudioPositionSyncData: Sendable {
+    public let sectionIndex: Int
+    public let entryIndex: Int
+    public let currentTime: Double
+    public let audioFile: String
+    public let href: String
+    public let fragment: String
+
+    public init(
+        sectionIndex: Int,
+        entryIndex: Int,
+        currentTime: Double,
+        audioFile: String,
+        href: String,
+        fragment: String
+    ) {
+        self.sectionIndex = sectionIndex
+        self.entryIndex = entryIndex
+        self.currentTime = currentTime
+        self.audioFile = audioFile
+        self.href = href
+        self.fragment = fragment
+    }
+}
+
 // MARK: - Error Types
 
 public enum SMILPlayerError: Error, LocalizedError {
