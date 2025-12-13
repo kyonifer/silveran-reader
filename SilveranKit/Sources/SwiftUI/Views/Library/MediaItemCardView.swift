@@ -146,40 +146,6 @@ struct MediaItemCardView: View {
             MediaProgressBar(progress: item.progress)
                 .frame(width: metrics.coverWidth)
                 .frame(height: 3)
-                .task(id: item.id) {
-                    if item.id == "14749693-3d16-4076-b3b3-c8593040fa74" {
-                        debugLog("[MediaItemCardView] Book \(item.title) (\(item.id))")
-                        debugLog("[MediaItemCardView]   progress: \(item.progress)")
-                        debugLog(
-                            "[MediaItemCardView]   position: \(item.position != nil ? "exists" : "nil")"
-                        )
-                        if let position = item.position {
-                            debugLog(
-                                "[MediaItemCardView]   locator: \(position.locator != nil ? "exists" : "nil")"
-                            )
-                            if let locator = position.locator {
-                                debugLog("[MediaItemCardView]     href: \(locator.href)")
-                                debugLog(
-                                    "[MediaItemCardView]     locations: \(locator.locations != nil ? "exists" : "nil")"
-                                )
-                                if let locations = locator.locations {
-                                    debugLog(
-                                        "[MediaItemCardView]       totalProgression: \(locations.totalProgression ?? -1)"
-                                    )
-                                    debugLog(
-                                        "[MediaItemCardView]       progression: \(locations.progression ?? -1)"
-                                    )
-                                    debugLog(
-                                        "[MediaItemCardView]       position: \(locations.position ?? -1)"
-                                    )
-                                }
-                            }
-                            debugLog(
-                                "[MediaItemCardView]   updatedAt: \(position.updatedAt ?? "nil")"
-                            )
-                        }
-                    }
-                }
 
             Spacer(minLength: metrics.contentSpacing)
                 .frame(height: metrics.contentSpacing)
