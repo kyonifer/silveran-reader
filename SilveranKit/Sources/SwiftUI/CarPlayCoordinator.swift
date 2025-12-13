@@ -71,28 +71,40 @@ public final class CarPlayCoordinator {
     private func observeSMILPlayerActor() async {
         smilObserverId = await SMILPlayerActor.shared.addStateObserver { @MainActor [weak self] state in
             guard let self else { return }
-            guard self.activePlayer == .smil else { return }
 
-            let previouslyPlaying = self.wasPlaying
+            let previousBookId = self.currentPlaybackState?.bookId
+            let previouslyPlaying = self.currentPlaybackState?.isPlaying ?? false
 
+            debugLog("[CarPlayCoordinator] State update: bookId=\(state.bookId ?? "nil"), isPlaying=\(state.isPlaying), prev=\(previouslyPlaying)")
             self.currentPlaybackState = state
-            self.wasPlaying = state.isPlaying
 
-            if previouslyPlaying && !state.isPlaying {
-                debugLog("[CarPlayCoordinator] SMIL playback paused, syncing progress")
-                Task { @MainActor in
-                    await self.syncProgress(reason: .userPausedPlayback)
+            if let bookId = state.bookId {
+                if previousBookId != bookId {
+                    debugLog("[CarPlayCoordinator] SMIL book changed: \(bookId)")
+                    self.currentBookId = bookId
+                    self.activePlayer = .smil
+                    Task {
+                        await self.refreshBookStructure()
+                    }
                 }
-                self.stopPeriodicSync()
-            } else if !previouslyPlaying && state.isPlaying {
-                debugLog("[CarPlayCoordinator] SMIL playback started, starting periodic sync")
-                Task { @MainActor in
-                    await self.startPeriodicSync()
+
+                if previouslyPlaying && !state.isPlaying {
+                    debugLog("[CarPlayCoordinator] SMIL playback paused, syncing progress")
+                    Task { @MainActor in
+                        await self.syncProgress(reason: .userPausedPlayback)
+                    }
+                    self.stopPeriodicSync()
+                } else if !previouslyPlaying && state.isPlaying {
+                    debugLog("[CarPlayCoordinator] SMIL playback started, starting periodic sync")
+                    Task { @MainActor in
+                        await self.startPeriodicSync()
+                    }
                 }
             }
 
             self.onPlaybackStateChanged?()
         }
+        debugLog("[CarPlayCoordinator] SMILPlayerActor observer registered: \(smilObserverId?.uuidString ?? "nil")")
     }
 
     private func handleAudiobookStateChange(_ state: AudiobookPlaybackState) {
@@ -121,9 +133,6 @@ public final class CarPlayCoordinator {
     }
 
     private func refreshBookStructure() async {
-        if activePlayer == .audiobook {
-            return
-        }
         cachedBookStructure = await SMILPlayerActor.shared.getBookStructure()
         onChaptersUpdated?()
     }
@@ -323,6 +332,14 @@ public final class CarPlayCoordinator {
 
     public var activeBookId: String? {
         currentBookId
+    }
+
+    public func isBookCurrentlyLoaded(_ bookId: String) -> Bool {
+        currentBookId == bookId
+    }
+
+    public func isBookCurrentlyPlaying(_ bookId: String) -> Bool {
+        currentBookId == bookId && isPlaying
     }
 
     // MARK: - Progress Sync

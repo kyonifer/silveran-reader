@@ -837,7 +837,7 @@ public actor SMILPlayerActor {
         #if os(iOS)
         updateNowPlayingInfo()
         #endif
-
+        debugLog("[SMILPlayerActor] notifyStateChange: \(stateObservers.count) observers")
         for observer in stateObservers.values {
             await observer(state)
         }
@@ -999,6 +999,7 @@ public actor SMILPlayerActor {
 
         let state = buildCurrentState()
         let manager = audioManagerIos
+        debugLog("[SMILPlayerActor] updateNowPlayingInfo: isPlaying=\(state?.isPlaying ?? false), hasManager=\(manager != nil)")
 
         Task { @MainActor in
             manager?.updateNowPlayingInfo(
@@ -1119,6 +1120,9 @@ class SMILAudioManagerIos {
         isPlaying: Bool,
         playbackRate: Double
     ) {
+        let rate = isPlaying ? playbackRate : 0.0
+        debugLog("[SMILAudioManagerIos] updateNowPlayingInfo: isPlaying=\(isPlaying), rate=\(rate)")
+
         var info = [String: Any]()
 
         info[MPMediaItemPropertyTitle] = bookTitle ?? "Silveran Reader"
@@ -1126,13 +1130,15 @@ class SMILAudioManagerIos {
         info[MPMediaItemPropertyAlbumTitle] = bookAuthor ?? ""
         info[MPMediaItemPropertyPlaybackDuration] = duration
         info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = currentTime
-        info[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? playbackRate : 0.0
+        info[MPNowPlayingInfoPropertyPlaybackRate] = rate
 
         if let artwork = cachedArtwork {
             info[MPMediaItemPropertyArtwork] = artwork
         }
 
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        let center = MPNowPlayingInfoCenter.default()
+        center.nowPlayingInfo = info
+        center.playbackState = isPlaying ? .playing : .paused
     }
 
     func clearNowPlayingInfo() {
