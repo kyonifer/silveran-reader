@@ -62,7 +62,7 @@ class EbookProgressManager {
     /// Track whether we've performed initial seek to server location.
     /// This happens when the book is first opened and has been
     /// read in a previous session.
-    private var hasPerformedInitialSeek = false
+    var hasPerformedInitialSeek = false
 
     // MARK: - User Navigation Detection
 

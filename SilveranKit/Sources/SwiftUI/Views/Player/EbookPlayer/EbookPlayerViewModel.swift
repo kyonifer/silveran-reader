@@ -75,6 +75,7 @@ class EbookPlayerViewModel {
     var sleepTimerType: Any? = nil
     var lastRestartTime: Date? = nil
     var isSynced = true
+    var isJoiningExistingSession = false
     var showKeybindingsPopover = false
     var showSearchPanel = false
 
@@ -275,10 +276,22 @@ class EbookPlayerViewModel {
     }
 
     private func loadBookIntoActor(epubPath: URL) async {
+        let currentBookId = bookData?.metadata.uuid ?? "unknown"
+        let loadedBookId = await SMILPlayerActor.shared.getLoadedBookId()
+
+        if loadedBookId == currentBookId {
+            debugLog("[EbookPlayerViewModel] Book already loaded in actor, joining existing session")
+            isJoiningExistingSession = true
+            let nativeStructure = await SMILPlayerActor.shared.getBookStructure()
+            self.bookStructure = nativeStructure
+            debugLog("[EbookPlayerViewModel] Joined session with \(nativeStructure.count) sections")
+            return
+        }
+
         do {
             try await SMILPlayerActor.shared.loadBook(
                 epubPath: epubPath,
-                bookId: bookData?.metadata.uuid ?? "unknown",
+                bookId: currentBookId,
                 title: bookData?.metadata.title,
                 author: bookData?.metadata.authors?.first?.name
             )
@@ -332,6 +345,29 @@ class EbookPlayerViewModel {
             } catch {
                 debugLog("[EbookPlayerViewModel] Failed to restore position: \(error)")
             }
+        }
+    }
+
+    private func navigateToCurrentActorPosition(bridge: WebViewCommsBridge) async {
+        guard let syncData = await SMILPlayerActor.shared.getBackgroundSyncData() else {
+            debugLog("[EbookPlayerViewModel] No sync data from actor, falling back to default")
+            progressManager?.handleBookStructureReady()
+            return
+        }
+
+        debugLog("[EbookPlayerViewModel] Navigating to actor position: section=\(syncData.sectionIndex), href=\(syncData.href), fragment=\(syncData.fragment)")
+
+        do {
+            let hrefWithFragment = "\(syncData.href)#\(syncData.fragment)"
+            try await bridge.sendJsGoToHrefCommand(href: hrefWithFragment)
+
+            progressManager?.selectedChapterId = syncData.sectionIndex
+            progressManager?.hasPerformedInitialSeek = true
+
+            debugLog("[EbookPlayerViewModel] Successfully joined session at section \(syncData.sectionIndex)")
+        } catch {
+            debugLog("[EbookPlayerViewModel] Failed to navigate to actor position: \(error)")
+            progressManager?.handleBookStructureReady()
         }
     }
 
@@ -486,7 +522,12 @@ class EbookPlayerViewModel {
                         self.progressManager?.mediaOverlayManager = nil
                     }
 
-                    self.progressManager?.handleBookStructureReady()
+                    if self.isJoiningExistingSession {
+                        debugLog("[EbookPlayerViewModel] Joining session - navigating to current actor position")
+                        await self.navigateToCurrentActorPosition(bridge: bridge)
+                    } else {
+                        self.progressManager?.handleBookStructureReady()
+                    }
 
                     Task { @MainActor in
                         let syncInterval = await SettingsActor.shared.config.sync
