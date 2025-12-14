@@ -143,15 +143,13 @@ struct EbookPlayerTopToolbar: View {
 
                     Menu {
                         if hasAudioNarration {
-                            Button(role: isSynced ? .destructive : nil) {
-                                Task {
-                                    try? await onSyncToggle(!isSynced)
+                            Toggle(isOn: Binding(
+                                get: { !isSynced },
+                                set: { newValue in
+                                    Task { try? await onSyncToggle(!newValue) }
                                 }
-                            } label: {
-                                Label(
-                                    isSynced ? "Don't Follow Audio" : "Follow Audio",
-                                    systemImage: "link"
-                                )
+                            )) {
+                                Label("Free Browse When Paused", systemImage: "lock.open")
                             }
 
                             Divider()

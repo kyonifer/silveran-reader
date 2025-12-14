@@ -507,6 +507,7 @@ struct EbookPlayerSettings: View {
         settingsVM.showPlayerControls = false
         settingsVM.singleColumnMode = false
         #endif
+        settingsVM.lockViewToAudio = true
 
         Task { try? await settingsVM.save() }
     }

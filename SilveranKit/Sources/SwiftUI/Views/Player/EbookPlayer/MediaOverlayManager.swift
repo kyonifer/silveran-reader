@@ -20,6 +20,7 @@ class MediaOverlayManager {
     private let bookStructure: [SectionInfo]
     private let bookId: String
     private let reloadBookIntoActor: () async -> Void
+    private let settingsVM: SettingsViewModel
 
     weak var commsBridge: WebViewCommsBridge?
     weak var progressManager: EbookProgressManager?
@@ -43,8 +44,10 @@ class MediaOverlayManager {
     /// causing it to fire right when the next sentence sends a ElementVisibilityMessage)
     private var lastFlipTime: Date?
 
-    /// Whether audio is synced to view navigation (true) or detached (false)
-    var syncEnabled: Bool = true
+    /// Whether audio always syncs to view navigation (true) or only when playing (false)
+    /// When true: Audio follows all navigation events (page flips, chapter changes) - default behavior
+    /// When false: Audio only follows navigation when playing; paused navigation is independent
+    private var syncEnabled: Bool { settingsVM.lockViewToAudio }
 
     var playbackRate: Double = 1.0
     var volume: Double = 1.0
@@ -113,11 +116,13 @@ class MediaOverlayManager {
         bookStructure: [SectionInfo],
         bookId: String,
         bridge: WebViewCommsBridge,
+        settingsVM: SettingsViewModel,
         reloadBookIntoActor: @escaping () async -> Void
     ) {
         self.bookStructure = bookStructure
         self.bookId = bookId
         self.commsBridge = bridge
+        self.settingsVM = settingsVM
         self.reloadBookIntoActor = reloadBookIntoActor
         debugLog("[MOM] MediaOverlayManager initialized for book: \(bookId)")
         debugLog("[MOM]   Total sections: \(bookStructure.count)")
@@ -233,10 +238,8 @@ class MediaOverlayManager {
             "[MOM] Actor advanced to: section=\(sectionIndex), entry=\(entryIndex), textId=\(entry.textId)"
         )
 
-        if syncEnabled {
-            Task {
-                await sendHighlightCommand(sectionIndex: sectionIndex, textId: entry.textId, seekToLocation: true)
-            }
+        Task {
+            await sendHighlightCommand(sectionIndex: sectionIndex, textId: entry.textId, seekToLocation: true)
         }
     }
 
@@ -247,8 +250,8 @@ class MediaOverlayManager {
     func handleUserChapterNavigation(sectionIndex: Int) async {
         debugLog("[MOM] User chapter nav → Section.\(sectionIndex)")
 
-        guard syncEnabled else {
-            debugLog("[MOM] Sync disabled - audio will not follow chapter navigation")
+        guard syncEnabled || isPlaying else {
+            debugLog("[MOM] Not playing and sync disabled - audio will not follow chapter navigation")
             return
         }
 
@@ -272,8 +275,8 @@ class MediaOverlayManager {
     func handleUserNavEvent(section: Int, page: Int, totalPages: Int) async {
         debugLog("[MOM] User nav → Section.\(section): \(page)/\(totalPages)")
 
-        guard syncEnabled else {
-            debugLog("[MOM] Sync disabled - audio will not follow page navigation")
+        guard syncEnabled || isPlaying else {
+            debugLog("[MOM] Not playing and sync disabled - audio will not follow page navigation")
             return
         }
 
@@ -397,7 +400,7 @@ class MediaOverlayManager {
 
             if let entry = await SMILPlayerActor.shared.getCurrentEntry() {
                 let (currentSectionIndex, _) = await SMILPlayerActor.shared.getCurrentPosition()
-                await sendHighlightCommand(sectionIndex: currentSectionIndex, textId: entry.textId)
+                await sendHighlightCommand(sectionIndex: currentSectionIndex, textId: entry.textId, seekToLocation: true)
             }
             debugLog("[MOM] startPlaying() - started")
         } catch {
@@ -524,22 +527,6 @@ class MediaOverlayManager {
                 }
             }
             debugLog("[MOM] prevSentence() - at beginning of book")
-        }
-    }
-
-    /// Enable or disable audio sync with page navigation
-    func setSyncMode(enabled: Bool) {
-        syncEnabled = enabled
-        debugLog(
-            "[MOM] Sync mode: \(enabled ? "enabled" : "disabled") - audio will \(enabled ? "follow" : "not follow") page navigation"
-        )
-
-        if !enabled {
-            Task {
-                try? await commsBridge?.sendJsClearHighlight()
-            }
-            pageFlipTimer?.invalidate()
-            pageFlipTimer = nil
         }
     }
 
@@ -753,8 +740,6 @@ class MediaOverlayManager {
 
     /// Send highlight command to JS for the current fragment
     private func sendHighlightCommand(sectionIndex: Int, textId: String, seekToLocation: Bool = false) async {
-        guard syncEnabled else { return }
-
         do {
             try await commsBridge?.sendJsHighlightFragment(sectionIndex: sectionIndex, textId: textId, seekToLocation: seekToLocation)
             debugLog("[MOM] Highlight command sent: section=\(sectionIndex), textId=\(textId), seekToLocation=\(seekToLocation)")
@@ -768,7 +753,7 @@ class MediaOverlayManager {
         pageFlipTimer?.invalidate()
         pageFlipTimer = nil
 
-        guard isPlaying, syncEnabled else { return }
+        guard isPlaying else { return }
 
         debugLog(
             "[MOM] Element visibility: textId=\(message.textId), visible=\(message.visibleRatio), offScreen=\(message.offScreenRatio)"
@@ -803,7 +788,7 @@ class MediaOverlayManager {
     }
 
     private func flipPageIfNotDebounced() async {
-        guard isPlaying, syncEnabled else { return }
+        guard isPlaying else { return }
 
         if let last = lastFlipTime, Date().timeIntervalSince(last) < 0.3 {
             debugLog("[MOM] Debouncing page flip")

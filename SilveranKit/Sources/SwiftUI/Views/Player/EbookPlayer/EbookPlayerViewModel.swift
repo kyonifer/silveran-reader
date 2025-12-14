@@ -74,7 +74,6 @@ class EbookPlayerViewModel {
     var sleepTimerRemaining: TimeInterval? = nil
     var sleepTimerType: Any? = nil
     var lastRestartTime: Date? = nil
-    var isSynced = true
     var isJoiningExistingSession = false
     var showKeybindingsPopover = false
     var showSearchPanel = false
@@ -506,6 +505,7 @@ class EbookPlayerViewModel {
                             bookStructure: structureToUse,
                             bookId: currentBookId,
                             bridge: bridge,
+                            settingsVM: self.settingsVM,
                             reloadBookIntoActor: { [weak self] in
                                 await self?.reloadBookIntoActor()
                             }

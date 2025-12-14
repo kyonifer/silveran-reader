@@ -21,25 +21,18 @@ struct EbookPlayerToolbar: ToolbarContent {
         if viewModel.hasAudioNarration {
             ToolbarItem(id: "sync-toggle") {
                 Button {
-                    viewModel.isSynced.toggle()
-                    viewModel.mediaOverlayManager?.setSyncMode(enabled: viewModel.isSynced)
+                    viewModel.settingsVM.lockViewToAudio.toggle()
+                    Task { try? await viewModel.settingsVM.save() }
                 } label: {
-                    Image(systemName: "link")
+                    Image(systemName: viewModel.settingsVM.lockViewToAudio ? "lock" : "lock.open")
                         .imageScale(.medium)
-                        .opacity(viewModel.isSynced ? 1.0 : 0.0)
-                        .overlay {
-                            if !viewModel.isSynced {
-                                Image(systemName: "link")
-                                    .imageScale(.medium)
-                                    .foregroundStyle(Color.gray.opacity(0.4))
-                            }
-                        }
+                        .foregroundStyle(viewModel.settingsVM.lockViewToAudio ? Color.primary : Color.gray.opacity(0.6))
                 }
                 .buttonStyle(.plain)
                 .help(
-                    viewModel.isSynced
-                        ? "Audio and view are synced - click to detach"
-                        : "Audio and view are detached - click to sync"
+                    viewModel.settingsVM.lockViewToAudio
+                        ? "View locked to audio - click to allow free navigation when paused"
+                        : "Free navigation when paused - click to lock view to audio"
                 )
             }
         }

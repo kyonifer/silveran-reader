@@ -249,7 +249,7 @@ public struct EbookPlayerView: View {
                     playbackSpeed: viewModel.settingsVM.defaultPlaybackSpeed,
                     chapters: viewModel.chapterList,
                     selectedChapterId: viewModel.selectedChapterHref,
-                    isSynced: viewModel.isSynced,
+                    isSynced: viewModel.settingsVM.lockViewToAudio,
                     sleepTimerActive: viewModel.mediaOverlayManager?.sleepTimerActive ?? false,
                     sleepTimerRemaining: viewModel.mediaOverlayManager?.sleepTimerRemaining,
                     sleepTimerType: viewModel.mediaOverlayManager?.sleepTimerType,
@@ -259,8 +259,8 @@ public struct EbookPlayerView: View {
                     onDismiss: { dismiss() },
                     onChapterSelected: viewModel.handleChapterSelectionByHref,
                     onSyncToggle: { enabled in
-                        viewModel.isSynced = enabled
-                        viewModel.mediaOverlayManager?.setSyncMode(enabled: enabled)
+                        viewModel.settingsVM.lockViewToAudio = enabled
+                        Task { try? await viewModel.settingsVM.save() }
                     },
                     onSearchResultSelected: viewModel.handleSearchResultNavigation,
                     onSleepTimerStart: viewModel.handleSleepTimerStart,

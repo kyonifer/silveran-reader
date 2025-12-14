@@ -79,15 +79,18 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
         public var defaultPlaybackSpeed: Double
         public var defaultVolume: Double
         public var statsExpanded: Bool
+        public var lockViewToAudio: Bool
 
         public init(
             defaultPlaybackSpeed: Double = 1.0,
             defaultVolume: Double = 1.0,
-            statsExpanded: Bool = false
+            statsExpanded: Bool = false,
+            lockViewToAudio: Bool = true
         ) {
             self.defaultPlaybackSpeed = defaultPlaybackSpeed
             self.defaultVolume = defaultVolume
             self.statsExpanded = statsExpanded
+            self.lockViewToAudio = lockViewToAudio
         }
     }
 
@@ -209,6 +212,7 @@ public actor SettingsActor {
         defaultPlaybackSpeed: Double? = nil,
         defaultVolume: Double? = nil,
         statsExpanded: Bool? = nil,
+        lockViewToAudio: Bool? = nil,
         enableReadingBar: Bool? = nil,
         showPlayerControls: Bool? = nil,
         showProgressBar: Bool? = nil,
@@ -242,6 +246,7 @@ public actor SettingsActor {
         if let defaultPlaybackSpeed { updated.playback.defaultPlaybackSpeed = defaultPlaybackSpeed }
         if let defaultVolume { updated.playback.defaultVolume = defaultVolume }
         if let statsExpanded { updated.playback.statsExpanded = statsExpanded }
+        if let lockViewToAudio { updated.playback.lockViewToAudio = lockViewToAudio }
         if let enableReadingBar { updated.readingBar.enabled = enableReadingBar }
         if let showPlayerControls { updated.readingBar.showPlayerControls = showPlayerControls }
         if let showProgressBar { updated.readingBar.showProgressBar = showProgressBar }

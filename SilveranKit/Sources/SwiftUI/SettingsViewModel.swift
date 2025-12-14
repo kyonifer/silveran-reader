@@ -25,6 +25,7 @@ public final class SettingsViewModel {
     public var defaultPlaybackSpeed: Double = 1.0
     public var defaultVolume: Double = 1.0
     public var statsExpanded: Bool = false
+    public var lockViewToAudio: Bool = true
 
     public var enableReadingBar: Bool = true
     #if os(iOS)
@@ -97,6 +98,7 @@ public final class SettingsViewModel {
         defaultPlaybackSpeed = config.playback.defaultPlaybackSpeed
         defaultVolume = config.playback.defaultVolume
         statsExpanded = config.playback.statsExpanded
+        lockViewToAudio = config.playback.lockViewToAudio
 
         enableReadingBar = config.readingBar.enabled
         showPlayerControls = config.readingBar.showPlayerControls
@@ -148,6 +150,7 @@ public final class SettingsViewModel {
             defaultPlaybackSpeed: defaultPlaybackSpeed,
             defaultVolume: defaultVolume,
             statsExpanded: statsExpanded,
+            lockViewToAudio: lockViewToAudio,
             enableReadingBar: enableReadingBar,
             showPlayerControls: showPlayerControls,
             showProgressBar: showProgressBar,
