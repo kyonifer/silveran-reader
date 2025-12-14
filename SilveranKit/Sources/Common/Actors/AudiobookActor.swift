@@ -657,7 +657,9 @@ public actor AudiobookActor {
             }
         }
 
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
+        let center = MPNowPlayingInfoCenter.default()
+        center.nowPlayingInfo = nowPlayingInfo
+        center.playbackState = player.isPlaying ? .playing : .paused
     }
 
     private func getCurrentChapterIndexSync() -> Int? {
