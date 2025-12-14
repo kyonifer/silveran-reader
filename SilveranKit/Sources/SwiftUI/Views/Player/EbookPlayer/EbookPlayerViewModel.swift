@@ -280,13 +280,16 @@ class EbookPlayerViewModel {
         let loadedBookId = await SMILPlayerActor.shared.getLoadedBookId()
 
         if loadedBookId == currentBookId {
-            debugLog("[EbookPlayerViewModel] Book already loaded in actor, joining existing session")
+            debugLog("[EbookPlayerViewModel] Book already loaded in SMILPlayerActor, joining existing session")
             isJoiningExistingSession = true
             let nativeStructure = await SMILPlayerActor.shared.getBookStructure()
             self.bookStructure = nativeStructure
             debugLog("[EbookPlayerViewModel] Joined session with \(nativeStructure.count) sections")
             return
         }
+
+        await AudiobookActor.shared.cleanup()
+        debugLog("[EbookPlayerViewModel] Cleaned up AudiobookActor before loading readalong")
 
         do {
             try await SMILPlayerActor.shared.loadBook(
