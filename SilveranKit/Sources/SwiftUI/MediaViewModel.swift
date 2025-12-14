@@ -330,34 +330,6 @@ public final class MediaViewModel {
     }
 
     private func applyLibraryMetadata(_ metadata: [BookMetadata]) {
-        debugLog("[MediaViewModel] applyLibraryMetadata called with \(metadata.count) books")
-
-        if let debugBook = metadata.first(where: { $0.id == "14749693-3d16-4076-b3b3-c8593040fa74" }
-        ) {
-            debugLog("[MediaViewModel] Found target book: \(debugBook.title)")
-            debugLog("[MediaViewModel]   progress: \(debugBook.progress)")
-            debugLog("[MediaViewModel]   position: \(debugBook.position != nil ? "exists" : "nil")")
-            if let position = debugBook.position {
-                debugLog(
-                    "[MediaViewModel]   locator: \(position.locator != nil ? "exists" : "nil")"
-                )
-                if let locator = position.locator {
-                    debugLog("[MediaViewModel]     href: \(locator.href)")
-                    debugLog(
-                        "[MediaViewModel]     locations: \(locator.locations != nil ? "exists" : "nil")"
-                    )
-                    if let locations = locator.locations {
-                        debugLog(
-                            "[MediaViewModel]       totalProgression: \(locations.totalProgression ?? -1)"
-                        )
-                        debugLog(
-                            "[MediaViewModel]       progression: \(locations.progression ?? -1)"
-                        )
-                    }
-                }
-            }
-        }
-
         let validIDs = Set(metadata.map(\.id))
         library = BookLibrary(
             bookMetaData: metadata,
