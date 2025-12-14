@@ -713,14 +713,15 @@ class FoliateManager {
       return;
     }
 
-    this.#pendingHighlight = null;
-
     const doc = content.doc;
     const el = doc.getElementById(textId);
     if (!el) {
-      console.warn("[FM2] highlightFragment: Element not found:", textId);
+      debugLog("FoliateManager", `Element ${textId} not found yet in section ${sectionIndex}, storing as pending`);
+      this.#pendingHighlight = { sectionIndex, textId };
       return;
     }
+
+    this.#pendingHighlight = null;
 
     const activeClass = this.#view?.book?.media?.activeClass || "epub-media-overlay-active";
     el.classList.add(activeClass);
