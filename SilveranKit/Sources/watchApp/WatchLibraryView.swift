@@ -4,16 +4,14 @@ struct WatchLibraryView: View {
     @Environment(WatchViewModel.self) private var viewModel
 
     var body: some View {
-        NavigationStack {
-            Group {
-                if viewModel.books.isEmpty {
-                    emptyState
-                } else {
-                    bookList
-                }
+        Group {
+            if viewModel.books.isEmpty {
+                emptyState
+            } else {
+                bookList
             }
-            .navigationTitle("Library")
         }
+        .navigationTitle("Library")
     }
 
     private var emptyState: some View {
@@ -36,8 +34,14 @@ struct WatchLibraryView: View {
     private var bookList: some View {
         List {
             ForEach(viewModel.books) { book in
-                NavigationLink(value: book) {
-                    BookRow(book: book)
+                if book.category == "synced" {
+                    NavigationLink(destination: WatchPlayerView(book: book)) {
+                        BookRow(book: book)
+                    }
+                } else {
+                    NavigationLink(destination: BookDetailView(book: book)) {
+                        BookRow(book: book)
+                    }
                 }
             }
             .onDelete { indexSet in
@@ -45,9 +49,6 @@ struct WatchLibraryView: View {
                     viewModel.deleteBook(viewModel.books[index])
                 }
             }
-        }
-        .navigationDestination(for: WatchBookEntry.self) { book in
-            BookDetailView(book: book)
         }
     }
 }
@@ -93,7 +94,6 @@ struct BookRow: View {
 struct BookDetailView: View {
     let book: WatchBookEntry
     @Environment(WatchViewModel.self) private var viewModel
-    @State private var showPlayer = false
 
     var body: some View {
         ScrollView {
@@ -109,21 +109,9 @@ struct BookDetailView: View {
 
                 Divider()
 
-                if book.category == "synced" {
-                    NavigationLink(destination: WatchPlayerView(book: book)) {
-                        Label("Listen", systemImage: "headphones")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent)
-                } else {
-                    Button {
-                        openBook()
-                    } label: {
-                        Label("Read", systemImage: "book")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent)
-                }
+                Text("EPUB reading not yet supported on Apple Watch")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
 
                 Button(role: .destructive) {
                     viewModel.deleteBook(book)
@@ -137,9 +125,5 @@ struct BookDetailView: View {
         }
         .navigationTitle("Book")
         .navigationBarTitleDisplayMode(.inline)
-    }
-
-    private func openBook() {
-        // Future: Launch EPUB reader for ebooks
     }
 }
