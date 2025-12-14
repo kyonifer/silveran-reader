@@ -79,7 +79,14 @@ struct iOSBookDetailView: View {
             }
 
             if let author = item.authors?.first?.name {
-                Text(author)
+                Text("Written by \(author)")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+
+            if let narrator = item.narrators?.first?.name {
+                Text("Narrated by \(narrator)")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
