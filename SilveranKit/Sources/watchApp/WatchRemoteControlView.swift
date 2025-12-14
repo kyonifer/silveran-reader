@@ -3,7 +3,6 @@ import SilveranKitCommon
 
 struct WatchRemoteControlView: View {
     @Environment(WatchViewModel.self) private var viewModel
-    @State private var isRefreshing = false
     @State private var showChapters = false
 
     var body: some View {
@@ -34,21 +33,10 @@ struct WatchRemoteControlView: View {
             Text("Nothing Playing")
                 .font(.headline)
 
-            Text("Start playback\non iPhone")
+            Text("Start playback on iPhone,\nthen return here")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-
-            Button {
-                isRefreshing = true
-                viewModel.requestPlaybackState()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-                    isRefreshing = false
-                }
-            } label: {
-                Label("Refresh", systemImage: "arrow.clockwise")
-            }
-            .disabled(isRefreshing)
         }
         .padding()
         .navigationTitle("iPhone")
