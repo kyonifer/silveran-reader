@@ -305,10 +305,11 @@ private struct MediaItemCoverImage: View {
     let variant: MediaViewModel.CoverVariant
 
     var body: some View {
-        let image = mediaViewModel.coverImage(for: item, variant: variant)
+        let coverState = mediaViewModel.coverState(for: item, variant: variant)
+
         ZStack {
             placeholderColor
-            if let image {
+            if let image = coverState.image {
                 image
                     .resizable()
                     .interpolation(.medium)
@@ -318,7 +319,7 @@ private struct MediaItemCoverImage: View {
             }
         }
         .clipped()
-        .animation(.easeInOut(duration: 0.2), value: image != nil)
+        .animation(.easeInOut(duration: 0.2), value: coverState.image != nil)
         .task(id: taskIdentifier) {
             mediaViewModel.ensureCoverLoaded(for: item, variant: variant)
         }

@@ -112,7 +112,14 @@ public final class MediaViewModel {
         let variant: CoverVariant
     }
 
-    private var coverCache: [CoverKey: Image] = [:]
+    @MainActor
+    @Observable
+    final class CoverImageState {
+        var image: Image?
+        init(image: Image? = nil) { self.image = image }
+    }
+
+    @ObservationIgnored private var coverStates: [CoverKey: CoverImageState] = [:]
     private var missingCoverKeys: Set<CoverKey> = []
     @ObservationIgnored private var coverTasks: [CoverKey: Task<Void, Never>] = [:]
 
@@ -121,7 +128,6 @@ public final class MediaViewModel {
     ) {
         if let injectLibrary = injectLibrary {
             self.library = injectLibrary
-            hydrateCoverCache(from: injectLibrary)
         } else {
             self.library = BookLibrary(
                 bookMetaData: [],
@@ -310,35 +316,20 @@ public final class MediaViewModel {
         cachedBookPaths = paths
     }
 
-    private func hydrateCoverCache(from library: BookLibrary) {
-        for (id, cover) in library.ebookCoverCache {
-            guard let cover, coverCache[CoverKey(id: id, variant: .standard)] == nil else {
-                continue
-            }
-            if let image = Self.makeImage(from: cover.data) {
-                coverCache[CoverKey(id: id, variant: .standard)] = image
-            }
-        }
-        for (id, cover) in library.audiobookCoverCache {
-            guard let cover, coverCache[CoverKey(id: id, variant: .audioSquare)] == nil else {
-                continue
-            }
-            if let image = Self.makeImage(from: cover.data) {
-                coverCache[CoverKey(id: id, variant: .audioSquare)] = image
-            }
-        }
-    }
-
     private func applyLibraryMetadata(_ metadata: [BookMetadata]) {
         let validIDs = Set(metadata.map(\.id))
         library = BookLibrary(
             bookMetaData: metadata,
-            ebookCoverCache: library.ebookCoverCache.filter { validIDs.contains($0.key) },
-            audiobookCoverCache: library.audiobookCoverCache.filter { validIDs.contains($0.key) }
+            ebookCoverCache: [:],
+            audiobookCoverCache: [:]
         )
         libraryVersion += 1
         debugLog("[MediaViewModel] Updated library (version \(libraryVersion))")
-        coverCache = coverCache.filter { validIDs.contains($0.key.id) }
+
+        let invalidKeys = coverStates.keys.filter { !validIDs.contains($0.id) }
+        for key in invalidKeys {
+            coverStates.removeValue(forKey: key)
+        }
         missingCoverKeys = Set(missingCoverKeys.filter { validIDs.contains($0.id) })
         pruneCoverTasks(keeping: validIDs)
     }
@@ -820,13 +811,23 @@ public final class MediaViewModel {
     func coverImage(for item: BookMetadata, variant overrideVariant: CoverVariant? = nil) -> Image?
     {
         let variant = overrideVariant ?? coverVariant(for: item)
-        return coverCache[CoverKey(id: item.id, variant: variant)]
+        let key = CoverKey(id: item.id, variant: variant)
+        return coverStates[key]?.image
+    }
+
+    func coverState(for item: BookMetadata, variant overrideVariant: CoverVariant? = nil) -> CoverImageState {
+        let variant = overrideVariant ?? coverVariant(for: item)
+        let key = CoverKey(id: item.id, variant: variant)
+        if let existing = coverStates[key] { return existing }
+        let state = CoverImageState()
+        coverStates[key] = state
+        return state
     }
 
     func ensureCoverLoaded(for item: BookMetadata, variant overrideVariant: CoverVariant? = nil) {
         let variant = overrideVariant ?? coverVariant(for: item)
         let key = CoverKey(id: item.id, variant: variant)
-        if coverCache[key] != nil || missingCoverKeys.contains(key) {
+        if coverStates[key]?.image != nil || missingCoverKeys.contains(key) {
             return
         }
         if coverTasks[key] != nil {
@@ -885,25 +886,22 @@ public final class MediaViewModel {
 
     private func registerCover(_ cover: BookCover?, for item: BookMetadata, variant: CoverVariant) {
         let key = CoverKey(id: item.id, variant: variant)
+        let state = coverStates[key] ?? CoverImageState()
+        coverStates[key] = state
+
         guard let cover else {
             missingCoverKeys.insert(key)
-            coverCache.removeValue(forKey: key)
+            state.image = nil
             return
         }
 
         guard let image = Self.makeImage(from: cover.data) else {
             missingCoverKeys.insert(key)
-            coverCache.removeValue(forKey: key)
+            state.image = nil
             return
         }
 
-        switch variant {
-            case .standard:
-                library.ebookCoverCache[item.id] = cover
-            case .audioSquare:
-                library.audiobookCoverCache[item.id] = cover
-        }
-        coverCache[key] = image
+        state.image = image
         missingCoverKeys.remove(key)
 
         Task {
@@ -932,23 +930,9 @@ public final class MediaViewModel {
                 ) {
                     let key = CoverKey(id: book.id, variant: variant)
                     if let image = Self.makeImage(from: data) {
-                        coverCache[key] = image
-
-                        let cover = BookCover(
-                            data: data,
-                            contentType: nil,
-                            etag: nil,
-                            lastModified: nil,
-                            cacheControl: nil,
-                            contentDisposition: nil
-                        )
-
-                        switch variant {
-                            case .standard:
-                                library.ebookCoverCache[book.id] = cover
-                            case .audioSquare:
-                                library.audiobookCoverCache[book.id] = cover
-                        }
+                        let state = coverStates[key] ?? CoverImageState()
+                        coverStates[key] = state
+                        state.image = image
                     }
                 }
             }
