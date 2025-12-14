@@ -25,7 +25,7 @@ struct WatchLibraryView: View {
             Text("No Books")
                 .font(.headline)
 
-            Text("Send books from your iPhone")
+            Text("Send books from the\nMore menu of the iPhone app")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

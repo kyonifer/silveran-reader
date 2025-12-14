@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import SilveranKitCommon
 
 @MainActor
 @Observable
@@ -8,6 +9,7 @@ public final class WatchViewModel {
     var receivingTitle: String?
     var receivedChunks: Int = 0
     var totalChunks: Int = 0
+    var remotePlaybackState: RemotePlaybackState?
 
     var isReceiving: Bool {
         receivingTitle != nil
@@ -46,6 +48,20 @@ public final class WatchViewModel {
                 self?.loadBooks()
             }
         }
+
+        WatchSessionManager.shared.onPlaybackStateReceived = { [weak self] state in
+            Task { @MainActor in
+                self?.remotePlaybackState = state
+            }
+        }
+    }
+
+    func requestPlaybackState() {
+        WatchSessionManager.shared.requestPlaybackState()
+    }
+
+    func sendPlaybackCommand(_ command: RemotePlaybackCommand) {
+        WatchSessionManager.shared.sendPlaybackCommand(command)
     }
 
     func loadBooks() {

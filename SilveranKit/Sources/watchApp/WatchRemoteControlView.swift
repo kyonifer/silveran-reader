@@ -1,91 +1,76 @@
-#if os(watchOS)
 import SwiftUI
+import SilveranKitCommon
 
-struct WatchPlayerView: View {
-    @State private var viewModel = WatchPlayerViewModel()
-    @State private var currentPage: PlayerPage = .controls
-
-    let book: WatchBookEntry
-
-    enum PlayerPage {
-        case chapters
-        case controls
-        case text
-    }
+struct WatchRemoteControlView: View {
+    @Environment(WatchViewModel.self) private var viewModel
+    @State private var isRefreshing = false
+    @State private var showChapters = false
 
     var body: some View {
         Group {
-            switch currentPage {
-            case .chapters:
-                ChapterListView(viewModel: viewModel) { sectionIndex in
-                    Task {
-                        await viewModel.jumpToChapter(sectionIndex)
-                        currentPage = .controls
-                    }
-                }
-            case .controls:
-                AudioControlsPage(
+            if showChapters, let state = viewModel.remotePlaybackState {
+                RemoteChapterListView(state: state, viewModel: viewModel, onBack: { showChapters = false })
+            } else if let state = viewModel.remotePlaybackState {
+                RemoteControlsPage(
+                    state: state,
                     viewModel: viewModel,
-                    onChapters: { currentPage = .chapters },
-                    onText: { currentPage = .text }
+                    onChapters: { showChapters = true }
                 )
-            case .text:
-                TextReaderPage(viewModel: viewModel, onBack: { currentPage = .controls })
+            } else {
+                emptyState
             }
         }
-        .task {
-            await viewModel.loadBook(book)
-        }
-        .onDisappear {
-            viewModel.cleanup()
+        .onAppear {
+            viewModel.requestPlaybackState()
         }
     }
-}
 
-// MARK: - Chapter List View
+    private var emptyState: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "iphone.slash")
+                .font(.system(size: 32))
+                .foregroundStyle(.secondary)
 
-private struct ChapterListView: View {
-    @Bindable var viewModel: WatchPlayerViewModel
-    let onSelectChapter: (Int) -> Void
+            Text("Nothing Playing")
+                .font(.headline)
 
-    var body: some View {
-        List {
-            ForEach(viewModel.chapters) { chapter in
-                Button {
-                    onSelectChapter(chapter.index)
-                } label: {
-                    HStack {
-                        Text(chapter.label)
-                            .lineLimit(2)
-                        Spacer()
-                        if chapter.index == viewModel.currentSectionIndex {
-                            Image(systemName: "speaker.wave.2.fill")
-                                .foregroundStyle(.secondary)
-                        }
-                    }
+            Text("Start playback\non iPhone")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+
+            Button {
+                isRefreshing = true
+                viewModel.requestPlaybackState()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                    isRefreshing = false
                 }
+            } label: {
+                Label("Refresh", systemImage: "arrow.clockwise")
             }
+            .disabled(isRefreshing)
         }
-        .navigationTitle("Chapters")
+        .padding()
+        .navigationTitle("iPhone")
     }
 }
 
-// MARK: - Audio Controls Page
+// MARK: - Remote Controls Page
 
-private struct AudioControlsPage: View {
-    @Bindable var viewModel: WatchPlayerViewModel
+private struct RemoteControlsPage: View {
+    let state: RemotePlaybackState
+    let viewModel: WatchViewModel
+    let onChapters: () -> Void
+
     @State private var crownVolume: Double = 1.0
     @State private var showVolumeOverlay = false
     @State private var showSpeedPicker = false
     @State private var volumeHideTask: DispatchWorkItem?
     @FocusState private var isFocused: Bool
 
-    let onChapters: () -> Void
-    let onText: () -> Void
-
     var body: some View {
         VStack(spacing: 0) {
-            Text(viewModel.chapterTitle)
+            Text(state.chapterTitle)
                 .font(.footnote)
                 .foregroundStyle(.white)
                 .lineLimit(1)
@@ -126,7 +111,7 @@ private struct AudioControlsPage: View {
             isHapticFeedbackEnabled: true
         )
         .onChange(of: crownVolume) { _, newValue in
-            viewModel.setVolume(newValue)
+            viewModel.sendPlaybackCommand(.setVolume(volume: newValue))
             showVolumeOverlay = true
             volumeHideTask?.cancel()
             let task = DispatchWorkItem { showVolumeOverlay = false }
@@ -134,17 +119,17 @@ private struct AudioControlsPage: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: task)
         }
         .onAppear {
-            crownVolume = viewModel.volume
+            crownVolume = state.volume
             isFocused = true
         }
-        .navigationTitle(viewModel.bookTitle)
+        .navigationTitle(state.bookTitle)
         .navigationBarTitleDisplayMode(.inline)
     }
 
     private var controlsRow: some View {
         HStack(spacing: 0) {
             Button {
-                viewModel.skipBackward()
+                viewModel.sendPlaybackCommand(.skipBackward)
             } label: {
                 Image(systemName: "gobackward.30")
                     .font(.title2)
@@ -156,7 +141,7 @@ private struct AudioControlsPage: View {
                 .frame(width: 58, height: 58)
 
             Button {
-                viewModel.skipForward()
+                viewModel.sendPlaybackCommand(.skipForward)
             } label: {
                 Image(systemName: "goforward.30")
                     .font(.title2)
@@ -173,18 +158,23 @@ private struct AudioControlsPage: View {
                 .stroke(Color.secondary.opacity(0.3), lineWidth: 3.5)
 
             Circle()
-                .trim(from: 0, to: viewModel.chapterProgress)
+                .trim(from: 0, to: chapterProgress)
                 .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 3.5, lineCap: .round))
                 .rotationEffect(.degrees(-90))
 
             Button {
-                viewModel.playPause()
+                viewModel.sendPlaybackCommand(.togglePlayPause)
             } label: {
-                Image(systemName: viewModel.isPlaying ? "pause.fill" : "play.fill")
+                Image(systemName: state.isPlaying ? "pause.fill" : "play.fill")
                     .font(.system(size: 26))
             }
             .buttonStyle(.plain)
         }
+    }
+
+    private var chapterProgress: Double {
+        guard state.chapterDuration > 0 else { return 0 }
+        return state.chapterElapsed / state.chapterDuration
     }
 
     private var statsRow: some View {
@@ -192,7 +182,7 @@ private struct AudioControlsPage: View {
             HStack(spacing: 3) {
                 Image(systemName: "bookmark.fill")
                     .font(.system(size: 9))
-                Text(formatMinutesSeconds(viewModel.chapterDuration - viewModel.currentTime))
+                Text(formatMinutesSeconds(state.chapterDuration - state.chapterElapsed))
                     .font(.system(size: 11, design: .monospaced))
             }
             .foregroundStyle(.secondary)
@@ -202,7 +192,7 @@ private struct AudioControlsPage: View {
             HStack(spacing: 3) {
                 Image(systemName: "book.fill")
                     .font(.system(size: 9))
-                Text(formatHoursMinutes(viewModel.bookDuration - viewModel.bookElapsed))
+                Text(formatHoursMinutes(state.bookDuration - state.bookElapsed))
                     .font(.system(size: 11, design: .monospaced))
             }
             .foregroundStyle(.secondary)
@@ -210,14 +200,14 @@ private struct AudioControlsPage: View {
         .padding(.horizontal, 12)
     }
 
-    private func formatMinutesSeconds(_ seconds: Double) -> String {
+    private func formatMinutesSeconds(_ seconds: TimeInterval) -> String {
         let total = max(0, Int(seconds))
         let mins = total / 60
         let secs = total % 60
         return "\(mins)m\(secs)s"
     }
 
-    private func formatHoursMinutes(_ seconds: Double) -> String {
+    private func formatHoursMinutes(_ seconds: TimeInterval) -> String {
         let total = max(0, Int(seconds))
         let hrs = total / 3600
         let mins = (total % 3600) / 60
@@ -235,14 +225,6 @@ private struct AudioControlsPage: View {
             .buttonStyle(.plain)
 
             Button {
-                onText()
-            } label: {
-                Image(systemName: "text.alignleft")
-                    .font(.body)
-            }
-            .buttonStyle(.plain)
-
-            Button {
                 showSpeedPicker = true
             } label: {
                 Text(speedLabel)
@@ -250,8 +232,8 @@ private struct AudioControlsPage: View {
             }
             .buttonStyle(.plain)
             .sheet(isPresented: $showSpeedPicker) {
-                SpeedPickerSheet(currentRate: viewModel.playbackRate) { rate in
-                    viewModel.setPlaybackRate(rate)
+                SpeedPickerSheet(currentRate: state.playbackRate) { rate in
+                    viewModel.sendPlaybackCommand(.setPlaybackRate(rate: rate))
                     showSpeedPicker = false
                 }
             }
@@ -261,7 +243,7 @@ private struct AudioControlsPage: View {
     }
 
     private var speedLabel: String {
-        let rate = viewModel.playbackRate
+        let rate = state.playbackRate
         if rate == 1.0 {
             return "1x"
         } else if rate == floor(rate) {
@@ -301,25 +283,31 @@ private struct AudioControlsPage: View {
     }
 }
 
-// MARK: - Text Reader Page
+// MARK: - Remote Chapter List
 
-private struct TextReaderPage: View {
-    @Bindable var viewModel: WatchPlayerViewModel
+private struct RemoteChapterListView: View {
+    let state: RemotePlaybackState
+    let viewModel: WatchViewModel
     let onBack: () -> Void
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 8) {
-                Text(viewModel.currentLineText)
-                    .font(.body)
-                if !viewModel.nextLineText.isEmpty {
-                    Text(viewModel.nextLineText)
-                        .font(.body)
-                        .foregroundColor(.secondary)
+        List {
+            ForEach(state.chapters, id: \.index) { chapter in
+                Button {
+                    viewModel.sendPlaybackCommand(.seekToChapter(sectionIndex: chapter.sectionIndex))
+                    onBack()
+                } label: {
+                    HStack {
+                        Text(chapter.title)
+                            .lineLimit(2)
+                        Spacer()
+                        if chapter.index == state.currentChapterIndex {
+                            Image(systemName: "speaker.wave.2.fill")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 8)
         }
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
@@ -330,7 +318,7 @@ private struct TextReaderPage: View {
                 }
             }
         }
-        .navigationTitle("Text")
+        .navigationTitle("Chapters")
         .navigationBarTitleDisplayMode(.inline)
     }
 }
@@ -373,4 +361,3 @@ private struct SpeedPickerSheet: View {
         }
     }
 }
-#endif

@@ -1,5 +1,6 @@
 import Foundation
 import WatchConnectivity
+import SilveranKitCommon
 
 public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked Sendable {
     public static let shared = WatchSessionManager()
@@ -9,6 +10,7 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
     nonisolated(unsafe) var onTransferProgress: ((String, Int, Int) -> Void)?
     nonisolated(unsafe) var onTransferComplete: (() -> Void)?
     nonisolated(unsafe) var onBookDeleted: (() -> Void)?
+    nonisolated(unsafe) var onPlaybackStateReceived: ((RemotePlaybackState?) -> Void)?
 
     private override init() {
         super.init()
@@ -51,8 +53,25 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
             handleLibraryRequest(replyHandler: replyHandler)
         case "cancelTransfer":
             handleCancelTransfer(message, replyHandler: replyHandler)
+        case "playbackState":
+            handlePlaybackState(message)
+            replyHandler?(["status": "ok"])
         default:
             replyHandler?(["error": "Unhandled message type: \(type)"])
+        }
+    }
+
+    private func handlePlaybackState(_ message: [String: Any]) {
+        if let stateData = message["state"] as? Data {
+            do {
+                let state = try JSONDecoder().decode(RemotePlaybackState.self, from: stateData)
+                onPlaybackStateReceived?(state)
+            } catch {
+                print("[WatchSessionManager] Failed to decode playback state: \(error)")
+                onPlaybackStateReceived?(nil)
+            }
+        } else {
+            onPlaybackStateReceived?(nil)
         }
     }
 
@@ -145,6 +164,69 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
         // active reachability and silently fails otherwise
         session.transferUserInfo(message)
         print("[WatchSessionManager] Queued transferComplete via transferUserInfo for \(bookUUID)")
+    }
+
+    // MARK: - Remote Playback Control
+
+    public func requestPlaybackState() {
+        guard let session, session.isReachable else {
+            print("[WatchSessionManager] iPhone not reachable for playback state request")
+            onPlaybackStateReceived?(nil)
+            return
+        }
+
+        let message: [String: Any] = ["type": "requestPlaybackState"]
+        session.sendMessage(message, replyHandler: { [weak self] reply in
+            if let stateData = reply["state"] as? Data {
+                do {
+                    let state = try JSONDecoder().decode(RemotePlaybackState.self, from: stateData)
+                    self?.onPlaybackStateReceived?(state)
+                } catch {
+                    print("[WatchSessionManager] Failed to decode playback state reply: \(error)")
+                    self?.onPlaybackStateReceived?(nil)
+                }
+            } else {
+                self?.onPlaybackStateReceived?(nil)
+            }
+        }, errorHandler: { error in
+            print("[WatchSessionManager] Failed to request playback state: \(error)")
+            self.onPlaybackStateReceived?(nil)
+        })
+    }
+
+    public func sendPlaybackCommand(_ command: RemotePlaybackCommand) {
+        guard let session, session.isReachable else {
+            print("[WatchSessionManager] iPhone not reachable for playback command")
+            return
+        }
+
+        var message: [String: Any] = ["type": "playbackControl"]
+
+        switch command {
+        case .togglePlayPause:
+            message["command"] = "togglePlayPause"
+        case .skipForward:
+            message["command"] = "skipForward"
+        case .skipBackward:
+            message["command"] = "skipBackward"
+        case .seekToChapter(let sectionIndex):
+            message["command"] = "seekToChapter"
+            message["value"] = sectionIndex
+        case .setPlaybackRate(let rate):
+            message["command"] = "setPlaybackRate"
+            message["value"] = rate
+        case .setVolume(let volume):
+            message["command"] = "setVolume"
+            message["value"] = volume
+        }
+
+        session.sendMessage(message, replyHandler: nil, errorHandler: { error in
+            print("[WatchSessionManager] Failed to send playback command: \(error)")
+        })
+    }
+
+    public var isPhoneReachable: Bool {
+        session?.isReachable ?? false
     }
 }
 

@@ -13,9 +13,12 @@ public final class WatchPlayerViewModel: NSObject {
     var isPlaying = false
     var currentTime: Double = 0
     var chapterDuration: Double = 0
+    var bookElapsed: Double = 0
+    var bookDuration: Double = 0
     var chapterTitle: String = ""
     var bookTitle: String = ""
     var volume: Double = 1.0
+    var playbackRate: Double = 1.0
     var isMuted = false
     private var volumeBeforeMute: Double = 1.0
 
@@ -141,6 +144,9 @@ public final class WatchPlayerViewModel: NSObject {
         currentTime = state.chapterElapsed
         currentSectionIndex = state.currentSectionIndex
         currentEntryIndex = state.currentEntryIndex
+        playbackRate = state.playbackRate
+        bookElapsed = state.bookElapsed
+        bookDuration = state.bookTotal
 
         if sectionChanged {
             chapterTitle = state.chapterLabel ?? chapterLabel(forSectionIndex: state.currentSectionIndex)
@@ -178,6 +184,13 @@ public final class WatchPlayerViewModel: NSObject {
         isMuted = false
         Task { @SMILPlayerActor in
             await SMILPlayerActor.shared.setVolume(newVolume)
+        }
+    }
+
+    func setPlaybackRate(_ rate: Double) {
+        playbackRate = rate
+        Task { @SMILPlayerActor in
+            await SMILPlayerActor.shared.setPlaybackRate(rate)
         }
     }
 

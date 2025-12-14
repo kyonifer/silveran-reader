@@ -214,6 +214,10 @@ public actor SMILPlayerActor {
         return bookId
     }
 
+    public func getLoadedBookTitle() -> String? {
+        return bookTitle
+    }
+
     // MARK: - Cover Image (iOS)
 
     #if os(iOS)

@@ -25,7 +25,7 @@ struct ContentView: View {
             if viewModel.receivingTitle != nil {
                 TransferProgressView()
             } else {
-                WatchLibraryView()
+                WatchModeSelectionView()
             }
         }
     }

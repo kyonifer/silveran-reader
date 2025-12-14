@@ -62,6 +62,8 @@ public actor AppleWatchActor: NSObject {
     private var chunksCompleted: [String: Int] = [:]
     private var chunksExpected: [String: Int] = [:]
     private var observers: [UUID: @Sendable @MainActor (WatchTransferEvent) -> Void] = [:]
+    private var smilObserverId: UUID?
+    private var cachedChapters: [RemoteChapter] = []
 
     public override init() {
         super.init()
@@ -457,6 +459,126 @@ public actor AppleWatchActor: NSObject {
             notifyObservers(.stateChanged(item: item))
         }
     }
+
+    // MARK: - Remote Playback Control
+
+    public func startObservingSMILPlayer() {
+        guard smilObserverId == nil else { return }
+
+        let observerId = UUID()
+        smilObserverId = observerId
+
+        Task {
+            await SMILPlayerActor.shared.addStateObserver(id: observerId) { [weak self] state in
+                Task {
+                    await self?.handleSMILStateChange(state)
+                }
+            }
+        }
+        debugLog("[AppleWatchActor] Started observing SMIL player state")
+    }
+
+    public func stopObservingSMILPlayer() {
+        guard let observerId = smilObserverId else { return }
+        smilObserverId = nil
+
+        Task {
+            await SMILPlayerActor.shared.removeStateObserver(id: observerId)
+        }
+        debugLog("[AppleWatchActor] Stopped observing SMIL player state")
+    }
+
+    @MainActor
+    private func handleSMILStateChange(_ state: SMILPlaybackState) async {
+        await sendPlaybackStateToWatch()
+    }
+
+    public func sendPlaybackStateToWatch() async {
+        guard let session, session.isReachable else { return }
+
+        let stateData = await buildRemotePlaybackState()
+
+        var message: [String: Any] = ["type": "playbackState"]
+        if let data = stateData {
+            message["state"] = data
+        }
+
+        session.sendMessage(message, replyHandler: nil, errorHandler: { error in
+            debugLog("[AppleWatchActor] Failed to send playback state: \(error)")
+        })
+    }
+
+    private func buildRemotePlaybackState() async -> Data? {
+        guard let smilState = await SMILPlayerActor.shared.getCurrentState(),
+              let bookId = smilState.bookId else { return nil }
+
+        let structure = await SMILPlayerActor.shared.getBookStructure()
+        let bookTitle = await SMILPlayerActor.shared.getLoadedBookTitle() ?? "Unknown"
+
+        let chapters = structure
+            .filter { !$0.mediaOverlay.isEmpty }
+            .enumerated()
+            .map { (idx, section) in
+                RemoteChapter(
+                    index: idx,
+                    title: section.label ?? "Chapter \(idx + 1)",
+                    sectionIndex: section.index
+                )
+            }
+        cachedChapters = chapters
+
+        let currentChapterIndex = chapters.firstIndex { $0.sectionIndex == smilState.currentSectionIndex } ?? 0
+
+        let remoteState = RemotePlaybackState(
+            bookTitle: bookTitle,
+            bookId: bookId,
+            chapterTitle: smilState.chapterLabel ?? "Chapter \(currentChapterIndex + 1)",
+            currentChapterIndex: currentChapterIndex,
+            chapters: chapters,
+            isPlaying: smilState.isPlaying,
+            chapterElapsed: smilState.chapterElapsed,
+            chapterDuration: smilState.chapterTotal,
+            bookElapsed: smilState.bookElapsed,
+            bookDuration: smilState.bookTotal,
+            playbackRate: smilState.playbackRate,
+            volume: smilState.volume
+        )
+
+        return try? JSONEncoder().encode(remoteState)
+    }
+
+    private func handlePlaybackControlCommand(command: String, intValue: Int?, doubleValue: Double?) async {
+        do {
+            switch command {
+            case "togglePlayPause":
+                try await SMILPlayerActor.shared.togglePlayPause()
+            case "skipForward":
+                await SMILPlayerActor.shared.skipForward(seconds: 30)
+            case "skipBackward":
+                await SMILPlayerActor.shared.skipBackward(seconds: 30)
+            case "seekToChapter":
+                if let sectionIndex = intValue {
+                    try await SMILPlayerActor.shared.seekToEntry(sectionIndex: sectionIndex, entryIndex: 0)
+                }
+            case "setPlaybackRate":
+                if let rate = doubleValue {
+                    await SMILPlayerActor.shared.setPlaybackRate(rate)
+                } else if let rate = intValue {
+                    await SMILPlayerActor.shared.setPlaybackRate(Double(rate))
+                }
+            case "setVolume":
+                if let volume = doubleValue {
+                    await SMILPlayerActor.shared.setVolume(volume)
+                } else if let volume = intValue {
+                    await SMILPlayerActor.shared.setVolume(Double(volume))
+                }
+            default:
+                debugLog("[AppleWatchActor] Unknown playback command: \(command)")
+            }
+        } catch {
+            debugLog("[AppleWatchActor] Playback command failed: \(error)")
+        }
+    }
 }
 
 extension AppleWatchActor: WCSessionDelegate {
@@ -488,6 +610,18 @@ extension AppleWatchActor: WCSessionDelegate {
 
     nonisolated public func session(_ session: WCSession, didReceiveMessage message: [String : Any]) {
         let messageType = message["type"] as? String
+
+        if messageType == "playbackControl" {
+            if let command = message["command"] as? String {
+                let intValue = message["value"] as? Int
+                let doubleValue = message["value"] as? Double
+                Task {
+                    await self.handlePlaybackControlCommand(command: command, intValue: intValue, doubleValue: doubleValue)
+                }
+            }
+            return
+        }
+
         let uuid = message["uuid"] as? String
         let category = message["category"] as? String
         Task {
@@ -499,6 +633,27 @@ extension AppleWatchActor: WCSessionDelegate {
         let messageType = message["type"] as? String
         switch messageType {
         case "ping":
+            replyHandler(["status": "ok"])
+        case "requestPlaybackState":
+            let sendableReply = SendableReplyHandler(replyHandler)
+            Task {
+                let stateData = await self.buildRemotePlaybackState()
+                let response: [String: Any]
+                if let data = stateData {
+                    response = ["state": data]
+                } else {
+                    response = ["state": NSNull()]
+                }
+                sendableReply.reply(response)
+            }
+        case "playbackControl":
+            if let command = message["command"] as? String {
+                let intValue = message["value"] as? Int
+                let doubleValue = message["value"] as? Double
+                Task {
+                    await self.handlePlaybackControlCommand(command: command, intValue: intValue, doubleValue: doubleValue)
+                }
+            }
             replyHandler(["status": "ok"])
         default:
             replyHandler(["error": "Unhandled message type"])
@@ -543,6 +698,9 @@ extension AppleWatchActor: WCSessionDelegate {
             }
 
             requestWatchLibrary()
+            if session?.isReachable == true {
+                startObservingSMILPlayer()
+            }
         }
     }
 
@@ -550,6 +708,9 @@ extension AppleWatchActor: WCSessionDelegate {
         notifyObservers(.watchReachabilityChanged(isReachable: isReachable))
         if isReachable {
             requestWatchLibrary()
+            startObservingSMILPlayer()
+        } else {
+            stopObservingSMILPlayer()
         }
     }
 
@@ -598,6 +759,18 @@ extension AppleWatchActor: WCSessionDelegate {
         }
     }
 
+}
+
+struct SendableReplyHandler: @unchecked Sendable {
+    private let handler: ([String: Any]) -> Void
+
+    init(_ handler: @escaping ([String: Any]) -> Void) {
+        self.handler = handler
+    }
+
+    func reply(_ response: [String: Any]) {
+        handler(response)
+    }
 }
 
 struct ChunkTransferMetadata: Codable, Sendable {
