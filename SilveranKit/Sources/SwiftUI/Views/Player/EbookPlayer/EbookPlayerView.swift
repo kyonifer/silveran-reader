@@ -531,25 +531,54 @@ public struct EbookPlayerView: View {
 }
 
 #if os(macOS)
+private class TitleBarDoubleClickGestureRecognizer: NSClickGestureRecognizer {
+    var titlebarHeight: CGFloat = 52
+}
+
 private struct TitleBarConfigurator: NSViewRepresentable {
     var isTitleBarVisible: Bool
     var windowTitle: String = "Ebook Reader"
 
-    func makeNSView(context _: Context) -> NSView {
+    func makeNSView(context: Context) -> NSView {
         let view = NSView()
         DispatchQueue.main.async {
-            configureWindow(for: view)
+            configureWindow(for: view, coordinator: context.coordinator)
         }
         return view
     }
 
-    func updateNSView(_ nsView: NSView, context _: Context) {
+    func updateNSView(_ nsView: NSView, context: Context) {
         DispatchQueue.main.async {
-            configureWindow(for: nsView)
+            configureWindow(for: nsView, coordinator: context.coordinator)
         }
     }
 
-    private func configureWindow(for nsView: NSView) {
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    class Coordinator: NSObject {
+        @objc func handleDoubleClick(_ gesture: NSClickGestureRecognizer) {
+            guard let window = gesture.view?.window,
+                  let contentView = window.contentView,
+                  let themeFrame = contentView.superview else { return }
+
+            let location = gesture.location(in: themeFrame)
+            let titlebarHeight = (gesture as? TitleBarDoubleClickGestureRecognizer)?.titlebarHeight ?? 52
+            let titlebarRect = NSRect(
+                x: 0,
+                y: themeFrame.bounds.height - titlebarHeight,
+                width: themeFrame.bounds.width,
+                height: titlebarHeight
+            )
+
+            if titlebarRect.contains(location) {
+                window.zoom(nil)
+            }
+        }
+    }
+
+    private func configureWindow(for nsView: NSView, coordinator: Coordinator) {
         guard let window = nsView.window else { return }
         window.titleVisibility = .hidden
         window.title = windowTitle
@@ -558,7 +587,30 @@ private struct TitleBarConfigurator: NSViewRepresentable {
         window.isMovableByWindowBackground = true
         window.toolbar?.isVisible = true
 
+        installDoubleClickGesture(on: window, coordinator: coordinator)
         updateTitleBarVisibility(for: window)
+    }
+
+    private func installDoubleClickGesture(on window: NSWindow, coordinator: Coordinator) {
+        guard let themeFrame = window.contentView?.superview else { return }
+
+        let alreadyInstalled = themeFrame.gestureRecognizers.contains {
+            $0 is TitleBarDoubleClickGestureRecognizer
+        }
+        guard !alreadyInstalled else { return }
+
+        let gesture = TitleBarDoubleClickGestureRecognizer(
+            target: coordinator,
+            action: #selector(Coordinator.handleDoubleClick(_:))
+        )
+        gesture.numberOfClicksRequired = 2
+        gesture.delaysPrimaryMouseButtonEvents = false
+
+        if let titlebarView = window.standardWindowButton(.closeButton)?.superview {
+            gesture.titlebarHeight = titlebarView.frame.height + titlebarView.frame.origin.y
+        }
+
+        themeFrame.addGestureRecognizer(gesture)
     }
 
     private func updateTitleBarVisibility(for window: NSWindow) {
