@@ -189,6 +189,8 @@ class MediaOverlayManager {
     }
 
     private func handleActorStateUpdate(_ state: SMILPlaybackState) {
+        guard state.bookId == bookId else { return }
+
         let previousSectionIndex = cachedSectionIndex
         let previousEntryIndex = cachedEntryIndex
         let previousFragment = lastObservedFragment
