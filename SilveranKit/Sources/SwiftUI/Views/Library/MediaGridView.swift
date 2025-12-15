@@ -153,7 +153,7 @@ struct MediaGridView: View {
     {
         let spacing = defaultHorizontalSpacing
         var breakpoints: [ColumnBreakpoint] = []
-        let maxColumns = 7
+        let maxColumns = 10
         guard preferredTileWidth > 0 else {
             return breakpoints
         }
