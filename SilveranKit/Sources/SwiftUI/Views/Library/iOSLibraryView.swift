@@ -69,6 +69,9 @@ public struct iOSLibraryView: View {
                 selectedTab = .books
             }
         }
+        .onChange(of: selectedTab) {
+            searchText = ""
+        }
         .sheet(isPresented: $showSettings) {
             NavigationStack {
                 SettingsView()

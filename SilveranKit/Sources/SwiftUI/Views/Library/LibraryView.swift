@@ -53,6 +53,9 @@ public struct LibraryView: View {
                 }
             }
             #endif
+            .onChange(of: selectedItem) {
+                searchText = ""
+            }
             #if os(iOS)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
