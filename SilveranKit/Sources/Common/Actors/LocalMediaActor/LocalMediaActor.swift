@@ -182,6 +182,36 @@ public actor LocalMediaActor: GlobalActor {
         }
     }
 
+    public func updateBookStatus(bookId: String, status: BookStatus) async {
+        guard let index = localStorytellerMetadata.firstIndex(where: { $0.uuid == bookId }) else {
+            return
+        }
+        let existing = localStorytellerMetadata[index]
+        let updatedMetadata = BookMetadata(
+            uuid: existing.uuid,
+            title: existing.title,
+            subtitle: existing.subtitle,
+            description: existing.description,
+            language: existing.language,
+            createdAt: existing.createdAt,
+            updatedAt: existing.updatedAt,
+            publicationDate: existing.publicationDate,
+            authors: existing.authors,
+            narrators: existing.narrators,
+            creators: existing.creators,
+            series: existing.series,
+            tags: existing.tags,
+            collections: existing.collections,
+            ebook: existing.ebook,
+            audiobook: existing.audiobook,
+            readaloud: existing.readaloud,
+            status: status,
+            position: existing.position
+        )
+        localStorytellerMetadata[index] = updatedMetadata
+        await notifyObservers()
+    }
+
     private func mergeWithLocalTimestamps(_ serverMetadata: [BookMetadata]) -> [BookMetadata] {
         return serverMetadata.map { serverBook in
             guard let localBook = localStorytellerMetadata.first(where: { $0.uuid == serverBook.uuid }),

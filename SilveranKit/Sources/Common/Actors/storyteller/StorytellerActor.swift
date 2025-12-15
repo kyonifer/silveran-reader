@@ -1117,7 +1117,7 @@ public actor StorytellerActor {
     /// Updates the status for a set of books using `/api/v2/books/status`.
     /// Server implementation: `storyteller/web/src/app/api/v2/books/status/route.ts` (PUT handler).
     /// TODO: UNTESTED
-    func updateStatus(forBooks bookIds: [String], to statusUUID: String) async -> Bool {
+    public func updateStatus(forBooks bookIds: [String], to statusUUID: String) async -> Bool {
         guard !bookIds.isEmpty else {
             debugLog("[StorytellerActor] updateStatus requires at least one book id.")
             return false

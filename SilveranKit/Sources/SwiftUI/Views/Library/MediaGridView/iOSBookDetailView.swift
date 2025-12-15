@@ -16,6 +16,7 @@ struct iOSBookDetailView: View {
                 coverSection
                 titleSection
                 progressSection
+                BookStatusSection(item: item)
                 MediaGridDownloadSection(item: item)
                 descriptionSection
                 debugInfoSection

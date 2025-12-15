@@ -97,6 +97,7 @@ struct MediaGridInfoSidebar: View {
     private var content: some View {
         VStack(alignment: .leading, spacing: 16) {
             progressSection
+            BookStatusSection(item: item)
             MediaGridDownloadSection(item: item)
             descriptionSection
             lastReadDateSection
