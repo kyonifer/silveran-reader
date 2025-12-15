@@ -169,6 +169,24 @@ public struct LibraryView: View {
                     showSettings: $showSettings
                 )
                 #endif
+            case .collectionsView(let mediaKind):
+                #if os(iOS)
+                CollectionsView(
+                    mediaKind: mediaKind,
+                    searchText: $searchText,
+                    sidebarSections: sections,
+                    selectedSidebarItem: selectedItem,
+                    showSettings: $showSettings
+                )
+                #else
+                CollectionsView(
+                    mediaKind: mediaKind,
+                    searchText: searchText,
+                    sidebarSections: sections,
+                    selectedSidebarItem: selectedItem,
+                    showSettings: $showSettings
+                )
+                #endif
             case .placeholder(let title):
                 PlaceholderDetailView(title: title)
                     .border(.yellow)

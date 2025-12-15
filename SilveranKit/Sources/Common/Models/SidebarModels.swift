@@ -22,6 +22,7 @@ public enum SidebarContentKind: Hashable, Sendable {
     case mediaGrid(MediaGridConfiguration)
     case seriesView(MediaKind)
     case authorView(MediaKind)
+    case collectionsView(MediaKind)
     case placeholder(title: String)
     case importLocalFile
     case storytellerServer
@@ -174,32 +175,10 @@ public enum LibrarySidebarDefaults {
                         )
                     ),
                     SidebarItemDescription(
-                        name: "Fantasy Shelf",
-                        systemImage: "books.vertical",
-                        badge: 4,
-                        content: .mediaGrid(
-                            MediaGridConfiguration(
-                                title: "Fantasy Shelf",
-                                mediaKind: .ebook,
-                                preferredTileWidth: 120,
-                                minimumTileWidth: 50,
-                                tagFilter: "fantasy",
-                            ),
-                        ),
-                    ),
-                    SidebarItemDescription(
-                        name: "Sci-fi Shelf",
-                        systemImage: "books.vertical",
-                        badge: 3,
-                        content: .mediaGrid(
-                            MediaGridConfiguration(
-                                title: "Sci-fi Shelf",
-                                mediaKind: .ebook,
-                                preferredTileWidth: 120,
-                                minimumTileWidth: 50,
-                                tagFilter: "sci-fi",
-                            ),
-                        ),
+                        name: "Custom Collections",
+                        systemImage: "rectangle.stack",
+                        badge: -1,
+                        content: .collectionsView(.ebook)
                     ),
                 ],
             ),

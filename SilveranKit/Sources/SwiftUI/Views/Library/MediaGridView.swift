@@ -37,6 +37,7 @@ struct MediaGridView: View {
     let mediaKind: MediaKind
     let tagFilter: String?
     let seriesFilter: String?
+    let collectionFilter: String?
     let authorFilter: String?
     let statusFilter: String?
     let defaultSort: String?
@@ -61,6 +62,7 @@ struct MediaGridView: View {
     @State private var selectedFormatFilter: FormatFilterOption
     @State private var selectedTag: String? = nil
     @State private var selectedSeries: String? = nil
+    @State private var selectedCollection: String? = nil
     @State private var selectedAuthor: String? = nil
     @State private var selectedStatus: String? = nil
     @State private var selectedLocation: LocationFilterOption = .all
@@ -89,6 +91,7 @@ struct MediaGridView: View {
         mediaKind: MediaKind = .ebook,
         tagFilter: String? = nil,
         seriesFilter: String? = nil,
+        collectionFilter: String? = nil,
         authorFilter: String? = nil,
         statusFilter: String? = nil,
         defaultSort: String? = nil,
@@ -107,6 +110,7 @@ struct MediaGridView: View {
         self.mediaKind = mediaKind
         self.tagFilter = tagFilter
         self.seriesFilter = seriesFilter
+        self.collectionFilter = collectionFilter
         self.authorFilter = authorFilter
         self.statusFilter = statusFilter
         self.defaultSort = defaultSort
@@ -131,6 +135,7 @@ struct MediaGridView: View {
         )
         _selectedTag = State(initialValue: tagFilter)
         _selectedSeries = State(initialValue: seriesFilter)
+        _selectedCollection = State(initialValue: collectionFilter)
         _selectedAuthor = State(initialValue: authorFilter)
         _selectedStatus = State(initialValue: statusFilter)
         _selectedLocation = State(initialValue: initialLocationFilter)
@@ -498,7 +503,8 @@ struct MediaGridView: View {
         let formatFiltered = base.filter { selectedFormatFilter.matches($0) }
         let tagFiltered = formatFiltered.filter { matchesSelectedTag($0) }
         let seriesFiltered = tagFiltered.filter { matchesSelectedSeries($0) }
-        let authorFiltered = seriesFiltered.filter { matchesSelectedAuthor($0) }
+        let collectionFiltered = seriesFiltered.filter { matchesSelectedCollection($0) }
+        let authorFiltered = collectionFiltered.filter { matchesSelectedAuthor($0) }
         let statusFiltered = authorFiltered.filter { matchesSelectedStatus($0) }
         let locationFiltered = statusFiltered.filter { matchesSelectedLocation($0) }
         let searchFiltered = locationFiltered.filter { matchesSearchText($0) }
@@ -575,6 +581,14 @@ struct MediaGridView: View {
         guard let series = selectedSeries else { return true }
         let normalized = series.lowercased()
         return item.series?.contains(where: { $0.name.lowercased() == normalized }) ?? false
+    }
+
+    private func matchesSelectedCollection(_ item: BookMetadata) -> Bool {
+        guard let collection = selectedCollection else { return true }
+        let normalized = collection.lowercased()
+        return item.collections?.contains(where: {
+            $0.uuid?.lowercased() == normalized || $0.name.lowercased() == normalized
+        }) ?? false
     }
 
     private func matchesSelectedAuthor(_ item: BookMetadata) -> Bool {

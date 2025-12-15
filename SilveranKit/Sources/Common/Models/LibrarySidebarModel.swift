@@ -79,38 +79,10 @@ public class LibrarySidebarModel {
                         ),
                     ),
                     SidebarItemDescription(
-                        name: "Fantasy Shelf",
-                        systemImage: "books.vertical",
-                        badge: 4,
-                        content: .mediaGrid(
-                            MediaGridConfiguration(
-                                title: "Fantasy Shelf",
-                                mediaKind: .ebook,
-                                preferredTileWidth: 120,
-                                minimumTileWidth: 50,
-                                tagFilter: "fantasy",
-                            ),
-                        ),
-                    ),
-                    SidebarItemDescription(
-                        name: "Sci-fi Shelf",
-                        systemImage: "books.vertical",
-                        badge: 3,
-                        content: .mediaGrid(
-                            MediaGridConfiguration(
-                                title: "Sci-fi Shelf",
-                                mediaKind: .ebook,
-                                preferredTileWidth: 120,
-                                minimumTileWidth: 50,
-                                tagFilter: "sci-fi",
-                            ),
-                        ),
-                    ),
-                    SidebarItemDescription(
-                        name: "Add Custom Bookshelf...",
-                        systemImage: "plus",
+                        name: "Custom Collections",
+                        systemImage: "rectangle.stack",
                         badge: -1,
-                        content: .placeholder(title: "Add Custom Bookshelf"),
+                        content: .collectionsView(.ebook)
                     ),
                 ],
             ),

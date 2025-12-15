@@ -485,6 +485,40 @@ public final class MediaViewModel {
         return result
     }
 
+    func booksByCollection(for kind: MediaKind) -> [(collection: BookCollectionSummary?, books: [BookMetadata])] {
+        let allBooks = library.bookMetaData
+
+        var collectionMap: [String: (collection: BookCollectionSummary?, books: [BookMetadata])] = [:]
+
+        for book in allBooks {
+            if let collectionsList = book.collections, let firstCollection = collectionsList.first {
+                let key = firstCollection.uuid ?? firstCollection.name
+                if var existing = collectionMap[key] {
+                    existing.books.append(book)
+                    collectionMap[key] = existing
+                } else {
+                    collectionMap[key] = (collection: firstCollection, books: [book])
+                }
+            }
+        }
+
+        for key in collectionMap.keys {
+            collectionMap[key]?.books.sort { a, b in
+                a.title.localizedCaseInsensitiveCompare(b.title) == .orderedAscending
+            }
+        }
+
+        var result = Array(collectionMap.values)
+        result.sort { a, b in
+            guard let collectionA = a.collection, let collectionB = b.collection else {
+                return a.collection != nil
+            }
+            return collectionA.name.localizedCaseInsensitiveCompare(collectionB.name) == .orderedAscending
+        }
+
+        return result
+    }
+
     enum StatusSortOrder {
         case recentPositionUpdate
         case recentlyAdded
@@ -527,6 +561,10 @@ public final class MediaViewModel {
             case .authorView:
                 return library.bookMetaData.filter { book in
                     book.authors?.isEmpty == false
+                }.count
+            case .collectionsView:
+                return library.bookMetaData.filter { book in
+                    book.collections?.isEmpty == false
                 }.count
             case .placeholder:
                 return 0

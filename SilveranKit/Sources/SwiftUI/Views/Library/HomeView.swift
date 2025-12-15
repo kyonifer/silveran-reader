@@ -264,13 +264,6 @@ struct HomeView: View {
                 limit: 12,
                 destination: "Completed"
             ),
-            makeSection(
-                title: "Fantasy Shelf",
-                mediaKind: .ebook,
-                tagFilter: "fantasy",
-                limit: 12,
-                destination: "Fantasy Shelf"
-            ),
         ]
     }
 

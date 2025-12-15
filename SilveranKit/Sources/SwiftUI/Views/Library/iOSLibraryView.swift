@@ -178,7 +178,8 @@ public struct iOSLibraryView: View {
             MoreMenuView(
                 searchText: $searchText,
                 showSettings: $showSettings,
-                showOfflineSheet: $showOfflineSheet
+                showOfflineSheet: $showOfflineSheet,
+                navigationPath: $moreNavigationPath
             )
         }
     }
@@ -200,11 +201,13 @@ struct MoreMenuView: View {
     @Binding var searchText: String
     @Binding var showSettings: Bool
     @Binding var showOfflineSheet: Bool
+    @Binding var navigationPath: NavigationPath
     @Environment(MediaViewModel.self) private var mediaViewModel
     @State private var isWatchPaired = false
 
     enum MoreDestination: Hashable {
         case authors
+        case collections
         case downloaded
         case addLocalFile
         case appleWatch
@@ -215,6 +218,9 @@ struct MoreMenuView: View {
             Section {
                 NavigationLink(value: MoreDestination.authors) {
                     Label("Authors", systemImage: "person.2.fill")
+                }
+                NavigationLink(value: MoreDestination.collections) {
+                    Label("Custom Collections", systemImage: "rectangle.stack")
                 }
                 NavigationLink(value: MoreDestination.downloaded) {
                     Label("Downloaded", systemImage: "arrow.down.circle.fill")
@@ -261,6 +267,15 @@ struct MoreMenuView: View {
                             showSettings: $showSettings,
                             showOfflineSheet: $showOfflineSheet
                         )
+                case .collections:
+                    CollectionsListView(
+                        searchText: $searchText,
+                        navigationPath: $navigationPath
+                    )
+                    .iOSLibraryToolbar(
+                        showSettings: $showSettings,
+                        showOfflineSheet: $showOfflineSheet
+                    )
                 case .downloaded:
                     MediaGridView(
                         title: "Downloaded",
@@ -320,6 +335,26 @@ struct MoreMenuView: View {
             .navigationTitle(authorName)
             .iOSLibraryToolbar(showSettings: $showSettings, showOfflineSheet: $showOfflineSheet)
         }
+        .navigationDestination(for: CollectionNavIdentifier.self) { collection in
+            MediaGridView(
+                title: collection.name,
+                searchText: "",
+                mediaKind: .ebook,
+                tagFilter: nil,
+                seriesFilter: nil,
+                collectionFilter: collection.id,
+                statusFilter: nil,
+                defaultSort: "titleAZ",
+                preferredTileWidth: 110,
+                minimumTileWidth: 90,
+                columnBreakpoints: [
+                    MediaGridView.ColumnBreakpoint(columns: 3, minWidth: 0)
+                ],
+                initialNarrationFilterOption: .both
+            )
+            .navigationTitle(collection.name)
+            .iOSLibraryToolbar(showSettings: $showSettings, showOfflineSheet: $showOfflineSheet)
+        }
         .navigationDestination(for: BookMetadata.self) { item in
             iOSBookDetailView(item: item, mediaKind: .ebook)
                 .iOSLibraryToolbar(showSettings: $showSettings, showOfflineSheet: $showOfflineSheet)
@@ -334,6 +369,138 @@ struct MoreMenuView: View {
                         .navigationBarTitleDisplayMode(.inline)
             }
         }
+    }
+}
+
+struct CollectionNavIdentifier: Hashable {
+    let id: String
+    let name: String
+}
+
+struct CollectionsListView: View {
+    @Binding var searchText: String
+    @Binding var navigationPath: NavigationPath
+    @Environment(MediaViewModel.self) private var mediaViewModel
+
+    private let horizontalPadding: CGFloat = 24
+    private let sectionSpacing: CGFloat = 32
+
+    var body: some View {
+        GeometryReader { geometry in
+            let contentWidth = geometry.size.width
+            ScrollView {
+                VStack(alignment: .leading, spacing: sectionSpacing) {
+                    collectionContent(contentWidth: contentWidth)
+                }
+                .padding(.horizontal, horizontalPadding)
+                .padding(.top, 24)
+                .padding(.bottom, 40)
+            }
+        }
+        .navigationTitle("Custom Collections")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func navigateToCollection(_ identifier: CollectionNavIdentifier) {
+        navigationPath.append(identifier)
+    }
+
+    @ViewBuilder
+    private func collectionContent(contentWidth: CGFloat) -> some View {
+        let collectionGroups = mediaViewModel.booksByCollection(for: .ebook)
+        let filteredGroups = filterCollections(collectionGroups)
+
+        if filteredGroups.isEmpty {
+            emptyStateView
+        } else {
+            ForEach(Array(filteredGroups.enumerated()), id: \.offset) { _, group in
+                collectionSection(
+                    collection: group.collection,
+                    books: group.books,
+                    contentWidth: contentWidth
+                )
+            }
+        }
+    }
+
+    private var emptyStateView: some View {
+        VStack(spacing: 12) {
+            Text("No collections found")
+                .font(.title)
+                .foregroundStyle(.secondary)
+            Text(
+                "Books in collections will appear here. Create collections on Storyteller to organize your library."
+            )
+            .font(.body)
+            .foregroundStyle(.tertiary)
+            .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: 500)
+        .frame(maxWidth: .infinity, alignment: .center)
+        .padding(.top, 60)
+    }
+
+    private func filterCollections(_ groups: [(collection: BookCollectionSummary?, books: [BookMetadata])]) -> [(
+        collection: BookCollectionSummary?, books: [BookMetadata]
+    )] {
+        guard !searchText.isEmpty else { return groups }
+        let searchLower = searchText.lowercased()
+        return groups.compactMap { group in
+            let collectionNameMatches = group.collection?.name.lowercased().contains(searchLower) ?? false
+            if collectionNameMatches {
+                return (collection: group.collection, books: group.books)
+            }
+            let filteredBooks = group.books.filter { book in
+                book.title.lowercased().contains(searchLower)
+                    || book.authors?.contains(where: {
+                        $0.name?.lowercased().contains(searchLower) ?? false
+                    }) ?? false
+            }
+            guard !filteredBooks.isEmpty else { return nil }
+            return (collection: group.collection, books: filteredBooks)
+        }
+    }
+
+    @ViewBuilder
+    private func collectionSection(collection: BookCollectionSummary?, books: [BookMetadata], contentWidth: CGFloat)
+        -> some View
+    {
+        let collectionId = collection?.uuid ?? collection?.name ?? ""
+        let collectionName = collection?.name ?? "Unknown Collection"
+        let stackWidth = max(contentWidth - (horizontalPadding * 2), 100)
+        let navIdentifier = CollectionNavIdentifier(id: collectionId, name: collectionName)
+
+        VStack(alignment: .center, spacing: 12) {
+            SeriesStackView(
+                books: books,
+                mediaKind: .ebook,
+                availableWidth: stackWidth,
+                onSelect: { _ in
+                    navigateToCollection(navIdentifier)
+                },
+                onInfo: { _ in }
+            )
+            .frame(maxWidth: stackWidth, alignment: .center)
+
+            VStack(alignment: .center, spacing: 6) {
+                Button {
+                    navigateToCollection(navIdentifier)
+                } label: {
+                    Text(collectionName)
+                        .font(.system(size: 20, weight: .regular))
+                        .foregroundColor(.primary)
+                }
+                .buttonStyle(.plain)
+                .frame(maxWidth: .infinity, alignment: .center)
+
+                Text("\(books.count) book\(books.count == 1 ? "" : "s")")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+            }
+            .padding(.top, 8)
+        }
+        .frame(maxWidth: .infinity)
     }
 }
 
