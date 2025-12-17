@@ -5,4 +5,7 @@ cd "${SCRIPT_DIR}/.."
 
 pushd SilveranKit
 swift build --target SilveranKitMacApp
+swift build --target SilveranKitiOSApp \
+      --sdk $(xcrun --sdk iphonesimulator --show-sdk-path) \
+      --triple arm64-apple-ios17.0-simulator
 popd
