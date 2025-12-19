@@ -30,8 +30,8 @@ public enum SMILParser {
         for (index, spineItem) in spine.enumerated() {
             guard let manifestItem = manifest[spineItem.idref] else { continue }
 
-            let sectionId = manifestItem.href
-            let label = tocLabels[sectionId] ?? tocLabels[spineItem.idref]
+            let sectionId = resolvePath(manifestItem.href, relativeTo: opfDir)
+            let label = tocLabels[manifestItem.href] ?? tocLabels[sectionId] ?? tocLabels[spineItem.idref]
 
             var mediaOverlay: [SMILEntry] = []
 
@@ -198,26 +198,14 @@ public enum SMILParser {
 
         return delegate.entries.map { entry in
             let resolvedTextHref = resolvePath(entry.textHref, relativeTo: smilDir)
-            let relativeTextHref = makePathRelative(resolvedTextHref, to: opfDir)
             return RawSMILEntry(
                 textId: entry.textId,
-                textHref: relativeTextHref,
+                textHref: resolvedTextHref,
                 audioFile: entry.audioFile,
                 begin: entry.begin,
                 end: entry.end
             )
         }
-    }
-
-    private static func makePathRelative(_ path: String, to basePath: String) -> String {
-        if basePath.isEmpty {
-            return path
-        }
-        let prefix = basePath.hasSuffix("/") ? basePath : basePath + "/"
-        if path.hasPrefix(prefix) {
-            return String(path.dropFirst(prefix.count))
-        }
-        return path
     }
 
     private static func resolvePath(_ path: String, relativeTo base: String) -> String {

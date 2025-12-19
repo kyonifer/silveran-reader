@@ -23,6 +23,30 @@ public struct SectionInfo: Codable, Identifiable, Sendable {
     }
 }
 
+/// Find section index matching a locator href, handling legacy hrefs without OEBPS prefix
+public func findSectionIndex(for locatorHref: String, in sections: [SectionInfo]) -> Int? {
+    if let exactMatch = sections.firstIndex(where: { $0.id == locatorHref }) {
+        return exactMatch
+    }
+
+    for (index, section) in sections.enumerated() {
+        if section.id.hasSuffix("/\(locatorHref)") {
+            return index
+        }
+        let sectionFilename = (section.id as NSString).lastPathComponent
+        let locatorFilename = (locatorHref as NSString).lastPathComponent
+        if sectionFilename == locatorFilename {
+            let sectionDir = (section.id as NSString).deletingLastPathComponent
+            let locatorDir = (locatorHref as NSString).deletingLastPathComponent
+            if sectionDir.hasSuffix(locatorDir) || locatorDir.isEmpty {
+                return index
+            }
+        }
+    }
+
+    return nil
+}
+
 /// SMIL media overlay entry with cumulative timing
 public struct SMILEntry: Codable, Sendable {
     public let textId: String

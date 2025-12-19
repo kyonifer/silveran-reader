@@ -239,9 +239,7 @@ class EbookProgressManager {
                         try await bridge.sendJsGoToLocatorCommand(locator: locator)
 
                         if let mom = mediaOverlayManager,
-                            let sectionIndex = bookStructure.firstIndex(where: {
-                                $0.id == locator.href
-                            })
+                            let sectionIndex = findSectionIndex(for: locator.href, in: bookStructure)
                         {
                             debugLog(
                                 "[EPM] Also seeking media overlay to section \(sectionIndex), fragment: \(fragment)"
@@ -249,8 +247,7 @@ class EbookProgressManager {
                             await mom.handleSeekEvent(sectionIndex: sectionIndex, anchor: fragment)
                         }
                     } else if let progression = locator.locations?.progression,
-                        let sectionIndex = bookStructure.firstIndex(where: { $0.id == locator.href }
-                        )
+                        let sectionIndex = findSectionIndex(for: locator.href, in: bookStructure)
                     {
                         debugLog("[EPM] Using section \(sectionIndex) progression: \(progression)")
                         try await bridge.sendJsGoToFractionInSectionCommand(
@@ -634,12 +631,12 @@ class EbookProgressManager {
 
         return BookLocator(
             href: String(href),
-            type: "application/epub+zip",
+            type: "application/xhtml+xml",
             title: nil as String?,
             locations: BookLocator.Locations(
                 fragments: fragments,
                 progression: chapterSeekBarValue,
-                position: chapterCurrentPage,
+                position: nil,
                 totalProgression: bookFraction,
                 cssSelector: nil as String?,
                 partialCfi: nil as String?,
@@ -660,12 +657,12 @@ class EbookProgressManager {
 
         return BookLocator(
             href: sectionInfo.id,
-            type: "application/epub+zip",
+            type: "application/xhtml+xml",
             title: sectionInfo.label,
             locations: BookLocator.Locations(
                 fragments: nil as [String]?,
                 progression: chapterSeekBarValue,
-                position: chapterCurrentPage,
+                position: nil,
                 totalProgression: fraction,
                 cssSelector: nil as String?,
                 partialCfi: nil as String?,

@@ -86,7 +86,7 @@ class EbookPlayerViewModel {
     func handleChapterSelectionByHref(_ href: String) {
         debugLog("[EbookPlayerViewModel] Chapter selected by href: \(href)")
 
-        guard let chapterIndex = bookStructure.firstIndex(where: { $0.id == href }) else {
+        guard let chapterIndex = findSectionIndex(for: href, in: bookStructure) else {
             debugLog("[EbookPlayerViewModel] Chapter not found for href: \(href)")
             return
         }

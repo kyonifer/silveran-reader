@@ -307,7 +307,7 @@ public final class CarPlayCoordinator {
 
         if let locator = metadata.position?.locator {
             let bookStructure = await SMILPlayerActor.shared.getBookStructure()
-            if let sectionIndex = bookStructure.firstIndex(where: { $0.id == locator.href }),
+            if let sectionIndex = findSectionIndex(for: locator.href, in: bookStructure),
                let fragment = locator.locations?.fragments?.first {
                 let success = await SMILPlayerActor.shared.seekToFragment(
                     sectionIndex: sectionIndex,
