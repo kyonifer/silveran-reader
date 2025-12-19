@@ -69,8 +69,12 @@ public struct iOSLibraryView: View {
                 selectedTab = .books
             }
         }
-        .onChange(of: selectedTab) {
-            searchText = ""
+        .onChange(of: selectedTab) { oldValue, newValue in
+            // Skip clearing when switching from home to books, since that switch
+            // is triggered by typing into search and we don't want to erase what was typed
+            if !(oldValue == .home && newValue == .books) {
+                searchText = ""
+            }
         }
         .sheet(isPresented: $showSettings) {
             NavigationStack {
