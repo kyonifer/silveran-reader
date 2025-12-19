@@ -19,12 +19,45 @@ public struct BookSyncState: Sendable {
     }
 }
 
+public struct BookProgress: Sendable {
+    public let bookId: String
+    public let locator: BookLocator?
+    public let timestamp: Double?
+    public let source: ProgressSource
+
+    public enum ProgressSource: Sendable {
+        case server
+        case pendingSync
+        case localOnly
+    }
+
+    public var progressFraction: Double {
+        let raw = locator?.locations?.totalProgression
+            ?? locator?.locations?.progression
+            ?? 0
+        return min(max(raw, 0), 1)
+    }
+
+    public init(
+        bookId: String,
+        locator: BookLocator?,
+        timestamp: Double?,
+        source: ProgressSource
+    ) {
+        self.bookId = bookId
+        self.locator = locator
+        self.timestamp = timestamp
+        self.source = source
+    }
+}
+
 @globalActor
 public actor ProgressSyncActor {
     public static let shared = ProgressSyncActor()
 
     private var pendingProgressQueue: [PendingProgressSync] = []
     private var bookSyncStates: [String: BookSyncState] = [:]
+    private var serverPositions: [String: BookReadingPosition] = [:]
     private var lastWakeTimestamp: TimeInterval = Date().timeIntervalSince1970
     private var queueLoaded = false
 
@@ -217,6 +250,77 @@ public actor ProgressSyncActor {
 
         debugLog("[PSA] fetchCurrentPosition: returning position timestamp=\(book.position?.timestamp ?? 0)")
         return book.position
+    }
+
+    // MARK: - Progress Source of Truth
+
+    /// Called by LMA when metadata updates from server or disk
+    public func updateServerPositions(_ positions: [String: BookReadingPosition]) {
+        for (bookId, position) in positions {
+            serverPositions[bookId] = position
+        }
+        debugLog("[PSA] updateServerPositions: updated \(positions.count) positions, total=\(serverPositions.count)")
+    }
+
+    /// Get reconciled progress for all books (pending queue takes precedence over server)
+    public func getAllBookProgress() async -> [String: BookProgress] {
+        await ensureQueueLoaded()
+
+        var result: [String: BookProgress] = [:]
+
+        for (bookId, serverPosition) in serverPositions {
+            if let pending = pendingProgressQueue.first(where: { $0.bookId == bookId }) {
+                result[bookId] = BookProgress(
+                    bookId: bookId,
+                    locator: pending.locator,
+                    timestamp: pending.timestamp,
+                    source: .pendingSync
+                )
+            } else {
+                result[bookId] = BookProgress(
+                    bookId: bookId,
+                    locator: serverPosition.locator,
+                    timestamp: serverPosition.timestamp,
+                    source: .server
+                )
+            }
+        }
+
+        for pending in pendingProgressQueue where result[pending.bookId] == nil {
+            result[pending.bookId] = BookProgress(
+                bookId: pending.bookId,
+                locator: pending.locator,
+                timestamp: pending.timestamp,
+                source: .pendingSync
+            )
+        }
+
+        return result
+    }
+
+    /// Get reconciled progress for a single book
+    public func getBookProgress(for bookId: String) async -> BookProgress? {
+        await ensureQueueLoaded()
+
+        if let pending = pendingProgressQueue.first(where: { $0.bookId == bookId }) {
+            return BookProgress(
+                bookId: bookId,
+                locator: pending.locator,
+                timestamp: pending.timestamp,
+                source: .pendingSync
+            )
+        }
+
+        if let serverPosition = serverPositions[bookId] {
+            return BookProgress(
+                bookId: bookId,
+                locator: serverPosition.locator,
+                timestamp: serverPosition.timestamp,
+                source: .server
+            )
+        }
+
+        return nil
     }
 
     // MARK: - Wake Detection

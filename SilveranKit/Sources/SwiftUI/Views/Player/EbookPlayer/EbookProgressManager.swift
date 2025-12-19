@@ -191,7 +191,17 @@ class EbookProgressManager {
 
         Task { @MainActor in
             do {
-                if let locator = initialLocator {
+                var locatorToUse = initialLocator
+
+                if let bookId = self.bookId {
+                    if let psaProgress = await ProgressSyncActor.shared.getBookProgress(for: bookId),
+                       let psaLocator = psaProgress.locator {
+                        debugLog("[EPM] Got locator from PSA (source: \(psaProgress.source))")
+                        locatorToUse = psaLocator
+                    }
+                }
+
+                if let locator = locatorToUse {
                     let isAudioLocator =
                         locator.type.contains("audio") || locator.href.hasPrefix("audiobook://")
 
@@ -677,25 +687,25 @@ class EbookProgressManager {
             return
         }
 
-        guard let serverPosition = await ProgressSyncActor.shared.fetchCurrentPosition(for: bookId),
-              let serverTimestamp = serverPosition.timestamp else {
+        guard let psaProgress = await ProgressSyncActor.shared.getBookProgress(for: bookId),
+              let psaTimestamp = psaProgress.timestamp else {
             debugLog("[EPM] No position from PSA for book \(bookId)")
             return
         }
 
         let localTimestampMs = (lastActivityTimestamp ?? 0) * 1000
-        guard serverTimestamp > localTimestampMs else {
-            debugLog("[EPM] Server position not newer (server=\(serverTimestamp) <= local=\(localTimestampMs))")
+        guard psaTimestamp > localTimestampMs else {
+            debugLog("[EPM] PSA position not newer (psa=\(psaTimestamp) <= local=\(localTimestampMs))")
             return
         }
 
-        debugLog("[EPM] Server has newer position (server=\(serverTimestamp) > local=\(localTimestampMs)), navigating")
-        if let locator = serverPosition.locator {
+        debugLog("[EPM] PSA has newer position (psa=\(psaTimestamp) > local=\(localTimestampMs)), navigating")
+        if let locator = psaProgress.locator {
             do {
                 try await commsBridge?.sendJsGoToLocatorCommand(locator: locator)
-                debugLog("[EPM] Navigated to server position: \(locator.href)")
+                debugLog("[EPM] Navigated to PSA position: \(locator.href)")
             } catch {
-                debugLog("[EPM] Failed to navigate to server position: \(error)")
+                debugLog("[EPM] Failed to navigate to PSA position: \(error)")
             }
         }
     }

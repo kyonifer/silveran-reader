@@ -362,6 +362,20 @@ public struct BookReadingPosition: Codable, Sendable, Hashable {
     public let timestamp: Double?
     public let createdAt: String?
     public let updatedAt: String?
+
+    public init(
+        uuid: String?,
+        locator: BookLocator?,
+        timestamp: Double?,
+        createdAt: String?,
+        updatedAt: String?
+    ) {
+        self.uuid = uuid
+        self.locator = locator
+        self.timestamp = timestamp
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
 }
 
 public enum SyncResult: Sendable {

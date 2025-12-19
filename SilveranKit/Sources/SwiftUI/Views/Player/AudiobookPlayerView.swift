@@ -239,9 +239,10 @@ public struct AudiobookPlayerView: View {
             await AudiobookActor.shared.setPlaybackRate(playbackRate)
             await AudiobookActor.shared.setVolume(volume)
 
-            if let position = bookData.metadata.position,
-                let totalProgression = position.locator?.locations?.totalProgression
+            if let psaProgress = await ProgressSyncActor.shared.getBookProgress(for: bookData.metadata.uuid),
+                let totalProgression = psaProgress.locator?.locations?.totalProgression
             {
+                debugLog("[AudiobookPlayerView] Got position from PSA (source: \(psaProgress.source))")
                 await AudiobookActor.shared.seekToTotalProgressFraction(totalProgression)
                 lastSyncedProgress = totalProgression
             }

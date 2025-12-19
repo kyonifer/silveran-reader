@@ -91,19 +91,23 @@ public actor LocalMediaActor: GlobalActor {
     }
 
     public func updateStorytellerMetadata(_ metadata: [BookMetadata]) async throws {
-        let mergedMetadata = mergeWithLocalTimestamps(metadata)
-        let pendingSyncs = await ProgressSyncActor.shared.getPendingProgressSyncs()
-        let enrichedMetadata = applyOfflineProgressToMetadata(mergedMetadata, pendingSyncs: pendingSyncs)
-        localStorytellerMetadata = enrichedMetadata
-
+        localStorytellerMetadata = metadata
         try await filesystem.saveStorytellerLibraryMetadata(metadata)
 
         var paths: [String: MediaPaths] = [:]
-        for book in enrichedMetadata {
+        for book in metadata {
             let mediaPaths = await scanBookPaths(for: book.uuid, domain: .storyteller)
             paths[book.uuid] = mediaPaths
         }
         localStorytellerBookPaths = paths
+
+        let positions = Dictionary(
+            uniqueKeysWithValues: metadata.compactMap { book -> (String, BookReadingPosition)? in
+                guard let pos = book.position else { return nil }
+                return (book.uuid, pos)
+            }
+        )
+        await ProgressSyncActor.shared.updateServerPositions(positions)
 
         await notifyObservers()
     }
@@ -212,86 +216,6 @@ public actor LocalMediaActor: GlobalActor {
         await notifyObservers()
     }
 
-    private func mergeWithLocalTimestamps(_ serverMetadata: [BookMetadata]) -> [BookMetadata] {
-        return serverMetadata.map { serverBook in
-            guard let localBook = localStorytellerMetadata.first(where: { $0.uuid == serverBook.uuid }),
-                  let localTimestamp = localBook.position?.timestamp,
-                  let serverTimestamp = serverBook.position?.timestamp,
-                  localTimestamp > serverTimestamp else {
-                return serverBook
-            }
-
-            debugLog("[LocalMediaActor] mergeWithLocalTimestamps: keeping local position for \(serverBook.uuid) (local=\(localTimestamp) > server=\(serverTimestamp))")
-
-            return BookMetadata(
-                uuid: serverBook.uuid,
-                title: serverBook.title,
-                subtitle: serverBook.subtitle,
-                description: serverBook.description,
-                language: serverBook.language,
-                createdAt: serverBook.createdAt,
-                updatedAt: serverBook.updatedAt,
-                publicationDate: serverBook.publicationDate,
-                authors: serverBook.authors,
-                narrators: serverBook.narrators,
-                creators: serverBook.creators,
-                series: serverBook.series,
-                tags: serverBook.tags,
-                collections: serverBook.collections,
-                ebook: serverBook.ebook,
-                audiobook: serverBook.audiobook,
-                readaloud: serverBook.readaloud,
-                status: serverBook.status,
-                position: localBook.position
-            )
-        }
-    }
-
-    private func applyOfflineProgressToMetadata(
-        _ metadata: [BookMetadata],
-        pendingSyncs: [PendingProgressSync]
-    ) -> [BookMetadata] {
-        guard !pendingSyncs.isEmpty else { return metadata }
-
-        return metadata.map { book in
-            guard let pending = pendingSyncs.first(where: { $0.bookId == book.uuid }) else {
-                return book
-            }
-
-            let updatedAtString = Date(timeIntervalSince1970: pending.timestamp / 1000).ISO8601Format()
-
-            let newPosition = BookReadingPosition(
-                uuid: book.position?.uuid,
-                locator: pending.locator,
-                timestamp: pending.timestamp,
-                createdAt: book.position?.createdAt,
-                updatedAt: updatedAtString
-            )
-
-            return BookMetadata(
-                uuid: book.uuid,
-                title: book.title,
-                subtitle: book.subtitle,
-                description: book.description,
-                language: book.language,
-                createdAt: book.createdAt,
-                updatedAt: book.updatedAt,
-                publicationDate: book.publicationDate,
-                authors: book.authors,
-                narrators: book.narrators,
-                creators: book.creators,
-                series: book.series,
-                tags: book.tags,
-                collections: book.collections,
-                ebook: book.ebook,
-                audiobook: book.audiobook,
-                readaloud: book.readaloud,
-                status: book.status,
-                position: newPosition
-            )
-        }
-    }
-
     public func scanForMedia() async throws {
         try await filesystem.ensureLocalStorageDirectories()
 
@@ -302,8 +226,7 @@ public actor LocalMediaActor: GlobalActor {
             storytellerMetadata = []
         }
 
-        let pendingSyncs = await ProgressSyncActor.shared.getPendingProgressSyncs()
-        localStorytellerMetadata = applyOfflineProgressToMetadata(storytellerMetadata, pendingSyncs: pendingSyncs)
+        localStorytellerMetadata = storytellerMetadata
 
         var storytellerPaths: [String: MediaPaths] = [:]
         for book in localStorytellerMetadata {
@@ -315,6 +238,19 @@ public actor LocalMediaActor: GlobalActor {
         let localScanResult = try await localLibrary.scanLocalMedia(filesystem: filesystem)
         localStandaloneMetadata = localScanResult.metadata
         localStandaloneBookPaths = localScanResult.paths
+
+        var allPositions: [String: BookReadingPosition] = [:]
+        for book in storytellerMetadata {
+            if let pos = book.position {
+                allPositions[book.uuid] = pos
+            }
+        }
+        for book in localStandaloneMetadata {
+            if let pos = book.position {
+                allPositions[book.uuid] = pos
+            }
+        }
+        await ProgressSyncActor.shared.updateServerPositions(allPositions)
 
         await notifyObservers()
     }

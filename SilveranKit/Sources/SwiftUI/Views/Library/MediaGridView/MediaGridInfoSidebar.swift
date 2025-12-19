@@ -157,14 +157,14 @@ struct MediaGridInfoSidebar: View {
     }
 
     private var progressLabel: String {
-        "\(Int((item.progress * 100).rounded()))%"
+        "\(Int((mediaViewModel.progress(for: item.id) * 100).rounded()))%"
     }
 
     private func prepareForDisplay() {
         animatedProgress = 0
         DispatchQueue.main.async {
             withAnimation(.easeOut(duration: 0.45)) {
-                animatedProgress = item.progress
+                self.animatedProgress = self.mediaViewModel.progress(for: self.item.id)
             }
         }
     }

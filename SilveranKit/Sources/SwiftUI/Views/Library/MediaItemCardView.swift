@@ -143,7 +143,7 @@ struct MediaItemCardView: View {
             .frame(height: metrics.coverContainerHeight - 7)
             .clipped()
 
-            MediaProgressBar(progress: item.progress)
+            MediaProgressBar(progress: mediaViewModel.progress(for: item.id))
                 .frame(width: metrics.coverWidth)
                 .frame(height: 3)
 

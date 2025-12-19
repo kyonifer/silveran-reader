@@ -19,6 +19,7 @@ public final class MediaViewModel {
     var cachedConfig: SilveranGlobalConfig = SilveranGlobalConfig()
     var booksWithUnsyncedProgress: Set<String> = []
     var syncNotification: SyncNotification?
+    var bookProgressCache: [String: BookProgress] = [:]
 
     private let lma: LocalMediaActor = LocalMediaActor.shared
     private let sta: StorytellerActor = StorytellerActor.shared
@@ -217,6 +218,11 @@ public final class MediaViewModel {
             "[MediaViewModel] refreshMetadata: Set booksWithUnsyncedProgress to \(booksWithUnsyncedProgress.count) books"
         )
 
+        bookProgressCache = await ProgressSyncActor.shared.getAllBookProgress()
+        debugLog(
+            "[MediaViewModel] refreshMetadata: Loaded \(bookProgressCache.count) progress entries from PSA"
+        )
+
         applyLibraryMetadata(metadata)
         cachedBookPaths = paths
         localStandaloneBookIds = Set(standaloneMetadata.map { $0.uuid })
@@ -381,7 +387,9 @@ public final class MediaViewModel {
         switch sortBy {
             case .recentPositionUpdate:
                 sorted = filtered.sorted { a, b in
-                    (a.position?.updatedAt ?? "") > (b.position?.updatedAt ?? "")
+                    let tsA = bookProgressCache[a.id]?.timestamp ?? 0
+                    let tsB = bookProgressCache[b.id]?.timestamp ?? 0
+                    return tsA > tsB
                 }
             case .recentlyAdded:
                 sorted = filtered.sorted { a, b in
@@ -686,6 +694,23 @@ public final class MediaViewModel {
         } else {
             return "Storyteller"
         }
+    }
+
+    // MARK: - Progress from PSA
+
+    func progress(for bookId: String) -> Double {
+        bookProgressCache[bookId]?.progressFraction ?? 0
+    }
+
+    func position(for bookId: String) -> BookReadingPosition? {
+        guard let bp = bookProgressCache[bookId], let locator = bp.locator else { return nil }
+        return BookReadingPosition(
+            uuid: nil,
+            locator: locator,
+            timestamp: bp.timestamp,
+            createdAt: nil,
+            updatedAt: nil
+        )
     }
 
     func downloadProgressFraction(

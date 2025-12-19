@@ -96,20 +96,21 @@ struct iOSBookDetailView: View {
     }
 
     private var progressSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        let progress = mediaViewModel.progress(for: item.id)
+        return VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("Reading Progress")
                     .font(.callout)
                     .fontWeight(.medium)
                 Spacer()
-                Text("\(Int((currentItem.progress * 100).rounded()))%")
+                Text("\(Int((progress * 100).rounded()))%")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
 
-            ProgressView(value: currentItem.progress, total: 1)
+            ProgressView(value: progress, total: 1)
                 .progressViewStyle(.linear)
-                .animation(.easeOut(duration: 0.45), value: currentItem.progress)
+                .animation(.easeOut(duration: 0.45), value: progress)
         }
     }
 
