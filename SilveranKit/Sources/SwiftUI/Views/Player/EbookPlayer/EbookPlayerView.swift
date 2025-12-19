@@ -165,7 +165,7 @@ public struct EbookPlayerView: View {
         if let bgColor = viewModel.settingsVM.backgroundColor, let color = Color(hex: bgColor) {
             return color
         }
-        let defaultHex = colorScheme == .dark ? kDefaultBackgroundColorIOSDark : kDefaultBackgroundColorIOSLight
+        let defaultHex = colorScheme == .dark ? kDefaultBackgroundColorDark : kDefaultBackgroundColorLight
         return Color(hex: defaultHex) ?? .white
     }
     #endif
@@ -396,12 +396,15 @@ public struct EbookPlayerView: View {
             .transition(.move(edge: .bottom).combined(with: .opacity))
         )
         #else
+        let bgHex = viewModel.settingsVM.backgroundColor ?? (colorScheme == .dark ? kDefaultBackgroundColorDark : kDefaultBackgroundColorLight)
+        let isLight = isLightColor(hex: bgHex)
         return AnyView(
             EbookOverlayMac(
                 readingBarConfig: viewModel.settingsVM.readingBarConfig,
                 progressData: progressData,
                 isPlaying: mom?.isPlaying ?? false,
                 playbackRate: mom?.playbackRate ?? viewModel.settingsVM.defaultPlaybackSpeed,
+                isLightBackground: isLight,
                 chapterProgress: viewModel.chapterProgressBinding,
                 onPrevChapter: viewModel.handlePrevChapter,
                 onSkipBackward: viewModel.handlePrevSentence,
@@ -438,6 +441,20 @@ public struct EbookPlayerView: View {
         .help(accessibilityLabel)
         #endif
     }
+
+    #if os(macOS)
+    private func isLightColor(hex: String) -> Bool {
+        guard let color = Color(hex: hex) else {
+            return colorScheme == .light
+        }
+        let nsColor = NSColor(color)
+        guard let converted = nsColor.usingColorSpace(.sRGB) else {
+            return colorScheme == .light
+        }
+        let brightness = (converted.redComponent * 299 + converted.greenComponent * 587 + converted.blueComponent * 114) / 1000
+        return brightness > 0.5
+    }
+    #endif
 
     private var audiobookSidebar: some View {
         let pm = viewModel.progressManager

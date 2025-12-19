@@ -1,11 +1,9 @@
 import Foundation
 
-#if os(iOS)
-public let kDefaultBackgroundColorIOSLight = "#FFFFFF"
-public let kDefaultForegroundColorIOSLight = "#000000"
-public let kDefaultBackgroundColorIOSDark = "#1A1A1A"
-public let kDefaultForegroundColorIOSDark = "#EEEEEE"
-#endif
+public let kDefaultBackgroundColorLight = "#FFFFFF"
+public let kDefaultForegroundColorLight = "#000000"
+public let kDefaultBackgroundColorDark = "#1A1A1A"
+public let kDefaultForegroundColorDark = "#EEEEEE"
 
 public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
     public var reading: Reading
@@ -203,7 +201,7 @@ public actor SettingsActor {
         marginTopBottom: Double? = nil,
         wordSpacing: Double? = nil,
         letterSpacing: Double? = nil,
-        highlightColor: String? = nil,
+        highlightColor: String?? = nil,
         backgroundColor: String?? = nil,
         foregroundColor: String?? = nil,
         customCSS: String?? = nil,

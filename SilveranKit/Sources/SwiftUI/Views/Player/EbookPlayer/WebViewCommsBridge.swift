@@ -269,7 +269,7 @@ class WebViewCommsBridge {
             throw WebViewCommsBridgeError.webViewNotAvailable
         }
 
-        let styles: [String: Any?] = [
+        var styles: [String: Any] = [
             "fontSize": fontSize,
             "fontFamily": fontFamily,
             "lineSpacing": lineSpacing,
@@ -279,13 +279,16 @@ class WebViewCommsBridge {
             "wordSpacing": wordSpacing,
             "letterSpacing": letterSpacing,
             "highlightColor": highlightColor,
-            "backgroundColor": backgroundColor,
-            "foregroundColor": foregroundColor,
-            "customCSS": customCSS,
             "singleColumnMode": singleColumnMode,
         ]
 
-        let jsonData = try JSONSerialization.data(withJSONObject: styles.compactMapValues { $0 })
+        styles["backgroundColor"] = backgroundColor ?? NSNull()
+        styles["foregroundColor"] = foregroundColor ?? NSNull()
+        if let customCSS = customCSS {
+            styles["customCSS"] = customCSS
+        }
+
+        let jsonData = try JSONSerialization.data(withJSONObject: styles)
         let jsonString = String(data: jsonData, encoding: .utf8)!
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "'", with: "\\'")

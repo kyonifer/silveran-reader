@@ -480,19 +480,9 @@ struct EbookPlayerSettings: View {
         settingsVM.marginTopBottom = 8
         settingsVM.wordSpacing = 0
         settingsVM.letterSpacing = 0
-        settingsVM.highlightColor = colorScheme == .dark ? "#333333" : "#CCCCCC"
-        #if os(iOS)
-        if colorScheme == .dark {
-            settingsVM.backgroundColor = kDefaultBackgroundColorIOSDark
-            settingsVM.foregroundColor = kDefaultForegroundColorIOSDark
-        } else {
-            settingsVM.backgroundColor = kDefaultBackgroundColorIOSLight
-            settingsVM.foregroundColor = kDefaultForegroundColorIOSLight
-        }
-        #else
+        settingsVM.highlightColor = nil
         settingsVM.backgroundColor = nil
         settingsVM.foregroundColor = nil
-        #endif
         settingsVM.enableReadingBar = true
         settingsVM.showProgressBar = false
         settingsVM.showProgress = true

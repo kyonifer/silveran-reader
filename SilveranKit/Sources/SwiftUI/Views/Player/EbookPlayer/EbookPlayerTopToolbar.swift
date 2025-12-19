@@ -30,7 +30,7 @@ struct EbookPlayerTopToolbar: View {
     @State private var showSleepTimerSheet = false
 
     private var toolbarForegroundColor: Color {
-        let bgHex = settingsVM.backgroundColor ?? (colorScheme == .dark ? kDefaultBackgroundColorIOSDark : kDefaultBackgroundColorIOSLight)
+        let bgHex = settingsVM.backgroundColor ?? (colorScheme == .dark ? kDefaultBackgroundColorDark : kDefaultBackgroundColorLight)
         return isLightColor(hex: bgHex) ? .black : .white
     }
 

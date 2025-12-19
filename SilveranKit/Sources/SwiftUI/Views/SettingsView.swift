@@ -33,6 +33,7 @@ public struct SettingsView: View {
     @State private var isLoaded = false
     @State private var saveError: String?
     @State private var showResetConfirmation = false
+    @State private var persistTask: Task<Void, Never>?
     @StateObject private var reloader = SettingsReloader()
     #if os(macOS)
     @State private var selectedTab: SettingsTab = .general
@@ -108,7 +109,12 @@ public struct SettingsView: View {
 
     private func persistConfig(newValue: SilveranGlobalConfig) {
         guard isLoaded else { return }
-        Task {
+
+        persistTask?.cancel()
+        persistTask = Task {
+            try? await Task.sleep(for: .milliseconds(300))
+            guard !Task.isCancelled else { return }
+
             do {
                 debugLog(
                     "[SettingsView] Persisting config - Progress: \(newValue.sync.progressSyncIntervalSeconds)s, Metadata: \(newValue.sync.metadataRefreshIntervalSeconds)s"
@@ -120,7 +126,7 @@ public struct SettingsView: View {
                     marginTopBottom: newValue.reading.marginTopBottom,
                     wordSpacing: newValue.reading.wordSpacing,
                     letterSpacing: newValue.reading.letterSpacing,
-                    highlightColor: newValue.reading.highlightColor,
+                    highlightColor: .some(newValue.reading.highlightColor),
                     backgroundColor: .some(newValue.reading.backgroundColor),
                     foregroundColor: .some(newValue.reading.foregroundColor),
                     customCSS: .some(newValue.reading.customCSS),
@@ -469,17 +475,32 @@ private struct MacReaderSettingsView: View {
                 Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 18) {
                     GridRow {
                         label("Highlight Color")
-                        AppearanceColorControl(hex: $reading.highlightColor, isRequired: true)
+                        AppearanceColorControl(
+                            hex: $reading.highlightColor,
+                            isRequired: true,
+                            defaultLightColor: "#CCCCCC",
+                            defaultDarkColor: "#333333"
+                        )
                     }
 
                     GridRow {
                         label("Background Color")
-                        AppearanceColorControl(hex: $reading.backgroundColor, isRequired: false)
+                        AppearanceColorControl(
+                            hex: $reading.backgroundColor,
+                            isRequired: false,
+                            defaultLightColor: kDefaultBackgroundColorLight,
+                            defaultDarkColor: kDefaultBackgroundColorDark
+                        )
                     }
 
                     GridRow {
                         label("Foreground Color")
-                        AppearanceColorControl(hex: $reading.foregroundColor, isRequired: false)
+                        AppearanceColorControl(
+                            hex: $reading.foregroundColor,
+                            isRequired: false,
+                            defaultLightColor: kDefaultForegroundColorLight,
+                            defaultDarkColor: kDefaultForegroundColorDark
+                        )
                     }
                 }
 
@@ -790,12 +811,17 @@ private struct HighlightColorControl: View {
 private struct AppearanceColorControl: View {
     let hex: Binding<String?>
     let isRequired: Bool
+    let defaultLightColor: String?
+    let defaultDarkColor: String?
     @State private var showCustomPicker = false
+    @State private var pickerColor: Color = .gray
     @Environment(\.colorScheme) private var colorScheme
 
-    init(hex: Binding<String?>, isRequired: Bool) {
+    init(hex: Binding<String?>, isRequired: Bool, defaultLightColor: String? = nil, defaultDarkColor: String? = nil) {
         self.hex = hex
         self.isRequired = isRequired
+        self.defaultLightColor = defaultLightColor
+        self.defaultDarkColor = defaultDarkColor
     }
 
     init(hex: Binding<String>, isRequired: Bool) {
@@ -804,37 +830,62 @@ private struct AppearanceColorControl: View {
             set: { hex.wrappedValue = $0 ?? "#333333" }
         )
         self.isRequired = isRequired
+        self.defaultLightColor = nil
+        self.defaultDarkColor = nil
+    }
+
+    private var defaultColor: Color {
+        let defaultHex = colorScheme == .dark ? defaultDarkColor : defaultLightColor
+        if let hex = defaultHex, let color = Color(hex: hex) {
+            return color
+        }
+        return Color.primary.opacity(0.1)
+    }
+
+    private static let presetColors: [(light: String, dark: String)] = [
+        ("#AAAAAA", "#333333"),
+        ("#FFC857", "#B8860B"),
+        ("#4DABF7", "#1C7ED6")
+    ]
+
+    private var isCustomColorSelected: Bool {
+        guard let currentHex = hex.wrappedValue else { return false }
+        return !Self.presetColors.contains { $0.light == currentHex || $0.dark == currentHex }
     }
 
     var body: some View {
         HStack(spacing: 8) {
+            Button {
+                hex.wrappedValue = nil
+            } label: {
+                VStack(spacing: 4) {
+                    Circle()
+                        .fill(defaultColor)
+                        .frame(width: 28, height: 28)
+                        .overlay(
+                            Circle()
+                                .strokeBorder(
+                                    hex.wrappedValue == nil ? Color.primary : Color.clear,
+                                    lineWidth: 2
+                                )
+                        )
+                    Text("Default")
+                        .font(.caption2)
+                }
+            }
+            .buttonStyle(.plain)
+
             if isRequired {
-                colorButton(lightColor: "#AAAAAA", darkColor: "#333333", label: "Grey")
                 colorButton(lightColor: "#FFC857", darkColor: "#B8860B", label: "Yellow")
                 colorButton(lightColor: "#4DABF7", darkColor: "#1C7ED6", label: "Blue")
-            } else {
-                Button {
-                    hex.wrappedValue = nil
-                } label: {
-                    VStack(spacing: 4) {
-                        Circle()
-                            .fill(Color.primary.opacity(0.1))
-                            .frame(width: 28, height: 28)
-                            .overlay(
-                                Circle()
-                                    .strokeBorder(
-                                        hex.wrappedValue == nil ? Color.primary : Color.clear,
-                                        lineWidth: 2
-                                    )
-                            )
-                        Text("Default")
-                            .font(.caption2)
-                    }
-                }
-                .buttonStyle(.plain)
             }
 
             Button {
+                if let hexValue = hex.wrappedValue {
+                    pickerColor = Color(hex: hexValue) ?? .gray
+                } else {
+                    pickerColor = .gray
+                }
                 showCustomPicker = true
             } label: {
                 VStack(spacing: 4) {
@@ -848,6 +899,12 @@ private struct AppearanceColorControl: View {
                                 .fill(Color.primary.opacity(0.1))
                                 .frame(width: 28, height: 28)
                         }
+                        Circle()
+                            .strokeBorder(
+                                isCustomColorSelected ? Color.primary : Color.clear,
+                                lineWidth: 2
+                            )
+                            .frame(width: 28, height: 28)
                         Image(systemName: "eyedropper")
                             .font(.system(size: 12))
                             .foregroundColor(.white)
@@ -859,22 +916,11 @@ private struct AppearanceColorControl: View {
             }
             .buttonStyle(.plain)
             .popover(isPresented: $showCustomPicker) {
-                ColorPicker(
-                    "Custom Color",
-                    selection: Binding(
-                        get: {
-                            if let hexValue = hex.wrappedValue {
-                                return Color(hex: hexValue) ?? .gray
-                            }
-                            return .gray
-                        },
-                        set: { newColor in
-                            hex.wrappedValue = newColor.hexString()
-                        }
-                    ),
-                    supportsOpacity: false
-                )
-                .padding()
+                ColorPicker("Custom Color", selection: $pickerColor, supportsOpacity: false)
+                    .padding()
+                    .onChange(of: pickerColor) { _, newColor in
+                        hex.wrappedValue = newColor.hexString()
+                    }
             }
         }
         .frame(width: 220, alignment: .leading)

@@ -51,10 +51,11 @@ class ReaderStyleManager {
     }
 
     func handleColorSchemeChange(_ newColorScheme: ColorScheme) {
-        debugLog(
-            "[ReaderStyleManager] Color scheme changed to \(newColorScheme == .dark ? "dark" : "light")"
-        )
+        let oldScheme = colorScheme
         colorScheme = newColorScheme
+        debugLog(
+            "[ReaderStyleManager] Color scheme changed: \(oldScheme == .dark ? "dark" : "light") -> \(newColorScheme == .dark ? "dark" : "light")"
+        )
         Task { @MainActor in
             await sendStyleUpdate()
         }
@@ -69,21 +70,15 @@ class ReaderStyleManager {
         let isDarkMode = colorScheme == .dark
 
         let effectiveHighlightColor = settingsVM.highlightColor ?? (isDarkMode ? "#333333" : "#CCCCCC")
-
-        #if os(iOS)
-        let effectiveBackgroundColor = settingsVM.backgroundColor ?? (isDarkMode ? kDefaultBackgroundColorIOSDark : kDefaultBackgroundColorIOSLight)
-        let effectiveForegroundColor = settingsVM.foregroundColor ?? (isDarkMode ? kDefaultForegroundColorIOSDark : kDefaultForegroundColorIOSLight)
-        #else
-        let effectiveBackgroundColor = settingsVM.backgroundColor
-        let effectiveForegroundColor = settingsVM.foregroundColor
-        #endif
+        let effectiveBackgroundColor = settingsVM.backgroundColor ?? (isDarkMode ? kDefaultBackgroundColorDark : kDefaultBackgroundColorLight)
+        let effectiveForegroundColor = settingsVM.foregroundColor ?? (isDarkMode ? kDefaultForegroundColorDark : kDefaultForegroundColorLight)
 
         debugLog("[ReaderStyleManager] Sending style update:")
-        debugLog("[ReaderStyleManager]   fontSize: \(settingsVM.fontSize)")
-        debugLog("[ReaderStyleManager]   fontFamily: \(settingsVM.fontFamily)")
         debugLog("[ReaderStyleManager]   isDarkMode: \(isDarkMode)")
-        debugLog("[ReaderStyleManager]   backgroundColor: \(effectiveBackgroundColor ?? "nil")")
-        debugLog("[ReaderStyleManager]   foregroundColor: \(effectiveForegroundColor ?? "nil")")
+        debugLog("[ReaderStyleManager]   highlightColor (raw): \(settingsVM.highlightColor ?? "nil")")
+        debugLog("[ReaderStyleManager]   highlightColor (effective): \(effectiveHighlightColor)")
+        debugLog("[ReaderStyleManager]   backgroundColor: \(effectiveBackgroundColor)")
+        debugLog("[ReaderStyleManager]   foregroundColor: \(effectiveForegroundColor)")
 
         do {
             try await bridge.sendJsUpdateStyles(

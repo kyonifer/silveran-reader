@@ -141,7 +141,7 @@ public final class SettingsViewModel {
             marginTopBottom: marginTopBottom,
             wordSpacing: wordSpacing,
             letterSpacing: letterSpacing,
-            highlightColor: highlightColor,
+            highlightColor: .some(highlightColor),
             backgroundColor: .some(backgroundColor),
             foregroundColor: .some(foregroundColor),
             customCSS: .some(customCSS),
