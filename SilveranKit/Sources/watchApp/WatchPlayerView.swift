@@ -15,22 +15,26 @@ struct WatchPlayerView: View {
 
     var body: some View {
         Group {
-            switch currentPage {
-            case .chapters:
-                ChapterListView(viewModel: viewModel) { sectionIndex in
-                    Task {
-                        await viewModel.jumpToChapter(sectionIndex)
-                        currentPage = .controls
+            if viewModel.isLoadingPosition {
+                loadingView
+            } else {
+                switch currentPage {
+                case .chapters:
+                    ChapterListView(viewModel: viewModel) { sectionIndex in
+                        Task {
+                            await viewModel.jumpToChapter(sectionIndex)
+                            currentPage = .controls
+                        }
                     }
+                case .controls:
+                    AudioControlsPage(
+                        viewModel: viewModel,
+                        onChapters: { currentPage = .chapters },
+                        onText: { currentPage = .text }
+                    )
+                case .text:
+                    TextReaderPage(viewModel: viewModel, onBack: { currentPage = .controls })
                 }
-            case .controls:
-                AudioControlsPage(
-                    viewModel: viewModel,
-                    onChapters: { currentPage = .chapters },
-                    onText: { currentPage = .text }
-                )
-            case .text:
-                TextReaderPage(viewModel: viewModel, onBack: { currentPage = .controls })
             }
         }
         .task {
@@ -39,6 +43,16 @@ struct WatchPlayerView: View {
         .onDisappear {
             viewModel.cleanup()
         }
+    }
+
+    private var loadingView: some View {
+        VStack(spacing: 12) {
+            ProgressView()
+            Text("Syncing position...")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
@@ -90,16 +104,15 @@ private struct AudioControlsPage: View {
                 .foregroundStyle(.white)
                 .lineLimit(1)
                 .frame(maxWidth: .infinity)
-                .padding(.top, 4)
-
-            Spacer()
+                .padding(.top, 8)
+                .padding(.bottom, 16)
 
             controlsRow
 
             statsRow
-                .padding(.top, 8)
+                .padding(.top, 16)
 
-            Spacer()
+            Spacer(minLength: 20)
 
             bottomNav
         }
@@ -225,12 +238,13 @@ private struct AudioControlsPage: View {
     }
 
     private var bottomNav: some View {
-        HStack(spacing: 20) {
+        HStack(spacing: 0) {
             Button {
                 onChapters()
             } label: {
                 Image(systemName: "list.bullet")
-                    .font(.body)
+                    .font(.title3)
+                    .frame(maxWidth: .infinity)
             }
             .buttonStyle(.plain)
 
@@ -238,7 +252,8 @@ private struct AudioControlsPage: View {
                 onText()
             } label: {
                 Image(systemName: "text.alignleft")
-                    .font(.body)
+                    .font(.title3)
+                    .frame(maxWidth: .infinity)
             }
             .buttonStyle(.plain)
 
@@ -246,7 +261,8 @@ private struct AudioControlsPage: View {
                 showSpeedPicker = true
             } label: {
                 Text(speedLabel)
-                    .font(.body)
+                    .font(.title3)
+                    .frame(maxWidth: .infinity)
             }
             .buttonStyle(.plain)
             .sheet(isPresented: $showSpeedPicker) {
@@ -257,7 +273,6 @@ private struct AudioControlsPage: View {
             }
         }
         .foregroundStyle(.secondary)
-        .padding(.bottom, 8)
     }
 
     private var speedLabel: String {

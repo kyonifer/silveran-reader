@@ -1,7 +1,9 @@
 import SwiftUI
+import SilveranKitCommon
 
 struct WatchLibraryView: View {
     @Environment(WatchViewModel.self) private var viewModel
+    @State private var showSyncView = false
 
     var body: some View {
         Group {
@@ -12,6 +14,18 @@ struct WatchLibraryView: View {
             }
         }
         .navigationTitle("Library")
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    showSyncView = true
+                } label: {
+                    Image(systemName: "arrow.triangle.2.circlepath.icloud")
+                }
+            }
+        }
+        .sheet(isPresented: $showSyncView) {
+            WatchCloudKitSyncView()
+        }
     }
 
     private var emptyState: some View {

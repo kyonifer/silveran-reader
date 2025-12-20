@@ -11,6 +11,7 @@ public final class WatchPlayerViewModel: NSObject {
     // MARK: - Playback State
 
     var isPlaying = false
+    var isLoadingPosition = true
     var currentTime: Double = 0
     var chapterDuration: Double = 0
     var bookElapsed: Double = 0
@@ -37,6 +38,10 @@ public final class WatchPlayerViewModel: NSObject {
     private var stateObserverId: UUID?
     private var bookStructure: [SectionInfo] = []
     private var epubURL: URL?
+    private var currentBookId: String?
+    private var lastSyncTime: Date = .distantPast
+    private let syncDebounceInterval: TimeInterval = 10
+    private var hasRestoredPosition = false
 
     // MARK: - Chapter Info
 
@@ -101,12 +106,16 @@ public final class WatchPlayerViewModel: NSObject {
 
     func loadBook(_ entry: WatchBookEntry) async {
         bookTitle = entry.title
+        currentBookId = entry.uuid
+        hasRestoredPosition = false
+        isLoadingPosition = true
 
         let bookDir = WatchStorageManager.shared.getBookDirectory(uuid: entry.uuid, category: entry.category)
         epubURL = bookDir.appendingPathComponent("book.epub")
 
         guard let url = epubURL, FileManager.default.fileExists(atPath: url.path) else {
             debugLog("[WatchPlayerViewModel] EPUB file not found")
+            isLoadingPosition = false
             return
         }
 
@@ -131,9 +140,12 @@ public final class WatchPlayerViewModel: NSObject {
                 updateChapterDuration()
             }
 
+            await restorePositionFromCloudKit(bookId: entry.uuid)
+            isLoadingPosition = false
             await loadCurrentSectionHTML()
         } catch {
             debugLog("[WatchPlayerViewModel] Failed to load book: \(error)")
+            isLoadingPosition = false
         }
     }
 
@@ -154,6 +166,11 @@ public final class WatchPlayerViewModel: NSObject {
             Task {
                 await loadCurrentSectionHTML()
             }
+            syncProgressToCloudKit()
+        }
+
+        if !isPlaying && Date().timeIntervalSince(lastSyncTime) > syncDebounceInterval {
+            syncProgressToCloudKit()
         }
 
         updateNowPlayingInfo()
@@ -385,6 +402,94 @@ public final class WatchPlayerViewModel: NSObject {
         let mins = Int(seconds) / 60
         let secs = Int(seconds) % 60
         return String(format: "%d:%02d", mins, secs)
+    }
+
+    // MARK: - CloudKit Sync
+
+    private func restorePositionFromCloudKit(bookId: String) async {
+        debugLog("[WatchPlayerViewModel] Fetching position from CloudKit for \(bookId)")
+
+        guard let cloudKitProgress = await CloudKitSyncActor.shared.fetchProgress(for: bookId) else {
+            debugLog("[WatchPlayerViewModel] No CloudKit position found")
+            hasRestoredPosition = true
+            return
+        }
+
+        let locator = cloudKitProgress.locator
+        let href = locator.href
+        let textId = locator.locations?.fragments?.first
+
+        debugLog("[WatchPlayerViewModel] CloudKit href: \(href), fragment: \(textId ?? "nil")")
+
+        if let textId = textId {
+            // Find section by matching entry.textHref
+            if let sectionIndex = bookStructure.firstIndex(where: { section in
+                section.mediaOverlay.contains { $0.textHref == href }
+            }) {
+                debugLog("[WatchPlayerViewModel] Seeking to section \(sectionIndex), textId: \(textId)")
+                let success = await SMILPlayerActor.shared.seekToFragment(sectionIndex: sectionIndex, textId: textId)
+                if success {
+                    hasRestoredPosition = true
+                    return
+                }
+            } else if let sectionIndex = findSectionIndex(for: href, in: bookStructure) {
+                debugLog("[WatchPlayerViewModel] Seeking via findSectionIndex to section \(sectionIndex), textId: \(textId)")
+                let success = await SMILPlayerActor.shared.seekToFragment(sectionIndex: sectionIndex, textId: textId)
+                if success {
+                    hasRestoredPosition = true
+                    return
+                }
+            }
+        }
+
+        // Fallback to totalProgression
+        let progression = cloudKitProgress.locator.locations?.totalProgression ?? 0
+        if progression > 0 {
+            debugLog("[WatchPlayerViewModel] Fallback to totalProgression: \(progression)")
+            let _ = await SMILPlayerActor.shared.seekToTotalProgression(progression)
+        }
+
+        hasRestoredPosition = true
+    }
+
+    private func syncProgressToCloudKit() {
+        guard let bookId = currentBookId, hasRestoredPosition else { return }
+
+        lastSyncTime = Date()
+        let progression = bookDuration > 0 ? bookElapsed / bookDuration : 0
+        let timestamp = Date().timeIntervalSince1970 * 1000
+
+        guard currentSectionIndex < bookStructure.count else { return }
+        let section = bookStructure[currentSectionIndex]
+        guard currentEntryIndex < section.mediaOverlay.count else { return }
+
+        let entry = section.mediaOverlay[currentEntryIndex]
+
+        debugLog("[WatchPlayerViewModel] Syncing to CloudKit: \(entry.textHref)#\(entry.textId)")
+
+        let locator = BookLocator(
+            href: entry.textHref,
+            type: "application/xhtml+xml",
+            title: nil,
+            locations: BookLocator.Locations(
+                fragments: [entry.textId],
+                progression: chapterProgress,
+                position: currentSectionIndex,
+                totalProgression: progression,
+                cssSelector: nil,
+                partialCfi: nil,
+                domRange: nil
+            ),
+            text: nil
+        )
+
+        Task {
+            let _ = await CloudKitSyncActor.shared.sendProgressToCloudKit(
+                bookId: bookId,
+                locator: locator,
+                timestamp: timestamp
+            )
+        }
     }
 
     // MARK: - Cleanup

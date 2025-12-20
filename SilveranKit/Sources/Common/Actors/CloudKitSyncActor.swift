@@ -18,6 +18,8 @@ public struct CloudKitProgress: Sendable {
 public actor CloudKitSyncActor {
     public static let shared = CloudKitSyncActor()
 
+    private static let containerIdentifier = "iCloud.com.kyonifer.SilveranReader"
+
     private let container: CKContainer
     private let database: CKDatabase
     private let recordType = "BookProgress"
@@ -29,7 +31,7 @@ public actor CloudKitSyncActor {
     private let decoder = JSONDecoder()
 
     public init() {
-        container = CKContainer.default()
+        container = CKContainer(identifier: Self.containerIdentifier)
         database = container.privateCloudDatabase
         decoder.keyDecodingStrategy = .convertFromSnakeCase
 
@@ -174,19 +176,38 @@ public actor CloudKitSyncActor {
         do {
             let predicate = NSPredicate(format: "timestamp > %f", 0.0)
             let query = CKQuery(recordType: recordType, predicate: predicate)
-            let (results, _) = try await database.records(matching: query)
 
             var progressMap: [String: CloudKitProgress] = [:]
-            for (_, result) in results {
-                switch result {
-                case .success(let record):
-                    if let progress = parseRecord(record) {
-                        progressMap[progress.bookId] = progress
-                    }
-                case .failure(let error):
-                    debugLog("[CloudKitSyncActor] fetchAllProgress: record error \(error)")
+            var cursor: CKQueryOperation.Cursor?
+
+            repeat {
+                let (results, nextCursor): ([(CKRecord.ID, Result<CKRecord, Error>)], CKQueryOperation.Cursor?)
+
+                if let existingCursor = cursor {
+                    (results, nextCursor) = try await database.records(
+                        continuingMatchFrom: existingCursor,
+                        resultsLimit: CKQueryOperation.maximumResults
+                    )
+                } else {
+                    (results, nextCursor) = try await database.records(
+                        matching: query,
+                        resultsLimit: CKQueryOperation.maximumResults
+                    )
                 }
-            }
+
+                for (_, result) in results {
+                    switch result {
+                    case .success(let record):
+                        if let progress = parseRecord(record) {
+                            progressMap[progress.bookId] = progress
+                        }
+                    case .failure(let error):
+                        debugLog("[CloudKitSyncActor] fetchAllProgress: record error \(error)")
+                    }
+                }
+
+                cursor = nextCursor
+            } while cursor != nil
 
             debugLog("[CloudKitSyncActor] fetchAllProgress: found \(progressMap.count) records")
             return progressMap
@@ -209,9 +230,31 @@ public actor CloudKitSyncActor {
         do {
             let predicate = NSPredicate(format: "timestamp > %f", 0.0)
             let query = CKQuery(recordType: recordType, predicate: predicate)
-            let (results, _) = try await database.records(matching: query)
-            debugLog("[CloudKitSyncActor] recordCount: found \(results.count) records")
-            return results.count
+
+            var count = 0
+            var cursor: CKQueryOperation.Cursor?
+
+            repeat {
+                let (results, nextCursor): ([(CKRecord.ID, Result<CKRecord, Error>)], CKQueryOperation.Cursor?)
+
+                if let existingCursor = cursor {
+                    (results, nextCursor) = try await database.records(
+                        continuingMatchFrom: existingCursor,
+                        resultsLimit: CKQueryOperation.maximumResults
+                    )
+                } else {
+                    (results, nextCursor) = try await database.records(
+                        matching: query,
+                        resultsLimit: CKQueryOperation.maximumResults
+                    )
+                }
+
+                count += results.count
+                cursor = nextCursor
+            } while cursor != nil
+
+            debugLog("[CloudKitSyncActor] recordCount: \(count) records")
+            return count
         } catch {
             debugLog("[CloudKitSyncActor] recordCount: error \(error)")
             return 0
@@ -232,37 +275,57 @@ public actor CloudKitSyncActor {
         do {
             let predicate = NSPredicate(format: "timestamp > %f", 0.0)
             let query = CKQuery(recordType: recordType, predicate: predicate)
-            let (results, _) = try await database.records(matching: query)
 
-            let recordIDs = results.compactMap { (id, result) -> CKRecord.ID? in
-                switch result {
-                case .success:
-                    return id
-                case .failure:
-                    return nil
+            var allRecordIDs: [CKRecord.ID] = []
+            var cursor: CKQueryOperation.Cursor?
+
+            repeat {
+                let (results, nextCursor): ([(CKRecord.ID, Result<CKRecord, Error>)], CKQueryOperation.Cursor?)
+
+                if let existingCursor = cursor {
+                    (results, nextCursor) = try await database.records(
+                        continuingMatchFrom: existingCursor,
+                        resultsLimit: CKQueryOperation.maximumResults
+                    )
+                } else {
+                    (results, nextCursor) = try await database.records(
+                        matching: query,
+                        resultsLimit: CKQueryOperation.maximumResults
+                    )
                 }
-            }
 
-            if recordIDs.isEmpty {
+                let recordIDs = results.compactMap { (id, result) -> CKRecord.ID? in
+                    switch result {
+                    case .success:
+                        return id
+                    case .failure:
+                        return nil
+                    }
+                }
+                allRecordIDs.append(contentsOf: recordIDs)
+                cursor = nextCursor
+            } while cursor != nil
+
+            if allRecordIDs.isEmpty {
                 debugLog("[CloudKitSyncActor] deleteAllRecords: no records to delete")
                 return true
             }
 
-            let operation = CKModifyRecordsOperation(recordsToSave: nil, recordIDsToDelete: recordIDs)
+            let operation = CKModifyRecordsOperation(recordsToSave: nil, recordIDsToDelete: allRecordIDs)
             operation.savePolicy = .allKeys
 
             return try await withCheckedThrowingContinuation { continuation in
                 operation.modifyRecordsResultBlock = { result in
                     switch result {
                     case .success:
-                        debugLog("[CloudKitSyncActor] deleteAllRecords: deleted \(recordIDs.count) records")
+                        debugLog("[CloudKitSyncActor] deleteAllRecords: deleted \(allRecordIDs.count) records")
                         continuation.resume(returning: true)
                     case .failure(let error):
                         debugLog("[CloudKitSyncActor] deleteAllRecords: error \(error)")
                         continuation.resume(throwing: error)
                     }
                 }
-                database.add(operation)
+                self.database.add(operation)
             }
 
         } catch {
