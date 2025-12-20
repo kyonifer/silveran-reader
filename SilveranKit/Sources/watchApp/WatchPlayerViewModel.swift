@@ -210,12 +210,14 @@ public final class WatchPlayerViewModel: NSObject {
     }
 
     func setVolume(_ newVolume: Double) {
-        let clamped = max(newVolume, Self.minimumVolume)
-        volume = clamped
+        volume = newVolume
         isMuted = false
-        UserDefaults.standard.set(clamped, forKey: Self.volumeKey)
+        // Only persist if above minimum (so we don't restore to near-silent)
+        if newVolume >= Self.minimumVolume {
+            UserDefaults.standard.set(newVolume, forKey: Self.volumeKey)
+        }
         Task { @SMILPlayerActor in
-            await SMILPlayerActor.shared.setVolume(clamped)
+            await SMILPlayerActor.shared.setVolume(newVolume)
         }
     }
 
