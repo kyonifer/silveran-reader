@@ -49,11 +49,15 @@ struct WatchLibraryView: View {
         List {
             ForEach(viewModel.books) { book in
                 if book.category == "synced" {
-                    NavigationLink(destination: WatchPlayerView(book: book)) {
+                    NavigationLink {
+                        WatchPlayerView(book: book)
+                    } label: {
                         BookRow(book: book)
                     }
                 } else {
-                    NavigationLink(destination: BookDetailView(book: book)) {
+                    NavigationLink {
+                        BookDetailView(book: book)
+                    } label: {
                         BookRow(book: book)
                     }
                 }

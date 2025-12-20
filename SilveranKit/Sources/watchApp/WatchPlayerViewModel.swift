@@ -114,6 +114,7 @@ public final class WatchPlayerViewModel: NSObject {
     // MARK: - Book Loading
 
     func loadBook(_ entry: WatchBookEntry) async {
+        loadSavedVolume()
         bookTitle = entry.title
         currentBookId = entry.uuid
         hasRestoredPosition = false

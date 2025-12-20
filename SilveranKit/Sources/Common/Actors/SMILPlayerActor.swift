@@ -504,7 +504,9 @@ public actor SMILPlayerActor {
         stopNowPlayingUpdateTimer()
         removeAudioSessionObservers()
         await cleanupAudioManager()
+        #endif
 
+        #if os(iOS)
         do {
             try AVAudioSession.sharedInstance().setActive(
                 false,
