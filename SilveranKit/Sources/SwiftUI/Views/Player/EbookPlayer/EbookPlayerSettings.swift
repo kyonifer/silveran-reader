@@ -481,7 +481,11 @@ struct EbookPlayerSettings: View {
         settingsVM.fontSize = 24
         settingsVM.fontFamily = "System Default"
         settingsVM.lineSpacing = 1.4
-        settingsVM.marginLeftRight = 8
+        #if os(iOS)
+        settingsVM.marginLeftRight = 2
+        #else
+        settingsVM.marginLeftRight = 5
+        #endif
         settingsVM.marginTopBottom = 8
         settingsVM.wordSpacing = 0
         settingsVM.letterSpacing = 0
@@ -496,12 +500,11 @@ struct EbookPlayerSettings: View {
         settingsVM.showTimeRemainingInChapter = true
         settingsVM.showPageNumber = true
         settingsVM.overlayTransparency = 0.8
+        settingsVM.singleColumnMode = true
         #if os(iOS)
         settingsVM.showPlayerControls = true
-        settingsVM.singleColumnMode = true
         #else
         settingsVM.showPlayerControls = false
-        settingsVM.singleColumnMode = false
         #endif
         settingsVM.lockViewToAudio = true
 

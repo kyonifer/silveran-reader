@@ -42,7 +42,7 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
             fontSize: Double = 24,
             fontFamily: String = "System Default",
             lineSpacing: Double = 1.4,
-            marginLeftRight: Double = 8,
+            marginLeftRight: Double? = nil,
             marginTopBottom: Double = 8,
             wordSpacing: Double = 0,
             letterSpacing: Double = 0,
@@ -56,18 +56,18 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
             self.fontSize = fontSize
             self.fontFamily = fontFamily
             self.lineSpacing = lineSpacing
-            self.marginLeftRight = marginLeftRight
+            #if os(iOS)
+            self.marginLeftRight = marginLeftRight ?? 2
+            #else
+            self.marginLeftRight = marginLeftRight ?? 5
+            #endif
             self.marginTopBottom = marginTopBottom
             self.wordSpacing = wordSpacing
             self.letterSpacing = letterSpacing
             self.highlightColor = highlightColor
             self.backgroundColor = backgroundColor
             self.foregroundColor = foregroundColor
-            #if os(iOS)
             self.singleColumnMode = singleColumnMode ?? true
-            #else
-            self.singleColumnMode = singleColumnMode ?? false
-            #endif
             self.customCSS = customCSS
             self.enableMarginClickNavigation = enableMarginClickNavigation
         }

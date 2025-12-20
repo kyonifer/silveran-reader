@@ -7,7 +7,11 @@ public final class SettingsViewModel {
     public var fontSize: Double = 24
     public var fontFamily: String = "System Default"
     public var lineSpacing: Double = 1.4
-    public var marginLeftRight: Double = 8
+    #if os(iOS)
+    public var marginLeftRight: Double = 2
+    #else
+    public var marginLeftRight: Double = 5
+    #endif
     public var marginTopBottom: Double = 8
     public var wordSpacing: Double = 0
     public var letterSpacing: Double = 0
@@ -16,11 +20,7 @@ public final class SettingsViewModel {
     public var foregroundColor: String? = nil
     public var customCSS: String? = nil
     public var enableMarginClickNavigation: Bool = true
-    #if os(iOS)
     public var singleColumnMode: Bool = true
-    #else
-    public var singleColumnMode: Bool = false
-    #endif
 
     public var defaultPlaybackSpeed: Double = 1.0
     public var defaultVolume: Double = 1.0
