@@ -22,6 +22,8 @@ public final class WatchPlayerViewModel: NSObject {
     var playbackRate: Double = 1.0
     var isMuted = false
     private var volumeBeforeMute: Double = 1.0
+    private static let volumeKey = "WatchPlayerVolume"
+    private static let minimumVolume = 0.05
 
     // MARK: - Current Position
 
@@ -100,6 +102,15 @@ public final class WatchPlayerViewModel: NSObject {
         super.init()
         configureAudioSession()
         setupRemoteCommands()
+        loadSavedVolume()
+    }
+
+    private func loadSavedVolume() {
+        let saved = UserDefaults.standard.double(forKey: Self.volumeKey)
+        if saved > 0 {
+            volume = max(saved, Self.minimumVolume)
+            volumeBeforeMute = volume
+        }
     }
 
     // MARK: - Book Loading
@@ -133,6 +144,8 @@ public final class WatchPlayerViewModel: NSObject {
             stateObserverId = await SMILPlayerActor.shared.addStateObserver { [weak self] state in
                 self?.handleStateUpdate(state)
             }
+
+            await SMILPlayerActor.shared.setVolume(volume)
 
             if let firstSection = bookStructure.first(where: { !$0.mediaOverlay.isEmpty }) {
                 currentSectionIndex = firstSection.index
@@ -197,10 +210,12 @@ public final class WatchPlayerViewModel: NSObject {
     }
 
     func setVolume(_ newVolume: Double) {
-        volume = newVolume
+        let clamped = max(newVolume, Self.minimumVolume)
+        volume = clamped
         isMuted = false
+        UserDefaults.standard.set(clamped, forKey: Self.volumeKey)
         Task { @SMILPlayerActor in
-            await SMILPlayerActor.shared.setVolume(newVolume)
+            await SMILPlayerActor.shared.setVolume(clamped)
         }
     }
 
