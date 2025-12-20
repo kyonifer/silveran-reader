@@ -275,8 +275,10 @@ public final class MediaViewModel {
                 if status == .connected {
                     let _ = await StorytellerActor.shared.fetchLibraryInformation()
                 } else {
-                    debugLog("[MediaViewModel] Skipping refresh - not connected to server")
+                    debugLog("[MediaViewModel] Skipping Storyteller refresh - not connected to server")
                 }
+
+                await ProgressSyncActor.shared.reconcileWithCloudKit()
             }
         }
     }

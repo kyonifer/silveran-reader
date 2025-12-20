@@ -45,6 +45,7 @@ public final class SettingsViewModel {
 
     public var progressSyncIntervalSeconds: Double = 30
     public var metadataRefreshIntervalSeconds: Double = 300
+    public var iCloudSyncEnabled: Bool = true
 
     public var isLoaded: Bool = false
 
@@ -114,6 +115,7 @@ public final class SettingsViewModel {
 
         progressSyncIntervalSeconds = config.sync.progressSyncIntervalSeconds
         metadataRefreshIntervalSeconds = config.sync.metadataRefreshIntervalSeconds
+        iCloudSyncEnabled = config.sync.iCloudSyncEnabled
 
         isLoaded = true
         debugLog("[SettingsViewModel] Settings loaded")
@@ -161,7 +163,8 @@ public final class SettingsViewModel {
             overlayTransparency: overlayTransparency,
             alwaysShowMiniPlayer: alwaysShowMiniPlayerValue,
             progressSyncIntervalSeconds: progressSyncIntervalSeconds,
-            metadataRefreshIntervalSeconds: metadataRefreshIntervalSeconds
+            metadataRefreshIntervalSeconds: metadataRefreshIntervalSeconds,
+            iCloudSyncEnabled: iCloudSyncEnabled
         )
     }
 

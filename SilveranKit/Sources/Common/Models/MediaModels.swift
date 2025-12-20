@@ -422,19 +422,29 @@ public struct PendingProgressSync: Codable, Sendable, Hashable {
     public let timestamp: Double
     public let queuedAt: Date
     public var attemptCount: Int
+    public var syncedToStoryteller: Bool
+    public var syncedToCloudKit: Bool
+
+    public var isFullySynced: Bool {
+        syncedToStoryteller && syncedToCloudKit
+    }
 
     public init(
         bookId: String,
         locator: BookLocator,
         timestamp: Double,
         queuedAt: Date = Date(),
-        attemptCount: Int = 0
+        attemptCount: Int = 0,
+        syncedToStoryteller: Bool = false,
+        syncedToCloudKit: Bool = false
     ) {
         self.bookId = bookId
         self.locator = locator
         self.timestamp = timestamp
         self.queuedAt = queuedAt
         self.attemptCount = attemptCount
+        self.syncedToStoryteller = syncedToStoryteller
+        self.syncedToCloudKit = syncedToCloudKit
     }
 }
 

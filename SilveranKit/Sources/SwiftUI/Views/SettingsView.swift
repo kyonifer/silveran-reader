@@ -143,7 +143,8 @@ public struct SettingsView: View {
                     overlayTransparency: newValue.readingBar.overlayTransparency,
                     alwaysShowMiniPlayer: newValue.readingBar.alwaysShowMiniPlayer,
                     progressSyncIntervalSeconds: newValue.sync.progressSyncIntervalSeconds,
-                    metadataRefreshIntervalSeconds: newValue.sync.metadataRefreshIntervalSeconds
+                    metadataRefreshIntervalSeconds: newValue.sync.metadataRefreshIntervalSeconds,
+                    iCloudSyncEnabled: newValue.sync.iCloudSyncEnabled
                 )
                 debugLog("[SettingsView] Config persisted successfully")
             } catch {
@@ -254,6 +255,10 @@ private struct MacSettingsContainer<Content: View>: View {
 
 private struct MacGeneralSettingsView: View {
     @Binding var sync: SilveranGlobalConfig.Sync
+    @State private var cloudKitRecordCount: Int = 0
+    @State private var isLoadingCloudKitCount = false
+    @State private var showClearConfirmation = false
+    @State private var showCloudKitData = false
     private let labelWidth: CGFloat = 180
 
     private let syncIntervals: [Double] = [10, 30, 60, 120, 300, 600, 1800, 3600, 7200, 14400, -1]
@@ -328,7 +333,78 @@ private struct MacGeneralSettingsView: View {
                     }
                 }
             }
+
+            Divider()
+                .padding(.vertical, 8)
+
+            VStack(alignment: .leading, spacing: 18) {
+                Text("iCloud Sync")
+                    .font(.headline)
+
+                Toggle("Sync via iCloud", isOn: $sync.iCloudSyncEnabled)
+                    .help("Sync reading positions to iCloud for access on other Apple devices")
+
+                HStack(spacing: 16) {
+                    if isLoadingCloudKitCount {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("Loading...")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("\(cloudKitRecordCount) position\(cloudKitRecordCount == 1 ? "" : "s") synced to iCloud")
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
+
+                    Button {
+                        Task {
+                            isLoadingCloudKitCount = true
+                            await ProgressSyncActor.shared.reconcileWithCloudKit()
+                            await refreshCloudKitCount()
+                        }
+                    } label: {
+                        Label("Sync Now", systemImage: "arrow.triangle.2.circlepath")
+                    }
+                    .disabled(isLoadingCloudKitCount)
+
+                    Button {
+                        showCloudKitData = true
+                    } label: {
+                        Label("Manage", systemImage: "externaldrive.badge.icloud")
+                    }
+                }
+                .task {
+                    await refreshCloudKitCount()
+                }
+                .sheet(isPresented: $showCloudKitData) {
+                    NavigationStack {
+                        CloudKitDataView()
+                            .toolbar {
+                                ToolbarItem(placement: .cancellationAction) {
+                                    Button("Done") {
+                                        showCloudKitData = false
+                                    }
+                                }
+                            }
+                    }
+                    .frame(minWidth: 500, minHeight: 400)
+                }
+                .onChange(of: showCloudKitData) { _, isShowing in
+                    if !isShowing {
+                        Task {
+                            await refreshCloudKitCount()
+                        }
+                    }
+                }
+            }
         }
+    }
+
+    private func refreshCloudKitCount() async {
+        isLoadingCloudKitCount = true
+        cloudKitRecordCount = await CloudKitSyncActor.shared.recordCount()
+        isLoadingCloudKitCount = false
     }
 
     private func label(_ text: String) -> some View {
@@ -688,6 +764,9 @@ private struct ReadingSettingsFields: View {
 
 private struct GeneralSettingsFields: View {
     @Binding var sync: SilveranGlobalConfig.Sync
+    @State private var cloudKitRecordCount: Int = 0
+    @State private var isLoadingCloudKitCount = false
+    @State private var showClearConfirmation = false
 
     private let syncIntervals: [Double] = [10, 30, 60, 120, 300, 600, 1800, 3600, 7200, 14400, -1]
 
@@ -733,6 +812,47 @@ private struct GeneralSettingsFields: View {
                 .pickerStyle(.menu)
             }
         }
+
+        Toggle("Sync via iCloud", isOn: $sync.iCloudSyncEnabled)
+
+        HStack {
+            if isLoadingCloudKitCount {
+                ProgressView()
+                    .controlSize(.small)
+                Text("Loading...")
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("\(cloudKitRecordCount) position\(cloudKitRecordCount == 1 ? "" : "s") synced to iCloud")
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
+        .task {
+            await refreshCloudKitCount()
+        }
+
+        NavigationLink {
+            CloudKitDataView()
+        } label: {
+            Label("Manage iCloud Data", systemImage: "externaldrive.badge.icloud")
+        }
+
+        Button {
+            Task {
+                isLoadingCloudKitCount = true
+                await ProgressSyncActor.shared.reconcileWithCloudKit()
+                await refreshCloudKitCount()
+            }
+        } label: {
+            Label("Sync Now", systemImage: "arrow.triangle.2.circlepath")
+        }
+        .disabled(isLoadingCloudKitCount)
+    }
+
+    private func refreshCloudKitCount() async {
+        isLoadingCloudKitCount = true
+        cloudKitRecordCount = await CloudKitSyncActor.shared.recordCount()
+        isLoadingCloudKitCount = false
     }
 
     private func formatInterval(_ seconds: Double) -> String {

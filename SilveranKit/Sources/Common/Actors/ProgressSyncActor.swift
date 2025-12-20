@@ -79,33 +79,63 @@ public actor ProgressSyncActor {
             return .success
         }
 
-        let connectionStatus = await StorytellerActor.shared.connectionStatus
-        debugLog("[PSA] syncProgress: connectionStatus=\(connectionStatus)")
+        let iCloudSyncEnabled = await SettingsActor.shared.config.sync.iCloudSyncEnabled
 
-        if connectionStatus != .connected {
-            debugLog("[PSA] syncProgress: offline, queueing")
-            await queueOfflineProgress(bookId: bookId, locator: locator, timestamp: timestamp)
-            return .queued
+        var syncedToStoryteller = false
+        var syncedToCloudKit = false
+
+        let storytellerStatus = await StorytellerActor.shared.connectionStatus
+        debugLog("[PSA] syncProgress: storytellerStatus=\(storytellerStatus)")
+
+        if storytellerStatus == .connected {
+            let result = await StorytellerActor.shared.sendProgressToServer(
+                bookId: bookId,
+                locator: locator,
+                timestamp: timestamp
+            )
+            syncedToStoryteller = (result == .success)
+            debugLog("[PSA] syncProgress: storyteller sync result=\(result), success=\(syncedToStoryteller)")
         }
 
-        let result = await StorytellerActor.shared.sendProgressToServer(
-            bookId: bookId,
-            locator: locator,
-            timestamp: timestamp
-        )
+        if iCloudSyncEnabled {
+            let cloudKitStatus = await CloudKitSyncActor.shared.connectionStatus
+            debugLog("[PSA] syncProgress: cloudKitStatus=\(cloudKitStatus)")
 
-        switch result {
-        case .success:
-            debugLog("[PSA] syncProgress: server sync succeeded")
+            if cloudKitStatus == .connected {
+                let result = await CloudKitSyncActor.shared.sendProgressToCloudKit(
+                    bookId: bookId,
+                    locator: locator,
+                    timestamp: timestamp
+                )
+                syncedToCloudKit = (result == .success)
+                debugLog("[PSA] syncProgress: cloudKit sync result=\(result), success=\(syncedToCloudKit)")
+            }
+        } else {
+            syncedToCloudKit = true
+        }
+
+        let isFullySynced = syncedToStoryteller && syncedToCloudKit
+
+        if isFullySynced {
+            debugLog("[PSA] syncProgress: fully synced to all destinations")
             await removeFromQueue(bookId: bookId)
             updateServerPosition(bookId: bookId, locator: locator, timestamp: timestamp)
             await updateLocalMetadataProgress(bookId: bookId, locator: locator, timestamp: timestamp)
             await notifyObservers()
             return .success
-
-        case .noConnection, .failure:
-            debugLog("[PSA] syncProgress: server sync failed, queueing")
-            await queueOfflineProgress(bookId: bookId, locator: locator, timestamp: timestamp)
+        } else {
+            debugLog("[PSA] syncProgress: partial sync, queueing (storyteller=\(syncedToStoryteller), cloudKit=\(syncedToCloudKit))")
+            await queueOfflineProgress(
+                bookId: bookId,
+                locator: locator,
+                timestamp: timestamp,
+                syncedToStoryteller: syncedToStoryteller,
+                syncedToCloudKit: syncedToCloudKit
+            )
+            if syncedToStoryteller {
+                updateServerPosition(bookId: bookId, locator: locator, timestamp: timestamp)
+            }
+            await updateLocalMetadataProgress(bookId: bookId, locator: locator, timestamp: timestamp)
             return .queued
         }
     }
@@ -120,17 +150,24 @@ public actor ProgressSyncActor {
             return (0, 0)
         }
 
-        let connectionStatus = await StorytellerActor.shared.connectionStatus
-        guard connectionStatus == .connected else {
-            debugLog("[PSA] syncPendingQueue: not connected, skipping")
+        let storytellerStatus = await StorytellerActor.shared.connectionStatus
+        let cloudKitStatus = await CloudKitSyncActor.shared.connectionStatus
+        let iCloudSyncEnabled = await SettingsActor.shared.config.sync.iCloudSyncEnabled
+
+        let canSyncStoryteller = storytellerStatus == .connected
+        let canSyncCloudKit = iCloudSyncEnabled && cloudKitStatus == .connected
+
+        if !canSyncStoryteller && !canSyncCloudKit {
+            debugLog("[PSA] syncPendingQueue: no destinations available, skipping")
             return (0, 0)
         }
 
         var syncedCount = 0
         var failedCount = 0
 
-        let itemsToSync = pendingProgressQueue
-        for pending in itemsToSync {
+        for i in pendingProgressQueue.indices {
+            var pending = pendingProgressQueue[i]
+
             let isLocalBook = await LocalMediaActor.shared.isLocalStandaloneBook(pending.bookId)
             if isLocalBook {
                 debugLog("[PSA] syncPendingQueue: \(pending.bookId) is local-only, removing from queue")
@@ -139,28 +176,50 @@ public actor ProgressSyncActor {
                 continue
             }
 
-            debugLog("[PSA] syncPendingQueue: syncing \(pending.bookId)")
-            let result = await StorytellerActor.shared.sendProgressToServer(
-                bookId: pending.bookId,
-                locator: pending.locator,
-                timestamp: pending.timestamp
-            )
+            debugLog("[PSA] syncPendingQueue: syncing \(pending.bookId) (storyteller=\(pending.syncedToStoryteller), cloudKit=\(pending.syncedToCloudKit))")
 
-            switch result {
-            case .success:
-                debugLog("[PSA] syncPendingQueue: \(pending.bookId) succeeded")
+            if !pending.syncedToStoryteller && canSyncStoryteller {
+                let result = await StorytellerActor.shared.sendProgressToServer(
+                    bookId: pending.bookId,
+                    locator: pending.locator,
+                    timestamp: pending.timestamp
+                )
+                if result == .success {
+                    pending.syncedToStoryteller = true
+                    updateServerPosition(bookId: pending.bookId, locator: pending.locator, timestamp: pending.timestamp)
+                    debugLog("[PSA] syncPendingQueue: \(pending.bookId) storyteller succeeded")
+                } else if result == .failure {
+                    pending.syncedToStoryteller = true
+                    debugLog("[PSA] syncPendingQueue: \(pending.bookId) storyteller failed permanently")
+                    failedCount += 1
+                }
+            }
+
+            if !pending.syncedToCloudKit && canSyncCloudKit {
+                let result = await CloudKitSyncActor.shared.sendProgressToCloudKit(
+                    bookId: pending.bookId,
+                    locator: pending.locator,
+                    timestamp: pending.timestamp
+                )
+                if result == .success {
+                    pending.syncedToCloudKit = true
+                    debugLog("[PSA] syncPendingQueue: \(pending.bookId) cloudKit succeeded")
+                } else if result == .failure {
+                    pending.syncedToCloudKit = true
+                    debugLog("[PSA] syncPendingQueue: \(pending.bookId) cloudKit failed permanently")
+                }
+            }
+
+            if !iCloudSyncEnabled {
+                pending.syncedToCloudKit = true
+            }
+
+            if pending.isFullySynced {
+                debugLog("[PSA] syncPendingQueue: \(pending.bookId) fully synced, removing")
                 await removeFromQueue(bookId: pending.bookId)
-                updateServerPosition(bookId: pending.bookId, locator: pending.locator, timestamp: pending.timestamp)
                 syncedCount += 1
-
-            case .noConnection:
-                debugLog("[PSA] syncPendingQueue: \(pending.bookId) no connection, stopping")
-                return (syncedCount, failedCount)
-
-            case .failure:
-                debugLog("[PSA] syncPendingQueue: \(pending.bookId) failed permanently, removing")
-                await removeFromQueue(bookId: pending.bookId)
-                failedCount += 1
+            } else {
+                await updateQueueItem(pending)
             }
         }
 
@@ -174,6 +233,13 @@ public actor ProgressSyncActor {
         return (syncedCount, failedCount)
     }
 
+    private func updateQueueItem(_ item: PendingProgressSync) async {
+        if let index = pendingProgressQueue.firstIndex(where: { $0.bookId == item.bookId }) {
+            pendingProgressQueue[index] = item
+            await saveQueueToDisk()
+        }
+    }
+
     public func getPendingProgressSyncs() async -> [PendingProgressSync] {
         await ensureQueueLoaded()
         return pendingProgressQueue
@@ -181,6 +247,106 @@ public actor ProgressSyncActor {
 
     public func hasPendingSync(for bookId: String) -> Bool {
         pendingProgressQueue.contains { $0.bookId == bookId }
+    }
+
+    // MARK: - CloudKit Reconciliation
+
+    public func reconcileWithCloudKit() async {
+        let iCloudSyncEnabled = await SettingsActor.shared.config.sync.iCloudSyncEnabled
+        guard iCloudSyncEnabled else {
+            debugLog("[PSA] reconcileWithCloudKit: iCloud sync disabled, skipping")
+            return
+        }
+
+        let cloudKitStatus = await CloudKitSyncActor.shared.connectionStatus
+        guard cloudKitStatus == .connected else {
+            debugLog("[PSA] reconcileWithCloudKit: CloudKit not connected, skipping")
+            return
+        }
+
+        debugLog("[PSA] reconcileWithCloudKit: fetching CloudKit positions")
+
+        guard let cloudKitPositions = await CloudKitSyncActor.shared.fetchAllProgress() else {
+            debugLog("[PSA] reconcileWithCloudKit: failed to fetch CloudKit positions")
+            return
+        }
+
+        debugLog("[PSA] reconcileWithCloudKit: found \(cloudKitPositions.count) CloudKit positions")
+
+        let storytellerStatus = await StorytellerActor.shared.connectionStatus
+        var healedToStoryteller = 0
+        var healedToCloudKit = 0
+
+        for (bookId, serverPosition) in serverPositions {
+            guard let locator = serverPosition.locator,
+                  let serverTimestamp = serverPosition.timestamp else { continue }
+
+            if let cloudKitProgress = cloudKitPositions[bookId] {
+                if cloudKitProgress.timestamp > serverTimestamp {
+                    debugLog("[PSA] reconcileWithCloudKit: \(bookId) CloudKit is newer (\(cloudKitProgress.timestamp) > \(serverTimestamp))")
+                    updateServerPosition(bookId: bookId, locator: cloudKitProgress.locator, timestamp: cloudKitProgress.timestamp)
+                    await updateLocalMetadataProgress(bookId: bookId, locator: cloudKitProgress.locator, timestamp: cloudKitProgress.timestamp)
+
+                    if storytellerStatus == .connected {
+                        let result = await StorytellerActor.shared.sendProgressToServer(
+                            bookId: bookId,
+                            locator: cloudKitProgress.locator,
+                            timestamp: cloudKitProgress.timestamp
+                        )
+                        if result == .success {
+                            healedToStoryteller += 1
+                            debugLog("[PSA] reconcileWithCloudKit: healed \(bookId) to Storyteller")
+                        }
+                    }
+                } else if serverTimestamp > cloudKitProgress.timestamp {
+                    debugLog("[PSA] reconcileWithCloudKit: \(bookId) Storyteller is newer (\(serverTimestamp) > \(cloudKitProgress.timestamp))")
+                    let result = await CloudKitSyncActor.shared.sendProgressToCloudKit(
+                        bookId: bookId,
+                        locator: locator,
+                        timestamp: serverTimestamp
+                    )
+                    if result == .success {
+                        healedToCloudKit += 1
+                        debugLog("[PSA] reconcileWithCloudKit: healed \(bookId) to CloudKit")
+                    }
+                }
+            } else {
+                debugLog("[PSA] reconcileWithCloudKit: \(bookId) not in CloudKit, pushing")
+                let result = await CloudKitSyncActor.shared.sendProgressToCloudKit(
+                    bookId: bookId,
+                    locator: locator,
+                    timestamp: serverTimestamp
+                )
+                if result == .success {
+                    healedToCloudKit += 1
+                }
+            }
+        }
+
+        for (bookId, cloudKitProgress) in cloudKitPositions {
+            if serverPositions[bookId] == nil {
+                debugLog("[PSA] reconcileWithCloudKit: \(bookId) only in CloudKit, adopting")
+                updateServerPosition(bookId: bookId, locator: cloudKitProgress.locator, timestamp: cloudKitProgress.timestamp)
+                await updateLocalMetadataProgress(bookId: bookId, locator: cloudKitProgress.locator, timestamp: cloudKitProgress.timestamp)
+
+                if storytellerStatus == .connected {
+                    let result = await StorytellerActor.shared.sendProgressToServer(
+                        bookId: bookId,
+                        locator: cloudKitProgress.locator,
+                        timestamp: cloudKitProgress.timestamp
+                    )
+                    if result == .success {
+                        healedToStoryteller += 1
+                    }
+                }
+            }
+        }
+
+        debugLog("[PSA] reconcileWithCloudKit: complete - healedToStoryteller=\(healedToStoryteller), healedToCloudKit=\(healedToCloudKit)")
+
+        if healedToStoryteller > 0 || healedToCloudKit > 0 {
+            await notifyObservers()
+        }
     }
 
     // MARK: - Position Fetch
@@ -216,6 +382,10 @@ public actor ProgressSyncActor {
             serverPositions[bookId] = position
         }
         debugLog("[PSA] updateServerPositions: updated \(positions.count) positions, total=\(serverPositions.count)")
+
+        Task {
+            await reconcileWithCloudKit()
+        }
     }
 
     /// Get reconciled progress for all books (pending queue takes precedence over server)
@@ -336,20 +506,27 @@ public actor ProgressSyncActor {
         debugLog("[PSA] updateServerPosition: bookId=\(bookId), timestamp=\(timestamp)")
     }
 
-    private func queueOfflineProgress(bookId: String, locator: BookLocator, timestamp: Double) async {
+    private func queueOfflineProgress(
+        bookId: String,
+        locator: BookLocator,
+        timestamp: Double,
+        syncedToStoryteller: Bool = false,
+        syncedToCloudKit: Bool = false
+    ) async {
         pendingProgressQueue.removeAll { $0.bookId == bookId }
 
         let pending = PendingProgressSync(
             bookId: bookId,
             locator: locator,
-            timestamp: timestamp
+            timestamp: timestamp,
+            syncedToStoryteller: syncedToStoryteller,
+            syncedToCloudKit: syncedToCloudKit
         )
         pendingProgressQueue.append(pending)
 
-        debugLog("[PSA] queueOfflineProgress: bookId=\(bookId), queueSize=\(pendingProgressQueue.count)")
+        debugLog("[PSA] queueOfflineProgress: bookId=\(bookId), queueSize=\(pendingProgressQueue.count), storyteller=\(syncedToStoryteller), cloudKit=\(syncedToCloudKit)")
 
         await saveQueueToDisk()
-        await updateLocalMetadataProgress(bookId: bookId, locator: locator, timestamp: timestamp)
         await notifyObservers()
     }
 
