@@ -160,6 +160,7 @@ targets:
         CURRENT_PROJECT_VERSION: 1
         DEVELOPMENT_TEAM: 9CJ7KG7UKQ
         GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_WKBackgroundModes: audio
         INFOPLIST_KEY_WKCompanionAppBundleIdentifier: com.kyonifer.SilveranReader
         MARKETING_VERSION: 0.1
         PRODUCT_BUNDLE_IDENTIFIER: com.kyonifer.SilveranReader.watchkitapp

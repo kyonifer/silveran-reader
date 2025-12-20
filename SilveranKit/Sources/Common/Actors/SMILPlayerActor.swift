@@ -2,8 +2,11 @@
 import AVFoundation
 import Foundation
 
-#if os(iOS)
+#if os(iOS) || os(watchOS)
 import MediaPlayer
+#endif
+
+#if os(iOS)
 import UIKit
 #endif
 
@@ -157,13 +160,16 @@ public actor SMILPlayerActor {
 
     private var stateObservers: [UUID: @Sendable @MainActor (SMILPlaybackState) -> Void] = [:]
 
-    // MARK: - iOS Specific
+    // MARK: - iOS/watchOS Audio
 
-    #if os(iOS)
-    private var audioManagerIos: SMILAudioManagerIos?
-    private var coverImage: UIImage?
+    #if os(iOS) || os(watchOS)
+    private var audioManager: SMILAudioManager?
     private var nowPlayingUpdateTimer: Timer?
     private var audioSessionObserversConfigured = false
+    #endif
+
+    #if os(iOS)
+    private var coverImage: UIImage?
     #endif
 
     // MARK: - Initialization
@@ -196,10 +202,10 @@ public actor SMILPlayerActor {
         self.currentSectionIndex = 0
         self.currentEntryIndex = 0
 
-        #if os(iOS)
+        #if os(iOS) || os(watchOS)
         setupAudioSession()
         configureAudioSessionObservers()
-        await setupAudioManagerIos()
+        await setupAudioManager()
         #endif
 
         debugLog("[SMILPlayerActor] Book loaded with \(structure.count) sections")
@@ -223,7 +229,7 @@ public actor SMILPlayerActor {
     #if os(iOS)
     public func setCoverImage(_ image: UIImage?) async {
         coverImage = image
-        let manager = audioManagerIos
+        let manager = audioManager
         await MainActor.run {
             manager?.coverImage = image
         }
@@ -246,7 +252,7 @@ public actor SMILPlayerActor {
             throw SMILPlayerError.audioLoadFailed("Player not initialized")
         }
 
-        #if os(iOS)
+        #if os(iOS) || os(watchOS)
         ensureAudioSessionActive()
         #endif
 
@@ -254,7 +260,7 @@ public actor SMILPlayerActor {
         isPlaying = true
         startUpdateTimer()
 
-        #if os(iOS)
+        #if os(iOS) || os(watchOS)
         startNowPlayingUpdateTimer()
         #endif
 
@@ -273,7 +279,7 @@ public actor SMILPlayerActor {
         isPlaying = false
         stopUpdateTimer()
 
-        #if os(iOS)
+        #if os(iOS) || os(watchOS)
         stopNowPlayingUpdateTimer()
         updateNowPlayingInfo()
         #endif
@@ -494,11 +500,10 @@ public actor SMILPlayerActor {
         currentAudioFile = ""
         isPlaying = false
 
-        #if os(iOS)
+        #if os(iOS) || os(watchOS)
         stopNowPlayingUpdateTimer()
-        await cleanupAudioManagerIos()
         removeAudioSessionObservers()
-        coverImage = nil
+        await cleanupAudioManager()
 
         do {
             try AVAudioSession.sharedInstance().setActive(
@@ -508,6 +513,10 @@ public actor SMILPlayerActor {
         } catch {
             debugLog("[SMILPlayerActor] Failed to deactivate audio session: \(error)")
         }
+        #endif
+
+        #if os(iOS)
+        coverImage = nil
         #endif
     }
 
@@ -550,7 +559,7 @@ public actor SMILPlayerActor {
                 player.play()
                 isPlaying = true
                 startUpdateTimer()
-                #if os(iOS)
+                #if os(iOS) || os(watchOS)
                 startNowPlayingUpdateTimer()
                 #endif
             }
@@ -838,7 +847,7 @@ public actor SMILPlayerActor {
     private func notifyStateChange() async {
         guard let state = buildCurrentState() else { return }
 
-        #if os(iOS)
+        #if os(iOS) || os(watchOS)
         updateNowPlayingInfo()
         #endif
         debugLog("[SMILPlayerActor] notifyStateChange: \(stateObservers.count) observers")
@@ -847,9 +856,9 @@ public actor SMILPlayerActor {
         }
     }
 
-    // MARK: - iOS Audio Session
+    // MARK: - iOS/watchOS Audio Session
 
-    #if os(iOS)
+    #if os(iOS) || os(watchOS)
     private func setupAudioSession() {
         do {
             let session = AVAudioSession.sharedInstance()
@@ -965,57 +974,6 @@ public actor SMILPlayerActor {
         audioSessionObserversConfigured = false
     }
 
-    // MARK: - iOS Audio Manager
-
-    private func setupAudioManagerIos() async {
-        let title = bookTitle
-        let author = bookAuthor
-        let cover = coverImage
-        let manager = await MainActor.run {
-            let m = SMILAudioManagerIos()
-            m.bookTitle = title
-            m.bookAuthor = author
-            m.coverImage = cover
-            return m
-        }
-        self.audioManagerIos = manager
-        debugLog("[SMILPlayerActor] AudioManagerIos created")
-    }
-
-    private func cleanupAudioManagerIos() async {
-        let manager = audioManagerIos
-        await MainActor.run {
-            manager?.cleanup()
-        }
-        audioManagerIos = nil
-    }
-
-    // MARK: - iOS Now Playing
-
-    private func updateNowPlayingInfo() {
-        guard !bookStructure.isEmpty else {
-            let manager = audioManagerIos
-            Task { @MainActor in
-                manager?.clearNowPlayingInfo()
-            }
-            return
-        }
-
-        let state = buildCurrentState()
-        let manager = audioManagerIos
-        debugLog("[SMILPlayerActor] updateNowPlayingInfo: isPlaying=\(state?.isPlaying ?? false), hasManager=\(manager != nil)")
-
-        Task { @MainActor in
-            manager?.updateNowPlayingInfo(
-                currentTime: state?.chapterElapsed ?? 0,
-                duration: state?.chapterTotal ?? 0,
-                chapterLabel: state?.chapterLabel ?? "Playing",
-                isPlaying: state?.isPlaying ?? false,
-                playbackRate: state?.playbackRate ?? 1.0
-            )
-        }
-    }
-
     private func startNowPlayingUpdateTimer() {
         stopNowPlayingUpdateTimer()
         let timer = Timer(timeInterval: 1.0, repeats: true) { _ in
@@ -1037,26 +995,80 @@ public actor SMILPlayerActor {
         nowPlayingUpdateTimer?.invalidate()
         nowPlayingUpdateTimer = nil
     }
+    // MARK: - Audio Manager
+
+    private func setupAudioManager() async {
+        let title = bookTitle
+        let author = bookAuthor
+        #if os(iOS)
+        let cover = coverImage
+        #endif
+        let manager = await MainActor.run {
+            let m = SMILAudioManager()
+            m.bookTitle = title
+            m.bookAuthor = author
+            #if os(iOS)
+            m.coverImage = cover
+            #endif
+            return m
+        }
+        self.audioManager = manager
+        debugLog("[SMILPlayerActor] AudioManager created")
+    }
+
+    private func cleanupAudioManager() async {
+        let manager = audioManager
+        await MainActor.run {
+            manager?.cleanup()
+        }
+        audioManager = nil
+    }
+
+    private func updateNowPlayingInfo() {
+        guard !bookStructure.isEmpty else {
+            let manager = audioManager
+            Task { @MainActor in
+                manager?.clearNowPlayingInfo()
+            }
+            return
+        }
+
+        let state = buildCurrentState()
+        let manager = audioManager
+        debugLog("[SMILPlayerActor] updateNowPlayingInfo: isPlaying=\(state?.isPlaying ?? false), hasManager=\(manager != nil)")
+
+        Task { @MainActor in
+            manager?.updateNowPlayingInfo(
+                currentTime: state?.chapterElapsed ?? 0,
+                duration: state?.chapterTotal ?? 0,
+                chapterLabel: state?.chapterLabel ?? "Playing",
+                isPlaying: state?.isPlaying ?? false,
+                playbackRate: state?.playbackRate ?? 1.0
+            )
+        }
+    }
     #endif
 }
 
-// MARK: - iOS Audio Manager Helper
+// MARK: - Audio Manager Helper
 
-#if os(iOS)
+#if os(iOS) || os(watchOS)
 @MainActor
-class SMILAudioManagerIos {
+class SMILAudioManager {
     var bookTitle: String?
     var bookAuthor: String?
+
+    #if os(iOS)
     var coverImage: UIImage? {
         didSet {
             cachedArtwork = coverImage.map { createArtwork(from: $0) }
         }
     }
-
     private var cachedArtwork: MPMediaItemArtwork?
+    #endif
 
     init() {
-        debugLog("[SMILAudioManagerIos] Initializing")
+        debugLog("[SMILAudioManager] Initializing")
         setupRemoteCommandCenter()
     }
 
@@ -1065,6 +1077,7 @@ class SMILAudioManagerIos {
 
         commandCenter.playCommand.removeTarget(nil)
         commandCenter.pauseCommand.removeTarget(nil)
+        commandCenter.togglePlayPauseCommand.removeTarget(nil)
         commandCenter.skipForwardCommand.removeTarget(nil)
         commandCenter.skipBackwardCommand.removeTarget(nil)
         commandCenter.changePlaybackPositionCommand.removeTarget(nil)
@@ -1073,11 +1086,12 @@ class SMILAudioManagerIos {
 
         commandCenter.nextTrackCommand.isEnabled = false
         commandCenter.previousTrackCommand.isEnabled = false
+        commandCenter.changePlaybackPositionCommand.isEnabled = false
 
         commandCenter.playCommand.isEnabled = true
         commandCenter.playCommand.addTarget { _ in
             Task { @SMILPlayerActor in
-                debugLog("[SMILAudioManagerIos] Remote play command")
+                debugLog("[SMILAudioManager] Remote play command")
                 try? await SMILPlayerActor.shared.play()
             }
             return .success
@@ -1086,8 +1100,17 @@ class SMILAudioManagerIos {
         commandCenter.pauseCommand.isEnabled = true
         commandCenter.pauseCommand.addTarget { _ in
             Task { @SMILPlayerActor in
-                debugLog("[SMILAudioManagerIos] Remote pause command")
+                debugLog("[SMILAudioManager] Remote pause command")
                 await SMILPlayerActor.shared.pause()
+            }
+            return .success
+        }
+
+        commandCenter.togglePlayPauseCommand.isEnabled = true
+        commandCenter.togglePlayPauseCommand.addTarget { _ in
+            Task { @SMILPlayerActor in
+                debugLog("[SMILAudioManager] Remote toggle play/pause command")
+                try? await SMILPlayerActor.shared.togglePlayPause()
             }
             return .success
         }
@@ -1096,7 +1119,7 @@ class SMILAudioManagerIos {
         commandCenter.skipForwardCommand.preferredIntervals = [15]
         commandCenter.skipForwardCommand.addTarget { _ in
             Task { @SMILPlayerActor in
-                debugLog("[SMILAudioManagerIos] Remote skip forward command")
+                debugLog("[SMILAudioManager] Remote skip forward command")
                 await SMILPlayerActor.shared.skipForward()
             }
             return .success
@@ -1106,15 +1129,13 @@ class SMILAudioManagerIos {
         commandCenter.skipBackwardCommand.preferredIntervals = [15]
         commandCenter.skipBackwardCommand.addTarget { _ in
             Task { @SMILPlayerActor in
-                debugLog("[SMILAudioManagerIos] Remote skip backward command")
+                debugLog("[SMILAudioManager] Remote skip backward command")
                 await SMILPlayerActor.shared.skipBackward()
             }
             return .success
         }
 
-        commandCenter.changePlaybackPositionCommand.isEnabled = false
-
-        debugLog("[SMILAudioManagerIos] Remote commands configured")
+        debugLog("[SMILAudioManager] Remote commands configured")
     }
 
     func updateNowPlayingInfo(
@@ -1125,7 +1146,7 @@ class SMILAudioManagerIos {
         playbackRate: Double
     ) {
         let rate = isPlaying ? playbackRate : 0.0
-        debugLog("[SMILAudioManagerIos] updateNowPlayingInfo: isPlaying=\(isPlaying), rate=\(rate)")
+        debugLog("[SMILAudioManager] updateNowPlayingInfo: isPlaying=\(isPlaying), rate=\(rate)")
 
         var info = [String: Any]()
 
@@ -1136,9 +1157,11 @@ class SMILAudioManagerIos {
         info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = currentTime
         info[MPNowPlayingInfoPropertyPlaybackRate] = rate
 
+        #if os(iOS)
         if let artwork = cachedArtwork {
             info[MPMediaItemPropertyArtwork] = artwork
         }
+        #endif
 
         let center = MPNowPlayingInfoCenter.default()
         center.nowPlayingInfo = info
@@ -1150,13 +1173,14 @@ class SMILAudioManagerIos {
     }
 
     func cleanup() {
-        debugLog("[SMILAudioManagerIos] Cleanup")
+        debugLog("[SMILAudioManager] Cleanup")
 
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
 
         let commandCenter = MPRemoteCommandCenter.shared()
         commandCenter.playCommand.removeTarget(nil)
         commandCenter.pauseCommand.removeTarget(nil)
+        commandCenter.togglePlayPauseCommand.removeTarget(nil)
         commandCenter.skipForwardCommand.removeTarget(nil)
         commandCenter.skipBackwardCommand.removeTarget(nil)
         commandCenter.changePlaybackPositionCommand.removeTarget(nil)
@@ -1167,9 +1191,11 @@ class SMILAudioManagerIos {
         commandCenter.previousTrackCommand.isEnabled = true
     }
 
+    #if os(iOS)
     nonisolated private func createArtwork(from image: UIImage) -> MPMediaItemArtwork {
         MPMediaItemArtwork(boundsSize: image.size) { @Sendable _ in image }
     }
+    #endif
 }
 #endif
 #endif

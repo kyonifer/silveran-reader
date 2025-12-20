@@ -100,8 +100,6 @@ public final class WatchPlayerViewModel: NSObject {
 
     override init() {
         super.init()
-        configureAudioSession()
-        setupRemoteCommands()
         loadSavedVolume()
     }
 
@@ -185,8 +183,6 @@ public final class WatchPlayerViewModel: NSObject {
         if !isPlaying && Date().timeIntervalSince(lastSyncTime) > syncDebounceInterval {
             syncProgressToCloudKit()
         }
-
-        updateNowPlayingInfo()
     }
 
     // MARK: - Playback Controls
@@ -324,85 +320,6 @@ public final class WatchPlayerViewModel: NSObject {
             debugLog("[WatchPlayerViewModel] Failed to load section HTML: \(error)")
             currentSectionHTML = ""
         }
-    }
-
-    // MARK: - Audio Session
-
-    private func configureAudioSession() {
-        do {
-            let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .spokenAudio)
-            try session.setActive(true)
-        } catch {
-            debugLog("[WatchPlayerViewModel] Failed to configure audio session: \(error)")
-        }
-    }
-
-    // MARK: - Now Playing
-
-    private func setupRemoteCommands() {
-        let center = MPRemoteCommandCenter.shared()
-
-        center.playCommand.addTarget { [weak self] _ in
-            guard let self else { return .commandFailed }
-            Task { @MainActor in
-                if !self.isPlaying {
-                    self.playPause()
-                }
-            }
-            return .success
-        }
-
-        center.pauseCommand.addTarget { [weak self] _ in
-            guard let self else { return .commandFailed }
-            Task { @MainActor in
-                if self.isPlaying {
-                    self.playPause()
-                }
-            }
-            return .success
-        }
-
-        center.togglePlayPauseCommand.addTarget { [weak self] _ in
-            guard let self else { return .commandFailed }
-            Task { @MainActor in
-                self.playPause()
-            }
-            return .success
-        }
-
-        center.skipForwardCommand.preferredIntervals = [30]
-        center.skipForwardCommand.addTarget { [weak self] _ in
-            guard let self else { return .commandFailed }
-            Task { @MainActor in
-                self.nextChapter()
-            }
-            return .success
-        }
-
-        center.skipBackwardCommand.preferredIntervals = [30]
-        center.skipBackwardCommand.addTarget { [weak self] _ in
-            guard let self else { return .commandFailed }
-            Task { @MainActor in
-                self.previousChapter()
-            }
-            return .success
-        }
-    }
-
-    private func updateNowPlayingInfo() {
-        var info: [String: Any] = [
-            MPMediaItemPropertyTitle: bookTitle,
-            MPNowPlayingInfoPropertyElapsedPlaybackTime: currentTime,
-            MPMediaItemPropertyPlaybackDuration: chapterDuration,
-            MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0,
-        ]
-
-        if !chapterTitle.isEmpty {
-            info[MPMediaItemPropertyArtist] = chapterTitle
-        }
-
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
     }
 
     // MARK: - Helpers
