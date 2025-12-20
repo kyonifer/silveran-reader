@@ -54,9 +54,14 @@ struct HomeView: View {
     var body: some View {
         #if os(iOS)
         NavigationStack(path: $navigationPath) {
-            homeContent
-                .navigationTitle("Home")
-                .navigationBarTitleDisplayMode(.inline)
+            ZStack {
+                homeContent
+                if searchText.count >= 2 {
+                    searchOverlay
+                }
+            }
+            .navigationTitle("Home")
+            .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
                         HStack(spacing: 12) {
@@ -102,7 +107,12 @@ struct HomeView: View {
                 }
         }
         #else
-        homeContent
+        ZStack {
+            homeContent
+            if searchText.count >= 2 {
+                searchOverlayMacOS
+            }
+        }
         #endif
     }
 
@@ -227,13 +237,6 @@ struct HomeView: View {
         .onChange(of: searchText) { _, _ in
             loadSections()
         }
-        #if os(macOS)
-        .onChange(of: searchText) { oldValue, newValue in
-            if newValue.count >= 2 && oldValue.count < 2 {
-                navigateToAllBooks()
-            }
-        }
-        #endif
     }
 
     private func loadSections() {
@@ -297,23 +300,6 @@ struct HomeView: View {
     private func dismissSidebar() {
         withAnimation(.easeInOut(duration: 0.2)) {
             isSidebarVisible = false
-        }
-    }
-
-    private func navigateToAllBooks() {
-        for section in sidebarSections {
-            for item in section.items {
-                if item.name == "All Books" {
-                    selectedSidebarItem = item
-                    return
-                }
-                for child in item.children ?? [] {
-                    if child.name == "All Books" {
-                        selectedSidebarItem = child
-                        return
-                    }
-                }
-            }
         }
     }
 
@@ -538,6 +524,43 @@ struct HomeView: View {
                 EbookPlayerView(bookData: bookData)
                     .navigationBarTitleDisplayMode(.inline)
         }
+    }
+
+    private var searchOverlay: some View {
+        MediaGridView(
+            title: "Search",
+            searchText: searchText,
+            mediaKind: .ebook,
+            tagFilter: nil,
+            seriesFilter: nil,
+            statusFilter: nil,
+            defaultSort: "titleAZ",
+            preferredTileWidth: 110,
+            minimumTileWidth: 90,
+            columnBreakpoints: [
+                MediaGridView.ColumnBreakpoint(columns: 3, minWidth: 0)
+            ],
+            initialNarrationFilterOption: .both
+        )
+        .background(Color(uiColor: .systemBackground))
+    }
+    #endif
+
+    #if os(macOS)
+    private var searchOverlayMacOS: some View {
+        MediaGridView(
+            title: "Search",
+            searchText: searchText,
+            mediaKind: .ebook,
+            tagFilter: nil,
+            seriesFilter: nil,
+            statusFilter: nil,
+            defaultSort: "titleAZ",
+            preferredTileWidth: 120,
+            minimumTileWidth: 50,
+            initialNarrationFilterOption: .both
+        )
+        .background(Color(nsColor: .windowBackgroundColor))
     }
     #endif
 

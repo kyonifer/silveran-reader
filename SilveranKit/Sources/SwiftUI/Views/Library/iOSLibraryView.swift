@@ -64,17 +64,8 @@ public struct iOSLibraryView: View {
                 }
                 .tag(Tab.more)
         }
-        .onChange(of: searchText) { oldValue, newValue in
-            if selectedTab == .home && newValue.count >= 2 && oldValue.count < 2 {
-                selectedTab = .books
-            }
-        }
-        .onChange(of: selectedTab) { oldValue, newValue in
-            // Skip clearing when switching from home to books, since that switch
-            // is triggered by typing into search and we don't want to erase what was typed
-            if !(oldValue == .home && newValue == .books) {
-                searchText = ""
-            }
+        .onChange(of: selectedTab) { _, _ in
+            searchText = ""
         }
         .sheet(isPresented: $showSettings) {
             NavigationStack {
