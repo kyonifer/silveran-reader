@@ -480,7 +480,8 @@ public final class WatchPlayerViewModel: NSObject {
 
         let entry = section.mediaOverlay[currentEntryIndex]
 
-        debugLog("[WatchPlayerViewModel] Syncing to CloudKit: \(entry.textHref)#\(entry.textId)")
+        debugLog("[WatchPlayerViewModel] entry.textHref=\(entry.textHref)")
+        debugLog("[WatchPlayerViewModel] entry.textId=\(entry.textId)")
 
         let locator = BookLocator(
             href: entry.textHref,
@@ -489,7 +490,7 @@ public final class WatchPlayerViewModel: NSObject {
             locations: BookLocator.Locations(
                 fragments: [entry.textId],
                 progression: chapterProgress,
-                position: currentSectionIndex,
+                position: nil,
                 totalProgression: progression,
                 cssSelector: nil,
                 partialCfi: nil,
@@ -497,6 +498,10 @@ public final class WatchPlayerViewModel: NSObject {
             ),
             text: nil
         )
+
+        debugLog("[WatchPlayerViewModel] locator.href=\(locator.href)")
+        debugLog("[WatchPlayerViewModel] locator.fragments=\(locator.locations?.fragments ?? [])")
+        debugLog("[WatchPlayerViewModel] locator.position=\(String(describing: locator.locations?.position))")
 
         Task {
             let _ = await CloudKitSyncActor.shared.sendProgressToCloudKit(
