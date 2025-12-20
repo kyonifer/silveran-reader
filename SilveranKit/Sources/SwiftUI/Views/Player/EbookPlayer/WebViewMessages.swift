@@ -38,6 +38,11 @@ struct PageFlippedMessage: Codable {
 struct OverlayToggledMessage: Codable {
 }
 
+/// Sent when user clicks in margin zone to navigate - routed through EPM like arrow keys
+struct MarginClickNavMessage: Codable {
+    let direction: String
+}
+
 /// Sent when user double-clicks text to seek audio to that location
 struct MediaOverlaySeekMessage: Codable {
     let sectionIndex: Int

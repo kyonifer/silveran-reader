@@ -557,6 +557,17 @@ class EbookPlayerViewModel {
             }
         }
 
+        bridge.onMarginClickNav = { [weak self] message in
+            guard let self else { return }
+            Task { @MainActor in
+                if message.direction == "left" {
+                    self.progressManager?.handleUserNavLeft()
+                } else {
+                    self.progressManager?.handleUserNavRight()
+                }
+            }
+        }
+
         bridge.onMediaOverlaySeek = { [weak self] message in
             guard let self else { return }
             Task { @MainActor in

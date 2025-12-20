@@ -42,6 +42,7 @@ class ReaderStyleManager {
             _ = settingsVM.foregroundColor
             _ = settingsVM.customCSS
             _ = settingsVM.singleColumnMode
+            _ = settingsVM.enableMarginClickNavigation
         } onChange: {
             Task { @MainActor in
                 await self.sendStyleUpdate()
@@ -94,7 +95,8 @@ class ReaderStyleManager {
                 backgroundColor: effectiveBackgroundColor,
                 foregroundColor: effectiveForegroundColor,
                 customCSS: settingsVM.customCSS,
-                singleColumnMode: settingsVM.singleColumnMode
+                singleColumnMode: settingsVM.singleColumnMode,
+                enableMarginClickNavigation: settingsVM.enableMarginClickNavigation
             )
             debugLog("[ReaderStyleManager] Style update sent successfully")
         } catch {

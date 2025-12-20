@@ -119,6 +119,11 @@ struct EbookPlayerSettings: View {
                     Task { try? await settingsVM.save() }
                 }
 
+            Toggle("Margin Tap to Turn Pages", isOn: $settingsVM.enableMarginClickNavigation)
+                .onChange(of: settingsVM.enableMarginClickNavigation) { _, _ in
+                    Task { try? await settingsVM.save() }
+                }
+
             VStack(alignment: .leading, spacing: 4) {
                 Text("Line Spacing: \(String(format: "%.1f", settingsVM.lineSpacing))")
                     .font(.caption)
@@ -483,6 +488,7 @@ struct EbookPlayerSettings: View {
         settingsVM.highlightColor = nil
         settingsVM.backgroundColor = nil
         settingsVM.foregroundColor = nil
+        settingsVM.enableMarginClickNavigation = true
         settingsVM.enableReadingBar = true
         settingsVM.showProgressBar = false
         settingsVM.showProgress = true

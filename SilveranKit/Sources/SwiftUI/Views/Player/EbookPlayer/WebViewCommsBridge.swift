@@ -27,6 +27,9 @@ class WebViewCommsBridge {
     /// Notifies when user taps to toggle overlay (iOS only)
     var onOverlayToggled: (() -> Void)?
 
+    /// Notifies when user clicks margin zone to navigate (routed through EPM)
+    var onMarginClickNav: ((MarginClickNavMessage) -> Void)?
+
     /// Notifies when user double-clicks text to seek audio (or initial position)
     var onMediaOverlaySeek: ((MediaOverlaySeekMessage) -> Void)?
 
@@ -86,6 +89,12 @@ class WebViewCommsBridge {
     func sendSwiftOverlayToggled(_ message: OverlayToggledMessage) {
         debugLog("[WebViewCommsBridge] sendSwiftOverlayToggled")
         onOverlayToggled?()
+    }
+
+    /// JS detected a margin click for navigation
+    func sendSwiftMarginClickNav(_ message: MarginClickNavMessage) {
+        debugLog("[WebViewCommsBridge] sendSwiftMarginClickNav - direction: \(message.direction)")
+        onMarginClickNav?(message)
     }
 
     /// JS detected a media overlay seek event (double-click or initial position)
@@ -263,7 +272,8 @@ class WebViewCommsBridge {
         backgroundColor: String?,
         foregroundColor: String?,
         customCSS: String?,
-        singleColumnMode: Bool
+        singleColumnMode: Bool,
+        enableMarginClickNavigation: Bool
     ) async throws {
         guard let webView = webView else {
             throw WebViewCommsBridgeError.webViewNotAvailable
@@ -280,6 +290,7 @@ class WebViewCommsBridge {
             "letterSpacing": letterSpacing,
             "highlightColor": highlightColor,
             "singleColumnMode": singleColumnMode,
+            "enableMarginClickNavigation": enableMarginClickNavigation,
         ]
 
         styles["backgroundColor"] = backgroundColor ?? NSNull()

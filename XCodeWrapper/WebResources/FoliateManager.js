@@ -124,6 +124,7 @@ class FoliateManager {
   #foregroundColor = null;
   #customCSS = null;
   #singleColumnMode = false;
+  #enableMarginClickNavigation = true;
   #lastRelocateRange = null;
   #highlightedElement = null;
   #resizeHandler = null;
@@ -173,7 +174,7 @@ class FoliateManager {
 
           clickTimer = setTimeout(() => {
             clickTimer = null;
-            this.#reportOverlayToggle();
+            this.#handleSingleClick(event);
           }, 150);
         });
 
@@ -284,6 +285,47 @@ class FoliateManager {
 
   #reportOverlayToggle() {
     window.webkit?.messageHandlers?.OverlayToggled?.postMessage({});
+  }
+
+  #handleSingleClick(event) {
+    if (!this.#enableMarginClickNavigation) {
+      this.#reportOverlayToggle();
+      return;
+    }
+
+    const pageWidth = this.#singleColumnMode
+      ? window.innerWidth
+      : Math.floor(window.innerWidth / 2);
+
+    const marginZonePercent = 0.15;
+    const leftZone = pageWidth * marginZonePercent;
+    const rightZone = pageWidth * (1 - marginZonePercent);
+    const clickX = event.clientX % pageWidth;
+
+    if (clickX < leftZone) {
+      this.#handleMarginClickNavigation("left");
+    } else if (clickX > rightZone) {
+      this.#handleMarginClickNavigation("right");
+    } else {
+      this.#reportOverlayToggle();
+    }
+  }
+
+  #handleMarginClickNavigation(direction) {
+    if (!this.#view) {
+      console.warn("[FM2] Margin click navigation but view not initialized");
+      return;
+    }
+
+    const isRtl = this.#view?.book?.dir === "rtl";
+    const effectiveDirection = isRtl
+      ? (direction === "left" ? "right" : "left")
+      : direction;
+
+    // Don't navigate here - let Swift handle it through EPM like arrow keys
+    window.webkit?.messageHandlers?.MarginClickNav?.postMessage({
+      direction: effectiveDirection,
+    });
   }
 
   #reportPageFlip(detail) {
@@ -485,6 +527,9 @@ class FoliateManager {
     }
     if (styles.singleColumnMode !== undefined && styles.singleColumnMode !== null) {
       this.#singleColumnMode = styles.singleColumnMode;
+    }
+    if (styles.enableMarginClickNavigation !== undefined && styles.enableMarginClickNavigation !== null) {
+      this.#enableMarginClickNavigation = styles.enableMarginClickNavigation;
     }
 
     this.#applyStylesToRenderer();

@@ -118,6 +118,11 @@ private class WebViewCoordinator2: NSObject, WKNavigationDelegate, WKScriptMessa
                     let msg = try decoder.decode(OverlayToggledMessage.self, from: data)
                     bridge.sendSwiftOverlayToggled(msg)
 
+                case "MarginClickNav":
+                    let data = try JSONSerialization.data(withJSONObject: message.body)
+                    let msg = try decoder.decode(MarginClickNavMessage.self, from: data)
+                    bridge.sendSwiftMarginClickNav(msg)
+
                 case "mediaOverlaySeek":
                     let data = try JSONSerialization.data(withJSONObject: message.body)
                     let msg = try decoder.decode(MediaOverlaySeekMessage.self, from: data)
@@ -200,6 +205,7 @@ private func makeWebViewConfiguration2(coordinator: WebViewCoordinator2) -> WKWe
     contentController.add(coordinator, name: "Relocated")
     contentController.add(coordinator, name: "PageFlipped")
     contentController.add(coordinator, name: "OverlayToggled")
+    contentController.add(coordinator, name: "MarginClickNav")
     contentController.add(coordinator, name: "mediaOverlaySeek")
     contentController.add(coordinator, name: "MediaOverlayProgress")
     contentController.add(coordinator, name: "ElementVisibility")
