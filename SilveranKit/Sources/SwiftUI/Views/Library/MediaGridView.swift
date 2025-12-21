@@ -579,6 +579,9 @@ struct MediaGridView: View {
 
     private func matchesSelectedSeries(_ item: BookMetadata) -> Bool {
         guard let series = selectedSeries else { return true }
+        if series == SeriesView.noSeriesFilterKey {
+            return item.series == nil || item.series?.isEmpty == true
+        }
         let normalized = series.lowercased()
         return item.series?.contains(where: { $0.name.lowercased() == normalized }) ?? false
     }

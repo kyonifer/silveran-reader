@@ -23,6 +23,8 @@ struct SeriesView: View {
     private let horizontalPadding: CGFloat = 24
     private let sectionSpacing: CGFloat = 32
 
+    static let noSeriesFilterKey = "__no_series__"
+
     var body: some View {
         NavigationStack(path: $navigationPath) {
             seriesListView
@@ -99,8 +101,8 @@ struct SeriesView: View {
                 ? max(containerWidth - sidebarWidth - sidebarSpacing, 0)
                 : containerWidth
 
-            HStack(spacing: sidebarSpacing) {
-                ScrollView {
+            HStack(spacing: 0) {
+                ScrollView(.vertical, showsIndicators: true) {
                     VStack(alignment: .leading, spacing: sectionSpacing) {
                         headerView
 
@@ -110,8 +112,9 @@ struct SeriesView: View {
                     .padding(.top, 24)
                     .padding(.bottom, 40)
                 }
-                .modifier(SoftScrollEdgeModifier())
                 .frame(width: contentWidth)
+                .contentMargins(.trailing, 10, for: .scrollIndicators)
+                .modifier(SoftScrollEdgeModifier())
 
                 if isSidebarVisible, let item = activeInfoItem {
                     MediaGridInfoSidebar(
@@ -218,16 +221,15 @@ struct SeriesView: View {
     {
         let displayBooks = (series == nil) ? Array(books.prefix(30)) : books
         let stackWidth = max(contentWidth - (horizontalPadding * 2), 100)
+        let navigationKey = series?.name ?? Self.noSeriesFilterKey
 
         VStack(alignment: .center, spacing: 12) {
             SeriesStackView(
                 books: displayBooks,
                 mediaKind: mediaKind,
                 availableWidth: stackWidth,
-                onSelect: { book in
-                    if let seriesName = series?.name {
-                        navigateToSeries(seriesName)
-                    }
+                onSelect: { _ in
+                    navigateToSeries(navigationKey)
                 },
                 onInfo: { book in
                     activeInfoItem = book
@@ -238,16 +240,13 @@ struct SeriesView: View {
 
             VStack(alignment: .center, spacing: 6) {
                 Button {
-                    if let seriesName = series?.name {
-                        navigateToSeries(seriesName)
-                    }
+                    navigateToSeries(navigationKey)
                 } label: {
                     Text(series?.name ?? "No Series")
                         .font(.system(size: 20, weight: .regular))
                         .foregroundColor(.primary)
                 }
                 .buttonStyle(.plain)
-                .disabled(series == nil)
                 .frame(maxWidth: .infinity, alignment: .center)
 
                 Text("\(books.count) book\(books.count == 1 ? "" : "s")")
@@ -266,15 +265,19 @@ struct SeriesView: View {
 
     @ViewBuilder
     private func seriesDetailView(for seriesName: String) -> some View {
+        let isNoSeries = seriesName == Self.noSeriesFilterKey
+        let displayTitle = isNoSeries ? "No Series" : seriesName
+        let sortKey = isNoSeries ? "title" : "seriesPosition"
+
         #if os(iOS)
         MediaGridView(
-            title: seriesName,
+            title: displayTitle,
             searchText: "",
             mediaKind: mediaKind,
             tagFilter: nil,
             seriesFilter: seriesName,
             statusFilter: nil,
-            defaultSort: "seriesPosition",
+            defaultSort: sortKey,
             preferredTileWidth: 110,
             minimumTileWidth: 90,
             columnBreakpoints: [
@@ -283,22 +286,22 @@ struct SeriesView: View {
             initialNarrationFilterOption: .both,
             scrollPosition: nil
         )
-        .navigationTitle(seriesName)
+        .navigationTitle(displayTitle)
         #else
         MediaGridView(
-            title: seriesName,
+            title: displayTitle,
             searchText: "",
             mediaKind: mediaKind,
             tagFilter: nil,
             seriesFilter: seriesName,
             statusFilter: nil,
-            defaultSort: "seriesPosition",
+            defaultSort: sortKey,
             preferredTileWidth: 120,
             minimumTileWidth: 50,
             initialNarrationFilterOption: .both,
             scrollPosition: nil
         )
-        .navigationTitle(seriesName)
+        .navigationTitle(displayTitle)
         #endif
     }
 
