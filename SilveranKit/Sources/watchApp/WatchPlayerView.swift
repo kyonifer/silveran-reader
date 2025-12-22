@@ -40,9 +40,6 @@ struct WatchPlayerView: View {
         .task {
             await viewModel.loadBook(book)
         }
-        .onDisappear {
-            viewModel.cleanup()
-        }
     }
 
     private var loadingView: some View {

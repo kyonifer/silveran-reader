@@ -159,6 +159,7 @@ public actor SMILPlayerActor {
     // MARK: - Observer Pattern
 
     private var stateObservers: [UUID: @Sendable @MainActor (SMILPlaybackState) -> Void] = [:]
+    private var sessionID = UUID()
 
     // MARK: - iOS/watchOS Audio
 
@@ -166,6 +167,9 @@ public actor SMILPlayerActor {
     private var audioManager: SMILAudioManager?
     private var nowPlayingUpdateTimer: Timer?
     private var audioSessionObserversConfigured = false
+    private var audioSessionInitialized = false
+    private var interruptionObserver: NSObjectProtocol?
+    private var routeChangeObserver: NSObjectProtocol?
     #endif
 
     #if os(iOS)
@@ -186,7 +190,19 @@ public actor SMILPlayerActor {
     ) async throws {
         debugLog("[SMILPlayerActor] Loading book: \(bookId) from \(epubPath.path)")
 
-        await cleanup()
+        if self.bookId == bookId && !bookStructure.isEmpty {
+            debugLog("[SMILPlayerActor] Same book already loaded, skipping reload")
+            sessionID = UUID()
+            #if os(iOS) || os(watchOS)
+            setupAudioSession()
+            configureAudioSessionObservers()
+            #endif
+            await notifyStateChange()
+            return
+        }
+
+        sessionID = UUID()
+        clearBookState()
 
         let structure = try SMILParser.parseEPUB(at: epubPath)
 
@@ -483,9 +499,8 @@ public actor SMILPlayerActor {
 
     // MARK: - Cleanup
 
-    public func cleanup() async {
-        debugLog("[SMILPlayerActor] Cleanup")
-
+    private func clearBookState() {
+        debugLog("[SMILPlayerActor] Clearing book state")
         stopUpdateTimer()
         player?.stop()
         player = nil
@@ -502,11 +517,22 @@ public actor SMILPlayerActor {
 
         #if os(iOS) || os(watchOS)
         stopNowPlayingUpdateTimer()
-        removeAudioSessionObservers()
-        await cleanupAudioManager()
         #endif
+    }
+
+    public func cleanup(expectedSessionID: UUID? = nil) async {
+        if let expectedSessionID, expectedSessionID != sessionID {
+            debugLog("[SMILPlayerActor] Cleanup skipped due to session mismatch")
+            return
+        }
+
+        debugLog("[SMILPlayerActor] Cleanup")
+        clearBookState()
 
         #if os(iOS)
+        removeAudioSessionObservers()
+        await cleanupAudioManager()
+        audioSessionInitialized = false
         do {
             try AVAudioSession.sharedInstance().setActive(
                 false,
@@ -515,9 +541,6 @@ public actor SMILPlayerActor {
         } catch {
             debugLog("[SMILPlayerActor] Failed to deactivate audio session: \(error)")
         }
-        #endif
-
-        #if os(iOS)
         coverImage = nil
         #endif
     }
@@ -862,10 +885,15 @@ public actor SMILPlayerActor {
 
     #if os(iOS) || os(watchOS)
     private func setupAudioSession() {
+        if audioSessionInitialized {
+            debugLog("[SMILPlayerActor] Audio session already initialized, skipping setup")
+            return
+        }
         do {
             let session = AVAudioSession.sharedInstance()
             try session.setCategory(.playback, mode: .spokenAudio, options: [])
             try session.setActive(true)
+            audioSessionInitialized = true
             debugLog("[SMILPlayerActor] Audio session configured")
         } catch {
             debugLog("[SMILPlayerActor] Failed to configure audio session: \(error)")
@@ -885,7 +913,7 @@ public actor SMILPlayerActor {
 
         let session = AVAudioSession.sharedInstance()
 
-        NotificationCenter.default.addObserver(
+        interruptionObserver = NotificationCenter.default.addObserver(
             forName: AVAudioSession.interruptionNotification,
             object: session,
             queue: nil
@@ -894,7 +922,7 @@ public actor SMILPlayerActor {
             self.handleAudioSessionInterruption(notification)
         }
 
-        NotificationCenter.default.addObserver(
+        routeChangeObserver = NotificationCenter.default.addObserver(
             forName: AVAudioSession.routeChangeNotification,
             object: session,
             queue: nil
@@ -963,16 +991,14 @@ public actor SMILPlayerActor {
     }
 
     private func removeAudioSessionObservers() {
-        NotificationCenter.default.removeObserver(
-            self,
-            name: AVAudioSession.interruptionNotification,
-            object: nil
-        )
-        NotificationCenter.default.removeObserver(
-            self,
-            name: AVAudioSession.routeChangeNotification,
-            object: nil
-        )
+        if let observer = interruptionObserver {
+            NotificationCenter.default.removeObserver(observer)
+            interruptionObserver = nil
+        }
+        if let observer = routeChangeObserver {
+            NotificationCenter.default.removeObserver(observer)
+            routeChangeObserver = nil
+        }
         audioSessionObserversConfigured = false
     }
 
@@ -1005,6 +1031,19 @@ public actor SMILPlayerActor {
         #if os(iOS)
         let cover = coverImage
         #endif
+
+        if let existingManager = audioManager {
+            await MainActor.run {
+                existingManager.bookTitle = title
+                existingManager.bookAuthor = author
+                #if os(iOS)
+                existingManager.coverImage = cover
+                #endif
+            }
+            debugLog("[SMILPlayerActor] AudioManager updated with new book info")
+            return
+        }
+
         let manager = await MainActor.run {
             let m = SMILAudioManager()
             m.bookTitle = title

@@ -438,11 +438,11 @@ public final class WatchPlayerViewModel: NSObject {
         if let observerId = stateObserverId {
             Task { @SMILPlayerActor in
                 await SMILPlayerActor.shared.removeStateObserver(id: observerId)
-                await SMILPlayerActor.shared.cleanup()
             }
         }
         stateObserverId = nil
         isPlaying = false
     }
 }
+
 #endif
