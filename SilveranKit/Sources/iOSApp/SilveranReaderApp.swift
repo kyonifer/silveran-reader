@@ -65,18 +65,14 @@ struct SilveranReaderApp: App {
                 Task {
                     await ProgressSyncActor.shared.recordWakeEvent()
 
+                    debugLog("[SilveranReaderApp] Syncing pending progress queue")
+                    let (synced, failed) = await ProgressSyncActor.shared.syncPendingQueue()
+                    debugLog("[SilveranReaderApp] Queue sync: synced=\(synced), failed=\(failed)")
+
                     let status = await StorytellerActor.shared.connectionStatus
                     if status == .connected {
-                        debugLog("[SilveranReaderApp] Syncing pending progress queue")
-                        let (synced, failed) = await ProgressSyncActor.shared.syncPendingQueue()
-                        debugLog("[SilveranReaderApp] Queue sync: synced=\(synced), failed=\(failed)")
-
                         debugLog("[SilveranReaderApp] Fetching library information from server")
                         let _ = await StorytellerActor.shared.fetchLibraryInformation()
-                    } else {
-                        debugLog(
-                            "[SilveranReaderApp] Skipping sync/refresh - not connected to server"
-                        )
                     }
                 }
 

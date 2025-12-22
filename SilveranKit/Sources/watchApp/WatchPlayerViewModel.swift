@@ -45,6 +45,7 @@ public final class WatchPlayerViewModel: NSObject {
     private var lastSyncTime: Date = .distantPast
     private let syncDebounceInterval: TimeInterval = 10
     private var hasRestoredPosition = false
+    private var hasUserProgress = false
 
     // MARK: - Chapter Info
 
@@ -119,6 +120,7 @@ public final class WatchPlayerViewModel: NSObject {
         bookTitle = entry.title
         currentBookId = entry.uuid
         hasRestoredPosition = false
+        hasUserProgress = false
         isLoadingPosition = true
 
         let bookDir = WatchStorageManager.shared.getBookDirectory(uuid: entry.uuid, category: entry.category)
@@ -190,18 +192,21 @@ public final class WatchPlayerViewModel: NSObject {
     // MARK: - Playback Controls
 
     func playPause() {
+        hasUserProgress = true
         Task { @SMILPlayerActor in
             try? await SMILPlayerActor.shared.togglePlayPause()
         }
     }
 
     func skipForward() {
+        hasUserProgress = true
         Task { @SMILPlayerActor in
             await SMILPlayerActor.shared.skipForward(seconds: 30)
         }
     }
 
     func skipBackward() {
+        hasUserProgress = true
         Task { @SMILPlayerActor in
             await SMILPlayerActor.shared.skipBackward(seconds: 30)
         }
@@ -252,6 +257,7 @@ public final class WatchPlayerViewModel: NSObject {
         }
         guard targetIndex < bookStructure.count else { return }
 
+        hasUserProgress = true
         Task {
             await jumpToChapter(targetIndex)
         }
@@ -267,6 +273,7 @@ public final class WatchPlayerViewModel: NSObject {
         }
         guard targetIndex >= 0 else { return }
 
+        hasUserProgress = true
         Task {
             await jumpToChapter(targetIndex)
         }
@@ -278,6 +285,7 @@ public final class WatchPlayerViewModel: NSObject {
         let section = bookStructure[sectionIndex]
         guard !section.mediaOverlay.isEmpty else { return }
 
+        hasUserProgress = true
         do {
             try await SMILPlayerActor.shared.seekToEntry(sectionIndex: sectionIndex, entryIndex: 0)
         } catch {
@@ -401,7 +409,7 @@ public final class WatchPlayerViewModel: NSObject {
     }
 
     private func syncProgressToCloudKit() {
-        guard let bookId = currentBookId, hasRestoredPosition else { return }
+        guard let bookId = currentBookId, hasRestoredPosition, hasUserProgress else { return }
 
         lastSyncTime = Date()
         let progression = bookDuration > 0 ? bookElapsed / bookDuration : 0
