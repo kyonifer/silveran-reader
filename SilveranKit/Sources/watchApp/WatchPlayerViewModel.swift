@@ -12,6 +12,7 @@ public final class WatchPlayerViewModel: NSObject {
 
     var isPlaying = false
     var isLoadingPosition = true
+    var syncFailed = false
     var currentTime: Double = 0
     var chapterDuration: Double = 0
     var bookElapsed: Double = 0
@@ -341,50 +342,62 @@ public final class WatchPlayerViewModel: NSObject {
 
     // MARK: - CloudKit Sync
 
+    func confirmContinueWithoutSync() {
+        syncFailed = false
+        hasRestoredPosition = true
+    }
+
     private func restorePositionFromCloudKit(bookId: String) async {
         debugLog("[WatchPlayerViewModel] Fetching position from CloudKit for \(bookId)")
 
-        guard let cloudKitProgress = await CloudKitSyncActor.shared.fetchProgress(for: bookId) else {
+        let result = await CloudKitSyncActor.shared.fetchProgress(for: bookId)
+
+        switch result {
+        case .networkError:
+            debugLog("[WatchPlayerViewModel] Network error fetching position")
+            syncFailed = true
+            return
+
+        case .noRecord:
             debugLog("[WatchPlayerViewModel] No CloudKit position found")
             hasRestoredPosition = true
             return
-        }
 
-        let locator = cloudKitProgress.locator
-        let href = locator.href
-        let textId = locator.locations?.fragments?.first
+        case .success(let cloudKitProgress):
+            let locator = cloudKitProgress.locator
+            let href = locator.href
+            let textId = locator.locations?.fragments?.first
 
-        debugLog("[WatchPlayerViewModel] CloudKit href: \(href), fragment: \(textId ?? "nil")")
+            debugLog("[WatchPlayerViewModel] CloudKit href: \(href), fragment: \(textId ?? "nil")")
 
-        if let textId = textId {
-            // Find section by matching entry.textHref
-            if let sectionIndex = bookStructure.firstIndex(where: { section in
-                section.mediaOverlay.contains { $0.textHref == href }
-            }) {
-                debugLog("[WatchPlayerViewModel] Seeking to section \(sectionIndex), textId: \(textId)")
-                let success = await SMILPlayerActor.shared.seekToFragment(sectionIndex: sectionIndex, textId: textId)
-                if success {
-                    hasRestoredPosition = true
-                    return
-                }
-            } else if let sectionIndex = findSectionIndex(for: href, in: bookStructure) {
-                debugLog("[WatchPlayerViewModel] Seeking via findSectionIndex to section \(sectionIndex), textId: \(textId)")
-                let success = await SMILPlayerActor.shared.seekToFragment(sectionIndex: sectionIndex, textId: textId)
-                if success {
-                    hasRestoredPosition = true
-                    return
+            if let textId = textId {
+                if let sectionIndex = bookStructure.firstIndex(where: { section in
+                    section.mediaOverlay.contains { $0.textHref == href }
+                }) {
+                    debugLog("[WatchPlayerViewModel] Seeking to section \(sectionIndex), textId: \(textId)")
+                    let success = await SMILPlayerActor.shared.seekToFragment(sectionIndex: sectionIndex, textId: textId)
+                    if success {
+                        hasRestoredPosition = true
+                        return
+                    }
+                } else if let sectionIndex = findSectionIndex(for: href, in: bookStructure) {
+                    debugLog("[WatchPlayerViewModel] Seeking via findSectionIndex to section \(sectionIndex), textId: \(textId)")
+                    let success = await SMILPlayerActor.shared.seekToFragment(sectionIndex: sectionIndex, textId: textId)
+                    if success {
+                        hasRestoredPosition = true
+                        return
+                    }
                 }
             }
-        }
 
-        // Fallback to totalProgression
-        let progression = cloudKitProgress.locator.locations?.totalProgression ?? 0
-        if progression > 0 {
-            debugLog("[WatchPlayerViewModel] Fallback to totalProgression: \(progression)")
-            let _ = await SMILPlayerActor.shared.seekToTotalProgression(progression)
-        }
+            let progression = cloudKitProgress.locator.locations?.totalProgression ?? 0
+            if progression > 0 {
+                debugLog("[WatchPlayerViewModel] Fallback to totalProgression: \(progression)")
+                let _ = await SMILPlayerActor.shared.seekToTotalProgression(progression)
+            }
 
-        hasRestoredPosition = true
+            hasRestoredPosition = true
+        }
     }
 
     private func syncProgressToCloudKit() {

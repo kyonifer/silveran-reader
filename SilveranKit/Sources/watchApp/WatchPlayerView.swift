@@ -2,6 +2,7 @@
 import SwiftUI
 
 struct WatchPlayerView: View {
+    @Environment(\.dismiss) private var dismiss
     @State private var viewModel = WatchPlayerViewModel()
     @State private var currentPage: PlayerPage = .controls
 
@@ -39,6 +40,19 @@ struct WatchPlayerView: View {
         }
         .task {
             await viewModel.loadBook(book)
+        }
+        .alert("Sync Unavailable", isPresented: .init(
+            get: { viewModel.syncFailed },
+            set: { if !$0 { viewModel.syncFailed = false } }
+        )) {
+            Button("Continue") {
+                viewModel.confirmContinueWithoutSync()
+            }
+            Button("Cancel", role: .cancel) {
+                dismiss()
+            }
+        } message: {
+            Text("Couldn't sync position from iCloud. Continue from last local position?")
         }
     }
 

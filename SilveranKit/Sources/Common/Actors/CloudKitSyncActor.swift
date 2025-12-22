@@ -14,6 +14,12 @@ public struct CloudKitProgress: Sendable {
     public let deviceId: String
 }
 
+public enum FetchProgressResult: Sendable {
+    case success(CloudKitProgress)
+    case noRecord
+    case networkError
+}
+
 @globalActor
 public actor CloudKitSyncActor {
     public static let shared = CloudKitSyncActor()
@@ -138,7 +144,7 @@ public actor CloudKitSyncActor {
         }
     }
 
-    public func fetchProgress(for bookId: String) async -> CloudKitProgress? {
+    public func fetchProgress(for bookId: String) async -> FetchProgressResult {
         debugLog("[CloudKitSyncActor] fetchProgress: bookId=\(bookId)")
 
         if connectionStatus != .connected {
@@ -146,19 +152,25 @@ public actor CloudKitSyncActor {
         }
         guard connectionStatus == .connected else {
             debugLog("[CloudKitSyncActor] fetchProgress: not connected")
-            return nil
+            return .networkError
         }
 
         do {
             let recordID = CKRecord.ID(recordName: bookId)
             let record = try await database.record(for: recordID)
-            return parseRecord(record)
+            if let progress = parseRecord(record) {
+                return .success(progress)
+            }
+            return .noRecord
         } catch CKError.unknownItem {
             debugLog("[CloudKitSyncActor] fetchProgress: no record found for \(bookId)")
-            return nil
+            return .noRecord
+        } catch let error as CKError where error.code == .networkUnavailable || error.code == .networkFailure {
+            debugLog("[CloudKitSyncActor] fetchProgress: network error \(error)")
+            return .networkError
         } catch {
             debugLog("[CloudKitSyncActor] fetchProgress: error \(error)")
-            return nil
+            return .networkError
         }
     }
 
