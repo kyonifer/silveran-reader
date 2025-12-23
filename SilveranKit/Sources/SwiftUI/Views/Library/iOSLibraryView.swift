@@ -131,7 +131,7 @@ public struct iOSLibraryView: View {
                                 showOfflineSheet = true
                             } label: {
                                 Image(systemName: "wifi.slash")
-                                    .foregroundColor(.red)
+                                    .foregroundStyle(.red)
                             }
                         }
                         Button {
@@ -246,7 +246,7 @@ struct MoreMenuView: View {
                             showOfflineSheet = true
                         } label: {
                             Image(systemName: "wifi.slash")
-                                .foregroundColor(.red)
+                                .foregroundStyle(.red)
                         }
                     }
                     Button {
@@ -486,14 +486,14 @@ struct CollectionsListView: View {
                 } label: {
                     Text(collectionName)
                         .font(.system(size: 20, weight: .regular))
-                        .foregroundColor(.primary)
+                        .foregroundStyle(.primary)
                 }
                 .buttonStyle(.plain)
                 .frame(maxWidth: .infinity, alignment: .center)
 
                 Text("\(books.count) book\(books.count == 1 ? "" : "s")")
                     .font(.subheadline)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .center)
             }
             .padding(.top, 8)
@@ -594,7 +594,7 @@ struct AuthorsListView: View {
 
                     Image(systemName: "person.fill")
                         .font(.system(size: 60))
-                        .foregroundColor(.secondary.opacity(0.5))
+                        .foregroundStyle(.secondary.opacity(0.5))
                 }
             }
             .buttonStyle(.plain)
@@ -602,13 +602,13 @@ struct AuthorsListView: View {
             VStack(alignment: .center, spacing: 6) {
                 Text(author?.name ?? "Unknown Author")
                     .font(.system(size: 16, weight: .medium))
-                    .foregroundColor(.primary)
+                    .foregroundStyle(.primary)
                     .lineLimit(2)
                     .multilineTextAlignment(.center)
 
                 Text("\(books.count) book\(books.count == 1 ? "" : "s")")
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
             }
             .frame(width: tileWidth)
         }
@@ -622,7 +622,7 @@ struct OfflineStatusSheet: View {
         VStack(spacing: 24) {
             Image(systemName: "wifi.slash")
                 .font(.system(size: 48))
-                .foregroundColor(.orange)
+                .foregroundStyle(.orange)
 
             VStack(spacing: 8) {
                 Text("Not Connected")
@@ -632,7 +632,7 @@ struct OfflineStatusSheet: View {
                     "You are currently not connected to the server. Only downloaded books are available for reading."
                 )
                 .font(.body)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
             }
 
@@ -666,7 +666,7 @@ struct IOSLibraryToolbarModifier: ViewModifier {
                                 showOfflineSheet = true
                             } label: {
                                 Image(systemName: "wifi.slash")
-                                    .foregroundColor(.red)
+                                    .foregroundStyle(.red)
                             }
                         }
                         Button {

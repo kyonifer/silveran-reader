@@ -72,7 +72,7 @@ struct HomeView: View {
                                     showOfflineSheet.wrappedValue = true
                                 } label: {
                                     Image(systemName: "wifi.slash")
-                                        .foregroundColor(.red)
+                                        .foregroundStyle(.red)
                                 }
                             }
                             Button {
@@ -608,7 +608,7 @@ private struct HomeSectionRow: View {
                             .font(.system(size: 14, weight: .semibold))
                     }
                     .buttonStyle(.plain)
-                    .foregroundColor(canScrollLeft ? .secondary : .secondary.opacity(0.5))
+                    .foregroundStyle(canScrollLeft ? Color.secondary : Color.secondary.opacity(0.5))
                     .disabled(!canScrollLeft)
 
                     Button {
@@ -618,7 +618,7 @@ private struct HomeSectionRow: View {
                             .font(.system(size: 14, weight: .semibold))
                     }
                     .buttonStyle(.plain)
-                    .foregroundColor(canScrollRight ? .secondary : .secondary.opacity(0.5))
+                    .foregroundStyle(canScrollRight ? Color.secondary : Color.secondary.opacity(0.5))
                     .disabled(!canScrollRight)
                 }
                 #endif
@@ -636,7 +636,7 @@ private struct HomeSectionRow: View {
                 }
                 .buttonStyle(.plain)
                 .font(.callout.weight(.semibold))
-                .foregroundColor(.accentColor)
+                .foregroundStyle(Color.accentColor)
             }
 
             let metrics = MediaItemCardMetrics.make(for: tileWidth, mediaKind: section.mediaKind)

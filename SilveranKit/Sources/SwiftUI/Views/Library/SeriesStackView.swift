@@ -29,25 +29,27 @@ struct SeriesStackView: View {
         let coverWidth = coverHeight * coverVariant.preferredAspectRatio
         let placeholderColor = Color(red: 56 / 255, green: 18 / 255, blue: 108 / 255)
 
-        return ZStack {
-            placeholderColor
-
-            if let image = mediaViewModel.coverImage(for: book, variant: coverVariant) {
-                image
-                    .resizable()
-                    .interpolation(.medium)
-                    .scaledToFill()
-                    .frame(width: coverWidth, height: coverHeight)
-                    .clipped()
-            }
-        }
-        .frame(width: coverWidth, height: coverHeight)
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .shadow(color: .black.opacity(0.2), radius: 4, x: 0, y: 2)
-        .contentShape(Rectangle())
-        .onTapGesture {
+        return Button {
             onSelect(book)
+        } label: {
+            ZStack {
+                placeholderColor
+
+                if let image = mediaViewModel.coverImage(for: book, variant: coverVariant) {
+                    image
+                        .resizable()
+                        .interpolation(.medium)
+                        .scaledToFill()
+                        .frame(width: coverWidth, height: coverHeight)
+                        .clipped()
+                }
+            }
+            .frame(width: coverWidth, height: coverHeight)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .shadow(color: .black.opacity(0.2), radius: 4, x: 0, y: 2)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
         .zIndex(Double(index))
         .offset(x: layout.offset(for: index), y: 0)
         .task {

@@ -39,7 +39,7 @@ struct CollectionsView: View {
                                 showOfflineSheet.wrappedValue = true
                             } label: {
                                 Image(systemName: "wifi.slash")
-                                .foregroundColor(.red)
+                                .foregroundStyle(.red)
                             }
                         }
                         Button {
@@ -242,7 +242,7 @@ struct CollectionsView: View {
                 } label: {
                     Text(collection?.name ?? "Unknown Collection")
                         .font(.system(size: 20, weight: .regular))
-                        .foregroundColor(.primary)
+                        .foregroundStyle(.primary)
                 }
                 .buttonStyle(.plain)
                 .disabled(collection == nil)
@@ -250,7 +250,7 @@ struct CollectionsView: View {
 
                 Text("\(books.count) book\(books.count == 1 ? "" : "s")")
                     .font(.subheadline)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .center)
             }
             .padding(.top, 8)

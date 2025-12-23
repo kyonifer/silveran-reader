@@ -47,7 +47,7 @@ struct AuthorView: View {
                             showOfflineSheet.wrappedValue = true
                         } label: {
                             Image(systemName: "wifi.slash")
-                            .foregroundColor(.red)
+                            .foregroundStyle(.red)
                         }
                     }
                     Button {
@@ -203,7 +203,7 @@ struct AuthorView: View {
 
                     Image(systemName: "person.fill")
                         .font(.system(size: 60))
-                        .foregroundColor(.secondary.opacity(0.5))
+                        .foregroundStyle(.secondary.opacity(0.5))
                 }
             }
             .buttonStyle(.plain)
@@ -217,7 +217,7 @@ struct AuthorView: View {
                 } label: {
                     Text(author?.name ?? "Unknown Author")
                         .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(.primary)
+                        .foregroundStyle(.primary)
                         .lineLimit(2)
                         .multilineTextAlignment(.center)
                 }
@@ -226,7 +226,7 @@ struct AuthorView: View {
 
                 Text("\(books.count) book\(books.count == 1 ? "" : "s")")
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
             }
             .frame(width: tileWidth)
         }

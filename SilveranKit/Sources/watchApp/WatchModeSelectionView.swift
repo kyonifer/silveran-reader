@@ -6,7 +6,9 @@ struct WatchModeSelectionView: View {
     var body: some View {
         NavigationStack {
             List {
-                NavigationLink(destination: WatchRemoteControlView()) {
+                NavigationLink {
+                    WatchRemoteControlView()
+                } label: {
                     Label {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("On iPhone")
@@ -21,7 +23,9 @@ struct WatchModeSelectionView: View {
                     }
                 }
 
-                NavigationLink(destination: WatchLibraryView()) {
+                NavigationLink {
+                    WatchLibraryView()
+                } label: {
                     Label {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("On Watch")

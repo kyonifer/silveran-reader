@@ -330,7 +330,7 @@ private struct SpeedPickerSheet: View {
                         Spacer()
                         if abs(currentRate - speed) < 0.01 {
                             Image(systemName: "checkmark")
-                                .foregroundColor(.accentColor)
+                                .foregroundStyle(Color.accentColor)
                         }
                     }
                 }

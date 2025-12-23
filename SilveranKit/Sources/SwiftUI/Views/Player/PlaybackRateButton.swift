@@ -45,7 +45,7 @@ public struct PlaybackRateButton: View {
             Button(action: { showCustomInput = true }) {
                 Image(systemName: "speedometer")
                     .font(iconFont)
-                    .foregroundColor(foregroundColor.opacity(transparency))
+                    .foregroundStyle(foregroundColor.opacity(transparency))
                     .frame(width: buttonSize, height: buttonSize)
                     .background(
                         Group {
@@ -84,7 +84,7 @@ public struct PlaybackRateButton: View {
             } label: {
                 Image(systemName: "speedometer")
                     .font(iconFont)
-                    .foregroundColor(foregroundColor.opacity(transparency))
+                    .foregroundStyle(foregroundColor.opacity(transparency))
                     .frame(width: buttonSize, height: buttonSize)
                     .background(
                         Group {
@@ -117,14 +117,14 @@ public struct PlaybackRateButton: View {
             if showLabel && !compactLabel {
                 Text(playbackRateDescription)
                     .font(.footnote)
-                    .foregroundColor(foregroundColor.opacity(0.7 * transparency))
+                    .foregroundStyle(foregroundColor.opacity(0.7 * transparency))
             }
         }
         .overlay(alignment: .bottom) {
             if showLabel && compactLabel {
                 Text(playbackRateDescription)
                     .font(.caption2)
-                    .foregroundColor(foregroundColor.opacity(0.7 * transparency))
+                    .foregroundStyle(foregroundColor.opacity(0.7 * transparency))
                     .offset(y: 9)
             }
         }
@@ -142,11 +142,11 @@ public struct PlaybackRateButton: View {
                         }) {
                             HStack {
                                 Text(String(format: "%.2fx", rate))
-                                    .foregroundColor(.primary)
+                                    .foregroundStyle(.primary)
                                 Spacer()
                                 if abs(currentRate - rate) < 0.01 {
                                     Image(systemName: "checkmark")
-                                        .foregroundColor(.accentColor)
+                                        .foregroundStyle(Color.accentColor)
                                 }
                             }
                         }

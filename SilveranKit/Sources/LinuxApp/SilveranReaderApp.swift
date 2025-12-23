@@ -19,7 +19,7 @@ struct PlaceholderView: View {
             Text("Silveran Reader")
                 .font(.system(size: 24, weight: .semibold))
             Text("Linux UI is coming soon.")
-                .foregroundColor(Color(Float(0.64), Float(0.68), Float(0.74)))
+                .foregroundStyle(Color(Float(0.64), Float(0.68), Float(0.74)))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

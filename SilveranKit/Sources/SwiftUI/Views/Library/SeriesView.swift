@@ -41,7 +41,7 @@ struct SeriesView: View {
                                 showOfflineSheet.wrappedValue = true
                             } label: {
                                 Image(systemName: "wifi.slash")
-                                .foregroundColor(.red)
+                                .foregroundStyle(.red)
                             }
                         }
                         Button {
@@ -244,14 +244,14 @@ struct SeriesView: View {
                 } label: {
                     Text(series?.name ?? "No Series")
                         .font(.system(size: 20, weight: .regular))
-                        .foregroundColor(.primary)
+                        .foregroundStyle(.primary)
                 }
                 .buttonStyle(.plain)
                 .frame(maxWidth: .infinity, alignment: .center)
 
                 Text("\(books.count) book\(books.count == 1 ? "" : "s")")
                     .font(.subheadline)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .center)
             }
             .padding(.top, 8)

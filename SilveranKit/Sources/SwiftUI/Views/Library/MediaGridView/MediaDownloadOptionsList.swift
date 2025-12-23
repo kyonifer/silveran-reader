@@ -134,7 +134,7 @@ struct MediaDownloadOptionRow: View {
                 .padding(.vertical, 12)
                 .background(Color.green)
                 .foregroundStyle(.white)
-                .cornerRadius(8)
+                .clipShape(.rect(cornerRadius: 8))
             }
             .buttonStyle(.plain)
             .accessibilityLabel(option.openTitle)
@@ -147,7 +147,7 @@ struct MediaDownloadOptionRow: View {
                     .foregroundStyle(.white)
                     .frame(width: 44, height: 44)
                     .background(Color.red)
-                    .cornerRadius(8)
+                    .clipShape(.rect(cornerRadius: 8))
             }
             .buttonStyle(.plain)
             .accessibilityLabel(option.deleteTitle)
@@ -220,7 +220,7 @@ struct MediaDownloadOptionRow: View {
                     .padding(.vertical, 12)
                     .background(Color.blue)
                     .foregroundStyle(.white)
-                    .cornerRadius(8)
+                    .clipShape(.rect(cornerRadius: 8))
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(option.downloadTitle)
@@ -249,7 +249,7 @@ struct MediaDownloadOptionRow: View {
                 .padding(.vertical, 12)
                 .background(Color.blue.opacity(0.7))
                 .foregroundStyle(.white)
-                .cornerRadius(8)
+                .clipShape(.rect(cornerRadius: 8))
 
                 Button {
                     cancelDownload()
@@ -259,7 +259,7 @@ struct MediaDownloadOptionRow: View {
                         .foregroundStyle(.white)
                         .frame(width: 44, height: 44)
                         .background(Color.red)
-                        .cornerRadius(8)
+                        .clipShape(.rect(cornerRadius: 8))
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Cancel \(option.downloadTitle)")

@@ -36,7 +36,7 @@ struct EbookSearchPanel: View {
     private var searchBar: some View {
         HStack {
             Image(systemName: "magnifyingglass")
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
 
             TextField("Search in book...", text: $searchManager.searchQuery)
                 .textFieldStyle(.plain)
@@ -50,7 +50,7 @@ struct EbookSearchPanel: View {
                     Task { await searchManager.clearSearch() }
                 } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
             }
@@ -62,7 +62,7 @@ struct EbookSearchPanel: View {
         }
         .padding(8)
         .background(Color.secondary.opacity(0.1))
-        .cornerRadius(8)
+        .clipShape(.rect(cornerRadius: 8))
     }
 
     private var searchOptions: some View {
@@ -115,7 +115,7 @@ struct EbookSearchPanel: View {
                     "\(searchManager.totalResultCount) result\(searchManager.totalResultCount == 1 ? "" : "s")"
                 )
                 .font(.caption)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
                 .padding(.horizontal)
                 .padding(.vertical, 4)
             }
@@ -124,11 +124,13 @@ struct EbookSearchPanel: View {
                 ForEach(searchManager.searchResults) { section in
                     Section(header: Text(section.sectionLabel)) {
                         ForEach(section.results) { result in
-                            SearchResultRow(result: result)
-                                .contentShape(Rectangle())
-                                .onTapGesture {
-                                    onResultSelected(result)
-                                }
+                            Button {
+                                onResultSelected(result)
+                            } label: {
+                                SearchResultRow(result: result)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
                 }
@@ -145,15 +147,15 @@ private struct SearchResultRow: View {
     var body: some View {
         HStack(spacing: 0) {
             Text(result.pre)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
                 .lineLimit(1)
 
             Text(result.match)
                 .fontWeight(.semibold)
-                .foregroundColor(.primary)
+                .foregroundStyle(.primary)
 
             Text(result.post)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
                 .lineLimit(1)
         }
         .font(.subheadline)

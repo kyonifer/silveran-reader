@@ -331,7 +331,7 @@ class EbookProgressManager {
 
         userNavPendingTask = Task { @MainActor in
             do {
-                try await Task.sleep(nanoseconds: 300_000_000)
+                try await Task.sleep(for: .milliseconds(300))
             } catch {
                 return
             }

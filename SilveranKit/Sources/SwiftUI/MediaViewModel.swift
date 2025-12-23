@@ -254,13 +254,13 @@ public final class MediaViewModel {
 
                 if config.sync.isMetadataRefreshDisabled {
                     debugLog("[MediaViewModel] Metadata auto-refresh is disabled")
-                    try? await Task.sleep(nanoseconds: 60_000_000_000)
+                    try? await Task.sleep(for: .seconds(60))
                     if Task.isCancelled { return }
                     continue
                 }
 
                 debugLog("[MediaViewModel] Next metadata refresh in \(Int(refreshInterval))s")
-                try? await Task.sleep(nanoseconds: UInt64(refreshInterval * 1_000_000_000))
+                try? await Task.sleep(for: .seconds(refreshInterval))
 
                 guard !Task.isCancelled else {
                     debugLog("[MediaViewModel] Metadata refresh task cancelled")

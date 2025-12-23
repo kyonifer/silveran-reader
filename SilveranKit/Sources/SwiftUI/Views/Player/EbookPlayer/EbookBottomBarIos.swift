@@ -66,7 +66,7 @@ struct EbookBottomBarIos: View {
                 Button(action: onPlayPause) {
                     Image(systemName: isPlaying ? "pause.fill" : "play.fill")
                         .font(.system(size: 20))
-                        .foregroundColor(.white)
+                        .foregroundStyle(.white)
                         .frame(width: 60, height: 60)
                         .background(
                             Circle()
@@ -97,7 +97,7 @@ struct EbookBottomBarIos: View {
             } else {
                 Image(systemName: "book.fill")
                     .font(.system(size: 16))
-                    .foregroundColor(.white.opacity(0.7))
+                    .foregroundStyle(.white.opacity(0.7))
                     .frame(width: 44, height: 44)
                     .background(
                         RoundedRectangle(cornerRadius: 6, style: .continuous)
@@ -109,14 +109,14 @@ struct EbookBottomBarIos: View {
                 if let title = bookTitle {
                     Text(title)
                         .font(.caption.weight(.medium))
-                        .foregroundColor(.white.opacity(0.9))
+                        .foregroundStyle(.white.opacity(0.9))
                         .lineLimit(1)
                 }
 
                 if let chapterLabel = progressData?.chapterLabel {
                     Text(chapterLabel)
                         .font(.caption2)
-                        .foregroundColor(.white.opacity(0.7))
+                        .foregroundStyle(.white.opacity(0.7))
                         .lineLimit(1)
                 }
 
@@ -125,7 +125,7 @@ struct EbookBottomBarIos: View {
                 {
                     Text("pg. \(current)/\(total)")
                         .font(.caption2.monospacedDigit())
-                        .foregroundColor(.white.opacity(0.6))
+                        .foregroundStyle(.white.opacity(0.6))
                 }
             }
         }
@@ -213,17 +213,17 @@ struct EbookBottomBarIos: View {
             HStack {
                 Text(formatOptionalTime(chapterElapsed))
                     .font(.caption2.monospacedDigit())
-                    .foregroundColor(.white.opacity(0.7))
+                    .foregroundStyle(.white.opacity(0.7))
                 Spacer()
                 Text(
                     "-\(formatOptionalTime(chapterRemainingAtRate ?? rawRemaining)) (\(formatPlaybackRate(playbackRate)))"
                 )
                 .font(.caption2)
-                .foregroundColor(.white.opacity(0.6))
+                .foregroundStyle(.white.opacity(0.6))
                 Spacer()
                 Text(formatOptionalTime(chapterTotal))
                     .font(.caption2.monospacedDigit())
-                    .foregroundColor(.white.opacity(0.7))
+                    .foregroundStyle(.white.opacity(0.7))
             }
         }
     }

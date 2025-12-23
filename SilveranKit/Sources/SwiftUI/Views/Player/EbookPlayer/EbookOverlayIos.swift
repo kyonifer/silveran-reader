@@ -65,7 +65,7 @@ struct EbookOverlayIos: View {
                     Text(formatPercent(bookFraction))
                         .font(.caption2.monospacedDigit())
                 }
-                .foregroundColor(.gray.opacity(overlayTransparency))
+                .foregroundStyle(.gray.opacity(overlayTransparency))
             }
 
             if showPageNumber, let current = currentPage, let total = totalPages, total > 0 {
@@ -75,7 +75,7 @@ struct EbookOverlayIos: View {
                     Text("Page \(current) of \(total)")
                         .font(.caption2.monospacedDigit())
                 }
-                .foregroundColor(.gray.opacity(overlayTransparency))
+                .foregroundStyle(.gray.opacity(overlayTransparency))
             }
         }
     }
@@ -89,7 +89,7 @@ struct EbookOverlayIos: View {
                     Image(systemName: "book.fill")
                         .font(.caption2)
                 }
-                .foregroundColor(.gray.opacity(overlayTransparency))
+                .foregroundStyle(.gray.opacity(overlayTransparency))
             }
 
             if showTimeRemainingInChapter {
@@ -99,7 +99,7 @@ struct EbookOverlayIos: View {
                     Image(systemName: "bookmark.fill")
                         .font(.caption2)
                 }
-                .foregroundColor(.gray.opacity(overlayTransparency))
+                .foregroundStyle(.gray.opacity(overlayTransparency))
             }
         }
     }
@@ -136,7 +136,7 @@ struct EbookOverlayIos: View {
         Button(action: onTogglePlaying) {
             Image(systemName: isPlaying ? "pause.fill" : "play.fill")
                 .font(.system(size: 20))
-                .foregroundColor(.gray.opacity(overlayTransparency))
+                .foregroundStyle(.gray.opacity(overlayTransparency))
                 .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
         }

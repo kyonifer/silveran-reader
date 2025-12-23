@@ -52,7 +52,7 @@ public struct SettingsView: View {
             }
         }
         .task(loadConfig)
-        .onChange(of: config, perform: persistConfig)
+        .onChange(of: config) { _, newValue in persistConfig(newValue: newValue) }
         .onChange(of: reloader.trigger) { _, _ in
             Task { await reloadConfig() }
         }
@@ -1027,7 +1027,7 @@ private struct AppearanceColorControl: View {
                             .frame(width: 28, height: 28)
                         Image(systemName: "eyedropper")
                             .font(.system(size: 12))
-                            .foregroundColor(.white)
+                            .foregroundStyle(.white)
                             .shadow(color: .black.opacity(0.3), radius: 1)
                     }
                     Text("Custom")

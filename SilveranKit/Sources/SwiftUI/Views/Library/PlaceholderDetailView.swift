@@ -6,7 +6,7 @@ struct PlaceholderDetailView: View {
         VStack(spacing: 12) {
             Text("Your Library Is Empty!").font(.title)
             Text("Use the Media Sources tabs on the left to add media to your library.")
-                .foregroundColor(
+                .foregroundStyle(
                     .secondary
                 )
             Text("(\(title))").font(.footnote)

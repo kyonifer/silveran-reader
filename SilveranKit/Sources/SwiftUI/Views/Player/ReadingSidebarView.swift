@@ -179,12 +179,12 @@ public struct ReadingSidebarView: View {
 
                 Text(model.author)
                     .font(.headline)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
 
                 Text(model.chapterTitle)
                     .font(.subheadline)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             }
         }
@@ -256,12 +256,12 @@ public struct ReadingSidebarView: View {
                     "-\(formatOptionalTime(chapterRemainingAtRate ?? rawRemaining)) (\(playbackRateDescription))"
                 )
                 .font(.footnote)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
                 Spacer()
                 Text(formatOptionalTime(chapterTotal))
             }
             .font(.footnote.monospacedDigit())
-            .foregroundColor(.secondary)
+            .foregroundStyle(.secondary)
             .padding(.horizontal, 8)
         }
     }
@@ -380,7 +380,7 @@ public struct ReadingSidebarView: View {
 
                     Text("\(Int(model.volume * 100))%")
                         .font(.footnote)
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                 }
                 #endif
 
@@ -441,7 +441,7 @@ public struct ReadingSidebarView: View {
                     Text(formatPercent(fraction))
                         .font(.footnote.monospacedDigit())
                 }
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
             }
 
             if let current = pagesCurrent, let total = pagesTotal, total > 0 {
@@ -451,7 +451,7 @@ public struct ReadingSidebarView: View {
                     Text("Page \(current) of \(total)")
                         .font(.footnote.monospacedDigit())
                 }
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
             }
         }
     }
@@ -464,7 +464,7 @@ public struct ReadingSidebarView: View {
                 Image(systemName: "book.fill")
                     .font(.footnote)
             }
-            .foregroundColor(.secondary)
+            .foregroundStyle(.secondary)
 
             HStack(spacing: 6) {
                 Text(formatTimeMinutesSeconds(chapterRemaining))
@@ -472,7 +472,7 @@ public struct ReadingSidebarView: View {
                 Image(systemName: "bookmark.fill")
                     .font(.footnote)
             }
-            .foregroundColor(.secondary)
+            .foregroundStyle(.secondary)
         }
     }
 
@@ -497,7 +497,7 @@ public struct ReadingSidebarView: View {
 
                 Text("\(Int(model.volume * 100))%")
                     .font(.body)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
             }
             .padding(.bottom, 12)
         }
@@ -534,16 +534,16 @@ public struct ReadingSidebarView: View {
                 if model.sleepTimerType == .endOfChapter {
                     Text("End Ch.")
                         .font(.footnote)
-                        .foregroundColor(.accentColor)
+                        .foregroundStyle(Color.accentColor)
                 } else {
                     Text(formatSleepTimerRemaining(remaining))
                         .font(.footnote)
-                        .foregroundColor(.accentColor)
+                        .foregroundStyle(Color.accentColor)
                 }
             } else {
                 Text("Sleep")
                     .font(.footnote)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
             }
         }
     }
@@ -591,7 +591,7 @@ public struct ReadingSidebarView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .foregroundColor(.primary)
+        .foregroundStyle(.primary)
     }
 
     private var volumeIcon: String {
@@ -642,7 +642,7 @@ public struct ReadingSidebarView: View {
 
             Text(title)
                 .font(.footnote)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
         }
     }
 

@@ -29,11 +29,11 @@ public struct StorytellerServerSettingsView: View {
                 if isManuallyOffline && hasSavedCredentials {
                     HStack(spacing: 8) {
                         Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundColor(.red)
+                            .foregroundStyle(.red)
                         Text(
                             "You are currently in offline mode. Press \"Go Online\" to reconnect to the server."
                         )
-                        .foregroundColor(.red)
+                        .foregroundStyle(.red)
                         .font(.subheadline)
                     }
                     .listRowBackground(Color.red.opacity(0.1))
@@ -75,7 +75,7 @@ public struct StorytellerServerSettingsView: View {
                         isPasswordVisible.toggle()
                     } label: {
                         Image(systemName: isPasswordVisible ? "eye.slash" : "eye")
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(.secondary)
                     }
                     .buttonStyle(.plain)
                     .help(isPasswordVisible ? "Hide password" : "Show password")
@@ -104,16 +104,16 @@ public struct StorytellerServerSettingsView: View {
                         case .success:
                             HStack {
                                 Image(systemName: "checkmark.circle.fill")
-                                    .foregroundColor(.green)
+                                    .foregroundStyle(.green)
                                 Text("Saved")
-                                    .foregroundColor(.secondary)
+                                    .foregroundStyle(.secondary)
                             }
                         case .failure(let message):
                             HStack {
                                 Image(systemName: "exclamationmark.triangle.fill")
-                                    .foregroundColor(.red)
+                                    .foregroundStyle(.red)
                                 Text(message)
-                                    .foregroundColor(.secondary)
+                                    .foregroundStyle(.secondary)
                                     .lineLimit(1)
                             }
                     }

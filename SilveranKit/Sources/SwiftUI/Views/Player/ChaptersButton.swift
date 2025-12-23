@@ -41,7 +41,7 @@ public struct ChaptersButton: View {
             Button(action: { showSheet = true }) {
                 Image(systemName: "list.bullet")
                     .font(.callout.weight(.semibold))
-                    .foregroundColor(foregroundColor.opacity(transparency))
+                    .foregroundStyle(foregroundColor.opacity(transparency))
                     .frame(width: buttonSize, height: buttonSize)
                     .background(
                         Group {
@@ -73,7 +73,7 @@ public struct ChaptersButton: View {
             } label: {
                 Image(systemName: "list.bullet")
                     .font(.callout.weight(.semibold))
-                    .foregroundColor(foregroundColor.opacity(transparency))
+                    .foregroundStyle(foregroundColor.opacity(transparency))
                     .frame(width: buttonSize, height: buttonSize)
                     .background(
                         Group {
@@ -91,7 +91,7 @@ public struct ChaptersButton: View {
             if showLabel {
                 Text("Chapters")
                     .font(.footnote)
-                    .foregroundColor(foregroundColor.opacity(0.7 * transparency))
+                    .foregroundStyle(foregroundColor.opacity(0.7 * transparency))
             }
         }
     }
@@ -109,12 +109,12 @@ public struct ChaptersButton: View {
                             .font(.system(size: 1))
                         Text(chapter.label)
                             .font(.body)
-                            .foregroundColor(.primary)
+                            .foregroundStyle(.primary)
                         Spacer()
                         if selectedChapterId == chapter.id {
                             Image(systemName: "checkmark")
                                 .font(.body.weight(.semibold))
-                                .foregroundColor(.accentColor)
+                                .foregroundStyle(Color.accentColor)
                         }
                     }
                 }

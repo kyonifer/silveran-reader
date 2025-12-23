@@ -95,14 +95,14 @@ struct EbookPlayerSettings: View {
                     selectCustomFont()
                 }
                 .buttonStyle(.plain)
-                .foregroundColor(.blue)
+                .foregroundStyle(.blue)
                 .font(.caption)
                 #elseif os(iOS)
                 Button("Choose Custom Font...") {
                     showFontPicker = true
                 }
                 .buttonStyle(.plain)
-                .foregroundColor(.blue)
+                .foregroundStyle(.blue)
                 .font(.caption)
                 .sheet(isPresented: $showFontPicker) {
                     FontPickerView { fontDescriptor in
@@ -171,7 +171,7 @@ struct EbookPlayerSettings: View {
                                     .frame(width: 28, height: 28)
                                 Image(systemName: "eyedropper")
                                     .font(.system(size: 12))
-                                    .foregroundColor(.white)
+                                    .foregroundStyle(.white)
                             }
                             Text("Custom")
                                 .font(.caption2)
@@ -217,7 +217,7 @@ struct EbookPlayerSettings: View {
                                     )
                                 Image(systemName: "nosign")
                                     .font(.system(size: 16))
-                                    .foregroundColor(.secondary)
+                                    .foregroundStyle(.secondary)
                             }
                             Text("Default")
                                 .font(.caption2)
@@ -239,7 +239,7 @@ struct EbookPlayerSettings: View {
                                     .frame(width: 28, height: 28)
                                 Image(systemName: "eyedropper")
                                     .font(.system(size: 12))
-                                    .foregroundColor(.white)
+                                    .foregroundStyle(.white)
                             }
                             Text("Custom")
                                 .font(.caption2)
@@ -286,7 +286,7 @@ struct EbookPlayerSettings: View {
                                     )
                                 Image(systemName: "nosign")
                                     .font(.system(size: 16))
-                                    .foregroundColor(.secondary)
+                                    .foregroundStyle(.secondary)
                             }
                             Text("Default")
                                 .font(.caption2)
@@ -308,7 +308,7 @@ struct EbookPlayerSettings: View {
                                     .frame(width: 28, height: 28)
                                 Image(systemName: "eyedropper")
                                     .font(.system(size: 12))
-                                    .foregroundColor(.white)
+                                    .foregroundStyle(.white)
                             }
                             Text("Custom")
                                 .font(.caption2)

@@ -341,7 +341,7 @@ private struct TextReaderPage: View {
                 if !viewModel.nextLineText.isEmpty {
                     Text(viewModel.nextLineText)
                         .font(.body)
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -380,7 +380,7 @@ private struct SpeedPickerSheet: View {
                         Spacer()
                         if abs(currentRate - speed) < 0.01 {
                             Image(systemName: "checkmark")
-                                .foregroundColor(.accentColor)
+                                .foregroundStyle(Color.accentColor)
                         }
                     }
                 }

@@ -179,7 +179,7 @@ struct DraggableAudioCard<FullContent: View>: View {
                     .overlay(
                         Image(systemName: "book.fill")
                             .font(.body)
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(.secondary)
                     )
             }
 
@@ -193,7 +193,7 @@ struct DraggableAudioCard<FullContent: View>: View {
                 if let chapter = chapterTitle {
                     Text(chapter)
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
             }

@@ -153,7 +153,7 @@ struct MediaItemCardView: View {
             VStack(alignment: .leading, spacing: 0) {
                 Text(item.title)
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.primary)
+                    .foregroundStyle(.primary)
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
@@ -244,7 +244,7 @@ struct MediaItemCardView: View {
         HStack(spacing: 2) {
             Text(item.authors?.first?.name ?? "")
                 .font(.subheadline)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .truncationMode(.tail)
             Spacer(minLength: 4)

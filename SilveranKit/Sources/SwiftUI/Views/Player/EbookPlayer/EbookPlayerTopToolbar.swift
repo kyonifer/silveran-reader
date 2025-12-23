@@ -52,7 +52,7 @@ struct EbookPlayerTopToolbar: View {
                 } label: {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 20, weight: .semibold))
-                        .foregroundColor(toolbarForegroundColor)
+                        .foregroundStyle(toolbarForegroundColor)
                         .contentShape(Rectangle())
                 }
                 .frame(width: 44, height: 44)
@@ -81,7 +81,7 @@ struct EbookPlayerTopToolbar: View {
                     } label: {
                         Image(systemName: "magnifyingglass")
                             .font(.system(size: 20, weight: .regular))
-                            .foregroundColor(toolbarForegroundColor)
+                            .foregroundStyle(toolbarForegroundColor)
                             .contentShape(Rectangle())
                     }
                     .frame(width: 44, height: 44)
@@ -115,7 +115,7 @@ struct EbookPlayerTopToolbar: View {
                     } label: {
                         Image(systemName: "textformat.size")
                             .font(.system(size: 20, weight: .regular))
-                            .foregroundColor(toolbarForegroundColor)
+                            .foregroundStyle(toolbarForegroundColor)
                             .contentShape(Rectangle())
                     }
                     .frame(width: 44, height: 44)
@@ -213,7 +213,7 @@ struct EbookPlayerTopToolbar: View {
                     } label: {
                         Image(systemName: "ellipsis.circle")
                             .font(.system(size: 20, weight: .regular))
-                            .foregroundColor(toolbarForegroundColor)
+                            .foregroundStyle(toolbarForegroundColor)
                             .contentShape(Rectangle())
                     }
                     .frame(width: 44, height: 44)
@@ -242,7 +242,7 @@ struct EbookPlayerTopToolbar: View {
         }) {
             Image(systemName: sleepTimerActive ? "moon.zzz.fill" : "moon.zzz")
                 .font(.system(size: 20, weight: .regular))
-                .foregroundColor(sleepTimerActive ? .accentColor : toolbarForegroundColor)
+                .foregroundStyle(sleepTimerActive ? .accentColor : toolbarForegroundColor)
                 .contentShape(Rectangle())
         }
         .frame(width: 44, height: 44)
@@ -256,7 +256,7 @@ struct EbookPlayerTopToolbar: View {
                     }
                 }
                 .font(.caption2)
-                .foregroundColor(toolbarForegroundColor.opacity(0.7))
+                .foregroundStyle(toolbarForegroundColor.opacity(0.7))
                 .offset(y: 10)
             }
         }
@@ -307,11 +307,11 @@ struct EbookPlayerTopToolbar: View {
         }) {
             HStack {
                 Text(title)
-                    .foregroundColor(.primary)
+                    .foregroundStyle(.primary)
                 Spacer()
                 if sleepTimerActive && sleepTimerType == type {
                     Image(systemName: "checkmark")
-                        .foregroundColor(.accentColor)
+                        .foregroundStyle(Color.accentColor)
                 }
             }
         }

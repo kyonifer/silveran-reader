@@ -174,34 +174,38 @@ struct ImportLocalFileView: View {
         }
 
         private var dropZone: some View {
-            ZStack {
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(
-                        isDropTargeted
-                            ? Color.accentColor.opacity(0.1) : Color.secondary.opacity(0.05)
-                    )
-                RoundedRectangle(cornerRadius: 16)
-                    .stroke(style: StrokeStyle(lineWidth: 2, dash: [10]))
-                    .foregroundStyle(isDropTargeted ? Color.accentColor : Color.secondary)
-                VStack(spacing: 12) {
-                    Image(systemName: "arrow.down.to.line")
-                        .font(.system(size: 36, weight: .medium))
+            Button {
+                showFileImporter = true
+            } label: {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(
+                            isDropTargeted
+                                ? Color.accentColor.opacity(0.1) : Color.secondary.opacity(0.05)
+                        )
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(style: StrokeStyle(lineWidth: 2, dash: [10]))
                         .foregroundStyle(isDropTargeted ? Color.accentColor : Color.secondary)
-                    Text("Drag & Drop Files Here")
-                        .font(.headline)
-                    Text("Supports .epub and .m4b")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                    Text("or click to select a file")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                    VStack(spacing: 12) {
+                        Image(systemName: "arrow.down.to.line")
+                            .font(.system(size: 36, weight: .medium))
+                            .foregroundStyle(isDropTargeted ? Color.accentColor : Color.secondary)
+                        Text("Drag & Drop Files Here")
+                            .font(.headline)
+                        Text("Supports .epub and .m4b")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        Text("or click to select a file")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                    .multilineTextAlignment(.center)
+                    .padding(24)
                 }
-                .multilineTextAlignment(.center)
-                .padding(24)
+                .frame(maxWidth: .infinity, minHeight: 220, maxHeight: 420)
+                .contentShape(Rectangle())
             }
-            .frame(maxWidth: .infinity, minHeight: 220, maxHeight: 420)
-            .contentShape(Rectangle())
-            .onTapGesture { showFileImporter = true }
+            .buttonStyle(.plain)
             .onDrop(
                 of: [dropTypeIdentifier],
                 isTargeted: $isDropTargeted,
