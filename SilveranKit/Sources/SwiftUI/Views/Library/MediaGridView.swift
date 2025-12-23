@@ -613,7 +613,8 @@ struct MediaGridView: View {
             case .downloaded:
                 return hasAnyDownloadedCategory(for: item)
             case .serverOnly:
-                return !hasAnyDownloadedCategory(for: item) && !mediaViewModel.isLocalStandaloneBook(item.id)
+                return !hasAnyDownloadedCategory(for: item)
+                    && !mediaViewModel.isLocalStandaloneBook(item.id)
             case .localFiles:
                 return mediaViewModel.isLocalStandaloneBook(item.id)
         }

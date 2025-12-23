@@ -47,14 +47,14 @@ public enum SMILPlayerError: Error, LocalizedError {
 
     public var errorDescription: String? {
         switch self {
-        case .noMediaOverlay:
-            return "Book does not contain audio narration"
-        case .bookNotLoaded:
-            return "No book is currently loaded"
-        case .audioLoadFailed(let reason):
-            return "Failed to load audio: \(reason)"
-        case .invalidPosition:
-            return "Invalid playback position"
+            case .noMediaOverlay:
+                return "Book does not contain audio narration"
+            case .bookNotLoaded:
+                return "No book is currently loaded"
+            case .audioLoadFailed(let reason):
+                return "Failed to load audio: \(reason)"
+            case .invalidPosition:
+                return "Invalid playback position"
         }
     }
 }
@@ -70,7 +70,9 @@ private class SMILAudioPlayerDelegate: NSObject, AVAudioPlayerDelegate {
     }
 
     func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
-        debugLog("[SMILPlayerActor] Audio decode error: \(error?.localizedDescription ?? "unknown")")
+        debugLog(
+            "[SMILPlayerActor] Audio decode error: \(error?.localizedDescription ?? "unknown")"
+        )
     }
 }
 
@@ -341,7 +343,8 @@ public actor SMILPlayerActor {
         }
 
         let section = bookStructure[sectionIndex]
-        guard let entryIndex = section.mediaOverlay.firstIndex(where: { $0.textId == textId }) else {
+        guard let entryIndex = section.mediaOverlay.firstIndex(where: { $0.textId == textId })
+        else {
             debugLog("[SMILPlayerActor] seekToFragment - textId not found: \(textId)")
             return false
         }
@@ -358,7 +361,8 @@ public actor SMILPlayerActor {
     }
 
     public func seekToTotalProgression(_ progression: Double) async -> Bool {
-        guard let (sectionIndex, entryIndex, entry) = findEntryByTotalProgression(progression) else {
+        guard let (sectionIndex, entryIndex, entry) = findEntryByTotalProgression(progression)
+        else {
             return false
         }
 
@@ -372,14 +376,18 @@ public actor SMILPlayerActor {
         return true
     }
 
-    public func findPositionByTotalProgression(_ progression: Double) -> (sectionIndex: Int, textId: String)? {
+    public func findPositionByTotalProgression(_ progression: Double) -> (
+        sectionIndex: Int, textId: String
+    )? {
         guard let (sectionIndex, _, entry) = findEntryByTotalProgression(progression) else {
             return nil
         }
         return (sectionIndex, entry.textId)
     }
 
-    private func findEntryByTotalProgression(_ progression: Double) -> (sectionIndex: Int, entryIndex: Int, entry: SMILEntry)? {
+    private func findEntryByTotalProgression(_ progression: Double) -> (
+        sectionIndex: Int, entryIndex: Int, entry: SMILEntry
+    )? {
         guard !bookStructure.isEmpty else { return nil }
 
         var totalDuration: Double = 0
@@ -393,7 +401,9 @@ public actor SMILPlayerActor {
         guard totalDuration > 0 else { return nil }
 
         let targetTime = progression * totalDuration
-        debugLog("[SMILPlayerActor] findEntryByTotalProgression: \(progression) -> targetTime \(targetTime)s of \(totalDuration)s")
+        debugLog(
+            "[SMILPlayerActor] findEntryByTotalProgression: \(progression) -> targetTime \(targetTime)s of \(totalDuration)s"
+        )
 
         for (sectionIndex, section) in bookStructure.enumerated() {
             for (entryIndex, entry) in section.mediaOverlay.enumerated() {
@@ -601,7 +611,9 @@ public actor SMILPlayerActor {
         let section = bookStructure[currentSectionIndex]
 
         if section.mediaOverlay.isEmpty {
-            if let nextSection = bookStructure.first(where: { $0.index > currentSectionIndex && !$0.mediaOverlay.isEmpty }) {
+            if let nextSection = bookStructure.first(where: {
+                $0.index > currentSectionIndex && !$0.mediaOverlay.isEmpty
+            }) {
                 currentSectionIndex = nextSection.index
                 currentEntryIndex = 0
                 let entry = nextSection.mediaOverlay[0]
@@ -719,7 +731,9 @@ public actor SMILPlayerActor {
         defer { isAdvancing = false }
 
         guard currentSectionIndex < bookStructure.count else {
-            debugLog("[SMILPlayerActor] End of book - currentSectionIndex \(currentSectionIndex) >= count \(bookStructure.count)")
+            debugLog(
+                "[SMILPlayerActor] End of book - currentSectionIndex \(currentSectionIndex) >= count \(bookStructure.count)"
+            )
             await pause()
             return
         }
@@ -727,7 +741,9 @@ public actor SMILPlayerActor {
         let section = bookStructure[currentSectionIndex]
         let nextEntryIndex = currentEntryIndex + 1
 
-        debugLog("[SMILPlayerActor] advanceToNextEntry: section=\(currentSectionIndex), nextEntry=\(nextEntryIndex), overlayCount=\(section.mediaOverlay.count)")
+        debugLog(
+            "[SMILPlayerActor] advanceToNextEntry: section=\(currentSectionIndex), nextEntry=\(nextEntryIndex), overlayCount=\(section.mediaOverlay.count)"
+        )
 
         if nextEntryIndex < section.mediaOverlay.count {
             let nextEntry = section.mediaOverlay[nextEntryIndex]
@@ -744,12 +760,18 @@ public actor SMILPlayerActor {
                 }
             }
 
-            debugLog("[SMILPlayerActor] Advanced to entry \(nextEntryIndex) in section \(currentSectionIndex)")
+            debugLog(
+                "[SMILPlayerActor] Advanced to entry \(nextEntryIndex) in section \(currentSectionIndex)"
+            )
             await notifyStateChange()
         } else {
             let nextSectionIndex = currentSectionIndex + 1
-            debugLog("[SMILPlayerActor] Section \(currentSectionIndex) complete, looking for next section >= \(nextSectionIndex)")
-            if let nextSection = bookStructure.first(where: { $0.index >= nextSectionIndex && !$0.mediaOverlay.isEmpty }) {
+            debugLog(
+                "[SMILPlayerActor] Section \(currentSectionIndex) complete, looking for next section >= \(nextSectionIndex)"
+            )
+            if let nextSection = bookStructure.first(where: {
+                $0.index >= nextSectionIndex && !$0.mediaOverlay.isEmpty
+            }) {
                 let nextEntry = nextSection.mediaOverlay[0]
                 currentSectionIndex = nextSection.index
                 currentEntryIndex = 0
@@ -815,8 +837,11 @@ public actor SMILPlayerActor {
 
             if !section.mediaOverlay.isEmpty {
                 let chapterStartCumSum: Double
-                if let prevSection = bookStructure.prefix(currentSectionIndex).last(where: { !$0.mediaOverlay.isEmpty }),
-                   let prevLastEntry = prevSection.mediaOverlay.last {
+                if let prevSection = bookStructure.prefix(currentSectionIndex).last(where: {
+                    !$0.mediaOverlay.isEmpty
+                }),
+                    let prevLastEntry = prevSection.mediaOverlay.last
+                {
                     chapterStartCumSum = prevLastEntry.cumSumAtEnd
                 } else {
                     chapterStartCumSum = 0
@@ -828,7 +853,8 @@ public actor SMILPlayerActor {
 
                 if currentEntryIndex < section.mediaOverlay.count {
                     let entry = section.mediaOverlay[currentEntryIndex]
-                    let entryCumSum = currentEntryIndex > 0
+                    let entryCumSum =
+                        currentEntryIndex > 0
                         ? section.mediaOverlay[currentEntryIndex - 1].cumSumAtEnd
                         : chapterStartCumSum
                     let timeInEntry = currentTime - entry.begin
@@ -955,16 +981,16 @@ public actor SMILPlayerActor {
 
         Task { @SMILPlayerActor in
             switch type {
-            case .began:
-                debugLog("[SMILPlayerActor] Audio session interrupted - pausing")
-                await SMILPlayerActor.shared.pause()
-            case .ended:
-                if shouldResume {
-                    debugLog("[SMILPlayerActor] Audio interruption ended - resuming")
-                    try? await SMILPlayerActor.shared.play()
-                }
-            @unknown default:
-                break
+                case .began:
+                    debugLog("[SMILPlayerActor] Audio session interrupted - pausing")
+                    await SMILPlayerActor.shared.pause()
+                case .ended:
+                    if shouldResume {
+                        debugLog("[SMILPlayerActor] Audio interruption ended - resuming")
+                        try? await SMILPlayerActor.shared.play()
+                    }
+                @unknown default:
+                    break
             }
         }
     }
@@ -979,13 +1005,13 @@ public actor SMILPlayerActor {
 
         Task { @SMILPlayerActor in
             switch reason {
-            case .oldDeviceUnavailable:
-                debugLog("[SMILPlayerActor] Audio route lost - pausing")
-                await SMILPlayerActor.shared.pause()
-            case .newDeviceAvailable:
-                debugLog("[SMILPlayerActor] New audio device available")
-            default:
-                break
+                case .oldDeviceUnavailable:
+                    debugLog("[SMILPlayerActor] Audio route lost - pausing")
+                    await SMILPlayerActor.shared.pause()
+                case .newDeviceAvailable:
+                    debugLog("[SMILPlayerActor] New audio device available")
+                default:
+                    break
             }
         }
     }
@@ -1076,7 +1102,9 @@ public actor SMILPlayerActor {
 
         let state = buildCurrentState()
         let manager = audioManager
-        debugLog("[SMILPlayerActor] updateNowPlayingInfo: isPlaying=\(state?.isPlaying ?? false), hasManager=\(manager != nil)")
+        debugLog(
+            "[SMILPlayerActor] updateNowPlayingInfo: isPlaying=\(state?.isPlaying ?? false), hasManager=\(manager != nil)"
+        )
 
         Task { @MainActor in
             manager?.updateNowPlayingInfo(

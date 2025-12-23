@@ -55,14 +55,24 @@ public final class WatchStorageManager: Sendable {
             }
             try fileManager.moveItem(at: sourceURL, to: destURL)
 
-            var manifest = loadOrCreateManifest(uuid: metadata.uuid, category: metadata.category, metadata: metadata)
+            var manifest = loadOrCreateManifest(
+                uuid: metadata.uuid,
+                category: metadata.category,
+                metadata: metadata
+            )
             manifest.receivedChunks.insert(metadata.chunkIndex)
             saveManifest(manifest, uuid: metadata.uuid, category: metadata.category)
 
-            print("[WatchStorageManager] Saved chunk \(metadata.chunkIndex + 1)/\(metadata.totalChunks)")
+            print(
+                "[WatchStorageManager] Saved chunk \(metadata.chunkIndex + 1)/\(metadata.totalChunks)"
+            )
 
             if manifest.receivedChunks.count == metadata.totalChunks {
-                return assembleChunks(uuid: metadata.uuid, category: metadata.category, manifest: manifest)
+                return assembleChunks(
+                    uuid: metadata.uuid,
+                    category: metadata.category,
+                    manifest: manifest
+                )
             }
 
             return false
@@ -73,12 +83,17 @@ public final class WatchStorageManager: Sendable {
         }
     }
 
-    private func loadOrCreateManifest(uuid: String, category: String, metadata: ChunkTransferMetadata) -> TransferManifest {
+    private func loadOrCreateManifest(
+        uuid: String,
+        category: String,
+        metadata: ChunkTransferMetadata
+    ) -> TransferManifest {
         let manifestURL = getChunkManifestURL(uuid: uuid, category: category)
 
         if fileManager.fileExists(atPath: manifestURL.path),
-           let data = try? Data(contentsOf: manifestURL),
-           let manifest = try? JSONDecoder().decode(TransferManifest.self, from: data) {
+            let data = try? Data(contentsOf: manifestURL),
+            let manifest = try? JSONDecoder().decode(TransferManifest.self, from: data)
+        {
             return manifest
         }
 
@@ -101,7 +116,8 @@ public final class WatchStorageManager: Sendable {
         }
     }
 
-    private func assembleChunks(uuid: String, category: String, manifest: TransferManifest) -> Bool {
+    private func assembleChunks(uuid: String, category: String, manifest: TransferManifest) -> Bool
+    {
         let chunkDir = getChunkDirectory(uuid: uuid, category: category)
         let bookDir = getBookDirectory(uuid: uuid, category: category)
 
@@ -208,13 +224,19 @@ public final class WatchStorageManager: Sendable {
 
     private func directorySize(at url: URL) -> Int64 {
         var size: Int64 = 0
-        guard let enumerator = fileManager.enumerator(at: url, includingPropertiesForKeys: [.fileSizeKey]) else {
+        guard
+            let enumerator = fileManager.enumerator(
+                at: url,
+                includingPropertiesForKeys: [.fileSizeKey]
+            )
+        else {
             return 0
         }
 
         for case let fileURL as URL in enumerator {
             guard let attrs = try? fileURL.resourceValues(forKeys: [.fileSizeKey]),
-                  let fileSize = attrs.fileSize else { continue }
+                let fileSize = attrs.fileSize
+            else { continue }
             size += Int64(fileSize)
         }
 
@@ -225,7 +247,12 @@ public final class WatchStorageManager: Sendable {
         let bookDir = getBookDirectory(uuid: uuid, category: category)
         guard fileManager.fileExists(atPath: bookDir.path) else { return nil }
 
-        guard let contents = try? fileManager.contentsOfDirectory(at: bookDir, includingPropertiesForKeys: nil) else {
+        guard
+            let contents = try? fileManager.contentsOfDirectory(
+                at: bookDir,
+                includingPropertiesForKeys: nil
+            )
+        else {
             return nil
         }
 
@@ -235,14 +262,17 @@ public final class WatchStorageManager: Sendable {
     public func cleanupOrphanedFiles() {
         let knownIds = Set(loadAllBooks().map { "\($0.uuid)_\($0.category)" })
 
-        guard let contents = try? fileManager.contentsOfDirectory(
-            at: booksDirectory,
-            includingPropertiesForKeys: [.isDirectoryKey]
-        ) else { return }
+        guard
+            let contents = try? fileManager.contentsOfDirectory(
+                at: booksDirectory,
+                includingPropertiesForKeys: [.isDirectoryKey]
+            )
+        else { return }
 
         for item in contents {
             guard let resourceValues = try? item.resourceValues(forKeys: [.isDirectoryKey]),
-                  resourceValues.isDirectory == true else { continue }
+                resourceValues.isDirectory == true
+            else { continue }
 
             let dirName = item.lastPathComponent
             if !knownIds.contains(dirName) {
@@ -256,7 +286,9 @@ public final class WatchStorageManager: Sendable {
             includingPropertiesForKeys: [.isDirectoryKey]
         ) {
             for item in chunkContents {
-                print("[WatchStorageManager] Removing orphaned chunk directory: \(item.lastPathComponent)")
+                print(
+                    "[WatchStorageManager] Removing orphaned chunk directory: \(item.lastPathComponent)"
+                )
                 try? fileManager.removeItem(at: item)
             }
         }

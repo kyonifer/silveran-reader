@@ -338,16 +338,16 @@ public actor LocalMediaActor: GlobalActor {
     public func mediaFilePath(for uuid: String, category: LocalMediaCategory) -> URL? {
         if let paths = localStorytellerBookPaths[uuid] {
             switch category {
-            case .ebook: return paths.ebookPath
-            case .audio: return paths.audioPath
-            case .synced: return paths.syncedPath
+                case .ebook: return paths.ebookPath
+                case .audio: return paths.audioPath
+                case .synced: return paths.syncedPath
             }
         }
         if let paths = localStandaloneBookPaths[uuid] {
             switch category {
-            case .ebook: return paths.ebookPath
-            case .audio: return paths.audioPath
-            case .synced: return paths.syncedPath
+                case .ebook: return paths.ebookPath
+                case .audio: return paths.audioPath
+                case .synced: return paths.syncedPath
             }
         }
         return nil
@@ -474,7 +474,10 @@ public actor LocalMediaActor: GlobalActor {
         try await filesystem.ensureLocalStorageDirectories()
 
         if domain == .local {
-            let metadata = try await localLibrary.extractMetadata(from: sourceFileURL, category: category)
+            let metadata = try await localLibrary.extractMetadata(
+                from: sourceFileURL,
+                category: category
+            )
 
             let destinationDirectory = await filesystem.getMediaDirectory(
                 domain: domain,

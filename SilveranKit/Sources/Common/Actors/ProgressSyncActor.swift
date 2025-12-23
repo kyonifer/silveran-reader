@@ -13,7 +13,8 @@ public struct BookProgress: Sendable {
     }
 
     public var progressFraction: Double {
-        let raw = locator?.locations?.totalProgression
+        let raw =
+            locator?.locations?.totalProgression
             ?? locator?.locations?.progression
             ?? 0
         return min(max(raw, 0), 1)
@@ -65,7 +66,9 @@ public actor ProgressSyncActor {
         timestamp: Double,
         reason: SyncReason
     ) async -> SyncResult {
-        debugLog("[PSA] syncProgress: bookId=\(bookId), reason=\(reason.rawValue), timestamp=\(timestamp)")
+        debugLog(
+            "[PSA] syncProgress: bookId=\(bookId), reason=\(reason.rawValue), timestamp=\(timestamp)"
+        )
 
         if shouldDedupe(bookId: bookId, locator: locator, timestamp: timestamp) {
             debugLog("[PSA] syncProgress: deduplicated, skipping")
@@ -94,7 +97,9 @@ public actor ProgressSyncActor {
                 timestamp: timestamp
             )
             syncedToStoryteller = (result == .success)
-            debugLog("[PSA] syncProgress: storyteller sync result=\(result), success=\(syncedToStoryteller)")
+            debugLog(
+                "[PSA] syncProgress: storyteller sync result=\(result), success=\(syncedToStoryteller)"
+            )
         }
 
         if iCloudSyncEnabled {
@@ -108,7 +113,9 @@ public actor ProgressSyncActor {
                     timestamp: timestamp
                 )
                 syncedToCloudKit = (result == .success)
-                debugLog("[PSA] syncProgress: cloudKit sync result=\(result), success=\(syncedToCloudKit)")
+                debugLog(
+                    "[PSA] syncProgress: cloudKit sync result=\(result), success=\(syncedToCloudKit)"
+                )
             }
         } else {
             syncedToCloudKit = true
@@ -120,11 +127,17 @@ public actor ProgressSyncActor {
             debugLog("[PSA] syncProgress: fully synced to all destinations")
             await removeFromQueue(bookId: bookId)
             updateServerPosition(bookId: bookId, locator: locator, timestamp: timestamp)
-            await updateLocalMetadataProgress(bookId: bookId, locator: locator, timestamp: timestamp)
+            await updateLocalMetadataProgress(
+                bookId: bookId,
+                locator: locator,
+                timestamp: timestamp
+            )
             await notifyObservers()
             return .success
         } else {
-            debugLog("[PSA] syncProgress: partial sync, queueing (storyteller=\(syncedToStoryteller), cloudKit=\(syncedToCloudKit))")
+            debugLog(
+                "[PSA] syncProgress: partial sync, queueing (storyteller=\(syncedToStoryteller), cloudKit=\(syncedToCloudKit))"
+            )
             await queueOfflineProgress(
                 bookId: bookId,
                 locator: locator,
@@ -135,7 +148,11 @@ public actor ProgressSyncActor {
             if syncedToStoryteller {
                 updateServerPosition(bookId: bookId, locator: locator, timestamp: timestamp)
             }
-            await updateLocalMetadataProgress(bookId: bookId, locator: locator, timestamp: timestamp)
+            await updateLocalMetadataProgress(
+                bookId: bookId,
+                locator: locator,
+                timestamp: timestamp
+            )
             return .queued
         }
     }
@@ -170,13 +187,17 @@ public actor ProgressSyncActor {
 
             let isLocalBook = await LocalMediaActor.shared.isLocalStandaloneBook(pending.bookId)
             if isLocalBook {
-                debugLog("[PSA] syncPendingQueue: \(pending.bookId) is local-only, removing from queue")
+                debugLog(
+                    "[PSA] syncPendingQueue: \(pending.bookId) is local-only, removing from queue"
+                )
                 await removeFromQueue(bookId: pending.bookId)
                 syncedCount += 1
                 continue
             }
 
-            debugLog("[PSA] syncPendingQueue: syncing \(pending.bookId) (storyteller=\(pending.syncedToStoryteller), cloudKit=\(pending.syncedToCloudKit))")
+            debugLog(
+                "[PSA] syncPendingQueue: syncing \(pending.bookId) (storyteller=\(pending.syncedToStoryteller), cloudKit=\(pending.syncedToCloudKit))"
+            )
 
             if !pending.syncedToStoryteller && canSyncStoryteller {
                 let result = await StorytellerActor.shared.sendProgressToServer(
@@ -186,11 +207,17 @@ public actor ProgressSyncActor {
                 )
                 if result == .success {
                     pending.syncedToStoryteller = true
-                    updateServerPosition(bookId: pending.bookId, locator: pending.locator, timestamp: pending.timestamp)
+                    updateServerPosition(
+                        bookId: pending.bookId,
+                        locator: pending.locator,
+                        timestamp: pending.timestamp
+                    )
                     debugLog("[PSA] syncPendingQueue: \(pending.bookId) storyteller succeeded")
                 } else if result == .failure {
                     pending.syncedToStoryteller = true
-                    debugLog("[PSA] syncPendingQueue: \(pending.bookId) storyteller failed permanently")
+                    debugLog(
+                        "[PSA] syncPendingQueue: \(pending.bookId) storyteller failed permanently"
+                    )
                     failedCount += 1
                 }
             }
@@ -206,7 +233,9 @@ public actor ProgressSyncActor {
                     debugLog("[PSA] syncPendingQueue: \(pending.bookId) cloudKit succeeded")
                 } else if result == .failure {
                     pending.syncedToCloudKit = true
-                    debugLog("[PSA] syncPendingQueue: \(pending.bookId) cloudKit failed permanently")
+                    debugLog(
+                        "[PSA] syncPendingQueue: \(pending.bookId) cloudKit failed permanently"
+                    )
                 }
             }
 
@@ -279,13 +308,24 @@ public actor ProgressSyncActor {
 
         for (bookId, serverPosition) in serverPositions {
             guard let locator = serverPosition.locator,
-                  let serverTimestamp = serverPosition.timestamp else { continue }
+                let serverTimestamp = serverPosition.timestamp
+            else { continue }
 
             if let cloudKitProgress = cloudKitPositions[bookId] {
                 if cloudKitProgress.timestamp > serverTimestamp {
-                    debugLog("[PSA] reconcileWithCloudKit: \(bookId) CloudKit is newer (\(cloudKitProgress.timestamp) > \(serverTimestamp))")
-                    updateServerPosition(bookId: bookId, locator: cloudKitProgress.locator, timestamp: cloudKitProgress.timestamp)
-                    await updateLocalMetadataProgress(bookId: bookId, locator: cloudKitProgress.locator, timestamp: cloudKitProgress.timestamp)
+                    debugLog(
+                        "[PSA] reconcileWithCloudKit: \(bookId) CloudKit is newer (\(cloudKitProgress.timestamp) > \(serverTimestamp))"
+                    )
+                    updateServerPosition(
+                        bookId: bookId,
+                        locator: cloudKitProgress.locator,
+                        timestamp: cloudKitProgress.timestamp
+                    )
+                    await updateLocalMetadataProgress(
+                        bookId: bookId,
+                        locator: cloudKitProgress.locator,
+                        timestamp: cloudKitProgress.timestamp
+                    )
 
                     if storytellerStatus == .connected {
                         let result = await StorytellerActor.shared.sendProgressToServer(
@@ -299,7 +339,9 @@ public actor ProgressSyncActor {
                         }
                     }
                 } else if serverTimestamp > cloudKitProgress.timestamp {
-                    debugLog("[PSA] reconcileWithCloudKit: \(bookId) Storyteller is newer (\(serverTimestamp) > \(cloudKitProgress.timestamp))")
+                    debugLog(
+                        "[PSA] reconcileWithCloudKit: \(bookId) Storyteller is newer (\(serverTimestamp) > \(cloudKitProgress.timestamp))"
+                    )
                     let result = await CloudKitSyncActor.shared.sendProgressToCloudKit(
                         bookId: bookId,
                         locator: locator,
@@ -326,8 +368,16 @@ public actor ProgressSyncActor {
         for (bookId, cloudKitProgress) in cloudKitPositions {
             if serverPositions[bookId] == nil {
                 debugLog("[PSA] reconcileWithCloudKit: \(bookId) only in CloudKit, adopting")
-                updateServerPosition(bookId: bookId, locator: cloudKitProgress.locator, timestamp: cloudKitProgress.timestamp)
-                await updateLocalMetadataProgress(bookId: bookId, locator: cloudKitProgress.locator, timestamp: cloudKitProgress.timestamp)
+                updateServerPosition(
+                    bookId: bookId,
+                    locator: cloudKitProgress.locator,
+                    timestamp: cloudKitProgress.timestamp
+                )
+                await updateLocalMetadataProgress(
+                    bookId: bookId,
+                    locator: cloudKitProgress.locator,
+                    timestamp: cloudKitProgress.timestamp
+                )
 
                 if storytellerStatus == .connected {
                     let result = await StorytellerActor.shared.sendProgressToServer(
@@ -342,7 +392,9 @@ public actor ProgressSyncActor {
             }
         }
 
-        debugLog("[PSA] reconcileWithCloudKit: complete - healedToStoryteller=\(healedToStoryteller), healedToCloudKit=\(healedToCloudKit)")
+        debugLog(
+            "[PSA] reconcileWithCloudKit: complete - healedToStoryteller=\(healedToStoryteller), healedToCloudKit=\(healedToCloudKit)"
+        )
 
         if healedToStoryteller > 0 || healedToCloudKit > 0 {
             await notifyObservers()
@@ -370,7 +422,9 @@ public actor ProgressSyncActor {
             return nil
         }
 
-        debugLog("[PSA] fetchCurrentPosition: returning position timestamp=\(book.position?.timestamp ?? 0)")
+        debugLog(
+            "[PSA] fetchCurrentPosition: returning position timestamp=\(book.position?.timestamp ?? 0)"
+        )
         return book.position
     }
 
@@ -381,7 +435,9 @@ public actor ProgressSyncActor {
         for (bookId, position) in positions {
             serverPositions[bookId] = position
         }
-        debugLog("[PSA] updateServerPositions: updated \(positions.count) positions, total=\(serverPositions.count)")
+        debugLog(
+            "[PSA] updateServerPositions: updated \(positions.count) positions, total=\(serverPositions.count)"
+        )
 
         Task {
             await reconcileWithCloudKit()
@@ -483,10 +539,12 @@ public actor ProgressSyncActor {
 
     private func shouldDedupe(bookId: String, locator: BookLocator, timestamp: Double) -> Bool {
         guard let serverPosition = serverPositions[bookId],
-              let lastLocator = serverPosition.locator else { return false }
+            let lastLocator = serverPosition.locator
+        else { return false }
 
-        if locator.href == lastLocator.href &&
-           locator.locations?.fragments == lastLocator.locations?.fragments {
+        if locator.href == lastLocator.href
+            && locator.locations?.fragments == lastLocator.locations?.fragments
+        {
             debugLog("[PSA] shouldDedupe: same href+fragments")
             return true
         }
@@ -524,7 +582,9 @@ public actor ProgressSyncActor {
         )
         pendingProgressQueue.append(pending)
 
-        debugLog("[PSA] queueOfflineProgress: bookId=\(bookId), queueSize=\(pendingProgressQueue.count), storyteller=\(syncedToStoryteller), cloudKit=\(syncedToCloudKit)")
+        debugLog(
+            "[PSA] queueOfflineProgress: bookId=\(bookId), queueSize=\(pendingProgressQueue.count), storyteller=\(syncedToStoryteller), cloudKit=\(syncedToCloudKit)"
+        )
 
         await saveQueueToDisk()
         await notifyObservers()
@@ -538,7 +598,11 @@ public actor ProgressSyncActor {
         await saveQueueToDisk()
     }
 
-    private func updateLocalMetadataProgress(bookId: String, locator: BookLocator, timestamp: Double) async {
+    private func updateLocalMetadataProgress(
+        bookId: String,
+        locator: BookLocator,
+        timestamp: Double
+    ) async {
         await LocalMediaActor.shared.updateBookProgress(
             bookId: bookId,
             locator: locator,

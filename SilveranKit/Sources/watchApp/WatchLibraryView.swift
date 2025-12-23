@@ -1,5 +1,5 @@
-import SwiftUI
 import SilveranKitCommon
+import SwiftUI
 
 struct WatchLibraryView: View {
     @Environment(WatchViewModel.self) private var viewModel
@@ -97,14 +97,14 @@ struct BookRow: View {
 
     private var categoryIcon: String {
         switch book.category {
-        case "ebook":
-            return "book.closed"
-        case "synced":
-            return "waveform"
-        case "audio":
-            return "headphones"
-        default:
-            return "doc"
+            case "ebook":
+                return "book.closed"
+            case "synced":
+                return "waveform"
+            case "audio":
+                return "headphones"
+            default:
+                return "doc"
         }
     }
 }

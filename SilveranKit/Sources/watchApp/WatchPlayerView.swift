@@ -20,31 +20,34 @@ struct WatchPlayerView: View {
                 loadingView
             } else {
                 switch currentPage {
-                case .chapters:
-                    ChapterListView(viewModel: viewModel) { sectionIndex in
-                        Task {
-                            await viewModel.jumpToChapter(sectionIndex)
-                            currentPage = .controls
+                    case .chapters:
+                        ChapterListView(viewModel: viewModel) { sectionIndex in
+                            Task {
+                                await viewModel.jumpToChapter(sectionIndex)
+                                currentPage = .controls
+                            }
                         }
-                    }
-                case .controls:
-                    AudioControlsPage(
-                        viewModel: viewModel,
-                        onChapters: { currentPage = .chapters },
-                        onText: { currentPage = .text }
-                    )
-                case .text:
-                    TextReaderPage(viewModel: viewModel, onBack: { currentPage = .controls })
+                    case .controls:
+                        AudioControlsPage(
+                            viewModel: viewModel,
+                            onChapters: { currentPage = .chapters },
+                            onText: { currentPage = .text }
+                        )
+                    case .text:
+                        TextReaderPage(viewModel: viewModel, onBack: { currentPage = .controls })
                 }
             }
         }
         .task {
             await viewModel.loadBook(book)
         }
-        .alert("Sync Unavailable", isPresented: .init(
-            get: { viewModel.syncFailed },
-            set: { if !$0 { viewModel.syncFailed = false } }
-        )) {
+        .alert(
+            "Sync Unavailable",
+            isPresented: .init(
+                get: { viewModel.syncFailed },
+                set: { if !$0 { viewModel.syncFailed = false } }
+            )
+        ) {
             Button("Continue") {
                 viewModel.confirmContinueWithoutSync()
             }
@@ -143,7 +146,8 @@ private struct AudioControlsPage: View {
         .focused($isFocused)
         .digitalCrownRotation(
             detent: $crownVolume,
-            from: 0, through: 1,
+            from: 0,
+            through: 1,
             by: 0.02,
             sensitivity: .low,
             isContinuous: false,

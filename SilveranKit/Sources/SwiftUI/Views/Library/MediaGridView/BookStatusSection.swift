@@ -20,7 +20,9 @@ struct BookStatusSection: View {
                 unique[uuid] = status
             }
         }
-        return unique.values.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        return unique.values.sorted {
+            $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+        }
     }
 
     var body: some View {

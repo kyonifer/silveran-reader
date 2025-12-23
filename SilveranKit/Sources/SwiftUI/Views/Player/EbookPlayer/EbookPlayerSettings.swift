@@ -182,7 +182,11 @@ struct EbookPlayerSettings: View {
                         ColorPicker(
                             "Highlight Color",
                             selection: Binding(
-                                get: { Color(hex: settingsVM.highlightColor ?? self.defaultHighlightColor) ?? .yellow },
+                                get: {
+                                    Color(
+                                        hex: settingsVM.highlightColor ?? self.defaultHighlightColor
+                                    ) ?? .yellow
+                                },
                                 set: {
                                     settingsVM.highlightColor =
                                         $0.hexString() ?? settingsVM.highlightColor

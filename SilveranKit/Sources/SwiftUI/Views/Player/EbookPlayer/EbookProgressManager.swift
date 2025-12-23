@@ -164,7 +164,8 @@ class EbookProgressManager {
     private func findSmilEntryByBookFraction(_ fraction: Double) async -> (
         sectionIndex: Int, anchor: String
     )? {
-        guard let result = await SMILPlayerActor.shared.findPositionByTotalProgression(fraction) else {
+        guard let result = await SMILPlayerActor.shared.findPositionByTotalProgression(fraction)
+        else {
             return nil
         }
         return (sectionIndex: result.sectionIndex, anchor: result.textId)
@@ -194,8 +195,11 @@ class EbookProgressManager {
                 var locatorToUse = initialLocator
 
                 if let bookId = self.bookId {
-                    if let psaProgress = await ProgressSyncActor.shared.getBookProgress(for: bookId),
-                       let psaLocator = psaProgress.locator {
+                    if let psaProgress = await ProgressSyncActor.shared.getBookProgress(
+                        for: bookId
+                    ),
+                        let psaLocator = psaProgress.locator
+                    {
                         debugLog("[EPM] Got locator from PSA (source: \(psaProgress.source))")
                         locatorToUse = psaLocator
                     }
@@ -213,7 +217,9 @@ class EbookProgressManager {
                             try await bridge.sendJsGoToBookFractionCommand(fraction: totalProg)
 
                             if let mom = mediaOverlayManager,
-                                let (sectionIndex, anchor) = await findSmilEntryByBookFraction(totalProg)
+                                let (sectionIndex, anchor) = await findSmilEntryByBookFraction(
+                                    totalProg
+                                )
                             {
                                 debugLog(
                                     "[EPM] Seeking media overlay to section \(sectionIndex), anchor: \(anchor)"
@@ -239,7 +245,10 @@ class EbookProgressManager {
                         try await bridge.sendJsGoToLocatorCommand(locator: locator)
 
                         if let mom = mediaOverlayManager,
-                            let sectionIndex = findSectionIndex(for: locator.href, in: bookStructure)
+                            let sectionIndex = findSectionIndex(
+                                for: locator.href,
+                                in: bookStructure
+                            )
                         {
                             debugLog(
                                 "[EPM] Also seeking media overlay to section \(sectionIndex), fragment: \(fragment)"
@@ -402,7 +411,10 @@ class EbookProgressManager {
 
         Task { @MainActor in
             do {
-                try await bridge.sendJsGoToFractionInSectionCommand(sectionIndex: newId, fraction: 0)
+                try await bridge.sendJsGoToFractionInSectionCommand(
+                    sectionIndex: newId,
+                    fraction: 0
+                )
 
                 if let mom = mediaOverlayManager {
                     await mom.handleUserChapterNavigation(sectionIndex: newId)
@@ -548,7 +560,8 @@ class EbookProgressManager {
             Task { @MainActor in
                 guard let self else { return }
                 let isPlaying = self.mediaOverlayManager?.isPlaying ?? false
-                let reason: SyncReason = isPlaying ? .periodicDuringActivePlayback : .periodicWhileReading
+                let reason: SyncReason =
+                    isPlaying ? .periodicDuringActivePlayback : .periodicWhileReading
                 await self.syncProgressToServer(reason: reason)
             }
         }
@@ -677,7 +690,9 @@ class EbookProgressManager {
     /// Handle app resume - check PSA for newer position and suppress nav actions
     func handleResume() async {
         lastResumeTime = Date()
-        debugLog("[EPM] Resume detected - suppressing nav actions for \(resumeSuppressionDuration)s")
+        debugLog(
+            "[EPM] Resume detected - suppressing nav actions for \(resumeSuppressionDuration)s"
+        )
 
         guard let bookId = bookId else {
             debugLog("[EPM] No bookId, skipping position check")
@@ -685,18 +700,23 @@ class EbookProgressManager {
         }
 
         guard let psaProgress = await ProgressSyncActor.shared.getBookProgress(for: bookId),
-              let psaTimestamp = psaProgress.timestamp else {
+            let psaTimestamp = psaProgress.timestamp
+        else {
             debugLog("[EPM] No position from PSA for book \(bookId)")
             return
         }
 
         let localTimestampMs = (lastActivityTimestamp ?? 0) * 1000
         guard psaTimestamp > localTimestampMs else {
-            debugLog("[EPM] PSA position not newer (psa=\(psaTimestamp) <= local=\(localTimestampMs))")
+            debugLog(
+                "[EPM] PSA position not newer (psa=\(psaTimestamp) <= local=\(localTimestampMs))"
+            )
             return
         }
 
-        debugLog("[EPM] PSA has newer position (psa=\(psaTimestamp) > local=\(localTimestampMs)), navigating")
+        debugLog(
+            "[EPM] PSA has newer position (psa=\(psaTimestamp) > local=\(localTimestampMs)), navigating"
+        )
         if let locator = psaProgress.locator {
             do {
                 try await commsBridge?.sendJsGoToLocatorCommand(locator: locator)

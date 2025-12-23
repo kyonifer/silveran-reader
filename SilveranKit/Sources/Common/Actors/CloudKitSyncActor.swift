@@ -1,5 +1,5 @@
-import Foundation
 import CloudKit
+import Foundation
 
 #if os(iOS)
 import UIKit
@@ -60,18 +60,18 @@ public actor CloudKitSyncActor {
         do {
             let status = try await container.accountStatus()
             switch status {
-            case .available:
-                await updateConnectionStatus(.connected)
-            case .noAccount:
-                await updateConnectionStatus(.error("No iCloud account"))
-            case .restricted:
-                await updateConnectionStatus(.error("iCloud restricted"))
-            case .couldNotDetermine:
-                await updateConnectionStatus(.error("Could not determine iCloud status"))
-            case .temporarilyUnavailable:
-                await updateConnectionStatus(.error("iCloud temporarily unavailable"))
-            @unknown default:
-                await updateConnectionStatus(.error("Unknown iCloud status"))
+                case .available:
+                    await updateConnectionStatus(.connected)
+                case .noAccount:
+                    await updateConnectionStatus(.error("No iCloud account"))
+                case .restricted:
+                    await updateConnectionStatus(.error("iCloud restricted"))
+                case .couldNotDetermine:
+                    await updateConnectionStatus(.error("Could not determine iCloud status"))
+                case .temporarilyUnavailable:
+                    await updateConnectionStatus(.error("iCloud temporarily unavailable"))
+                @unknown default:
+                    await updateConnectionStatus(.error("Unknown iCloud status"))
             }
         } catch {
             debugLog("[CloudKitSyncActor] checkAccountStatus failed: \(error)")
@@ -84,7 +84,9 @@ public actor CloudKitSyncActor {
         locator: BookLocator,
         timestamp: Double
     ) async -> HTTPResult {
-        debugLog("[CloudKitSyncActor] sendProgressToCloudKit: bookId=\(bookId), timestamp=\(timestamp)")
+        debugLog(
+            "[CloudKitSyncActor] sendProgressToCloudKit: bookId=\(bookId), timestamp=\(timestamp)"
+        )
 
         if connectionStatus != .connected {
             await checkAccountStatus()
@@ -109,31 +111,40 @@ public actor CloudKitSyncActor {
             record["timestamp"] = timestamp
             record["deviceId"] = deviceIdentifier()
 
-            let operation = CKModifyRecordsOperation(recordsToSave: [record], recordIDsToDelete: nil)
+            let operation = CKModifyRecordsOperation(
+                recordsToSave: [record],
+                recordIDsToDelete: nil
+            )
             operation.savePolicy = .allKeys
             operation.qualityOfService = .userInitiated
 
             return try await withCheckedThrowingContinuation { continuation in
                 operation.modifyRecordsResultBlock = { result in
                     switch result {
-                    case .success:
-                        debugLog("[CloudKitSyncActor] sendProgressToCloudKit: saved record \(bookId)")
-                        continuation.resume(returning: .success)
-                    case .failure(let error):
-                        debugLog("[CloudKitSyncActor] sendProgressToCloudKit: error \(error)")
-                        if let ckError = error as? CKError,
-                           ckError.code == .networkUnavailable || ckError.code == .networkFailure {
-                            continuation.resume(returning: .noConnection)
-                        } else {
-                            continuation.resume(returning: .failure)
-                        }
+                        case .success:
+                            debugLog(
+                                "[CloudKitSyncActor] sendProgressToCloudKit: saved record \(bookId)"
+                            )
+                            continuation.resume(returning: .success)
+                        case .failure(let error):
+                            debugLog("[CloudKitSyncActor] sendProgressToCloudKit: error \(error)")
+                            if let ckError = error as? CKError,
+                                ckError.code == .networkUnavailable
+                                    || ckError.code == .networkFailure
+                            {
+                                continuation.resume(returning: .noConnection)
+                            } else {
+                                continuation.resume(returning: .failure)
+                            }
                     }
                 }
                 database.add(operation)
             }
 
         } catch let error as CKError {
-            debugLog("[CloudKitSyncActor] sendProgressToCloudKit: CKError \(error.code.rawValue) - \(error.localizedDescription)")
+            debugLog(
+                "[CloudKitSyncActor] sendProgressToCloudKit: CKError \(error.code.rawValue) - \(error.localizedDescription)"
+            )
             if error.code == .networkUnavailable || error.code == .networkFailure {
                 return .noConnection
             }
@@ -165,7 +176,9 @@ public actor CloudKitSyncActor {
         } catch CKError.unknownItem {
             debugLog("[CloudKitSyncActor] fetchProgress: no record found for \(bookId)")
             return .noRecord
-        } catch let error as CKError where error.code == .networkUnavailable || error.code == .networkFailure {
+        } catch let error as CKError
+            where error.code == .networkUnavailable || error.code == .networkFailure
+        {
             debugLog("[CloudKitSyncActor] fetchProgress: network error \(error)")
             return .networkError
         } catch {
@@ -193,7 +206,8 @@ public actor CloudKitSyncActor {
             var cursor: CKQueryOperation.Cursor?
 
             repeat {
-                let (results, nextCursor): ([(CKRecord.ID, Result<CKRecord, Error>)], CKQueryOperation.Cursor?)
+                let (results, nextCursor):
+                    ([(CKRecord.ID, Result<CKRecord, Error>)], CKQueryOperation.Cursor?)
 
                 if let existingCursor = cursor {
                     (results, nextCursor) = try await database.records(
@@ -209,12 +223,12 @@ public actor CloudKitSyncActor {
 
                 for (_, result) in results {
                     switch result {
-                    case .success(let record):
-                        if let progress = parseRecord(record) {
-                            progressMap[progress.bookId] = progress
-                        }
-                    case .failure(let error):
-                        debugLog("[CloudKitSyncActor] fetchAllProgress: record error \(error)")
+                        case .success(let record):
+                            if let progress = parseRecord(record) {
+                                progressMap[progress.bookId] = progress
+                            }
+                        case .failure(let error):
+                            debugLog("[CloudKitSyncActor] fetchAllProgress: record error \(error)")
                     }
                 }
 
@@ -247,7 +261,8 @@ public actor CloudKitSyncActor {
             var cursor: CKQueryOperation.Cursor?
 
             repeat {
-                let (results, nextCursor): ([(CKRecord.ID, Result<CKRecord, Error>)], CKQueryOperation.Cursor?)
+                let (results, nextCursor):
+                    ([(CKRecord.ID, Result<CKRecord, Error>)], CKQueryOperation.Cursor?)
 
                 if let existingCursor = cursor {
                     (results, nextCursor) = try await database.records(
@@ -292,7 +307,8 @@ public actor CloudKitSyncActor {
             var cursor: CKQueryOperation.Cursor?
 
             repeat {
-                let (results, nextCursor): ([(CKRecord.ID, Result<CKRecord, Error>)], CKQueryOperation.Cursor?)
+                let (results, nextCursor):
+                    ([(CKRecord.ID, Result<CKRecord, Error>)], CKQueryOperation.Cursor?)
 
                 if let existingCursor = cursor {
                     (results, nextCursor) = try await database.records(
@@ -308,10 +324,10 @@ public actor CloudKitSyncActor {
 
                 let recordIDs = results.compactMap { (id, result) -> CKRecord.ID? in
                     switch result {
-                    case .success:
-                        return id
-                    case .failure:
-                        return nil
+                        case .success:
+                            return id
+                        case .failure:
+                            return nil
                     }
                 }
                 allRecordIDs.append(contentsOf: recordIDs)
@@ -323,18 +339,23 @@ public actor CloudKitSyncActor {
                 return true
             }
 
-            let operation = CKModifyRecordsOperation(recordsToSave: nil, recordIDsToDelete: allRecordIDs)
+            let operation = CKModifyRecordsOperation(
+                recordsToSave: nil,
+                recordIDsToDelete: allRecordIDs
+            )
             operation.savePolicy = .allKeys
 
             return try await withCheckedThrowingContinuation { continuation in
                 operation.modifyRecordsResultBlock = { result in
                     switch result {
-                    case .success:
-                        debugLog("[CloudKitSyncActor] deleteAllRecords: deleted \(allRecordIDs.count) records")
-                        continuation.resume(returning: true)
-                    case .failure(let error):
-                        debugLog("[CloudKitSyncActor] deleteAllRecords: error \(error)")
-                        continuation.resume(throwing: error)
+                        case .success:
+                            debugLog(
+                                "[CloudKitSyncActor] deleteAllRecords: deleted \(allRecordIDs.count) records"
+                            )
+                            continuation.resume(returning: true)
+                        case .failure(let error):
+                            debugLog("[CloudKitSyncActor] deleteAllRecords: error \(error)")
+                            continuation.resume(throwing: error)
                     }
                 }
                 self.database.add(operation)
@@ -377,12 +398,14 @@ public actor CloudKitSyncActor {
 
     private func parseRecord(_ record: CKRecord) -> CloudKitProgress? {
         guard let bookId = record["bookId"] as? String,
-              let locatorString = record["locatorJson"] as? String,
-              let timestamp = record["timestamp"] as? Double,
-              let locatorData = locatorString.data(using: .utf8),
-              let locator = try? decoder.decode(BookLocator.self, from: locatorData)
+            let locatorString = record["locatorJson"] as? String,
+            let timestamp = record["timestamp"] as? Double,
+            let locatorData = locatorString.data(using: .utf8),
+            let locator = try? decoder.decode(BookLocator.self, from: locatorData)
         else {
-            debugLog("[CloudKitSyncActor] parseRecord: failed to parse record \(record.recordID.recordName)")
+            debugLog(
+                "[CloudKitSyncActor] parseRecord: failed to parse record \(record.recordID.recordName)"
+            )
             return nil
         }
 

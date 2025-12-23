@@ -26,7 +26,10 @@ struct EbookPlayerToolbar: ToolbarContent {
                 } label: {
                     Image(systemName: viewModel.settingsVM.lockViewToAudio ? "lock" : "lock.open")
                         .imageScale(.medium)
-                        .foregroundStyle(viewModel.settingsVM.lockViewToAudio ? Color.primary : Color.gray.opacity(0.6))
+                        .foregroundStyle(
+                            viewModel.settingsVM.lockViewToAudio
+                                ? Color.primary : Color.gray.opacity(0.6)
+                        )
                 }
                 .buttonStyle(.plain)
                 .help(

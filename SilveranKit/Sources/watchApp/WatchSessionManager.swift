@@ -1,6 +1,6 @@
 import Foundation
-import WatchConnectivity
 import SilveranKitCommon
+import WatchConnectivity
 
 public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked Sendable {
     public static let shared = WatchSessionManager()
@@ -24,7 +24,11 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
         session = wcSession
     }
 
-    public func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {
+    public func session(
+        _ session: WCSession,
+        activationDidCompleteWith activationState: WCSessionActivationState,
+        error: Error?
+    ) {
         if let error {
             print("[WatchSessionManager] Activation error: \(error)")
         } else {
@@ -32,11 +36,15 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
         }
     }
 
-    public func session(_ session: WCSession, didReceiveMessage message: [String : Any]) {
+    public func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
         handleMessage(message, replyHandler: nil)
     }
 
-    public func session(_ session: WCSession, didReceiveMessage message: [String : Any], replyHandler: @escaping ([String : Any]) -> Void) {
+    public func session(
+        _ session: WCSession,
+        didReceiveMessage message: [String: Any],
+        replyHandler: @escaping ([String: Any]) -> Void
+    ) {
         handleMessage(message, replyHandler: replyHandler)
     }
 
@@ -47,17 +55,17 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
         }
 
         switch type {
-        case "deleteBook":
-            handleDeleteBook(message, replyHandler: replyHandler)
-        case "requestLibrary":
-            handleLibraryRequest(replyHandler: replyHandler)
-        case "cancelTransfer":
-            handleCancelTransfer(message, replyHandler: replyHandler)
-        case "playbackState":
-            handlePlaybackState(message)
-            replyHandler?(["status": "ok"])
-        default:
-            replyHandler?(["error": "Unhandled message type: \(type)"])
+            case "deleteBook":
+                handleDeleteBook(message, replyHandler: replyHandler)
+            case "requestLibrary":
+                handleLibraryRequest(replyHandler: replyHandler)
+            case "cancelTransfer":
+                handleCancelTransfer(message, replyHandler: replyHandler)
+            case "playbackState":
+                handlePlaybackState(message)
+                replyHandler?(["status": "ok"])
+            default:
+                replyHandler?(["error": "Unhandled message type: \(type)"])
         }
     }
 
@@ -75,9 +83,13 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
         }
     }
 
-    private func handleDeleteBook(_ message: [String: Any], replyHandler: (([String: Any]) -> Void)?) {
+    private func handleDeleteBook(
+        _ message: [String: Any],
+        replyHandler: (([String: Any]) -> Void)?
+    ) {
         guard let uuid = message["uuid"] as? String,
-              let category = message["category"] as? String else {
+            let category = message["category"] as? String
+        else {
             replyHandler?(["error": "Missing uuid or category"])
             return
         }
@@ -87,9 +99,13 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
         replyHandler?(["status": "ok"])
     }
 
-    private func handleCancelTransfer(_ message: [String: Any], replyHandler: (([String: Any]) -> Void)?) {
+    private func handleCancelTransfer(
+        _ message: [String: Any],
+        replyHandler: (([String: Any]) -> Void)?
+    ) {
         guard let uuid = message["uuid"] as? String,
-              let category = message["category"] as? String else {
+            let category = message["category"] as? String
+        else {
             replyHandler?(["error": "Missing uuid or category"])
             return
         }
@@ -106,7 +122,10 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
                 title: book.title,
                 authorNames: book.authors,
                 category: book.category,
-                sizeBytes: WatchStorageManager.shared.getBookSize(uuid: book.uuid, category: book.category)
+                sizeBytes: WatchStorageManager.shared.getBookSize(
+                    uuid: book.uuid,
+                    category: book.category
+                )
             )
         }
 
@@ -119,11 +138,16 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
     }
 
     public func session(_ session: WCSession, didReceive file: WCSessionFile) {
-        print("[WatchSessionManager] didReceive file called! URL: \(file.fileURL.lastPathComponent)")
-        print("[WatchSessionManager] metadata keys: \(file.metadata?.keys.joined(separator: ", ") ?? "none")")
+        print(
+            "[WatchSessionManager] didReceive file called! URL: \(file.fileURL.lastPathComponent)"
+        )
+        print(
+            "[WatchSessionManager] metadata keys: \(file.metadata?.keys.joined(separator: ", ") ?? "none")"
+        )
 
         guard let fileMetadata = file.metadata,
-              let metadataData = fileMetadata["chunkMetadata"] as? Data else {
+            let metadataData = fileMetadata["chunkMetadata"] as? Data
+        else {
             print("[WatchSessionManager] Received file with no chunk metadata")
             return
         }
@@ -136,17 +160,25 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
             return
         }
 
-        print("[WatchSessionManager] Received chunk \(chunkMetadata.chunkIndex + 1)/\(chunkMetadata.totalChunks) for: \(chunkMetadata.title) [\(chunkMetadata.category)]")
+        print(
+            "[WatchSessionManager] Received chunk \(chunkMetadata.chunkIndex + 1)/\(chunkMetadata.totalChunks) for: \(chunkMetadata.title) [\(chunkMetadata.category)]"
+        )
 
         let isComplete = WatchStorageManager.shared.receiveChunk(
             from: file.fileURL,
             metadata: chunkMetadata
         )
 
-        onTransferProgress?(chunkMetadata.title, chunkMetadata.chunkIndex + 1, chunkMetadata.totalChunks)
+        onTransferProgress?(
+            chunkMetadata.title,
+            chunkMetadata.chunkIndex + 1,
+            chunkMetadata.totalChunks
+        )
 
         if isComplete {
-            print("[WatchSessionManager] All chunks received for: \(chunkMetadata.title) [\(chunkMetadata.category)]")
+            print(
+                "[WatchSessionManager] All chunks received for: \(chunkMetadata.title) [\(chunkMetadata.category)]"
+            )
             onTransferComplete?()
             notifyPhone(bookUUID: chunkMetadata.uuid, category: chunkMetadata.category)
         }
@@ -157,7 +189,7 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
         let message: [String: Any] = [
             "type": "transferComplete",
             "uuid": bookUUID,
-            "category": category
+            "category": category,
         ]
         // Use transferUserInfo instead of sendMessage - it queues for background
         // delivery even when the phone is asleep, whereas sendMessage requires
@@ -176,22 +208,31 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
         }
 
         let message: [String: Any] = ["type": "requestPlaybackState"]
-        session.sendMessage(message, replyHandler: { [weak self] reply in
-            if let stateData = reply["state"] as? Data {
-                do {
-                    let state = try JSONDecoder().decode(RemotePlaybackState.self, from: stateData)
-                    self?.onPlaybackStateReceived?(state)
-                } catch {
-                    print("[WatchSessionManager] Failed to decode playback state reply: \(error)")
+        session.sendMessage(
+            message,
+            replyHandler: { [weak self] reply in
+                if let stateData = reply["state"] as? Data {
+                    do {
+                        let state = try JSONDecoder().decode(
+                            RemotePlaybackState.self,
+                            from: stateData
+                        )
+                        self?.onPlaybackStateReceived?(state)
+                    } catch {
+                        print(
+                            "[WatchSessionManager] Failed to decode playback state reply: \(error)"
+                        )
+                        self?.onPlaybackStateReceived?(nil)
+                    }
+                } else {
                     self?.onPlaybackStateReceived?(nil)
                 }
-            } else {
-                self?.onPlaybackStateReceived?(nil)
+            },
+            errorHandler: { error in
+                print("[WatchSessionManager] Failed to request playback state: \(error)")
+                self.onPlaybackStateReceived?(nil)
             }
-        }, errorHandler: { error in
-            print("[WatchSessionManager] Failed to request playback state: \(error)")
-            self.onPlaybackStateReceived?(nil)
-        })
+        )
     }
 
     public func sendPlaybackCommand(_ command: RemotePlaybackCommand) {
@@ -203,26 +244,30 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
         var message: [String: Any] = ["type": "playbackControl"]
 
         switch command {
-        case .togglePlayPause:
-            message["command"] = "togglePlayPause"
-        case .skipForward:
-            message["command"] = "skipForward"
-        case .skipBackward:
-            message["command"] = "skipBackward"
-        case .seekToChapter(let sectionIndex):
-            message["command"] = "seekToChapter"
-            message["value"] = sectionIndex
-        case .setPlaybackRate(let rate):
-            message["command"] = "setPlaybackRate"
-            message["value"] = rate
-        case .setVolume(let volume):
-            message["command"] = "setVolume"
-            message["value"] = volume
+            case .togglePlayPause:
+                message["command"] = "togglePlayPause"
+            case .skipForward:
+                message["command"] = "skipForward"
+            case .skipBackward:
+                message["command"] = "skipBackward"
+            case .seekToChapter(let sectionIndex):
+                message["command"] = "seekToChapter"
+                message["value"] = sectionIndex
+            case .setPlaybackRate(let rate):
+                message["command"] = "setPlaybackRate"
+                message["value"] = rate
+            case .setVolume(let volume):
+                message["command"] = "setVolume"
+                message["value"] = volume
         }
 
-        session.sendMessage(message, replyHandler: nil, errorHandler: { error in
-            print("[WatchSessionManager] Failed to send playback command: \(error)")
-        })
+        session.sendMessage(
+            message,
+            replyHandler: nil,
+            errorHandler: { error in
+                print("[WatchSessionManager] Failed to send playback command: \(error)")
+            }
+        )
     }
 
     public var isPhoneReachable: Bool {

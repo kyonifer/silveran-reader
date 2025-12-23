@@ -69,13 +69,16 @@ public final class CarPlayCoordinator {
     }
 
     private func observeSMILPlayerActor() async {
-        smilObserverId = await SMILPlayerActor.shared.addStateObserver { @MainActor [weak self] state in
+        smilObserverId = await SMILPlayerActor.shared.addStateObserver {
+            @MainActor [weak self] state in
             guard let self else { return }
 
             let previousBookId = self.currentPlaybackState?.bookId
             let previouslyPlaying = self.currentPlaybackState?.isPlaying ?? false
 
-            debugLog("[CarPlayCoordinator] State update: bookId=\(state.bookId ?? "nil"), isPlaying=\(state.isPlaying), prev=\(previouslyPlaying)")
+            debugLog(
+                "[CarPlayCoordinator] State update: bookId=\(state.bookId ?? "nil"), isPlaying=\(state.isPlaying), prev=\(previouslyPlaying)"
+            )
             self.currentPlaybackState = state
 
             if let bookId = state.bookId {
@@ -109,7 +112,9 @@ public final class CarPlayCoordinator {
 
             self.onPlaybackStateChanged?()
         }
-        debugLog("[CarPlayCoordinator] SMILPlayerActor observer registered: \(smilObserverId?.uuidString ?? "nil")")
+        debugLog(
+            "[CarPlayCoordinator] SMILPlayerActor observer registered: \(smilObserverId?.uuidString ?? "nil")"
+        )
     }
 
     private func handleAudiobookStateChange(_ state: AudiobookPlaybackState) {
@@ -119,7 +124,9 @@ public final class CarPlayCoordinator {
         currentAudiobookState = state
         wasPlaying = state.isPlaying
 
-        debugLog("[CarPlayCoordinator] Audiobook state: isPlaying=\(state.isPlaying), wasPlaying=\(previouslyPlaying)")
+        debugLog(
+            "[CarPlayCoordinator] Audiobook state: isPlaying=\(state.isPlaying), wasPlaying=\(previouslyPlaying)"
+        )
 
         if previouslyPlaying && !state.isPlaying {
             debugLog("[CarPlayCoordinator] Audiobook paused, syncing progress")
@@ -162,11 +169,15 @@ public final class CarPlayCoordinator {
 
     public func getCoverImage(for bookId: String) async -> UIImage? {
         // Try audioSquare first (preferred for CarPlay - square covers)
-        if let data = await FilesystemActor.shared.loadCoverImage(uuid: bookId, variant: "audioSquare") {
+        if let data = await FilesystemActor.shared.loadCoverImage(
+            uuid: bookId,
+            variant: "audioSquare"
+        ) {
             return UIImage(data: data)
         }
         // Fall back to standard cover
-        if let data = await FilesystemActor.shared.loadCoverImage(uuid: bookId, variant: "standard") {
+        if let data = await FilesystemActor.shared.loadCoverImage(uuid: bookId, variant: "standard")
+        {
             return UIImage(data: data)
         }
         // Last resort: extract from local file (for standalone imports)
@@ -178,35 +189,36 @@ public final class CarPlayCoordinator {
 
     public var chapters: [CarPlayChapter] {
         switch activePlayer {
-        case .audiobook:
-            return cachedAudiobookChapters.enumerated().map { idx, chapter in
-                CarPlayChapter(
-                    id: idx,
-                    label: chapter.title,
-                    sectionIndex: idx,
-                    href: chapter.href
-                )
-            }
-        case .smil, .none:
-            return cachedBookStructure
-                .filter { !$0.mediaOverlay.isEmpty }
-                .enumerated()
-                .map { idx, section in
+            case .audiobook:
+                return cachedAudiobookChapters.enumerated().map { idx, chapter in
                     CarPlayChapter(
                         id: idx,
-                        label: section.label ?? "Chapter \(idx + 1)",
-                        sectionIndex: section.index
+                        label: chapter.title,
+                        sectionIndex: idx,
+                        href: chapter.href
                     )
                 }
+            case .smil, .none:
+                return
+                    cachedBookStructure
+                    .filter { !$0.mediaOverlay.isEmpty }
+                    .enumerated()
+                    .map { idx, section in
+                        CarPlayChapter(
+                            id: idx,
+                            label: section.label ?? "Chapter \(idx + 1)",
+                            sectionIndex: section.index
+                        )
+                    }
         }
     }
 
     public var currentChapterSectionIndex: Int? {
         switch activePlayer {
-        case .audiobook:
-            return currentAudiobookState?.currentChapterIndex
-        case .smil, .none:
-            return currentPlaybackState?.currentSectionIndex
+            case .audiobook:
+                return currentAudiobookState?.currentChapterIndex
+            case .smil, .none:
+                return currentPlaybackState?.currentSectionIndex
         }
     }
 
@@ -214,24 +226,33 @@ public final class CarPlayCoordinator {
         debugLog("[CarPlayCoordinator] selectChapter: sectionIndex=\(sectionIndex)")
         Task {
             switch activePlayer {
-            case .audiobook:
-                guard sectionIndex < cachedAudiobookChapters.count else { return }
-                let chapter = cachedAudiobookChapters[sectionIndex]
-                await AudiobookActor.shared.seekToChapter(href: chapter.href)
-            case .smil, .none:
-                do {
-                    try await SMILPlayerActor.shared.seekToEntry(sectionIndex: sectionIndex, entryIndex: 0)
-                } catch {
-                    debugLog("[CarPlayCoordinator] Failed to seek to chapter: \(error)")
-                }
+                case .audiobook:
+                    guard sectionIndex < cachedAudiobookChapters.count else { return }
+                    let chapter = cachedAudiobookChapters[sectionIndex]
+                    await AudiobookActor.shared.seekToChapter(href: chapter.href)
+                case .smil, .none:
+                    do {
+                        try await SMILPlayerActor.shared.seekToEntry(
+                            sectionIndex: sectionIndex,
+                            entryIndex: 0
+                        )
+                    } catch {
+                        debugLog("[CarPlayCoordinator] Failed to seek to chapter: \(error)")
+                    }
             }
         }
     }
 
-    public func loadAndPlayBook(_ metadata: BookMetadata, category: LocalMediaCategory) async throws {
+    public func loadAndPlayBook(_ metadata: BookMetadata, category: LocalMediaCategory) async throws
+    {
         debugLog("[CarPlayCoordinator] loadAndPlayBook: \(metadata.title), category: \(category)")
 
-        guard let localPath = await LocalMediaActor.shared.mediaFilePath(for: metadata.uuid, category: category) else {
+        guard
+            let localPath = await LocalMediaActor.shared.mediaFilePath(
+                for: metadata.uuid,
+                category: category
+            )
+        else {
             debugLog("[CarPlayCoordinator] No local path for book \(metadata.uuid)")
             throw CarPlayError.noLocalPath
         }
@@ -255,12 +276,17 @@ public final class CarPlayCoordinator {
         currentBookTitle = metadata.title
         wasPlaying = false
 
-        audiobookObserverId = await AudiobookActor.shared.addStateObserver { @MainActor [weak self] state in
+        audiobookObserverId = await AudiobookActor.shared.addStateObserver {
+            @MainActor [weak self] state in
             self?.handleAudiobookStateChange(state)
         }
-        debugLog("[CarPlayCoordinator] Audiobook observer registered: \(String(describing: audiobookObserverId))")
+        debugLog(
+            "[CarPlayCoordinator] Audiobook observer registered: \(String(describing: audiobookObserverId))"
+        )
 
-        let audiobookMetadata = try await AudiobookActor.shared.validateAndLoadAudiobook(url: localPath)
+        let audiobookMetadata = try await AudiobookActor.shared.validateAndLoadAudiobook(
+            url: localPath
+        )
         cachedAudiobookChapters = audiobookMetadata.chapters
         onChaptersUpdated?()
 
@@ -271,7 +297,8 @@ public final class CarPlayCoordinator {
         }
 
         if let locator = metadata.position?.locator,
-           let totalProg = locator.locations?.totalProgression, totalProg > 0 {
+            let totalProg = locator.locations?.totalProgression, totalProg > 0
+        {
             debugLog("[CarPlayCoordinator] Restoring audiobook position to \(totalProg * 100)%")
             await AudiobookActor.shared.seekToTotalProgressFraction(totalProg)
         }
@@ -308,17 +335,22 @@ public final class CarPlayCoordinator {
         if let locator = metadata.position?.locator {
             let bookStructure = await SMILPlayerActor.shared.getBookStructure()
             if let sectionIndex = findSectionIndex(for: locator.href, in: bookStructure),
-               let fragment = locator.locations?.fragments?.first {
+                let fragment = locator.locations?.fragments?.first
+            {
                 let success = await SMILPlayerActor.shared.seekToFragment(
                     sectionIndex: sectionIndex,
                     textId: fragment
                 )
                 if success {
-                    debugLog("[CarPlayCoordinator] Restored position to section \(sectionIndex), fragment: \(fragment)")
+                    debugLog(
+                        "[CarPlayCoordinator] Restored position to section \(sectionIndex), fragment: \(fragment)"
+                    )
                 }
             } else if let totalProg = locator.locations?.totalProgression, totalProg > 0 {
                 let success = await SMILPlayerActor.shared.seekToTotalProgression(totalProg)
-                debugLog("[CarPlayCoordinator] Restored position using totalProgression \(totalProg): \(success ? "success" : "failed")")
+                debugLog(
+                    "[CarPlayCoordinator] Restored position using totalProgression \(totalProg): \(success ? "success" : "failed")"
+                )
             }
         }
 
@@ -328,10 +360,10 @@ public final class CarPlayCoordinator {
 
     public var isPlaying: Bool {
         switch activePlayer {
-        case .audiobook:
-            return currentAudiobookState?.isPlaying ?? false
-        case .smil, .none:
-            return currentPlaybackState?.isPlaying ?? false
+            case .audiobook:
+                return currentAudiobookState?.isPlaying ?? false
+            case .smil, .none:
+                return currentPlaybackState?.isPlaying ?? false
         }
     }
 
@@ -355,7 +387,8 @@ public final class CarPlayCoordinator {
         let syncInterval = await SettingsActor.shared.config.sync.progressSyncIntervalSeconds
         debugLog("[CarPlayCoordinator] Starting periodic sync with interval \(syncInterval)s")
 
-        syncTimer = Timer.scheduledTimer(withTimeInterval: syncInterval, repeats: true) { [weak self] _ in
+        syncTimer = Timer.scheduledTimer(withTimeInterval: syncInterval, repeats: true) {
+            [weak self] _ in
             Task { @MainActor in
                 await self?.syncProgress(reason: .periodicDuringActivePlayback)
             }
@@ -377,81 +410,86 @@ public final class CarPlayCoordinator {
         let timestampMs = Date().timeIntervalSince1970 * 1000
 
         switch activePlayer {
-        case .audiobook:
-            guard let state = currentAudiobookState else {
-                debugLog("[CarPlayCoordinator] Cannot sync audiobook: no playback state")
-                return
-            }
+            case .audiobook:
+                guard let state = currentAudiobookState else {
+                    debugLog("[CarPlayCoordinator] Cannot sync audiobook: no playback state")
+                    return
+                }
 
-            let chapterIndex = state.currentChapterIndex ?? 0
-            let chapter = chapterIndex < cachedAudiobookChapters.count
-                ? cachedAudiobookChapters[chapterIndex]
-                : nil
+                let chapterIndex = state.currentChapterIndex ?? 0
+                let chapter =
+                    chapterIndex < cachedAudiobookChapters.count
+                    ? cachedAudiobookChapters[chapterIndex]
+                    : nil
 
-            let totalProgression = state.duration > 0 ? state.currentTime / state.duration : 0
+                let totalProgression = state.duration > 0 ? state.currentTime / state.duration : 0
 
-            let locations = BookLocator.Locations(
-                fragments: nil,
-                progression: nil,
-                position: nil,
-                totalProgression: totalProgression,
-                cssSelector: nil,
-                partialCfi: nil,
-                domRange: nil
-            )
+                let locations = BookLocator.Locations(
+                    fragments: nil,
+                    progression: nil,
+                    position: nil,
+                    totalProgression: totalProgression,
+                    cssSelector: nil,
+                    partialCfi: nil,
+                    domRange: nil
+                )
 
-            locator = BookLocator(
-                href: chapter?.href ?? "chapter-\(chapterIndex)",
-                type: "audio/mp4",
-                title: chapter?.title ?? "Chapter \(chapterIndex + 1)",
-                locations: locations,
-                text: nil
-            )
+                locator = BookLocator(
+                    href: chapter?.href ?? "chapter-\(chapterIndex)",
+                    type: "audio/mp4",
+                    title: chapter?.title ?? "Chapter \(chapterIndex + 1)",
+                    locations: locations,
+                    text: nil
+                )
 
-            debugLog("[CarPlayCoordinator] Syncing audiobook progress: book=\(bookId), chapter=\(chapterIndex), progress=\(totalProgression), reason=\(reason)")
+                debugLog(
+                    "[CarPlayCoordinator] Syncing audiobook progress: book=\(bookId), chapter=\(chapterIndex), progress=\(totalProgression), reason=\(reason)"
+                )
 
-        case .smil, .none:
-            guard let state = currentPlaybackState else {
-                debugLog("[CarPlayCoordinator] Cannot sync SMIL: no playback state")
-                return
-            }
+            case .smil, .none:
+                guard let state = currentPlaybackState else {
+                    debugLog("[CarPlayCoordinator] Cannot sync SMIL: no playback state")
+                    return
+                }
 
-            guard state.currentSectionIndex < cachedBookStructure.count else {
-                debugLog("[CarPlayCoordinator] Cannot sync: section index out of bounds")
-                return
-            }
+                guard state.currentSectionIndex < cachedBookStructure.count else {
+                    debugLog("[CarPlayCoordinator] Cannot sync: section index out of bounds")
+                    return
+                }
 
-            let section = cachedBookStructure[state.currentSectionIndex]
-            let href = section.id
+                let section = cachedBookStructure[state.currentSectionIndex]
+                let href = section.id
 
-            let fragment: String?
-            if state.currentEntryIndex < section.mediaOverlay.count {
-                fragment = section.mediaOverlay[state.currentEntryIndex].textId
-            } else {
-                fragment = nil
-            }
+                let fragment: String?
+                if state.currentEntryIndex < section.mediaOverlay.count {
+                    fragment = section.mediaOverlay[state.currentEntryIndex].textId
+                } else {
+                    fragment = nil
+                }
 
-            let totalProgression = state.bookTotal > 0 ? state.bookElapsed / state.bookTotal : 0
+                let totalProgression = state.bookTotal > 0 ? state.bookElapsed / state.bookTotal : 0
 
-            let locations = BookLocator.Locations(
-                fragments: fragment.map { [$0] },
-                progression: nil,
-                position: nil,
-                totalProgression: totalProgression,
-                cssSelector: nil,
-                partialCfi: nil,
-                domRange: nil
-            )
+                let locations = BookLocator.Locations(
+                    fragments: fragment.map { [$0] },
+                    progression: nil,
+                    position: nil,
+                    totalProgression: totalProgression,
+                    cssSelector: nil,
+                    partialCfi: nil,
+                    domRange: nil
+                )
 
-            locator = BookLocator(
-                href: href,
-                type: "application/xhtml+xml",
-                title: state.chapterLabel,
-                locations: locations,
-                text: nil
-            )
+                locator = BookLocator(
+                    href: href,
+                    type: "application/xhtml+xml",
+                    title: state.chapterLabel,
+                    locations: locations,
+                    text: nil
+                )
 
-            debugLog("[CarPlayCoordinator] Syncing SMIL progress: book=\(bookId), href=\(href), fragment=\(fragment ?? "none"), reason=\(reason)")
+                debugLog(
+                    "[CarPlayCoordinator] Syncing SMIL progress: book=\(bookId), href=\(href), fragment=\(fragment ?? "none"), reason=\(reason)"
+                )
         }
 
         let result = await ProgressSyncActor.shared.syncProgress(

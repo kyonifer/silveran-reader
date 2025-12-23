@@ -351,8 +351,10 @@ private struct MacGeneralSettingsView: View {
                         Text("Loading...")
                             .foregroundStyle(.secondary)
                     } else {
-                        Text("\(cloudKitRecordCount) position\(cloudKitRecordCount == 1 ? "" : "s") synced to iCloud")
-                            .foregroundStyle(.secondary)
+                        Text(
+                            "\(cloudKitRecordCount) position\(cloudKitRecordCount == 1 ? "" : "s") synced to iCloud"
+                        )
+                        .foregroundStyle(.secondary)
                     }
 
                     Spacer()
@@ -754,10 +756,12 @@ private struct ReadingSettingsFields: View {
             Text("Highlight Color")
                 .font(.subheadline)
                 .foregroundStyle(.primary)
-            HighlightColorControl(hex: Binding(
-                get: { reading.highlightColor ?? "#333333" },
-                set: { reading.highlightColor = $0 }
-            ))
+            HighlightColorControl(
+                hex: Binding(
+                    get: { reading.highlightColor ?? "#333333" },
+                    set: { reading.highlightColor = $0 }
+                )
+            )
         }
     }
 }
@@ -822,8 +826,10 @@ private struct GeneralSettingsFields: View {
                 Text("Loading...")
                     .foregroundStyle(.secondary)
             } else {
-                Text("\(cloudKitRecordCount) position\(cloudKitRecordCount == 1 ? "" : "s") synced to iCloud")
-                    .foregroundStyle(.secondary)
+                Text(
+                    "\(cloudKitRecordCount) position\(cloudKitRecordCount == 1 ? "" : "s") synced to iCloud"
+                )
+                .foregroundStyle(.secondary)
             }
             Spacer()
         }
@@ -937,7 +943,12 @@ private struct AppearanceColorControl: View {
     @State private var pickerColor: Color = .gray
     @Environment(\.colorScheme) private var colorScheme
 
-    init(hex: Binding<String?>, isRequired: Bool, defaultLightColor: String? = nil, defaultDarkColor: String? = nil) {
+    init(
+        hex: Binding<String?>,
+        isRequired: Bool,
+        defaultLightColor: String? = nil,
+        defaultDarkColor: String? = nil
+    ) {
         self.hex = hex
         self.isRequired = isRequired
         self.defaultLightColor = defaultLightColor
@@ -965,7 +976,7 @@ private struct AppearanceColorControl: View {
     private static let presetColors: [(light: String, dark: String)] = [
         ("#AAAAAA", "#333333"),
         ("#FFC857", "#B8860B"),
-        ("#4DABF7", "#1C7ED6")
+        ("#4DABF7", "#1C7ED6"),
     ]
 
     private var isCustomColorSelected: Bool {

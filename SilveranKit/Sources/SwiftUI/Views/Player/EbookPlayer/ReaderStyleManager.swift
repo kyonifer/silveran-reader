@@ -70,13 +70,20 @@ class ReaderStyleManager {
 
         let isDarkMode = colorScheme == .dark
 
-        let effectiveHighlightColor = settingsVM.highlightColor ?? (isDarkMode ? "#333333" : "#CCCCCC")
-        let effectiveBackgroundColor = settingsVM.backgroundColor ?? (isDarkMode ? kDefaultBackgroundColorDark : kDefaultBackgroundColorLight)
-        let effectiveForegroundColor = settingsVM.foregroundColor ?? (isDarkMode ? kDefaultForegroundColorDark : kDefaultForegroundColorLight)
+        let effectiveHighlightColor =
+            settingsVM.highlightColor ?? (isDarkMode ? "#333333" : "#CCCCCC")
+        let effectiveBackgroundColor =
+            settingsVM.backgroundColor
+            ?? (isDarkMode ? kDefaultBackgroundColorDark : kDefaultBackgroundColorLight)
+        let effectiveForegroundColor =
+            settingsVM.foregroundColor
+            ?? (isDarkMode ? kDefaultForegroundColorDark : kDefaultForegroundColorLight)
 
         debugLog("[ReaderStyleManager] Sending style update:")
         debugLog("[ReaderStyleManager]   isDarkMode: \(isDarkMode)")
-        debugLog("[ReaderStyleManager]   highlightColor (raw): \(settingsVM.highlightColor ?? "nil")")
+        debugLog(
+            "[ReaderStyleManager]   highlightColor (raw): \(settingsVM.highlightColor ?? "nil")"
+        )
         debugLog("[ReaderStyleManager]   highlightColor (effective): \(effectiveHighlightColor)")
         debugLog("[ReaderStyleManager]   backgroundColor: \(effectiveBackgroundColor)")
         debugLog("[ReaderStyleManager]   foregroundColor: \(effectiveForegroundColor)")

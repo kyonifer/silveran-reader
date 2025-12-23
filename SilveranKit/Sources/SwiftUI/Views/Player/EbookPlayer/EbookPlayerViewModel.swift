@@ -279,7 +279,9 @@ class EbookPlayerViewModel {
         let loadedBookId = await SMILPlayerActor.shared.getLoadedBookId()
 
         if loadedBookId == currentBookId {
-            debugLog("[EbookPlayerViewModel] Book already loaded in SMILPlayerActor, joining existing session")
+            debugLog(
+                "[EbookPlayerViewModel] Book already loaded in SMILPlayerActor, joining existing session"
+            )
             isJoiningExistingSession = true
             let nativeStructure = await SMILPlayerActor.shared.getBookStructure()
             self.bookStructure = nativeStructure
@@ -343,7 +345,9 @@ class EbookPlayerViewModel {
                     sectionIndex: savedSectionIndex,
                     entryIndex: savedEntryIndex
                 )
-                debugLog("[EbookPlayerViewModel] Restored position to section \(savedSectionIndex), entry \(savedEntryIndex)")
+                debugLog(
+                    "[EbookPlayerViewModel] Restored position to section \(savedSectionIndex), entry \(savedEntryIndex)"
+                )
             } catch {
                 debugLog("[EbookPlayerViewModel] Failed to restore position: \(error)")
             }
@@ -357,7 +361,9 @@ class EbookPlayerViewModel {
             return
         }
 
-        debugLog("[EbookPlayerViewModel] Navigating to actor position: section=\(syncData.sectionIndex), href=\(syncData.href), fragment=\(syncData.fragment)")
+        debugLog(
+            "[EbookPlayerViewModel] Navigating to actor position: section=\(syncData.sectionIndex), href=\(syncData.href), fragment=\(syncData.fragment)"
+        )
 
         do {
             let hrefWithFragment = "\(syncData.href)#\(syncData.fragment)"
@@ -366,7 +372,9 @@ class EbookPlayerViewModel {
             progressManager?.selectedChapterId = syncData.sectionIndex
             progressManager?.hasPerformedInitialSeek = true
 
-            debugLog("[EbookPlayerViewModel] Successfully joined session at section \(syncData.sectionIndex)")
+            debugLog(
+                "[EbookPlayerViewModel] Successfully joined session at section \(syncData.sectionIndex)"
+            )
         } catch {
             debugLog("[EbookPlayerViewModel] Failed to navigate to actor position: \(error)")
             progressManager?.handleBookStructureReady()
@@ -474,12 +482,15 @@ class EbookPlayerViewModel {
                 #endif
 
                 if self.bookData?.category == .synced, let loadingTask = self.nativeLoadingTask {
-                    debugLog("[EbookPlayerViewModel] Waiting for native SMIL parsing to complete...")
+                    debugLog(
+                        "[EbookPlayerViewModel] Waiting for native SMIL parsing to complete..."
+                    )
                     await loadingTask.value
                     debugLog("[EbookPlayerViewModel] Native SMIL parsing complete")
                 }
 
-                let useNativeStructure = self.bookData?.category == .synced && !self.bookStructure.isEmpty
+                let useNativeStructure =
+                    self.bookData?.category == .synced && !self.bookStructure.isEmpty
                 let structureToUse = useNativeStructure ? self.bookStructure : message.sections
 
                 if !useNativeStructure {
@@ -526,7 +537,9 @@ class EbookPlayerViewModel {
                     }
 
                     if self.isJoiningExistingSession {
-                        debugLog("[EbookPlayerViewModel] Joining session - navigating to current actor position")
+                        debugLog(
+                            "[EbookPlayerViewModel] Joining session - navigating to current actor position"
+                        )
                         await self.navigateToCurrentActorPosition(bridge: bridge)
                     } else {
                         self.progressManager?.handleBookStructureReady()

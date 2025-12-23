@@ -438,13 +438,16 @@ struct CollectionsListView: View {
         .padding(.top, 60)
     }
 
-    private func filterCollections(_ groups: [(collection: BookCollectionSummary?, books: [BookMetadata])]) -> [(
+    private func filterCollections(
+        _ groups: [(collection: BookCollectionSummary?, books: [BookMetadata])]
+    ) -> [(
         collection: BookCollectionSummary?, books: [BookMetadata]
     )] {
         guard !searchText.isEmpty else { return groups }
         let searchLower = searchText.lowercased()
         return groups.compactMap { group in
-            let collectionNameMatches = group.collection?.name.lowercased().contains(searchLower) ?? false
+            let collectionNameMatches =
+                group.collection?.name.lowercased().contains(searchLower) ?? false
             if collectionNameMatches {
                 return (collection: group.collection, books: group.books)
             }
@@ -460,7 +463,11 @@ struct CollectionsListView: View {
     }
 
     @ViewBuilder
-    private func collectionSection(collection: BookCollectionSummary?, books: [BookMetadata], contentWidth: CGFloat)
+    private func collectionSection(
+        collection: BookCollectionSummary?,
+        books: [BookMetadata],
+        contentWidth: CGFloat
+    )
         -> some View
     {
         let collectionId = collection?.uuid ?? collection?.name ?? ""

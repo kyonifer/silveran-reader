@@ -615,7 +615,9 @@ public actor FilesystemActor {
                 _ = try archive.extract(entry, to: destinationURL)
                 fileSizes[entry.path] = entry.uncompressedSize
             } catch {
-                debugLog("[FilesystemActor] Skipping file due to extraction error: \(entry.path) - \(error.localizedDescription)")
+                debugLog(
+                    "[FilesystemActor] Skipping file due to extraction error: \(entry.path) - \(error.localizedDescription)"
+                )
                 skippedErrors += 1
             }
         }

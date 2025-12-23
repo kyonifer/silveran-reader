@@ -71,7 +71,11 @@ struct EbookOverlayMac: View {
                     .frame(width: buttonSize, height: buttonSize)
                     .background(
                         Circle()
-                            .fill(overlayButtonBackground.opacity(0.2 * readingBarConfig.overlayTransparency))
+                            .fill(
+                                overlayButtonBackground.opacity(
+                                    0.2 * readingBarConfig.overlayTransparency
+                                )
+                            )
                     )
             }
             .buttonStyle(.plain)
@@ -84,7 +88,11 @@ struct EbookOverlayMac: View {
                     .frame(width: buttonSize, height: buttonSize)
                     .background(
                         Circle()
-                            .fill(overlayButtonBackground.opacity(0.2 * readingBarConfig.overlayTransparency))
+                            .fill(
+                                overlayButtonBackground.opacity(
+                                    0.2 * readingBarConfig.overlayTransparency
+                                )
+                            )
                     )
             }
             .buttonStyle(.plain)
@@ -97,7 +105,11 @@ struct EbookOverlayMac: View {
                     .frame(width: buttonSize * 1.2, height: buttonSize * 1.2)
                     .background(
                         Circle()
-                            .fill(overlayButtonBackground.opacity(0.3 * readingBarConfig.overlayTransparency))
+                            .fill(
+                                overlayButtonBackground.opacity(
+                                    0.3 * readingBarConfig.overlayTransparency
+                                )
+                            )
                     )
             }
             .buttonStyle(.plain)
@@ -110,7 +122,11 @@ struct EbookOverlayMac: View {
                     .frame(width: buttonSize, height: buttonSize)
                     .background(
                         Circle()
-                            .fill(overlayButtonBackground.opacity(0.2 * readingBarConfig.overlayTransparency))
+                            .fill(
+                                overlayButtonBackground.opacity(
+                                    0.2 * readingBarConfig.overlayTransparency
+                                )
+                            )
                     )
             }
             .buttonStyle(.plain)
@@ -123,7 +139,11 @@ struct EbookOverlayMac: View {
                     .frame(width: buttonSize, height: buttonSize)
                     .background(
                         Circle()
-                            .fill(overlayButtonBackground.opacity(0.2 * readingBarConfig.overlayTransparency))
+                            .fill(
+                                overlayButtonBackground.opacity(
+                                    0.2 * readingBarConfig.overlayTransparency
+                                )
+                            )
                     )
             }
             .buttonStyle(.plain)
@@ -227,7 +247,9 @@ struct EbookOverlayMac: View {
             HStack {
                 Text(formatOptionalTime(chapterElapsed))
                     .font(.caption2.monospacedDigit())
-                    .foregroundStyle(overlayColor.opacity(0.7 * readingBarConfig.overlayTransparency))
+                    .foregroundStyle(
+                        overlayColor.opacity(0.7 * readingBarConfig.overlayTransparency)
+                    )
                 Spacer()
                 Text(
                     "-\(formatOptionalTime(chapterRemainingAtRate ?? rawRemaining)) (\(formatPlaybackRate(playbackRate)))"
@@ -237,7 +259,9 @@ struct EbookOverlayMac: View {
                 Spacer()
                 Text(formatOptionalTime(chapterTotal))
                     .font(.caption2.monospacedDigit())
-                    .foregroundStyle(overlayColor.opacity(0.7 * readingBarConfig.overlayTransparency))
+                    .foregroundStyle(
+                        overlayColor.opacity(0.7 * readingBarConfig.overlayTransparency)
+                    )
             }
         }
     }

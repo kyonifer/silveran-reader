@@ -98,7 +98,9 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
                 )
                 item.isPlaying = isCurrent
                 item.handler = { [weak self] _, completion in
-                    debugLog("[CarPlay] Chapter selected: \(chapter.label), sectionIndex: \(chapter.sectionIndex)")
+                    debugLog(
+                        "[CarPlay] Chapter selected: \(chapter.label), sectionIndex: \(chapter.sectionIndex)"
+                    )
                     Task { @MainActor in
                         CarPlayCoordinator.shared.selectChapter(sectionIndex: chapter.sectionIndex)
                     }
@@ -141,14 +143,16 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
         var items: [CPListItem] = []
         for book in downloadedBooks {
             let coverImage = await coordinator.getCoverImage(for: book.id)
-            let resizedCover = coverImage.map { resizeCoverImage($0) } ?? UIImage(systemName: "book.closed.fill")
+            let resizedCover =
+                coverImage.map { resizeCoverImage($0) } ?? UIImage(systemName: "book.closed.fill")
 
             let isCurrentBook = coordinator.isBookCurrentlyLoaded(book.uuid)
             let isPlaying = coordinator.isBookCurrentlyPlaying(book.uuid)
 
             let item = CPListItem(
                 text: book.title,
-                detailText: isCurrentBook ? (isPlaying ? "Now Playing" : "Paused") : book.authors?.first?.name,
+                detailText: isCurrentBook
+                    ? (isPlaying ? "Now Playing" : "Paused") : book.authors?.first?.name,
                 image: resizedCover
             )
             item.handler = { [weak self] _, completion in
@@ -188,7 +192,11 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
         }
     }
 
-    private func handleBookSelection(_ book: BookMetadata, category: LocalMediaCategory, completion: @escaping () -> Void) {
+    private func handleBookSelection(
+        _ book: BookMetadata,
+        category: LocalMediaCategory,
+        completion: @escaping () -> Void
+    ) {
         let coordinator = CarPlayCoordinator.shared
 
         Task { @MainActor in
@@ -196,7 +204,9 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
             let isActuallyLoaded = actualLoadedBookId == book.uuid
 
             if isActuallyLoaded {
-                debugLog("[CarPlay] Book actually loaded in actor, navigating to NowPlaying: \(book.title)")
+                debugLog(
+                    "[CarPlay] Book actually loaded in actor, navigating to NowPlaying: \(book.title)"
+                )
 
                 if !coordinator.isPlaying {
                     debugLog("[CarPlay] Book is paused, resuming playback")
@@ -204,7 +214,9 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
                 }
 
                 let nowPlayingTemplate = CPNowPlayingTemplate.shared
-                self.interfaceController?.pushTemplate(nowPlayingTemplate, animated: true) { success, error in
+                self.interfaceController?.pushTemplate(nowPlayingTemplate, animated: true) {
+                    success,
+                    error in
                     if let error = error {
                         debugLog("[CarPlay] Failed to push NowPlayingTemplate: \(error)")
                     } else {
@@ -220,7 +232,11 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     }
 
     @MainActor
-    private func loadNewBook(_ book: BookMetadata, category: LocalMediaCategory, completion: @escaping () -> Void) async {
+    private func loadNewBook(
+        _ book: BookMetadata,
+        category: LocalMediaCategory,
+        completion: @escaping () -> Void
+    ) async {
         guard !isLoadingBook else {
             debugLog("[CarPlay] Already loading a book, ignoring selection")
             completion()
@@ -236,7 +252,9 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
             debugLog("[CarPlay] Book loaded successfully, pushing NowPlayingTemplate")
 
             let nowPlayingTemplate = CPNowPlayingTemplate.shared
-            interfaceController?.pushTemplate(nowPlayingTemplate, animated: true) { success, error in
+            interfaceController?.pushTemplate(nowPlayingTemplate, animated: true) {
+                success,
+                error in
                 if let error = error {
                     debugLog("[CarPlay] Failed to push NowPlayingTemplate: \(error)")
                 } else {

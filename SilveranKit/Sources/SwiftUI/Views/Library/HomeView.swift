@@ -62,49 +62,49 @@ struct HomeView: View {
             }
             .navigationTitle("Home")
             .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        HStack(spacing: 12) {
-                            if mediaViewModel.lastNetworkOpSucceeded == false,
-                                let showOfflineSheet
-                            {
-                                Button {
-                                    showOfflineSheet.wrappedValue = true
-                                } label: {
-                                    Image(systemName: "wifi.slash")
-                                        .foregroundStyle(.red)
-                                }
-                            }
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    HStack(spacing: 12) {
+                        if mediaViewModel.lastNetworkOpSucceeded == false,
+                            let showOfflineSheet
+                        {
                             Button {
-                                showSettings = true
+                                showOfflineSheet.wrappedValue = true
                             } label: {
-                                Label("Settings", systemImage: "gearshape")
+                                Image(systemName: "wifi.slash")
+                                    .foregroundStyle(.red)
                             }
+                        }
+                        Button {
+                            showSettings = true
+                        } label: {
+                            Label("Settings", systemImage: "gearshape")
                         }
                     }
                 }
-                .searchable(
-                    text: $searchText,
-                    placement: .navigationBarDrawer(displayMode: .always),
-                    prompt: "Search"
-                )
-                .navigationDestination(for: SectionFilter.self) { filter in
-                    sectionFilterView(for: filter)
-                        .iOSLibraryToolbar(
-                            showSettings: $showSettings,
-                            showOfflineSheet: showOfflineSheet ?? .constant(false)
-                        )
-                }
-                .navigationDestination(for: BookMetadata.self) { item in
-                    iOSBookDetailView(item: item, mediaKind: .ebook)
-                        .iOSLibraryToolbar(
-                            showSettings: $showSettings,
-                            showOfflineSheet: showOfflineSheet ?? .constant(false)
-                        )
-                }
-                .navigationDestination(for: PlayerBookData.self) { bookData in
-                    playerView(for: bookData)
-                }
+            }
+            .searchable(
+                text: $searchText,
+                placement: .navigationBarDrawer(displayMode: .always),
+                prompt: "Search"
+            )
+            .navigationDestination(for: SectionFilter.self) { filter in
+                sectionFilterView(for: filter)
+                    .iOSLibraryToolbar(
+                        showSettings: $showSettings,
+                        showOfflineSheet: showOfflineSheet ?? .constant(false)
+                    )
+            }
+            .navigationDestination(for: BookMetadata.self) { item in
+                iOSBookDetailView(item: item, mediaKind: .ebook)
+                    .iOSLibraryToolbar(
+                        showSettings: $showSettings,
+                        showOfflineSheet: showOfflineSheet ?? .constant(false)
+                    )
+            }
+            .navigationDestination(for: PlayerBookData.self) { bookData in
+                playerView(for: bookData)
+            }
         }
         #else
         ZStack {
@@ -618,7 +618,9 @@ private struct HomeSectionRow: View {
                             .font(.system(size: 14, weight: .semibold))
                     }
                     .buttonStyle(.plain)
-                    .foregroundStyle(canScrollRight ? Color.secondary : Color.secondary.opacity(0.5))
+                    .foregroundStyle(
+                        canScrollRight ? Color.secondary : Color.secondary.opacity(0.5)
+                    )
                     .disabled(!canScrollRight)
                 }
                 #endif

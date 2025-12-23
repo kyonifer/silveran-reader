@@ -72,7 +72,7 @@ let package = Package(
         .target(
             name: "SilveranKitWatchApp",
             dependencies: [
-                "SilveranKitCommon",
+                "SilveranKitCommon"
             ],
             path: "Sources/watchApp"
         ),

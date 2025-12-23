@@ -46,7 +46,9 @@ struct ImportLocalFileView: View {
     private func refreshLocalFiles() async {
         let metadata = await LocalMediaActor.shared.localStandaloneMetadata
         await MainActor.run {
-            localFiles = metadata.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+            localFiles = metadata.sorted {
+                $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
+            }
         }
     }
 
@@ -88,7 +90,9 @@ struct ImportLocalFileView: View {
                     }
                 }
             } catch {
-                debugLog("[ImportLocalFileView] Failed to import file: \(error.localizedDescription)")
+                debugLog(
+                    "[ImportLocalFileView] Failed to import file: \(error.localizedDescription)"
+                )
             }
         }
     }
@@ -99,7 +103,9 @@ struct ImportLocalFileView: View {
                 try await LocalMediaActor.shared.deleteLocalStandaloneMedia(for: book.id)
                 await refreshLocalFiles()
             } catch {
-                debugLog("[ImportLocalFileView] Failed to delete file: \(error.localizedDescription)")
+                debugLog(
+                    "[ImportLocalFileView] Failed to delete file: \(error.localizedDescription)"
+                )
             }
         }
     }

@@ -417,22 +417,32 @@ public struct ReadingSidebarView: View {
             elapsed: chapterElapsedRaw
         )
 
-        let hasLeftStats = bookFraction != nil || (pagesCurrent != nil && pagesTotal != nil && pagesTotal! > 0)
+        let hasLeftStats =
+            bookFraction != nil || (pagesCurrent != nil && pagesTotal != nil && pagesTotal! > 0)
         let hasRightStats = mode != .ebook
 
         if hasLeftStats || hasRightStats {
             HStack(alignment: .top) {
-                leftStatsColumn(bookFraction: bookFraction, pagesCurrent: pagesCurrent, pagesTotal: pagesTotal)
+                leftStatsColumn(
+                    bookFraction: bookFraction,
+                    pagesCurrent: pagesCurrent,
+                    pagesTotal: pagesTotal
+                )
                 Spacer()
                 if hasRightStats {
-                    rightStatsColumn(bookRemaining: bookRemaining, chapterRemaining: chapterRemaining)
+                    rightStatsColumn(
+                        bookRemaining: bookRemaining,
+                        chapterRemaining: chapterRemaining
+                    )
                 }
             }
             .padding(.horizontal, 8)
         }
     }
 
-    private func leftStatsColumn(bookFraction: Double?, pagesCurrent: Int?, pagesTotal: Int?) -> some View {
+    private func leftStatsColumn(bookFraction: Double?, pagesCurrent: Int?, pagesTotal: Int?)
+        -> some View
+    {
         VStack(alignment: .leading, spacing: 4) {
             if let fraction = bookFraction {
                 HStack(spacing: 6) {
@@ -456,7 +466,9 @@ public struct ReadingSidebarView: View {
         }
     }
 
-    private func rightStatsColumn(bookRemaining: TimeInterval?, chapterRemaining: TimeInterval?) -> some View {
+    private func rightStatsColumn(bookRemaining: TimeInterval?, chapterRemaining: TimeInterval?)
+        -> some View
+    {
         VStack(alignment: .trailing, spacing: 4) {
             HStack(spacing: 6) {
                 Text(formatTimeHoursMinutes(bookRemaining))

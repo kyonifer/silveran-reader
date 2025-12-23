@@ -31,12 +31,14 @@ public enum SMILParser {
             guard let manifestItem = manifest[spineItem.idref] else { continue }
 
             let sectionId = resolvePath(manifestItem.href, relativeTo: opfDir)
-            let label = tocLabels[manifestItem.href] ?? tocLabels[sectionId] ?? tocLabels[spineItem.idref]
+            let label =
+                tocLabels[manifestItem.href] ?? tocLabels[sectionId] ?? tocLabels[spineItem.idref]
 
             var mediaOverlay: [SMILEntry] = []
 
             if let mediaOverlayId = spineItem.mediaOverlay ?? manifestItem.mediaOverlay,
-               let smilItem = manifest[mediaOverlayId] {
+                let smilItem = manifest[mediaOverlayId]
+            {
                 let smilPath = resolvePath(smilItem.href, relativeTo: opfDir)
                 if let smilData = try? extractFile(from: archive, path: smilPath) {
                     let smilDir = (smilPath as NSString).deletingLastPathComponent
@@ -44,25 +46,29 @@ public enum SMILParser {
                     for entry in entries {
                         let duration = entry.end - entry.begin
                         cumulativeTime += duration
-                        mediaOverlay.append(SMILEntry(
-                            textId: entry.textId,
-                            textHref: entry.textHref,
-                            audioFile: entry.audioFile,
-                            begin: entry.begin,
-                            end: entry.end,
-                            cumSumAtEnd: cumulativeTime
-                        ))
+                        mediaOverlay.append(
+                            SMILEntry(
+                                textId: entry.textId,
+                                textHref: entry.textHref,
+                                audioFile: entry.audioFile,
+                                begin: entry.begin,
+                                end: entry.end,
+                                cumSumAtEnd: cumulativeTime
+                            )
+                        )
                     }
                 }
             }
 
-            sections.append(SectionInfo(
-                index: index,
-                id: sectionId,
-                label: label,
-                level: nil,
-                mediaOverlay: mediaOverlay
-            ))
+            sections.append(
+                SectionInfo(
+                    index: index,
+                    id: sectionId,
+                    label: label,
+                    level: nil,
+                    mediaOverlay: mediaOverlay
+                )
+            )
         }
 
         return sections
@@ -143,7 +149,9 @@ public enum SMILParser {
         let mediaOverlay: String?
     }
 
-    private static func parseOPF(_ data: Data) throws -> (manifest: [String: ManifestItem], spine: [SpineItem]) {
+    private static func parseOPF(_ data: Data) throws -> (
+        manifest: [String: ManifestItem], spine: [SpineItem]
+    ) {
         let delegate = OPFXMLDelegate()
         let parser = XMLParser(data: data)
         parser.delegate = delegate
@@ -188,7 +196,9 @@ public enum SMILParser {
         let end: Double
     }
 
-    private static func parseSMIL(_ data: Data, smilDir: String, opfDir: String) throws -> [RawSMILEntry] {
+    private static func parseSMIL(_ data: Data, smilDir: String, opfDir: String) throws
+        -> [RawSMILEntry]
+    {
         let delegate = SMILXMLDelegate(smilDir: smilDir)
         let parser = XMLParser(data: data)
         parser.delegate = delegate
@@ -276,10 +286,12 @@ private class OPFXMLDelegate: NSObject, XMLParserDelegate {
             )
         } else if localName == "itemref" {
             guard let idref = attributes["idref"] else { return }
-            spine.append(SMILParser.SpineItem(
-                idref: idref,
-                mediaOverlay: attributes["media-overlay"]
-            ))
+            spine.append(
+                SMILParser.SpineItem(
+                    idref: idref,
+                    mediaOverlay: attributes["media-overlay"]
+                )
+            )
         }
     }
 }
@@ -302,23 +314,23 @@ private class NCXXMLDelegate: NSObject, XMLParserDelegate {
         let localName = elementName.components(separatedBy: ":").last ?? elementName
 
         switch localName {
-        case "navPoint":
-            currentNavPointSrc = nil
-            currentText = ""
-        case "navLabel":
-            inNavLabel = true
-        case "text":
-            if inNavLabel {
-                inText = true
+            case "navPoint":
+                currentNavPointSrc = nil
                 currentText = ""
-            }
-        case "content":
-            if let src = attributes["src"] {
-                let baseSrc = src.components(separatedBy: "#").first ?? ""
-                currentNavPointSrc = baseSrc.removingPercentEncoding ?? baseSrc
-            }
-        default:
-            break
+            case "navLabel":
+                inNavLabel = true
+            case "text":
+                if inNavLabel {
+                    inText = true
+                    currentText = ""
+                }
+            case "content":
+                if let src = attributes["src"] {
+                    let baseSrc = src.components(separatedBy: "#").first ?? ""
+                    currentNavPointSrc = baseSrc.removingPercentEncoding ?? baseSrc
+                }
+            default:
+                break
         }
     }
 
@@ -337,17 +349,17 @@ private class NCXXMLDelegate: NSObject, XMLParserDelegate {
         let localName = elementName.components(separatedBy: ":").last ?? elementName
 
         switch localName {
-        case "navLabel":
-            inNavLabel = false
-        case "text":
-            inText = false
-        case "navPoint":
-            if let src = currentNavPointSrc, !currentText.isEmpty {
-                let trimmedText = currentText.trimmingCharacters(in: .whitespacesAndNewlines)
-                labels[src] = trimmedText
-            }
-        default:
-            break
+            case "navLabel":
+                inNavLabel = false
+            case "text":
+                inText = false
+            case "navPoint":
+                if let src = currentNavPointSrc, !currentText.isEmpty {
+                    let trimmedText = currentText.trimmingCharacters(in: .whitespacesAndNewlines)
+                    labels[src] = trimmedText
+                }
+            default:
+                break
         }
     }
 }
@@ -376,24 +388,24 @@ private class SMILXMLDelegate: NSObject, XMLParserDelegate {
         let localName = elementName.components(separatedBy: ":").last ?? elementName
 
         switch localName {
-        case "par":
-            inPar = true
-            currentTextSrc = nil
-            currentAudioSrc = nil
-            currentClipBegin = 0
-            currentClipEnd = 0
-        case "text":
-            if inPar, let src = attributes["src"] {
-                currentTextSrc = src
-            }
-        case "audio":
-            if inPar {
-                currentAudioSrc = attributes["src"]
-                currentClipBegin = SMILParser.parseSMILTime(attributes["clipBegin"]) ?? 0
-                currentClipEnd = SMILParser.parseSMILTime(attributes["clipEnd"]) ?? 0
-            }
-        default:
-            break
+            case "par":
+                inPar = true
+                currentTextSrc = nil
+                currentAudioSrc = nil
+                currentClipBegin = 0
+                currentClipEnd = 0
+            case "text":
+                if inPar, let src = attributes["src"] {
+                    currentTextSrc = src
+                }
+            case "audio":
+                if inPar {
+                    currentAudioSrc = attributes["src"]
+                    currentClipBegin = SMILParser.parseSMILTime(attributes["clipBegin"]) ?? 0
+                    currentClipEnd = SMILParser.parseSMILTime(attributes["clipEnd"]) ?? 0
+                }
+            default:
+                break
         }
     }
 
@@ -410,13 +422,15 @@ private class SMILXMLDelegate: NSObject, XMLParserDelegate {
                 let (textHref, textId) = parseTextSrc(textSrc)
                 let resolvedAudioPath = resolvePath(audioSrc, relativeTo: smilDir)
 
-                entries.append(SMILParser.RawSMILEntry(
-                    textId: textId,
-                    textHref: textHref,
-                    audioFile: resolvedAudioPath,
-                    begin: currentClipBegin,
-                    end: currentClipEnd
-                ))
+                entries.append(
+                    SMILParser.RawSMILEntry(
+                        textId: textId,
+                        textHref: textHref,
+                        audioFile: resolvedAudioPath,
+                        begin: currentClipBegin,
+                        end: currentClipEnd
+                    )
+                )
             }
             inPar = false
         }

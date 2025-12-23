@@ -9,12 +9,14 @@ public final class LocalLibraryManager: Sendable {
 
     public init() {}
 
-    public func extractMetadata(from fileURL: URL, category: LocalMediaCategory) async throws -> BookMetadata {
+    public func extractMetadata(from fileURL: URL, category: LocalMediaCategory) async throws
+        -> BookMetadata
+    {
         switch category {
-        case .ebook, .synced:
-            return try await extractEpubMetadata(from: fileURL)
-        case .audio:
-            return try await extractAudioMetadata(from: fileURL)
+            case .ebook, .synced:
+                return try await extractEpubMetadata(from: fileURL)
+            case .audio:
+                return try await extractAudioMetadata(from: fileURL)
         }
     }
 
@@ -27,11 +29,13 @@ public final class LocalLibraryManager: Sendable {
         let localDir = await filesystem.getDomainDirectory(for: .local)
         let fm = FileManager.default
 
-        guard let bookFolders = try? fm.contentsOfDirectory(
-            at: localDir,
-            includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles]
-        ) else {
+        guard
+            let bookFolders = try? fm.contentsOfDirectory(
+                at: localDir,
+                includingPropertiesForKeys: [.isDirectoryKey],
+                options: [.skipsHiddenFiles]
+            )
+        else {
             return ScanResult(metadata: [], paths: [:])
         }
 
@@ -41,17 +45,23 @@ public final class LocalLibraryManager: Sendable {
 
         for bookFolder in bookFolders {
             guard let values = try? bookFolder.resourceValues(forKeys: [.isDirectoryKey]),
-                  values.isDirectory == true else {
+                values.isDirectory == true
+            else {
                 continue
             }
 
             for category in LocalMediaCategory.allCases {
-                let categoryDir = bookFolder.appendingPathComponent(category.rawValue, isDirectory: true)
-                guard let files = try? fm.contentsOfDirectory(
-                    at: categoryDir,
-                    includingPropertiesForKeys: [.isRegularFileKey],
-                    options: [.skipsHiddenFiles]
-                ) else {
+                let categoryDir = bookFolder.appendingPathComponent(
+                    category.rawValue,
+                    isDirectory: true
+                )
+                guard
+                    let files = try? fm.contentsOfDirectory(
+                        at: categoryDir,
+                        includingPropertiesForKeys: [.isRegularFileKey],
+                        options: [.skipsHiddenFiles]
+                    )
+                else {
                     continue
                 }
 
@@ -80,9 +90,13 @@ public final class LocalLibraryManager: Sendable {
                         }
                         allPaths[metadata.uuid] = mediaPaths
 
-                        debugLog("[LocalLibraryManager] Discovered local file: \(fileURL.lastPathComponent) (readalong: \(metadata.hasAvailableReadaloud))")
+                        debugLog(
+                            "[LocalLibraryManager] Discovered local file: \(fileURL.lastPathComponent) (readalong: \(metadata.hasAvailableReadaloud))"
+                        )
                     } catch {
-                        debugLog("[LocalLibraryManager] Failed to extract metadata from \(fileURL.lastPathComponent): \(error)")
+                        debugLog(
+                            "[LocalLibraryManager] Failed to extract metadata from \(fileURL.lastPathComponent): \(error)"
+                        )
                     }
                 }
             }
@@ -125,17 +139,20 @@ public final class LocalLibraryManager: Sendable {
         let bookUUID = UUID().uuidString
         let title = parsed.title ?? epubURL.deletingPathExtension().lastPathComponent
 
-        let authors: [BookCreator]? = parsed.creators.isEmpty ? nil : parsed.creators.map { name in
-            BookCreator(
-                uuid: nil,
-                id: nil,
-                name: name,
-                fileAs: nil,
-                role: "author",
-                createdAt: nil,
-                updatedAt: nil
-            )
-        }
+        let authors: [BookCreator]? =
+            parsed.creators.isEmpty
+            ? nil
+            : parsed.creators.map { name in
+                BookCreator(
+                    uuid: nil,
+                    id: nil,
+                    name: name,
+                    fileAs: nil,
+                    role: "author",
+                    createdAt: nil,
+                    updatedAt: nil
+                )
+            }
 
         let ebookAsset: BookAsset?
         let readaloudAsset: BookReadaloud?
@@ -201,30 +218,32 @@ public final class LocalLibraryManager: Sendable {
             guard let key = item.commonKey else { continue }
 
             switch key {
-            case .commonKeyTitle:
-                if let value = try? await item.load(.stringValue) {
-                    title = value
-                }
-            case .commonKeyArtist, .commonKeyAuthor:
-                if let value = try? await item.load(.stringValue) {
-                    authorName = value
-                }
-            default:
-                break
+                case .commonKeyTitle:
+                    if let value = try? await item.load(.stringValue) {
+                        title = value
+                    }
+                case .commonKeyArtist, .commonKeyAuthor:
+                    if let value = try? await item.load(.stringValue) {
+                        authorName = value
+                    }
+                default:
+                    break
             }
         }
         #endif
 
         let authors: [BookCreator]? = authorName.map { name in
-            [BookCreator(
-                uuid: nil,
-                id: nil,
-                name: name,
-                fileAs: nil,
-                role: "author",
-                createdAt: nil,
-                updatedAt: nil
-            )]
+            [
+                BookCreator(
+                    uuid: nil,
+                    id: nil,
+                    name: name,
+                    fileAs: nil,
+                    role: "author",
+                    createdAt: nil,
+                    updatedAt: nil
+                )
+            ]
         }
 
         let audiobookAsset = BookAsset(
@@ -266,9 +285,17 @@ public final class LocalLibraryManager: Sendable {
             throw LocalLibraryError.invalidContainerXML
         }
 
-        guard let rootfileMatch = containerString.range(of: "full-path=\"[^\"]+\"", options: .regularExpression),
-              let pathStart = containerString.range(of: "\"", range: rootfileMatch),
-              let pathEnd = containerString.range(of: "\"", range: pathStart.upperBound..<rootfileMatch.upperBound) else {
+        guard
+            let rootfileMatch = containerString.range(
+                of: "full-path=\"[^\"]+\"",
+                options: .regularExpression
+            ),
+            let pathStart = containerString.range(of: "\"", range: rootfileMatch),
+            let pathEnd = containerString.range(
+                of: "\"",
+                range: pathStart.upperBound..<rootfileMatch.upperBound
+            )
+        else {
             throw LocalLibraryError.opfPathNotFound
         }
 
@@ -311,14 +338,15 @@ public final class LocalLibraryManager: Sendable {
     private func extractDCElement(from xml: String, element: String) -> String? {
         let patterns = [
             "<dc:\(element)[^>]*>([^<]+)</dc:\(element)>",
-            "<dc:\(element)[^>]*><!\\[CDATA\\[([^\\]]+)\\]\\]></dc:\(element)>"
+            "<dc:\(element)[^>]*><!\\[CDATA\\[([^\\]]+)\\]\\]></dc:\(element)>",
         ]
 
         for pattern in patterns {
             if let range = xml.range(of: pattern, options: .regularExpression) {
                 let match = String(xml[range])
                 if let contentStart = match.firstIndex(of: ">"),
-                   let contentEnd = match.lastIndex(of: "<") {
+                    let contentEnd = match.lastIndex(of: "<")
+                {
                     var content = String(match[match.index(after: contentStart)..<contentEnd])
                     content = content.replacingOccurrences(of: "<![CDATA[", with: "")
                     content = content.replacingOccurrences(of: "]]>", with: "")
@@ -340,7 +368,8 @@ public final class LocalLibraryManager: Sendable {
         while let range = xml.range(of: pattern, options: .regularExpression, range: searchRange) {
             let match = String(xml[range])
             if let contentStart = match.firstIndex(of: ">"),
-               let contentEnd = match.lastIndex(of: "<") {
+                let contentEnd = match.lastIndex(of: "<")
+            {
                 let content = String(match[match.index(after: contentStart)..<contentEnd])
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                 if !content.isEmpty {
@@ -359,8 +388,9 @@ public final class LocalLibraryManager: Sendable {
         }
 
         guard let opfPath = try? findOPFPath(in: archive),
-              let opfData = try? extractFile(archive: archive, path: opfPath),
-              let opfString = String(data: opfData, encoding: .utf8) else {
+            let opfData = try? extractFile(archive: archive, path: opfPath),
+            let opfString = String(data: opfData, encoding: .utf8)
+        else {
             return nil
         }
 
@@ -382,7 +412,7 @@ public final class LocalLibraryManager: Sendable {
             "OEBPS/cover.jpg", "OEBPS/cover.jpeg", "OEBPS/cover.png",
             "OEBPS/images/cover.jpg", "OEBPS/images/cover.jpeg", "OEBPS/images/cover.png",
             "OPS/cover.jpg", "OPS/cover.jpeg", "OPS/cover.png",
-            "OPS/images/cover.jpg", "OPS/images/cover.jpeg", "OPS/images/cover.png"
+            "OPS/images/cover.jpg", "OPS/images/cover.jpeg", "OPS/images/cover.png",
         ]
 
         for path in commonCoverPaths {
@@ -402,8 +432,12 @@ public final class LocalLibraryManager: Sendable {
         for pattern in [metaPattern, metaPatternAlt] {
             if let range = opfString.range(of: pattern, options: .regularExpression) {
                 let match = String(opfString[range])
-                if let contentStart = match.range(of: "content=\"")?.upperBound ?? match.range(of: "content='")?.upperBound,
-                   let contentEnd = match[contentStart...].firstIndex(where: { $0 == "\"" || $0 == "'" }) {
+                if let contentStart = match.range(of: "content=\"")?.upperBound
+                    ?? match.range(of: "content='")?.upperBound,
+                    let contentEnd = match[contentStart...].firstIndex(where: {
+                        $0 == "\"" || $0 == "'"
+                    })
+                {
                     coverId = String(match[contentStart..<contentEnd])
                     break
                 }
@@ -417,19 +451,26 @@ public final class LocalLibraryManager: Sendable {
             for pattern in [itemPattern, itemPatternAlt] {
                 if let range = opfString.range(of: pattern, options: .regularExpression) {
                     let match = String(opfString[range])
-                    if let hrefStart = match.range(of: "href=\"")?.upperBound ?? match.range(of: "href='")?.upperBound,
-                       let hrefEnd = match[hrefStart...].firstIndex(where: { $0 == "\"" || $0 == "'" }) {
+                    if let hrefStart = match.range(of: "href=\"")?.upperBound
+                        ?? match.range(of: "href='")?.upperBound,
+                        let hrefEnd = match[hrefStart...].firstIndex(where: {
+                            $0 == "\"" || $0 == "'"
+                        })
+                    {
                         return String(match[hrefStart..<hrefEnd])
                     }
                 }
             }
         }
 
-        let coverItemPattern = "<item[^>]*properties=[\"'][^\"']*cover-image[^\"']*[\"'][^>]*href=[\"']([^\"']+)[\"']"
+        let coverItemPattern =
+            "<item[^>]*properties=[\"'][^\"']*cover-image[^\"']*[\"'][^>]*href=[\"']([^\"']+)[\"']"
         if let range = opfString.range(of: coverItemPattern, options: .regularExpression) {
             let match = String(opfString[range])
-            if let hrefStart = match.range(of: "href=\"")?.upperBound ?? match.range(of: "href='")?.upperBound,
-               let hrefEnd = match[hrefStart...].firstIndex(where: { $0 == "\"" || $0 == "'" }) {
+            if let hrefStart = match.range(of: "href=\"")?.upperBound
+                ?? match.range(of: "href='")?.upperBound,
+                let hrefEnd = match[hrefStart...].firstIndex(where: { $0 == "\"" || $0 == "'" })
+            {
                 return String(match[hrefStart..<hrefEnd])
             }
         }
@@ -464,16 +505,16 @@ public enum LocalLibraryError: Error, LocalizedError {
 
     public var errorDescription: String? {
         switch self {
-        case .failedToOpenArchive(let path):
-            return "Failed to open archive: \(path)"
-        case .invalidContainerXML:
-            return "Invalid container.xml encoding"
-        case .opfPathNotFound:
-            return "OPF path not found in container.xml"
-        case .fileNotFoundInArchive(let path):
-            return "File not found in archive: \(path)"
-        case .invalidOPFEncoding:
-            return "Invalid OPF file encoding"
+            case .failedToOpenArchive(let path):
+                return "Failed to open archive: \(path)"
+            case .invalidContainerXML:
+                return "Invalid container.xml encoding"
+            case .opfPathNotFound:
+                return "OPF path not found in container.xml"
+            case .fileNotFoundInArchive(let path):
+                return "File not found in archive: \(path)"
+            case .invalidOPFEncoding:
+                return "Invalid OPF file encoding"
         }
     }
 }

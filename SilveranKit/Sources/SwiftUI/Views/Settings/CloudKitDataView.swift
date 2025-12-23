@@ -55,7 +55,9 @@ public struct CloudKitDataView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This will delete all \(records.count) reading position\(records.count == 1 ? "" : "s") stored in iCloud. This cannot be undone.")
+            Text(
+                "This will delete all \(records.count) reading position\(records.count == 1 ? "" : "s") stored in iCloud. This cannot be undone."
+            )
         }
         .task {
             await loadRecords()

@@ -90,14 +90,14 @@ struct WatchCloudKitSyncView: View {
     private func loadStatus() async {
         let status = await CloudKitSyncActor.shared.connectionStatus
         switch status {
-        case .connected:
-            connectionStatus = "Connected"
-        case .disconnected:
-            connectionStatus = "Disconnected"
-        case .connecting:
-            connectionStatus = "Connecting..."
-        case .error(let message):
-            connectionStatus = "Error: \(message)"
+            case .connected:
+                connectionStatus = "Connected"
+            case .disconnected:
+                connectionStatus = "Disconnected"
+            case .connecting:
+                connectionStatus = "Connecting..."
+            case .error(let message):
+                connectionStatus = "Error: \(message)"
         }
 
         recordCount = await CloudKitSyncActor.shared.recordCount()

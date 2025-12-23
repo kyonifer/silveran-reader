@@ -165,7 +165,8 @@ public struct EbookPlayerView: View {
         if let bgColor = viewModel.settingsVM.backgroundColor, let color = Color(hex: bgColor) {
             return color
         }
-        let defaultHex = colorScheme == .dark ? kDefaultBackgroundColorDark : kDefaultBackgroundColorLight
+        let defaultHex =
+            colorScheme == .dark ? kDefaultBackgroundColorDark : kDefaultBackgroundColorLight
         return Color(hex: defaultHex) ?? .white
     }
     #endif
@@ -396,7 +397,9 @@ public struct EbookPlayerView: View {
             .transition(.move(edge: .bottom).combined(with: .opacity))
         )
         #else
-        let bgHex = viewModel.settingsVM.backgroundColor ?? (colorScheme == .dark ? kDefaultBackgroundColorDark : kDefaultBackgroundColorLight)
+        let bgHex =
+            viewModel.settingsVM.backgroundColor
+            ?? (colorScheme == .dark ? kDefaultBackgroundColorDark : kDefaultBackgroundColorLight)
         let isLight = isLightColor(hex: bgHex)
         return AnyView(
             EbookOverlayMac(
@@ -451,7 +454,9 @@ public struct EbookPlayerView: View {
         guard let converted = nsColor.usingColorSpace(.sRGB) else {
             return colorScheme == .light
         }
-        let brightness = (converted.redComponent * 299 + converted.greenComponent * 587 + converted.blueComponent * 114) / 1000
+        let brightness =
+            (converted.redComponent * 299 + converted.greenComponent * 587 + converted.blueComponent
+                * 114) / 1000
         return brightness > 0.5
     }
     #endif
@@ -577,11 +582,13 @@ private struct TitleBarConfigurator: NSViewRepresentable {
     class Coordinator: NSObject {
         @objc func handleDoubleClick(_ gesture: NSClickGestureRecognizer) {
             guard let window = gesture.view?.window,
-                  let contentView = window.contentView,
-                  let themeFrame = contentView.superview else { return }
+                let contentView = window.contentView,
+                let themeFrame = contentView.superview
+            else { return }
 
             let location = gesture.location(in: themeFrame)
-            let titlebarHeight = (gesture as? TitleBarDoubleClickGestureRecognizer)?.titlebarHeight ?? 52
+            let titlebarHeight =
+                (gesture as? TitleBarDoubleClickGestureRecognizer)?.titlebarHeight ?? 52
             let titlebarRect = NSRect(
                 x: 0,
                 y: themeFrame.bounds.height - titlebarHeight,

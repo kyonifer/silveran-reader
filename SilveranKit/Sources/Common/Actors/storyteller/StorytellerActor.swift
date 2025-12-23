@@ -1848,7 +1848,9 @@ public actor StorytellerActor {
         locator: BookLocator,
         timestamp: Double
     ) async -> HTTPResult {
-        debugLog("[StorytellerActor] sendProgressToServer: bookId=\(bookId), timestamp=\(timestamp)")
+        debugLog(
+            "[StorytellerActor] sendProgressToServer: bookId=\(bookId), timestamp=\(timestamp)"
+        )
 
         guard let baseURL = apiBaseURL else {
             debugLog("[StorytellerActor] sendProgressToServer: no API base URL")
@@ -1883,12 +1885,12 @@ public actor StorytellerActor {
             debugLog("[StorytellerActor] sendProgressToServer: status=\(httpResponse.statusCode)")
 
             switch httpResponse.statusCode {
-            case 204:
-                return .success
-            case 409, 404:
-                return .failure
-            default:
-                return .failure
+                case 204:
+                    return .success
+                case 409, 404:
+                    return .failure
+                default:
+                    return .failure
             }
         } catch {
             debugLog("[StorytellerActor] sendProgressToServer: request failed - \(error)")

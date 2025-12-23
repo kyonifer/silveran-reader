@@ -102,11 +102,14 @@ struct WatchTransferView: View {
     private var transferringSection: some View {
         Section("Transferring") {
             ForEach(pendingTransfers) { item in
-                TransferItemRow(item: item, onCancel: {
-                    Task {
-                        await AppleWatchActor.shared.cancelTransfer(transferId: item.id)
+                TransferItemRow(
+                    item: item,
+                    onCancel: {
+                        Task {
+                            await AppleWatchActor.shared.cancelTransfer(transferId: item.id)
+                        }
                     }
-                })
+                )
             }
         }
     }
@@ -114,11 +117,17 @@ struct WatchTransferView: View {
     private var onWatchSection: some View {
         Section("On Apple Watch") {
             ForEach(watchBooks) { book in
-                WatchBookRow(book: book, onDelete: {
-                    Task {
-                        await AppleWatchActor.shared.deleteBookFromWatch(bookUUID: book.id, category: book.category)
+                WatchBookRow(
+                    book: book,
+                    onDelete: {
+                        Task {
+                            await AppleWatchActor.shared.deleteBookFromWatch(
+                                bookUUID: book.id,
+                                category: book.category
+                            )
+                        }
                     }
-                })
+                )
             }
         }
     }
@@ -133,12 +142,14 @@ struct WatchTransferView: View {
                 Text(isWatchReachable ? "No Books on Watch" : "Watch Not Connected")
                     .font(.headline)
 
-                Text(isWatchReachable
-                     ? "Tap + to search your library and send a book to your Apple Watch."
-                     : "Open the Silveran Reader app on your Apple Watch to establish a connection.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
+                Text(
+                    isWatchReachable
+                        ? "Tap + to search your library and send a book to your Apple Watch."
+                        : "Open the Silveran Reader app on your Apple Watch to establish a connection."
+                )
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 32)
@@ -155,14 +166,14 @@ struct WatchTransferView: View {
     @MainActor
     private func handleEvent(_ event: WatchTransferEvent) {
         switch event {
-        case .stateChanged:
-            Task { await refreshState() }
-        case .transfersUpdated(let items):
-            pendingTransfers = items
-        case .watchBooksUpdated(let books):
-            watchBooks = books
-        case .watchReachabilityChanged(let reachable):
-            isWatchReachable = reachable
+            case .stateChanged:
+                Task { await refreshState() }
+            case .transfersUpdated(let items):
+                pendingTransfers = items
+            case .watchBooksUpdated(let books):
+                watchBooks = books
+            case .watchReachabilityChanged(let reachable):
+                isWatchReachable = reachable
         }
     }
 
@@ -222,9 +233,11 @@ struct TransferItemRow: View {
                         .foregroundStyle(.secondary)
 
                     if case .transferring = item.state, item.totalBytes > 0 {
-                        Text("\(formatBytes(item.transferredBytes)) / \(formatBytes(item.totalBytes))")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
+                        Text(
+                            "\(formatBytes(item.transferredBytes)) / \(formatBytes(item.totalBytes))"
+                        )
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
                     }
                 }
 
@@ -254,34 +267,34 @@ struct TransferItemRow: View {
 
     private var categoryIcon: String {
         switch item.category {
-        case .ebook:
-            return "book.closed"
-        case .synced:
-            return "waveform"
-        case .audio:
-            return "headphones"
+            case .ebook:
+                return "book.closed"
+            case .synced:
+                return "waveform"
+            case .audio:
+                return "headphones"
         }
     }
 
     private var statusText: String {
         switch item.state {
-        case .queued:
-            return "Preparing..."
-        case .transferring(let progress):
-            return "Transferring \(String(format: "%.0f", progress * 100))%"
-        case .completed:
-            return "Completed"
-        case .failed(let message):
-            return "Failed: \(message)"
+            case .queued:
+                return "Preparing..."
+            case .transferring(let progress):
+                return "Transferring \(String(format: "%.0f", progress * 100))%"
+            case .completed:
+                return "Completed"
+            case .failed(let message):
+                return "Failed: \(message)"
         }
     }
 
     private var canCancel: Bool {
         switch item.state {
-        case .queued, .transferring:
-            return true
-        case .completed, .failed:
-            return false
+            case .queued, .transferring:
+                return true
+            case .completed, .failed:
+                return false
         }
     }
 
@@ -333,12 +346,12 @@ struct WatchBookRow: View {
 
     private var categoryIcon: String {
         switch book.category {
-        case .ebook:
-            return "book.closed"
-        case .synced:
-            return "waveform"
-        case .audio:
-            return "headphones"
+            case .ebook:
+                return "book.closed"
+            case .synced:
+                return "waveform"
+            case .audio:
+                return "headphones"
         }
     }
 
@@ -361,19 +374,21 @@ struct WatchBookSearchSheet: View {
 
     private var downloadedBooks: [BookMetadata] {
         mediaViewModel.library.bookMetaData.filter { book in
-            mediaViewModel.isCategoryDownloaded(.ebook, for: book) ||
-            mediaViewModel.isCategoryDownloaded(.synced, for: book) ||
-            mediaViewModel.isCategoryDownloaded(.audio, for: book)
+            mediaViewModel.isCategoryDownloaded(.ebook, for: book)
+                || mediaViewModel.isCategoryDownloaded(.synced, for: book)
+                || mediaViewModel.isCategoryDownloaded(.audio, for: book)
         }
     }
 
     private var filteredBooks: [BookMetadata] {
         if searchText.isEmpty {
-            return downloadedBooks.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+            return downloadedBooks.sorted {
+                $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
+            }
         }
         return downloadedBooks.filter {
-            $0.title.localizedCaseInsensitiveCompare(searchText) == .orderedSame ||
-            $0.title.localizedStandardContains(searchText)
+            $0.title.localizedCaseInsensitiveCompare(searchText) == .orderedSame
+                || $0.title.localizedStandardContains(searchText)
         }.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
     }
 
@@ -384,7 +399,11 @@ struct WatchBookSearchSheet: View {
                     ContentUnavailableView(
                         searchText.isEmpty ? "No Downloaded Books" : "No Results",
                         systemImage: searchText.isEmpty ? "arrow.down.circle" : "magnifyingglass",
-                        description: Text(searchText.isEmpty ? "Download ebooks first to send them to your watch." : "No books match your search.")
+                        description: Text(
+                            searchText.isEmpty
+                                ? "Download ebooks first to send them to your watch."
+                                : "No books match your search."
+                        )
                     )
                 } else {
                     ForEach(filteredBooks) { book in
@@ -421,9 +440,13 @@ struct WatchBookSearchSheet: View {
                 Button("OK", role: .cancel) {}
             } message: {
                 if unsupportedCategory == .ebook {
-                    Text("Ebook playback on Apple Watch is not yet supported. Only readalong books can be transferred.")
+                    Text(
+                        "Ebook playback on Apple Watch is not yet supported. Only readalong books can be transferred."
+                    )
                 } else {
-                    Text("Audiobook playback on Apple Watch is not yet supported. Only readalong books can be transferred.")
+                    Text(
+                        "Audiobook playback on Apple Watch is not yet supported. Only readalong books can be transferred."
+                    )
                 }
             }
         }
@@ -467,8 +490,11 @@ struct BookSearchRow: View {
                     Button {
                         onSelect(.ebook)
                     } label: {
-                        Label(ebookOnWatch ? "On Watch" : "Ebook", systemImage: ebookOnWatch ? "checkmark" : "book")
-                            .font(.caption)
+                        Label(
+                            ebookOnWatch ? "On Watch" : "Ebook",
+                            systemImage: ebookOnWatch ? "checkmark" : "book"
+                        )
+                        .font(.caption)
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
@@ -479,8 +505,11 @@ struct BookSearchRow: View {
                     Button {
                         onSelect(.synced)
                     } label: {
-                        Label(syncedOnWatch ? "On Watch" : "Readalong", systemImage: syncedOnWatch ? "checkmark" : "waveform")
-                            .font(.caption)
+                        Label(
+                            syncedOnWatch ? "On Watch" : "Readalong",
+                            systemImage: syncedOnWatch ? "checkmark" : "waveform"
+                        )
+                        .font(.caption)
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
@@ -491,8 +520,11 @@ struct BookSearchRow: View {
                     Button {
                         onSelect(.audio)
                     } label: {
-                        Label(audioOnWatch ? "On Watch" : "Audiobook", systemImage: audioOnWatch ? "checkmark" : "headphones")
-                            .font(.caption)
+                        Label(
+                            audioOnWatch ? "On Watch" : "Audiobook",
+                            systemImage: audioOnWatch ? "checkmark" : "headphones"
+                        )
+                        .font(.caption)
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)

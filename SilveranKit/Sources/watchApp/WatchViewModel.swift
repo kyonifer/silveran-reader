@@ -1,6 +1,6 @@
 import Foundation
-import SwiftUI
 import SilveranKitCommon
+import SwiftUI
 
 @MainActor
 @Observable

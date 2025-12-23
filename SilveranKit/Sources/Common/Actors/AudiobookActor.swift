@@ -401,7 +401,9 @@ public actor AudiobookActor {
             return
         }
 
-        debugLog("[AudiobookActor] notifyStateChange: isPlaying=\(state.isPlaying), observers=\(stateObservers.count)")
+        debugLog(
+            "[AudiobookActor] notifyStateChange: isPlaying=\(state.isPlaying), observers=\(stateObservers.count)"
+        )
 
         #if os(iOS)
         updateNowPlayingInfo()
@@ -569,7 +571,9 @@ public actor AudiobookActor {
                         do {
                             try await AudiobookActor.shared.play()
                         } catch {
-                            debugLog("[AudiobookActor] Failed to resume after interruption: \(error)")
+                            debugLog(
+                                "[AudiobookActor] Failed to resume after interruption: \(error)"
+                            )
                         }
                     } else {
                         debugLog("[AudiobookActor] Audio session interruption ended - no resume")
@@ -647,7 +651,8 @@ public actor AudiobookActor {
             nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = player.currentTime
         }
 
-        nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = player.isPlaying ? Double(player.rate) : 0.0
+        nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] =
+            player.isPlaying ? Double(player.rate) : 0.0
 
         if let artwork = artworkImage {
             nowPlayingInfo[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(
@@ -705,7 +710,9 @@ public actor AudiobookActor {
         let clampedTime = max(minTime, min(timeInChapter, maxTime))
         let absoluteTime = chapter.startTime + clampedTime
 
-        debugLog("[AudiobookActor] seekWithinCurrentChapter: \(timeInChapter)s in chapter \(currentIndex) (\(chapter.title)) -> \(absoluteTime)s absolute")
+        debugLog(
+            "[AudiobookActor] seekWithinCurrentChapter: \(timeInChapter)s in chapter \(currentIndex) (\(chapter.title)) -> \(absoluteTime)s absolute"
+        )
         await seek(to: absoluteTime)
     }
 

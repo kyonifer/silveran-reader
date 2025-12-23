@@ -275,7 +275,9 @@ public final class MediaViewModel {
                 if status == .connected {
                     let _ = await StorytellerActor.shared.fetchLibraryInformation()
                 } else {
-                    debugLog("[MediaViewModel] Skipping Storyteller refresh - not connected to server")
+                    debugLog(
+                        "[MediaViewModel] Skipping Storyteller refresh - not connected to server"
+                    )
                 }
 
                 await ProgressSyncActor.shared.reconcileWithCloudKit()
@@ -355,7 +357,8 @@ public final class MediaViewModel {
             case .ebook:
                 return metadata.hasAvailableEbook || metadata.hasAvailableReadaloud
             case .audiobook:
-                return !metadata.hasAvailableEbook && !metadata.hasAvailableReadaloud && metadata.hasAvailableAudiobook
+                return !metadata.hasAvailableEbook && !metadata.hasAvailableReadaloud
+                    && metadata.hasAvailableAudiobook
         }
     }
     func items(for kind: MediaKind, narrationFilter: NarrationFilter, tagFilter: String?)
@@ -495,10 +498,13 @@ public final class MediaViewModel {
         return result
     }
 
-    func booksByCollection(for kind: MediaKind) -> [(collection: BookCollectionSummary?, books: [BookMetadata])] {
+    func booksByCollection(for kind: MediaKind) -> [(
+        collection: BookCollectionSummary?, books: [BookMetadata]
+    )] {
         let allBooks = library.bookMetaData
 
-        var collectionMap: [String: (collection: BookCollectionSummary?, books: [BookMetadata])] = [:]
+        var collectionMap: [String: (collection: BookCollectionSummary?, books: [BookMetadata])] =
+            [:]
 
         for book in allBooks {
             if let collectionsList = book.collections, let firstCollection = collectionsList.first {
@@ -523,7 +529,8 @@ public final class MediaViewModel {
             guard let collectionA = a.collection, let collectionB = b.collection else {
                 return a.collection != nil
             }
-            return collectionA.name.localizedCaseInsensitiveCompare(collectionB.name) == .orderedAscending
+            return collectionA.name.localizedCaseInsensitiveCompare(collectionB.name)
+                == .orderedAscending
         }
 
         return result
@@ -662,7 +669,8 @@ public final class MediaViewModel {
         }
     }
 
-    public func isCategoryDownloaded(_ category: LocalMediaCategory, for item: BookMetadata) -> Bool {
+    public func isCategoryDownloaded(_ category: LocalMediaCategory, for item: BookMetadata) -> Bool
+    {
         guard let paths = cachedBookPaths[item.id] else { return false }
         switch category {
             case .ebook:
@@ -880,7 +888,9 @@ public final class MediaViewModel {
         return coverStates[key]?.image
     }
 
-    func coverState(for item: BookMetadata, variant overrideVariant: CoverVariant? = nil) -> CoverImageState {
+    func coverState(for item: BookMetadata, variant overrideVariant: CoverVariant? = nil)
+        -> CoverImageState
+    {
         let variant = overrideVariant ?? coverVariant(for: item)
         let key = CoverKey(id: item.id, variant: variant)
         if let existing = coverStates[key] { return existing }

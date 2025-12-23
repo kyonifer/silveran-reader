@@ -30,14 +30,17 @@ struct EbookPlayerTopToolbar: View {
     @State private var showSleepTimerSheet = false
 
     private var toolbarForegroundColor: Color {
-        let bgHex = settingsVM.backgroundColor ?? (colorScheme == .dark ? kDefaultBackgroundColorDark : kDefaultBackgroundColorLight)
+        let bgHex =
+            settingsVM.backgroundColor
+            ?? (colorScheme == .dark ? kDefaultBackgroundColorDark : kDefaultBackgroundColorLight)
         return isLightColor(hex: bgHex) ? .black : .white
     }
 
     private func isLightColor(hex: String) -> Bool {
         guard let color = Color(hex: hex),
-              let components = UIColor(color).cgColor.components,
-              components.count >= 3 else {
+            let components = UIColor(color).cgColor.components,
+            components.count >= 3
+        else {
             return colorScheme == .light
         }
         let brightness = (components[0] * 299 + components[1] * 587 + components[2] * 114) / 1000
@@ -143,12 +146,14 @@ struct EbookPlayerTopToolbar: View {
 
                     Menu {
                         if hasAudioNarration {
-                            Toggle(isOn: Binding(
-                                get: { !isSynced },
-                                set: { newValue in
-                                    Task { try? await onSyncToggle(!newValue) }
-                                }
-                            )) {
+                            Toggle(
+                                isOn: Binding(
+                                    get: { !isSynced },
+                                    set: { newValue in
+                                        Task { try? await onSyncToggle(!newValue) }
+                                    }
+                                )
+                            ) {
                                 Label("Free Browse When Paused", systemImage: "lock.open")
                             }
 
@@ -156,57 +161,70 @@ struct EbookPlayerTopToolbar: View {
                         }
 
                         if hasAudioNarration {
-                            Toggle(isOn: Binding(
-                                get: { settingsVM.alwaysShowMiniPlayer },
-                                set: { newValue in
-                                    settingsVM.alwaysShowMiniPlayer = newValue
-                                    Task { try? await settingsVM.save() }
-                                }
-                            )) {
-                                Label("Always Show Mini Player", systemImage: "rectangle.bottomhalf.inset.filled")
+                            Toggle(
+                                isOn: Binding(
+                                    get: { settingsVM.alwaysShowMiniPlayer },
+                                    set: { newValue in
+                                        settingsVM.alwaysShowMiniPlayer = newValue
+                                        Task { try? await settingsVM.save() }
+                                    }
+                                )
+                            ) {
+                                Label(
+                                    "Always Show Mini Player",
+                                    systemImage: "rectangle.bottomhalf.inset.filled"
+                                )
                             }
 
                             Divider()
                         }
 
-                        Toggle(isOn: Binding(
-                            get: { settingsVM.showProgress },
-                            set: { newValue in
-                                settingsVM.showProgress = newValue
-                                Task { try? await settingsVM.save() }
-                            }
-                        )) {
+                        Toggle(
+                            isOn: Binding(
+                                get: { settingsVM.showProgress },
+                                set: { newValue in
+                                    settingsVM.showProgress = newValue
+                                    Task { try? await settingsVM.save() }
+                                }
+                            )
+                        ) {
                             Label("Show Book Progress", systemImage: "percent")
                         }
 
-                        Toggle(isOn: Binding(
-                            get: { settingsVM.showPageNumber },
-                            set: { newValue in
-                                settingsVM.showPageNumber = newValue
-                                Task { try? await settingsVM.save() }
-                            }
-                        )) {
+                        Toggle(
+                            isOn: Binding(
+                                get: { settingsVM.showPageNumber },
+                                set: { newValue in
+                                    settingsVM.showPageNumber = newValue
+                                    Task { try? await settingsVM.save() }
+                                }
+                            )
+                        ) {
                             Label("Show Page Number", systemImage: "book.pages")
                         }
 
                         if hasAudioNarration {
-                            Toggle(isOn: Binding(
-                                get: { settingsVM.showTimeRemainingInBook },
-                                set: { newValue in
-                                    settingsVM.showTimeRemainingInBook = newValue
-                                    Task { try? await settingsVM.save() }
-                                }
-                            )) {
+                            Toggle(
+                                isOn: Binding(
+                                    get: { settingsVM.showTimeRemainingInBook },
+                                    set: { newValue in
+                                        settingsVM.showTimeRemainingInBook = newValue
+                                        Task { try? await settingsVM.save() }
+                                    }
+                                )
+                            ) {
                                 Label("Show Time in Book", systemImage: "clock")
                             }
 
-                            Toggle(isOn: Binding(
-                                get: { settingsVM.showTimeRemainingInChapter },
-                                set: { newValue in
-                                    settingsVM.showTimeRemainingInChapter = newValue
-                                    Task { try? await settingsVM.save() }
-                                }
-                            )) {
+                            Toggle(
+                                isOn: Binding(
+                                    get: { settingsVM.showTimeRemainingInChapter },
+                                    set: { newValue in
+                                        settingsVM.showTimeRemainingInChapter = newValue
+                                        Task { try? await settingsVM.save() }
+                                    }
+                                )
+                            ) {
                                 Label("Show Time in Chapter", systemImage: "clock.badge")
                             }
                         }

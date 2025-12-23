@@ -206,8 +206,9 @@ class MediaOverlayManager {
         bookTotalSeconds = state.bookTotal
         currentFragment = state.currentFragment
 
-        let entryChanged = (state.currentSectionIndex != previousSectionIndex ||
-                           state.currentEntryIndex != previousEntryIndex)
+        let entryChanged =
+            (state.currentSectionIndex != previousSectionIndex
+                || state.currentEntryIndex != previousEntryIndex)
         let fragmentChanged = state.currentFragment != previousFragment
 
         if entryChanged && fragmentChanged && state.isPlaying {
@@ -241,7 +242,11 @@ class MediaOverlayManager {
         )
 
         Task {
-            await sendHighlightCommand(sectionIndex: sectionIndex, textId: entry.textId, seekToLocation: true)
+            await sendHighlightCommand(
+                sectionIndex: sectionIndex,
+                textId: entry.textId,
+                seekToLocation: true
+            )
         }
     }
 
@@ -253,7 +258,9 @@ class MediaOverlayManager {
         debugLog("[MOM] User chapter nav → Section.\(sectionIndex)")
 
         guard syncEnabled || isPlaying else {
-            debugLog("[MOM] Not playing and sync disabled - audio will not follow chapter navigation")
+            debugLog(
+                "[MOM] Not playing and sync disabled - audio will not follow chapter navigation"
+            )
             return
         }
 
@@ -393,7 +400,9 @@ class MediaOverlayManager {
         do {
             let loadedBookId = await SMILPlayerActor.shared.getLoadedBookId()
             if loadedBookId != bookId {
-                debugLog("[MOM] Actor has different book (\(loadedBookId ?? "none")), reloading \(bookId)")
+                debugLog(
+                    "[MOM] Actor has different book (\(loadedBookId ?? "none")), reloading \(bookId)"
+                )
                 await reloadBookIntoActor()
             }
 
@@ -402,7 +411,11 @@ class MediaOverlayManager {
 
             if let entry = await SMILPlayerActor.shared.getCurrentEntry() {
                 let (currentSectionIndex, _) = await SMILPlayerActor.shared.getCurrentPosition()
-                await sendHighlightCommand(sectionIndex: currentSectionIndex, textId: entry.textId, seekToLocation: true)
+                await sendHighlightCommand(
+                    sectionIndex: currentSectionIndex,
+                    textId: entry.textId,
+                    seekToLocation: true
+                )
             }
             debugLog("[MOM] startPlaying() - started")
         } catch {
@@ -455,7 +468,11 @@ class MediaOverlayManager {
                     sectionIndex: sectionIndex,
                     textId: entry.textId
                 )
-                await sendHighlightCommand(sectionIndex: sectionIndex, textId: entry.textId, seekToLocation: true)
+                await sendHighlightCommand(
+                    sectionIndex: sectionIndex,
+                    textId: entry.textId,
+                    seekToLocation: true
+                )
                 if wasPlaying { try? await SMILPlayerActor.shared.play() }
             }
         } else {
@@ -470,7 +487,11 @@ class MediaOverlayManager {
                             sectionIndex: nextSectionIndex,
                             textId: entry.textId
                         )
-                        await sendHighlightCommand(sectionIndex: nextSectionIndex, textId: entry.textId, seekToLocation: true)
+                        await sendHighlightCommand(
+                            sectionIndex: nextSectionIndex,
+                            textId: entry.textId,
+                            seekToLocation: true
+                        )
                         if wasPlaying { try? await SMILPlayerActor.shared.play() }
                     }
                     return
@@ -504,7 +525,11 @@ class MediaOverlayManager {
                     sectionIndex: sectionIndex,
                     textId: entry.textId
                 )
-                await sendHighlightCommand(sectionIndex: sectionIndex, textId: entry.textId, seekToLocation: true)
+                await sendHighlightCommand(
+                    sectionIndex: sectionIndex,
+                    textId: entry.textId,
+                    seekToLocation: true
+                )
                 if wasPlaying { try? await SMILPlayerActor.shared.play() }
             }
         } else {
@@ -522,7 +547,11 @@ class MediaOverlayManager {
                             sectionIndex: prevSectionIndex,
                             textId: entry.textId
                         )
-                        await sendHighlightCommand(sectionIndex: prevSectionIndex, textId: entry.textId, seekToLocation: true)
+                        await sendHighlightCommand(
+                            sectionIndex: prevSectionIndex,
+                            textId: entry.textId,
+                            seekToLocation: true
+                        )
                         if wasPlaying { try? await SMILPlayerActor.shared.play() }
                     }
                     return
@@ -741,10 +770,20 @@ class MediaOverlayManager {
     // MARK: - Highlight and Page Flip
 
     /// Send highlight command to JS for the current fragment
-    private func sendHighlightCommand(sectionIndex: Int, textId: String, seekToLocation: Bool = false) async {
+    private func sendHighlightCommand(
+        sectionIndex: Int,
+        textId: String,
+        seekToLocation: Bool = false
+    ) async {
         do {
-            try await commsBridge?.sendJsHighlightFragment(sectionIndex: sectionIndex, textId: textId, seekToLocation: seekToLocation)
-            debugLog("[MOM] Highlight command sent: section=\(sectionIndex), textId=\(textId), seekToLocation=\(seekToLocation)")
+            try await commsBridge?.sendJsHighlightFragment(
+                sectionIndex: sectionIndex,
+                textId: textId,
+                seekToLocation: seekToLocation
+            )
+            debugLog(
+                "[MOM] Highlight command sent: section=\(sectionIndex), textId=\(textId), seekToLocation=\(seekToLocation)"
+            )
         } catch {
             debugLog("[MOM] Error sending highlight command: \(error)")
         }
@@ -771,14 +810,20 @@ class MediaOverlayManager {
                 guard let entry = await SMILPlayerActor.shared.getCurrentEntry() else { return }
                 let entryDuration = entry.end - entry.begin
                 let earlyOffset = message.visibleRatio >= 0.98 ? 0.0 : 1.0
-                let delay = max(0, (entryDuration * message.visibleRatio / self.playbackRate) - earlyOffset)
+                let delay = max(
+                    0,
+                    (entryDuration * message.visibleRatio / self.playbackRate) - earlyOffset
+                )
 
                 debugLog(
                     "[MOM] Scheduling page flip in \(String(format: "%.2f", delay))s (entry duration: \(String(format: "%.2f", entryDuration))s, visible: \(String(format: "%.0f", message.visibleRatio * 100))%)"
                 )
 
                 await MainActor.run {
-                    self.pageFlipTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) {
+                    self.pageFlipTimer = Timer.scheduledTimer(
+                        withTimeInterval: delay,
+                        repeats: false
+                    ) {
                         [weak self] _ in
                         Task { @MainActor [weak self] in
                             await self?.flipPageIfNotDebounced()

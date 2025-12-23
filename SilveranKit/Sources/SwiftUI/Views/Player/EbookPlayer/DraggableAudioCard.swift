@@ -55,10 +55,11 @@ struct DraggableAudioCard<FullContent: View>: View {
             let safeAreaBottom = geometry.safeAreaInsets.bottom
             let expandedHeight = screenHeight * expandedFraction
 
-            let targetHeight: CGFloat = switch cardState {
-            case .compact: compactHeight + safeAreaBottom
-            case .expanded: expandedHeight
-            }
+            let targetHeight: CGFloat =
+                switch cardState {
+                    case .compact: compactHeight + safeAreaBottom
+                    case .expanded: expandedHeight
+                }
 
             let currentHeight = max(0, min(expandedHeight, targetHeight - dragOffset))
 
@@ -118,7 +119,8 @@ struct DraggableAudioCard<FullContent: View>: View {
                             .onEnded { value in
                                 handleDragEnd(
                                     translation: value.translation.height,
-                                    velocity: value.predictedEndTranslation.height - value.translation.height,
+                                    velocity: value.predictedEndTranslation.height
+                                        - value.translation.height,
                                     screenHeight: screenHeight
                                 )
                             }
@@ -254,20 +256,20 @@ struct DraggableAudioCard<FullContent: View>: View {
             dragOffset = 0
 
             switch cardState {
-            case .compact:
-                let isSwipeUp = translation < -dragThreshold || velocity < -velocityThreshold
-                let isSwipeDown = translation > dragThreshold || velocity > velocityThreshold
-                if isSwipeUp {
-                    cardState = .expanded
-                } else if isSwipeDown && !alwaysShow {
-                    isPresented = false
-                }
+                case .compact:
+                    let isSwipeUp = translation < -dragThreshold || velocity < -velocityThreshold
+                    let isSwipeDown = translation > dragThreshold || velocity > velocityThreshold
+                    if isSwipeUp {
+                        cardState = .expanded
+                    } else if isSwipeDown && !alwaysShow {
+                        isPresented = false
+                    }
 
-            case .expanded:
-                let isSwipeDown = translation > dragThreshold || velocity > velocityThreshold
-                if isSwipeDown {
-                    cardState = .compact
-                }
+                case .expanded:
+                    let isSwipeDown = translation > dragThreshold || velocity > velocityThreshold
+                    if isSwipeDown {
+                        cardState = .compact
+                    }
             }
         }
     }

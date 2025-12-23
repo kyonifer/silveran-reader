@@ -1,5 +1,5 @@
-import SwiftUI
 import SilveranKitCommon
+import SwiftUI
 
 struct WatchRemoteControlView: View {
     @Environment(WatchViewModel.self) private var viewModel
@@ -8,7 +8,11 @@ struct WatchRemoteControlView: View {
     var body: some View {
         Group {
             if showChapters, let state = viewModel.remotePlaybackState {
-                RemoteChapterListView(state: state, viewModel: viewModel, onBack: { showChapters = false })
+                RemoteChapterListView(
+                    state: state,
+                    viewModel: viewModel,
+                    onBack: { showChapters = false }
+                )
             } else if let state = viewModel.remotePlaybackState {
                 RemoteControlsPage(
                     state: state,
@@ -92,7 +96,8 @@ private struct RemoteControlsPage: View {
         .focused($isFocused)
         .digitalCrownRotation(
             detent: $crownVolume,
-            from: 0, through: 1,
+            from: 0,
+            through: 1,
             by: 0.02,
             sensitivity: .low,
             isContinuous: false,
@@ -282,7 +287,9 @@ private struct RemoteChapterListView: View {
         List {
             ForEach(state.chapters, id: \.index) { chapter in
                 Button {
-                    viewModel.sendPlaybackCommand(.seekToChapter(sectionIndex: chapter.sectionIndex))
+                    viewModel.sendPlaybackCommand(
+                        .seekToChapter(sectionIndex: chapter.sectionIndex)
+                    )
                     onBack()
                 } label: {
                     HStack {

@@ -261,7 +261,9 @@ public actor SettingsActor {
         }
         if let showPageNumber { updated.readingBar.showPageNumber = showPageNumber }
         if let overlayTransparency { updated.readingBar.overlayTransparency = overlayTransparency }
-        if let alwaysShowMiniPlayer { updated.readingBar.alwaysShowMiniPlayer = alwaysShowMiniPlayer }
+        if let alwaysShowMiniPlayer {
+            updated.readingBar.alwaysShowMiniPlayer = alwaysShowMiniPlayer
+        }
         if let progressSyncIntervalSeconds {
             debugLog(
                 "[SettingsActor] Updating progressSyncIntervalSeconds to \(progressSyncIntervalSeconds)s"
