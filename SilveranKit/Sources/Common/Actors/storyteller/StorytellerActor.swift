@@ -30,6 +30,10 @@ public actor StorytellerActor {
     private(set) public var libraryMetadata: [BookMetadata] = []
     public private(set) var connectionStatus: ConnectionStatus = .disconnected
 
+    public var isConfigured: Bool {
+        apiBaseURL != nil && username != nil && password != nil
+    }
+
     private let urlSession: URLSession
     private let downloadDelegate: StorytellerDownloadDelegate
     private let decoder: JSONDecoder

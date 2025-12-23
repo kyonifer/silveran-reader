@@ -113,6 +113,7 @@ struct MediaGridInfoSidebar: View {
                 Text("Reading Progress")
                     .font(.callout)
                     .fontWeight(.medium)
+                SyncStatusIndicators(bookId: item.id)
                 Spacer()
                 Text(progressLabel)
                     .font(.callout)

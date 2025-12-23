@@ -102,6 +102,7 @@ struct iOSBookDetailView: View {
                 Text("Reading Progress")
                     .font(.callout)
                     .fontWeight(.medium)
+                SyncStatusIndicators(bookId: item.id)
                 Spacer()
                 Text("\(Int((progress * 100).rounded()))%")
                     .font(.callout)

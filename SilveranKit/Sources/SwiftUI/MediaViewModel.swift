@@ -17,7 +17,7 @@ public final class MediaViewModel {
     var connectionStatus: ConnectionStatus = .disconnected
     var lastNetworkOpSucceeded: Bool? = nil
     var cachedConfig: SilveranGlobalConfig = SilveranGlobalConfig()
-    var booksWithUnsyncedProgress: Set<String> = []
+    var pendingSyncsByBook: [String: PendingProgressSync] = [:]
     var syncNotification: SyncNotification?
     var bookProgressCache: [String: BookProgress] = [:]
 
@@ -213,9 +213,9 @@ public final class MediaViewModel {
             "[MediaViewModel] refreshMetadata: Using LMA metadata (\(storytellerMetadata.count) storyteller + \(standaloneMetadata.count) standalone = \(metadata.count) books)"
         )
 
-        booksWithUnsyncedProgress = Set(pendingSyncs.map { $0.bookId })
+        pendingSyncsByBook = Dictionary(uniqueKeysWithValues: pendingSyncs.map { ($0.bookId, $0) })
         debugLog(
-            "[MediaViewModel] refreshMetadata: Set booksWithUnsyncedProgress to \(booksWithUnsyncedProgress.count) books"
+            "[MediaViewModel] refreshMetadata: Set pendingSyncsByBook to \(pendingSyncsByBook.count) books"
         )
 
         bookProgressCache = await ProgressSyncActor.shared.getAllBookProgress()

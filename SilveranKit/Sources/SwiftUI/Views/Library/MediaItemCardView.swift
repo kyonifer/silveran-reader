@@ -115,13 +115,6 @@ struct MediaItemCardView: View {
                                 style: .continuous
                             )
                         )
-                        .overlay(alignment: .topLeading) {
-                            if mediaViewModel.booksWithUnsyncedProgress.contains(item.id) {
-                                UnsyncedProgressBadge()
-                                    .padding(8)
-                            }
-                        }
-
                         if let sourceLabel = sourceLabel {
                             SourceBadge(label: sourceLabel)
                                 .padding(8)
@@ -352,12 +345,3 @@ private struct SourceBadge: View {
     }
 }
 
-private struct UnsyncedProgressBadge: View {
-    var body: some View {
-        Image(systemName: "arrow.triangle.2.circlepath.circle.fill")
-            .font(.system(size: 20))
-            .foregroundStyle(.white)
-            .background(Circle().fill(Color.orange.opacity(0.9)).frame(width: 24, height: 24))
-            .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
-    }
-}
