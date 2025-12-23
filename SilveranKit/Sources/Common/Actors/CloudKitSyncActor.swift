@@ -131,7 +131,7 @@ public actor CloudKitSyncActor {
             record["bookId"] = bookId
             record["locatorJson"] = locatorString
             record["timestamp"] = timestamp
-            record["deviceId"] = deviceIdentifier()
+            record["deviceId"] = await deviceIdentifier()
 
             let operation = CKModifyRecordsOperation(
                 recordsToSave: [record],
@@ -466,6 +466,7 @@ public actor CloudKitSyncActor {
         )
     }
 
+    @MainActor
     private func deviceIdentifier() -> String {
         #if os(iOS)
         return UIDevice.current.name

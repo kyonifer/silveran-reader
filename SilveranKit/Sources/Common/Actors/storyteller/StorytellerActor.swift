@@ -2001,10 +2001,10 @@ private final class StorytellerDownloadDelegate: NSObject, URLSessionDownloadDel
     }
 
     @objc(urlSession:downloadTask:didReceiveResponse:completionHandler:)
-    private func urlSession(
+    private func handleDownloadResponse(
         _ session: URLSession,
         downloadTask: URLSessionDownloadTask,
-        didReceive response: URLResponse,
+        response: URLResponse,
         completionHandler: @escaping (URLSession.ResponseDisposition) -> Void
     ) {
         guard let httpResponse = response as? HTTPURLResponse else {
@@ -2150,17 +2150,18 @@ private final class StorytellerDownloadDelegate: NSObject, URLSessionDownloadDel
         }
     }
 
-    func urlSession(
+    @objc(urlSession:task:didReceiveResponse:completionHandler:)
+    func handleTaskResponse(
         _ session: URLSession,
         task: URLSessionTask,
-        didReceive response: URLResponse,
+        response: URLResponse,
         completionHandler: @escaping (URLSession.ResponseDisposition) -> Void
     ) {
         if let downloadTask = task as? URLSessionDownloadTask {
-            urlSession(
+            handleDownloadResponse(
                 session,
                 downloadTask: downloadTask,
-                didReceive: response,
+                response: response,
                 completionHandler: completionHandler
             )
         } else {
