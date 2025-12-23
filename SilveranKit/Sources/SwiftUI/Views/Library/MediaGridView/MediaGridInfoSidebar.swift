@@ -47,6 +47,11 @@ struct MediaGridInfoSidebar: View {
         .onChange(of: item.id) { _, _ in
             prepareForDisplay()
         }
+        .onChange(of: mediaViewModel.progress(for: item.id)) { _, newValue in
+            withAnimation(.easeOut(duration: 0.45)) {
+                animatedProgress = newValue
+            }
+        }
     }
 
     private var header: some View {
