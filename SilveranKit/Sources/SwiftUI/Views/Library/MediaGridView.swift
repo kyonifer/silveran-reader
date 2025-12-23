@@ -53,6 +53,8 @@ struct MediaGridView: View {
 
     #if os(macOS)
     @State private var hoveredInfoItemID: BookMetadata.ID? = nil
+    // Workaround for macOS Sequoia bug where parent view's onTapGesture fires after card tap
+    @State private var cardTapInProgress: Bool = false
     #endif
 
     @State private var activeInfoItem: BookMetadata? = nil
@@ -243,6 +245,12 @@ struct MediaGridView: View {
                         .modifier(SoftScrollEdgeModifier())
                         .contentShape(Rectangle())
                         .onTapGesture {
+                            #if os(macOS)
+                            if cardTapInProgress {
+                                cardTapInProgress = false
+                                return
+                            }
+                            #endif
                             activeInfoItem = nil
                             dismissSidebar()
                         }
@@ -410,7 +418,7 @@ struct MediaGridView: View {
             isSelected: activeInfoItem?.id == item.id,
             showTopTabs: showCardTopTabs,
             sourceLabel: sourceLabel,
-            onSelect: { selected in
+            onSelect: { [self] selected in
                 selectItem(selected)
             },
             onInfo: { selected in
@@ -444,6 +452,9 @@ struct MediaGridView: View {
     }
 
     private func selectItem(_ item: BookMetadata, ensureVisible: Bool = false) {
+        #if os(macOS)
+        cardTapInProgress = true
+        #endif
         let visibleItems = displayItems
         guard visibleItems.contains(where: { $0.id == item.id }) else { return }
         shouldEnsureActiveItemVisible = ensureVisible

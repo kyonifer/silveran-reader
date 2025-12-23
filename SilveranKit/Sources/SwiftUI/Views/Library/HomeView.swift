@@ -40,6 +40,10 @@ struct HomeView: View {
     @State private var selection: Selection? = nil
     @State private var isSidebarVisible: Bool = false
     @State private var sections: [HomeSection] = []
+    #if os(macOS)
+    // Workaround for macOS Sequoia bug where parent view's onTapGesture fires after card tap
+    @State private var cardTapInProgress: Bool = false
+    #endif
     #if os(iOS)
     @State private var navigationPath = NavigationPath()
     #endif
@@ -185,7 +189,8 @@ struct HomeView: View {
                                         selection: $selection,
                                         isSidebarVisible: $isSidebarVisible,
                                         sidebarSections: $sidebarSections,
-                                        selectedSidebarItem: $selectedSidebarItem
+                                        selectedSidebarItem: $selectedSidebarItem,
+                                        cardTapInProgress: $cardTapInProgress
                                     )
                                     .id(section.id)
                                     .padding(.horizontal, horizontalPadding)
@@ -196,6 +201,12 @@ struct HomeView: View {
                     }
                     .contentShape(Rectangle())
                     .onTapGesture {
+                        #if os(macOS)
+                        if cardTapInProgress {
+                            cardTapInProgress = false
+                            return
+                        }
+                        #endif
                         selection = nil
                         dismissSidebar()
                     }
@@ -581,6 +592,9 @@ private struct HomeSectionRow: View {
     @Binding var isSidebarVisible: Bool
     @Binding var sidebarSections: [SidebarSectionDescription]
     @Binding var selectedSidebarItem: SidebarItemDescription?
+    #if os(macOS)
+    @Binding var cardTapInProgress: Bool
+    #endif
     #if os(iOS)
     let onNavigateToSection: (HomeView.HomeSection) -> Void
     #endif
@@ -782,6 +796,9 @@ private struct HomeSectionRow: View {
     }
 
     private func select(_ item: BookMetadata) {
+        #if os(macOS)
+        cardTapInProgress = true
+        #endif
         let newSelection = HomeView.Selection(sectionIndex: sectionIndex, itemID: item.id)
         if selection != newSelection {
             selection = newSelection
