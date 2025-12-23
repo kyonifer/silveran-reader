@@ -56,7 +56,23 @@ struct SilveranReaderApp: App {
         audiobookScene
         ebookScene
         settingsScene
+        debugLogScene
         #endif
+    }
+
+    private var debugLogScene: some Scene {
+        Window("Debug Log", id: "DebugLog") {
+            DebugLogView()
+        }
+        .defaultSize(width: 800, height: 500)
+        .commands {
+            CommandGroup(after: .help) {
+                Button("Debug Log...") {
+                    openWindow(id: "DebugLog")
+                }
+                .keyboardShortcut("D", modifiers: [.command, .option])
+            }
+        }
     }
 
     private var libraryScene: some Scene {
