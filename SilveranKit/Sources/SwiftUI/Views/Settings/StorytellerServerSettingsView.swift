@@ -103,13 +103,12 @@ public struct StorytellerServerSettingsView: View {
                                 Text("Connected")
                                     .foregroundStyle(.secondary)
                             }
-                        case .failure(let message):
+                        case .failure:
                             HStack {
                                 Image(systemName: "exclamationmark.triangle.fill")
                                     .foregroundStyle(.red)
-                                Text(message)
+                                Text("Failed")
                                     .foregroundStyle(.secondary)
-                                    .lineLimit(1)
                             }
                     }
                 }
@@ -119,6 +118,64 @@ public struct StorytellerServerSettingsView: View {
                         showRemoveDataConfirmation = true
                     }
                     .disabled(isLoading)
+                }
+            }
+
+            if case .failure(let message) = connectionStatus {
+                if message.lowercased().contains("credentials") {
+                    Section {
+                        HStack(alignment: .top, spacing: 12) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.orange)
+                                .font(.title2)
+                            Text("Invalid username or password. Please check your credentials and try again.")
+                                .font(.body)
+                        }
+                    }
+                } else {
+                    Section {
+                        HStack(alignment: .top, spacing: 12) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.orange)
+                                .font(.title2)
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Connection failed. This could be because:")
+                                    .font(.body)
+                                Text("- The server is down or unreachable")
+                                    .font(.body)
+                                    .foregroundStyle(.secondary)
+                                Text("- Local network access permission was denied")
+                                    .font(.body)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+
+                    Section {
+                        HStack(alignment: .top, spacing: 12) {
+                            Image(systemName: "info.circle.fill")
+                                .foregroundStyle(.blue)
+                            Text("If you just allowed local network access, try connecting again.")
+                                .font(.body)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    Section {
+                        HStack(alignment: .top, spacing: 12) {
+                            Image(systemName: "info.circle.fill")
+                                .foregroundStyle(.blue)
+                            #if os(iOS)
+                            Text("If you previously denied local network access, you may need to enable it in Settings > Privacy & Security > Local Network.")
+                                .font(.body)
+                                .foregroundStyle(.secondary)
+                            #else
+                            Text("If you previously denied local network access, you may need to enable it in System Settings > Privacy & Security > Local Network.")
+                                .font(.body)
+                                .foregroundStyle(.secondary)
+                            #endif
+                        }
+                    }
                 }
             }
         }
@@ -209,9 +266,14 @@ public struct StorytellerServerSettingsView: View {
                 }
             }
         } else {
+            let storytellerStatus = await StorytellerActor.shared.connectionStatus
             await MainActor.run {
                 isLoading = false
-                connectionStatus = .failure("Connection failed")
+                if case .error(let message) = storytellerStatus {
+                    connectionStatus = .failure(message)
+                } else {
+                    connectionStatus = .failure("Connection failed")
+                }
             }
         }
     }

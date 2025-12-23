@@ -150,8 +150,6 @@ public actor StorytellerActor {
         if success {
             await updateConnectionStatus(.connected)
             let _ = await fetchLibraryInformation()
-        } else {
-            await updateConnectionStatus(.error("Authentication failed"))
         }
 
         startMonitoring()
@@ -195,8 +193,22 @@ public actor StorytellerActor {
 
                 self.accessToken = try decoder.decode(AccessToken.self, from: response.data)
                 return true
+            } catch let error as HTTPRequestError {
+                logStorytellerError("authenticate", error: error)
+                switch error {
+                case .unauthorized:
+                    await updateConnectionStatus(.error("Invalid credentials"))
+                default:
+                    await updateConnectionStatus(.error("Connection failed"))
+                }
+                return false
+            } catch let error as URLError {
+                logStorytellerError("authenticate", error: error)
+                await updateConnectionStatus(.error("Connection failed"))
+                return false
             } catch {
                 logStorytellerError("authenticate", error: error)
+                await updateConnectionStatus(.error("Connection failed"))
                 return false
             }
         }
