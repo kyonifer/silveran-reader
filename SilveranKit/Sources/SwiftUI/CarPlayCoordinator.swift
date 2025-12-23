@@ -29,6 +29,8 @@ public final class CarPlayCoordinator {
     public var onLibraryUpdated: (() -> Void)?
     public var onChaptersUpdated: (() -> Void)?
     public var onPlaybackStateChanged: (() -> Void)?
+    public var isCarPlayConnected: Bool = false
+    public var isPlayerViewActive: Bool = false
 
     private var smilObserverId: UUID?
     private var audiobookObserverId: UUID?

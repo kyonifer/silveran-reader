@@ -19,6 +19,10 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
         debugLog("[CarPlay] Connected to CarPlay")
         self.interfaceController = interfaceController
 
+        Task { @MainActor in
+            CarPlayCoordinator.shared.isCarPlayConnected = true
+        }
+
         configureNowPlayingTemplate()
 
         Task { @MainActor in
@@ -33,6 +37,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
         debugLog("[CarPlay] Disconnected from CarPlay")
         self.interfaceController = nil
         Task { @MainActor in
+            CarPlayCoordinator.shared.isCarPlayConnected = false
             CarPlayCoordinator.shared.onLibraryUpdated = nil
             CarPlayCoordinator.shared.onChaptersUpdated = nil
         }

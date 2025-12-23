@@ -99,7 +99,11 @@ public struct iOSLibraryView: View {
             .presentationDragIndicator(.visible)
         }
         .safeAreaInset(edge: .top) {
-            if CarPlayCoordinator.shared.isPlaying, let book = carPlayBook {
+            if CarPlayCoordinator.shared.isCarPlayConnected,
+               CarPlayCoordinator.shared.isPlaying,
+               !CarPlayCoordinator.shared.isPlayerViewActive,
+               let book = carPlayBook
+            {
                 CarPlayNowPlayingBanner(bookTitle: book.title) {
                     showCarPlayPlayer = true
                 }

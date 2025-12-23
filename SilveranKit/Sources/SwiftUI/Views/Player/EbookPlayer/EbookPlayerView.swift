@@ -113,8 +113,18 @@ public struct EbookPlayerView: View {
         )
         .navigationTitle(viewModel.bookData?.metadata.title ?? "Ebook Reader")
         #endif
-        .onAppear { viewModel.handleOnAppear() }
-        .onDisappear { viewModel.handleOnDisappear() }
+        .onAppear {
+            viewModel.handleOnAppear()
+            #if os(iOS)
+            CarPlayCoordinator.shared.isPlayerViewActive = true
+            #endif
+        }
+        .onDisappear {
+            viewModel.handleOnDisappear()
+            #if os(iOS)
+            CarPlayCoordinator.shared.isPlayerViewActive = false
+            #endif
+        }
         .onChange(of: colorScheme) { _, newScheme in
             viewModel.handleColorSchemeChange(newScheme)
         }

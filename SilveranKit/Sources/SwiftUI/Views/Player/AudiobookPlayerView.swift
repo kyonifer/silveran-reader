@@ -52,6 +52,10 @@ public struct AudiobookPlayerView: View {
                 }
             }
             .onAppear {
+                #if os(iOS)
+                CarPlayCoordinator.shared.isPlayerViewActive = true
+                #endif
+
                 if !settingsInitialized {
                     Task { @MainActor in
                         let config = await SettingsActor.shared.config
@@ -66,6 +70,10 @@ public struct AudiobookPlayerView: View {
                 }
             }
             .onDisappear {
+                #if os(iOS)
+                CarPlayCoordinator.shared.isPlayerViewActive = false
+                #endif
+
                 progressTimer?.invalidate()
                 progressTimer = nil
                 syncTimer?.invalidate()
