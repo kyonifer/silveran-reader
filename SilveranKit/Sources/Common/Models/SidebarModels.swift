@@ -34,6 +34,13 @@ public enum NarrationFilter: Hashable, Sendable {
     case withoutAudio
 }
 
+public enum LocationFilter: String, CaseIterable, Hashable, Sendable {
+    case all
+    case downloaded
+    case serverOnly
+    case localFiles
+}
+
 public enum MediaKind: String, CaseIterable, Sendable {
     case ebook
     case audiobook
@@ -45,6 +52,7 @@ public struct MediaGridConfiguration: Hashable, Sendable {
     public var preferredTileWidth: Double?
     public var minimumTileWidth: Double?
     public var narrationFilter: NarrationFilter
+    public var locationFilter: LocationFilter
     public var tagFilter: String?
     public var seriesFilter: String?
     public var statusFilter: String?
@@ -56,6 +64,7 @@ public struct MediaGridConfiguration: Hashable, Sendable {
         preferredTileWidth: Double? = nil,
         minimumTileWidth: Double? = nil,
         narrationFilter: NarrationFilter = .both,
+        locationFilter: LocationFilter = .all,
         tagFilter: String? = nil,
         seriesFilter: String? = nil,
         statusFilter: String? = nil,
@@ -66,6 +75,7 @@ public struct MediaGridConfiguration: Hashable, Sendable {
         self.preferredTileWidth = preferredTileWidth
         self.minimumTileWidth = minimumTileWidth
         self.narrationFilter = narrationFilter
+        self.locationFilter = locationFilter
         self.tagFilter = tagFilter
         self.seriesFilter = seriesFilter
         self.statusFilter = statusFilter
@@ -171,6 +181,20 @@ public enum LibrarySidebarDefaults {
                                 minimumTileWidth: 50,
                                 statusFilter: "Read",
                                 defaultSort: "recentlyRead"
+                            )
+                        )
+                    ),
+                    SidebarItemDescription(
+                        name: "Downloaded",
+                        systemImage: "arrow.down.circle",
+                        badge: -1,
+                        content: .mediaGrid(
+                            MediaGridConfiguration(
+                                title: "Downloaded",
+                                mediaKind: .ebook,
+                                preferredTileWidth: 120,
+                                minimumTileWidth: 50,
+                                locationFilter: .downloaded
                             )
                         )
                     ),
