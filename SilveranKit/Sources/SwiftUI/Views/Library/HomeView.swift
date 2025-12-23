@@ -136,11 +136,19 @@ struct HomeView: View {
                                         .foregroundStyle(.secondary)
                                     #if os(iOS)
                                     Text(
-                                        "To get started, go to Settings to connect a Storyteller server, or use \"Manage Local Files\" in the More tab to add files from your device."
+                                        "To get started, go to [Settings](openSettings) to connect a Storyteller server, or use \"Manage Local Files\" in the More tab to add files from your device."
                                     )
                                     .font(.body)
                                     .foregroundStyle(.tertiary)
                                     .multilineTextAlignment(.center)
+                                    .tint(.accentColor)
+                                    .environment(\.openURL, OpenURLAction { url in
+                                        if url.absoluteString == "openSettings" {
+                                            showSettings = true
+                                            return .handled
+                                        }
+                                        return .systemAction
+                                    })
                                     #else
                                     Text(
                                         "To add some media, use the Media Sources on the left to load either local files or a remote Storyteller server."

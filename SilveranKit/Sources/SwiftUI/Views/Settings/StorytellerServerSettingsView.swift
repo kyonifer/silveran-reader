@@ -10,9 +10,10 @@ public struct StorytellerServerSettingsView: View {
     @State private var hasLoadedCredentials = false
     @State private var isPasswordVisible = false
     @State private var showRemoveDataConfirmation = false
-    @State private var isManuallyOffline = false
     @State private var hasSavedCredentials = false
     @State private var hasTriggeredNetworkPrompt = false
+
+    @Environment(MediaViewModel.self) private var mediaViewModel
 
     private enum ConnectionTestStatus: Equatable {
         case notTested
@@ -26,19 +27,6 @@ public struct StorytellerServerSettingsView: View {
     public var body: some View {
         Form {
             Section("Server Configuration") {
-                if isManuallyOffline && hasSavedCredentials {
-                    HStack(spacing: 8) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.red)
-                        Text(
-                            "You are currently in offline mode. Press \"Go Online\" to reconnect to the server."
-                        )
-                        .foregroundStyle(.red)
-                        .font(.subheadline)
-                    }
-                    .listRowBackground(Color.red.opacity(0.1))
-                }
-
                 TextField("Server URL", text: $serverURL)
                     .textContentType(.URL)
                     .autocorrectionDisabled()
@@ -84,7 +72,7 @@ public struct StorytellerServerSettingsView: View {
 
             Section {
                 HStack {
-                    Button("Save Credentials and Test Connection") {
+                    Button("Save Credentials and Connect") {
                         Task {
                             await testConnectionAndSave()
                         }
@@ -97,7 +85,14 @@ public struct StorytellerServerSettingsView: View {
 
                     switch connectionStatus {
                         case .notTested:
-                            EmptyView()
+                            if hasSavedCredentials && mediaViewModel.lastNetworkOpSucceeded == true {
+                                HStack {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundStyle(.green)
+                                    Text("Connected")
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
                         case .testing:
                             ProgressView()
                                 .controlSize(.small)
@@ -105,7 +100,7 @@ public struct StorytellerServerSettingsView: View {
                             HStack {
                                 Image(systemName: "checkmark.circle.fill")
                                     .foregroundStyle(.green)
-                                Text("Saved")
+                                Text("Connected")
                                     .foregroundStyle(.secondary)
                             }
                         case .failure(let message):
@@ -119,52 +114,29 @@ public struct StorytellerServerSettingsView: View {
                     }
                 }
 
-                Button("Clear Saved Credentials", role: .destructive) {
-                    Task {
-                        await clearCredentials()
-                    }
-                }
-                .disabled(isLoading)
-
                 if hasSavedCredentials {
-                    if !isManuallyOffline {
-                        Button("Go Offline") {
-                            Task {
-                                await goOffline()
-                            }
-                        }
-                        .disabled(isLoading)
-                    } else {
-                        Button("Go Online") {
-                            Task {
-                                await goOnline()
-                            }
-                        }
-                        .disabled(isLoading)
+                    Button("Remove Server", role: .destructive) {
+                        showRemoveDataConfirmation = true
                     }
+                    .disabled(isLoading)
                 }
-
-                Button("Remove Server Cached Files", role: .destructive) {
-                    showRemoveDataConfirmation = true
-                }
-                .disabled(isLoading)
             }
         }
         .formStyle(.grouped)
         .confirmationDialog(
-            "Remove all downloaded books and metadata from this server?",
+            "Remove this server?",
             isPresented: $showRemoveDataConfirmation,
             titleVisibility: .visible
         ) {
-            Button("Remove All Server Data", role: .destructive) {
+            Button("Remove Server", role: .destructive) {
                 Task {
-                    await removeServerData()
+                    await removeServer()
                 }
             }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text(
-                "This will delete all downloaded media, covers, and library metadata from the Storyteller server. Your credentials will remain saved. This action cannot be undone."
+                "This will delete your saved credentials and all downloaded media, covers, and library metadata from this server. This action cannot be undone."
             )
         }
         .scrollContentBackground(.hidden)
@@ -202,11 +174,6 @@ public struct StorytellerServerSettingsView: View {
                 hasSavedCredentials = false
             }
         }
-
-        let offlineState = await SettingsActor.shared.config.sync.isManuallyOffline
-        await MainActor.run {
-            isManuallyOffline = offlineState
-        }
     }
 
     private func testConnectionAndSave() async {
@@ -228,10 +195,7 @@ public struct StorytellerServerSettingsView: View {
                     username: username,
                     password: password
                 )
-                try await SettingsActor.shared.updateConfig(isManuallyOffline: false)
-
                 await MainActor.run {
-                    isManuallyOffline = false
                     hasSavedCredentials = true
                     isLoading = false
                     connectionStatus = .success
@@ -252,108 +216,28 @@ public struct StorytellerServerSettingsView: View {
         }
     }
 
-    private func clearCredentials() async {
-        await MainActor.run {
-            isLoading = true
-        }
-
-        do {
-            try await AuthenticationActor.shared.deleteCredentials()
-            await StorytellerActor.shared.logout()
-            try await SettingsActor.shared.updateConfig(isManuallyOffline: false)
-
-            await MainActor.run {
-                serverURL = ""
-                username = ""
-                password = ""
-                connectionStatus = .notTested
-                isManuallyOffline = false
-                hasSavedCredentials = false
-                isLoading = false
-            }
-        } catch {
-            await MainActor.run {
-                isLoading = false
-                connectionStatus = .failure("Failed to clear: \(error.localizedDescription)")
-            }
-        }
-    }
-
-    private func goOffline() async {
-        await MainActor.run {
-            isLoading = true
-        }
-
-        do {
-            try await SettingsActor.shared.updateConfig(isManuallyOffline: true)
-            await StorytellerActor.shared.logout()
-
-            await MainActor.run {
-                isManuallyOffline = true
-                isLoading = false
-            }
-        } catch {
-            await MainActor.run {
-                isLoading = false
-                connectionStatus = .failure("Failed to go offline: \(error.localizedDescription)")
-            }
-        }
-    }
-
-    private func goOnline() async {
-        await MainActor.run {
-            isLoading = true
-        }
-
-        do {
-            try await SettingsActor.shared.updateConfig(isManuallyOffline: false)
-
-            if let credentials = try await AuthenticationActor.shared.loadCredentials() {
-                let success = await StorytellerActor.shared.setLogin(
-                    baseURL: credentials.url,
-                    username: credentials.username,
-                    password: credentials.password
-                )
-
-                await MainActor.run {
-                    isManuallyOffline = false
-                    isLoading = false
-                    if success {
-                        connectionStatus = .success
-                    } else {
-                        connectionStatus = .failure("Connection failed")
-                    }
-                }
-            } else {
-                await MainActor.run {
-                    isManuallyOffline = false
-                    isLoading = false
-                }
-            }
-        } catch {
-            await MainActor.run {
-                isLoading = false
-                connectionStatus = .failure("Failed to go online: \(error.localizedDescription)")
-            }
-        }
-    }
-
-    private func removeServerData() async {
+    private func removeServer() async {
         await MainActor.run {
             isLoading = true
         }
 
         do {
             try await LocalMediaActor.shared.removeAllStorytellerData()
+            try await AuthenticationActor.shared.deleteCredentials()
+            await StorytellerActor.shared.logout()
 
             await MainActor.run {
+                serverURL = ""
+                username = ""
+                password = ""
+                connectionStatus = .notTested
+                hasSavedCredentials = false
                 isLoading = false
-                connectionStatus = .success
             }
         } catch {
             await MainActor.run {
                 isLoading = false
-                connectionStatus = .failure("Failed to remove data: \(error.localizedDescription)")
+                connectionStatus = .failure("Failed to remove: \(error.localizedDescription)")
             }
         }
     }
