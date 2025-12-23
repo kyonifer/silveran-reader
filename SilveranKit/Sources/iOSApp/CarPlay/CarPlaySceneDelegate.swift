@@ -9,6 +9,8 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     private var isLoadingBook = false
     private var readalongListTemplate: CPListTemplate?
     private var audiobookListTemplate: CPListTemplate?
+    private var lastKnownBookId: String?
+    private var lastKnownIsPlaying: Bool = false
 
     func templateApplicationScene(
         _ templateApplicationScene: CPTemplateApplicationScene,
@@ -49,12 +51,27 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
 
         coordinator.onPlaybackStateChanged = { [weak self] in
             Task { @MainActor in
-                await self?.refreshListTemplates()
+                await self?.refreshListTemplatesIfNeeded()
             }
         }
 
         let tabBar = await buildTabBarTemplate()
         interfaceController?.setRootTemplate(tabBar, animated: false, completion: nil)
+    }
+
+    @MainActor
+    private func refreshListTemplatesIfNeeded() async {
+        let coordinator = CarPlayCoordinator.shared
+        let currentBookId = coordinator.activeBookId
+        let currentIsPlaying = coordinator.isPlaying
+
+        guard currentBookId != lastKnownBookId || currentIsPlaying != lastKnownIsPlaying else {
+            return
+        }
+
+        lastKnownBookId = currentBookId
+        lastKnownIsPlaying = currentIsPlaying
+        await refreshListTemplates()
     }
 
     @MainActor
