@@ -38,6 +38,7 @@ public actor AuthenticationActor {
                 kSecClass as String: kSecClassGenericPassword,
                 kSecAttrService as String: service,
                 kSecAttrAccount as String: key,
+                kSecUseDataProtectionKeychain as String: true,
             ]
 
             let status = SecItemDelete(query as CFDictionary)
@@ -67,6 +68,7 @@ public actor AuthenticationActor {
             kSecAttrAccount as String: account,
             kSecValueData as String: data,
             kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlocked,
+            kSecUseDataProtectionKeychain as String: true,
         ]
 
         let status = SecItemAdd(query as CFDictionary, nil)
@@ -82,6 +84,7 @@ public actor AuthenticationActor {
             kSecAttrAccount as String: account,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
+            kSecUseDataProtectionKeychain as String: true,
         ]
 
         var result: AnyObject?
