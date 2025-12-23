@@ -9,9 +9,15 @@ public struct iOSLibraryView: View {
     @State private var sections: [SidebarSectionDescription] = LibrarySidebarDefaults.getSections()
     @State private var selectedItem: SidebarItemDescription? = nil
     @State private var moreNavigationPath = NavigationPath()
+    @State private var showCarPlayPlayer: Bool = false
     @Environment(MediaViewModel.self) private var mediaViewModel: MediaViewModel
 
     public init() {}
+
+    private var carPlayBook: BookMetadata? {
+        guard let bookId = CarPlayCoordinator.shared.activeBookId else { return nil }
+        return mediaViewModel.library.bookMetaData.first { $0.id == bookId }
+    }
 
     enum Tab: String, CaseIterable {
         case home
@@ -91,6 +97,34 @@ public struct iOSLibraryView: View {
             )
             .presentationDetents([.medium])
             .presentationDragIndicator(.visible)
+        }
+        .safeAreaInset(edge: .top) {
+            if CarPlayCoordinator.shared.isPlaying, let book = carPlayBook {
+                CarPlayNowPlayingBanner(bookTitle: book.title) {
+                    showCarPlayPlayer = true
+                }
+            }
+        }
+        .fullScreenCover(isPresented: $showCarPlayPlayer) {
+            if let book = carPlayBook,
+               let category = CarPlayCoordinator.shared.activeCategory,
+               let path = mediaViewModel.localMediaPath(for: book.id, category: category)
+            {
+                NavigationStack {
+                    playerView(for: PlayerBookData(
+                        metadata: book,
+                        localMediaPath: path,
+                        category: category
+                    ))
+                    .toolbar {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button("Done") {
+                                showCarPlayPlayer = false
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -697,6 +731,46 @@ extension View {
                 showOfflineSheet: showOfflineSheet
             )
         )
+    }
+}
+
+struct CarPlayNowPlayingBanner: View {
+    let bookTitle: String
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 14) {
+                Image(systemName: "car.fill")
+                    .font(.system(size: 24))
+                    .foregroundStyle(.white)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Now playing on CarPlay")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.white.opacity(0.85))
+
+                    Text(bookTitle)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .lineLimit(2)
+                }
+
+                Spacer()
+
+                Text("Tap to join")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.white.opacity(0.85))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(.white.opacity(0.2))
+                    .clipShape(Capsule())
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(Color.accentColor)
+        }
+        .buttonStyle(.plain)
     }
 }
 #endif

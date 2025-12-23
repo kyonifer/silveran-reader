@@ -22,6 +22,7 @@ private enum ActivePlayer {
 }
 
 @MainActor
+@Observable
 public final class CarPlayCoordinator {
     public static let shared = CarPlayCoordinator()
 
@@ -369,6 +370,17 @@ public final class CarPlayCoordinator {
 
     public var activeBookId: String? {
         currentBookId
+    }
+
+    public var activeCategory: LocalMediaCategory? {
+        switch activePlayer {
+            case .audiobook:
+                return .audio
+            case .smil:
+                return .synced
+            case .none:
+                return nil
+        }
     }
 
     public func isBookCurrentlyLoaded(_ bookId: String) -> Bool {
