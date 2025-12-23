@@ -110,11 +110,13 @@ public struct iOSLibraryView: View {
                let category = CarPlayCoordinator.shared.activeCategory,
                let path = mediaViewModel.localMediaPath(for: book.id, category: category)
             {
+                let cover = mediaViewModel.coverImage(for: book, variant: .standard)
                 NavigationStack {
                     playerView(for: PlayerBookData(
                         metadata: book,
                         localMediaPath: path,
-                        category: category
+                        category: category,
+                        coverArt: cover
                     ))
                     .toolbar {
                         ToolbarItem(placement: .topBarLeading) {
