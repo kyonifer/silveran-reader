@@ -26,8 +26,8 @@ public actor CloudKitSyncActor {
 
     private static let containerIdentifier = "iCloud.com.kyonifer.SilveranReader"
 
-    private let container: CKContainer
-    private let database: CKDatabase
+    private let container: CKContainer?
+    private let database: CKDatabase?
     private let recordType = "BookProgress"
 
     private var observers: (@Sendable @MainActor () -> Void)?
@@ -37,8 +37,20 @@ public actor CloudKitSyncActor {
     private let decoder = JSONDecoder()
 
     public init() {
+        #if os(macOS)
+        // On macOS VMs, CloudKit crashes when trying to initialize CKContainer
+        var isVM: Int32 = 0
+        var size = MemoryLayout<Int32>.size
+        if sysctlbyname("kern.hv_vmm_present", &isVM, &size, nil, 0) == 0, isVM == 1 {
+            debugLog("[CloudKitSyncActor] Running in VM - CloudKit sync disabled")
+            container = nil
+            database = nil
+            return
+        }
+        #endif
+
         container = CKContainer(identifier: Self.containerIdentifier)
-        database = container.privateCloudDatabase
+        database = container?.privateCloudDatabase
         decoder.keyDecodingStrategy = .convertFromSnakeCase
 
         Task {
@@ -57,6 +69,11 @@ public actor CloudKitSyncActor {
     }
 
     private func checkAccountStatus() async {
+        guard let container = container else {
+            await updateConnectionStatus(.error("iCloud not available"))
+            return
+        }
+
         do {
             let status = try await container.accountStatus()
             switch status {
@@ -87,6 +104,11 @@ public actor CloudKitSyncActor {
         debugLog(
             "[CloudKitSyncActor] sendProgressToCloudKit: bookId=\(bookId), timestamp=\(timestamp)"
         )
+
+        guard let database = database else {
+            debugLog("[CloudKitSyncActor] sendProgressToCloudKit: iCloud not available")
+            return .noConnection
+        }
 
         if connectionStatus != .connected {
             await checkAccountStatus()
@@ -158,6 +180,11 @@ public actor CloudKitSyncActor {
     public func fetchProgress(for bookId: String) async -> FetchProgressResult {
         debugLog("[CloudKitSyncActor] fetchProgress: bookId=\(bookId)")
 
+        guard let database = database else {
+            debugLog("[CloudKitSyncActor] fetchProgress: iCloud not available")
+            return .networkError
+        }
+
         if connectionStatus != .connected {
             await checkAccountStatus()
         }
@@ -189,6 +216,11 @@ public actor CloudKitSyncActor {
 
     public func fetchAllProgress() async -> [String: CloudKitProgress]? {
         debugLog("[CloudKitSyncActor] fetchAllProgress")
+
+        guard let database = database else {
+            debugLog("[CloudKitSyncActor] fetchAllProgress: iCloud not available")
+            return nil
+        }
 
         if connectionStatus != .connected {
             await checkAccountStatus()
@@ -245,6 +277,11 @@ public actor CloudKitSyncActor {
     }
 
     public func recordCount() async -> Int {
+        guard let database = database else {
+            debugLog("[CloudKitSyncActor] recordCount: iCloud not available")
+            return 0
+        }
+
         if connectionStatus != .connected {
             await checkAccountStatus()
         }
@@ -290,6 +327,11 @@ public actor CloudKitSyncActor {
 
     public func deleteAllRecords() async -> Bool {
         debugLog("[CloudKitSyncActor] deleteAllRecords")
+
+        guard let database = database else {
+            debugLog("[CloudKitSyncActor] deleteAllRecords: iCloud not available")
+            return false
+        }
 
         if connectionStatus != .connected {
             await checkAccountStatus()
@@ -358,7 +400,7 @@ public actor CloudKitSyncActor {
                             continuation.resume(throwing: error)
                     }
                 }
-                self.database.add(operation)
+                database.add(operation)
             }
 
         } catch {
@@ -369,6 +411,11 @@ public actor CloudKitSyncActor {
 
     public func deleteProgress(for bookId: String) async -> Bool {
         debugLog("[CloudKitSyncActor] deleteProgress: bookId=\(bookId)")
+
+        guard let database = database else {
+            debugLog("[CloudKitSyncActor] deleteProgress: iCloud not available")
+            return false
+        }
 
         if connectionStatus != .connected {
             await checkAccountStatus()
