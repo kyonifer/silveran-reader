@@ -1,18 +1,16 @@
 import SwiftUI
 
 struct DebugLogView: View {
-    @State private var messages: [String] = []
-    @State private var autoScroll = true
+    @State private var logText: String = ""
+    @State private var messageCount: Int = 0
 
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("\(messages.count) messages")
+                Text("\(messageCount) messages")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
-                Toggle("Auto-scroll", isOn: $autoScroll)
-                    .toggleStyle(.checkbox)
                 Button("Refresh") {
                     loadMessages()
                 }
@@ -21,33 +19,20 @@ struct DebugLogView: View {
                     loadMessages()
                 }
                 Button("Copy All") {
-                    let text = messages.joined(separator: "\n")
                     NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(text, forType: .string)
+                    NSPasteboard.general.setString(logText, forType: .string)
                 }
             }
             .padding(8)
 
             Divider()
 
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 2) {
-                        ForEach(Array(messages.enumerated()), id: \.offset) { index, message in
-                            Text(message)
-                                .font(.system(.caption, design: .monospaced))
-                                .textSelection(.enabled)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .id(index)
-                        }
-                    }
+            ScrollView {
+                Text(logText)
+                    .font(.system(.caption, design: .monospaced))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(8)
-                }
-                .onChange(of: messages.count) { _, _ in
-                    if autoScroll, let lastIndex = messages.indices.last {
-                        proxy.scrollTo(lastIndex, anchor: .bottom)
-                    }
-                }
             }
         }
         .frame(minWidth: 600, minHeight: 400)
@@ -57,6 +42,8 @@ struct DebugLogView: View {
     }
 
     private func loadMessages() {
-        messages = DebugLogBuffer.shared.getMessages()
+        let messages = DebugLogBuffer.shared.getMessages()
+        messageCount = messages.count
+        logText = messages.joined(separator: "\n")
     }
 }

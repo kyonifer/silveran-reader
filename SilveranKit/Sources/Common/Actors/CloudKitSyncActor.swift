@@ -270,6 +270,12 @@ public actor CloudKitSyncActor {
             debugLog("[CloudKitSyncActor] fetchAllProgress: found \(progressMap.count) records")
             return progressMap
 
+        } catch let error as CKError {
+            debugLog("[CloudKitSyncActor] fetchAllProgress: CKError code=\(error.code.rawValue) - \(error.localizedDescription)")
+            if let underlyingError = error.userInfo[NSUnderlyingErrorKey] as? Error {
+                debugLog("[CloudKitSyncActor] fetchAllProgress: underlying error - \(underlyingError)")
+            }
+            return nil
         } catch {
             debugLog("[CloudKitSyncActor] fetchAllProgress: error \(error)")
             return nil
@@ -319,6 +325,9 @@ public actor CloudKitSyncActor {
 
             debugLog("[CloudKitSyncActor] recordCount: \(count) records")
             return count
+        } catch let error as CKError {
+            debugLog("[CloudKitSyncActor] recordCount: CKError code=\(error.code.rawValue) - \(error.localizedDescription)")
+            return 0
         } catch {
             debugLog("[CloudKitSyncActor] recordCount: error \(error)")
             return 0
