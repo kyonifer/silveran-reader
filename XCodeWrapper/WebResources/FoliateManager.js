@@ -48,7 +48,7 @@ const getCSS = ({
         ${backgroundColorCSS}
         ${foregroundColorCSS}
     }
-    p, li, blockquote, dd, div {
+    p, li, blockquote, dd {
         font-size: ${fontSize}px !important;
         ${fontFamilyCSS}
         line-height: ${lineSpacing} !important;
@@ -60,6 +60,14 @@ const getCSS = ({
         -webkit-hyphenate-limit-lines: 2;
         hanging-punctuation: allow-end last;
         widows: 2;
+        word-spacing: ${wordSpacing}em !important;
+        letter-spacing: ${letterSpacing}em !important;
+        ${foregroundColorCSS}
+    }
+    div {
+        font-size: ${fontSize}px !important;
+        ${fontFamilyCSS}
+        line-height: ${lineSpacing} !important;
         word-spacing: ${wordSpacing}em !important;
         letter-spacing: ${letterSpacing}em !important;
         ${foregroundColorCSS}
