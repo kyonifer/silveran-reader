@@ -2001,7 +2001,7 @@ private final class StorytellerDownloadDelegate: NSObject, URLSessionDownloadDel
     }
 
     @objc(urlSession:downloadTask:didReceiveResponse:completionHandler:)
-    func urlSession(
+    private func urlSession(
         _ session: URLSession,
         downloadTask: URLSessionDownloadTask,
         didReceive response: URLResponse,
@@ -2226,8 +2226,7 @@ func logDetailedDecodingError(_ error: DecodingError, data: Data) {
 }
 
 func printJSONSnippet(data: Data, codingPath: [CodingKey]) {
-    guard let jsonString = String(data: data, encoding: .utf8),
-        let jsonData = try? JSONSerialization.jsonObject(with: data)
+    guard let jsonData = try? JSONSerialization.jsonObject(with: data)
     else {
         debugLog("[StorytellerActor] Could not parse JSON for snippet")
         return

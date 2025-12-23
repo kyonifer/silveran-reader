@@ -106,7 +106,10 @@ public final class LocalLibraryManager: Sendable {
     }
 
     public func isReadalongEpub(at epubURL: URL) -> Bool {
-        guard let archive = try? Archive(url: epubURL, accessMode: .read) else {
+        let archive: Archive
+        do {
+            archive = try Archive(url: epubURL, accessMode: .read)
+        } catch {
             return false
         }
 
@@ -383,7 +386,10 @@ public final class LocalLibraryManager: Sendable {
     }
 
     public func extractCoverFromEpub(at epubURL: URL) -> Data? {
-        guard let archive = try? Archive(url: epubURL, accessMode: .read) else {
+        let archive: Archive
+        do {
+            archive = try Archive(url: epubURL, accessMode: .read)
+        } catch {
             return nil
         }
 

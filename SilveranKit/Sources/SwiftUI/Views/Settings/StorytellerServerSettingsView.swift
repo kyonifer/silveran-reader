@@ -286,7 +286,7 @@ public struct StorytellerServerSettingsView: View {
         do {
             try await LocalMediaActor.shared.removeAllStorytellerData()
             try await AuthenticationActor.shared.deleteCredentials()
-            await StorytellerActor.shared.logout()
+            _ = await StorytellerActor.shared.logout()
 
             await MainActor.run {
                 serverURL = ""

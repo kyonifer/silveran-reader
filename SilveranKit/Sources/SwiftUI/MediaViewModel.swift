@@ -247,7 +247,7 @@ public final class MediaViewModel {
 
         metadataRefreshTask = Task { [weak self] in
             while true {
-                guard let self else { return }
+                guard self != nil else { return }
 
                 let config = await SettingsActor.shared.config
                 let refreshInterval = config.sync.metadataRefreshIntervalSeconds

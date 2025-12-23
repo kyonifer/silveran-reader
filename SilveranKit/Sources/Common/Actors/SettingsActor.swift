@@ -297,7 +297,7 @@ public actor SettingsActor {
         let observersList = Array(observers.values)
         Task { @MainActor in
             for observer in observersList {
-                await observer()
+                observer()
             }
         }
     }

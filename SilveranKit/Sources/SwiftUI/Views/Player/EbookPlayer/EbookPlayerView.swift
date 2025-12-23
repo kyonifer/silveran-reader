@@ -580,7 +580,7 @@ private struct TitleBarConfigurator: NSViewRepresentable {
     }
 
     class Coordinator: NSObject {
-        @objc func handleDoubleClick(_ gesture: NSClickGestureRecognizer) {
+        @MainActor @objc func handleDoubleClick(_ gesture: NSClickGestureRecognizer) {
             guard let window = gesture.view?.window,
                 let contentView = window.contentView,
                 let themeFrame = contentView.superview
