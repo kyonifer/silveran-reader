@@ -217,12 +217,17 @@ struct MediaGridInfoSidebar: View {
     }
 
     private func formatDate(_ isoString: String) -> String {
-        let inputFormatter = DateFormatter()
-        inputFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
-        inputFormatter.timeZone = TimeZone(identifier: "UTC")
-        inputFormatter.locale = Locale(identifier: "en_US_POSIX")
+        let iso8601Formatter = ISO8601DateFormatter()
+        iso8601Formatter.formatOptions = [.withInternetDateTime]
 
-        guard let date = inputFormatter.date(from: isoString) else {
+        let legacyFormatter = DateFormatter()
+        legacyFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        legacyFormatter.timeZone = TimeZone(identifier: "UTC")
+        legacyFormatter.locale = Locale(identifier: "en_US_POSIX")
+
+        guard let date = iso8601Formatter.date(from: isoString)
+            ?? legacyFormatter.date(from: isoString)
+        else {
             return "Parse failed: \(isoString)"
         }
 
