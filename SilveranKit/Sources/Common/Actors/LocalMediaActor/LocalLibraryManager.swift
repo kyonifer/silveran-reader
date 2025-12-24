@@ -91,7 +91,7 @@ public final class LocalLibraryManager: Sendable {
                         allPaths[metadata.uuid] = mediaPaths
 
                         debugLog(
-                            "[LocalLibraryManager] Discovered local file: \(fileURL.lastPathComponent) (readalong: \(metadata.hasAvailableReadaloud))"
+                            "[LocalLibraryManager] Discovered local file: \(fileURL.lastPathComponent) (readaloud: \(metadata.hasAvailableReadaloud))"
                         )
                     } catch {
                         debugLog(
@@ -105,7 +105,7 @@ public final class LocalLibraryManager: Sendable {
         return ScanResult(metadata: allMetadata, paths: allPaths)
     }
 
-    public func isReadalongEpub(at epubURL: URL) -> Bool {
+    public func isReadaloudEpub(at epubURL: URL) -> Bool {
         let archive: Archive
         do {
             archive = try Archive(url: epubURL, accessMode: .read)
@@ -137,7 +137,7 @@ public final class LocalLibraryManager: Sendable {
         }
 
         let parsed = parseOPF(opfString)
-        let isReadalong = isReadalongEpub(at: epubURL)
+        let isReadaloud = isReadaloudEpub(at: epubURL)
 
         let bookUUID = UUID().uuidString
         let title = parsed.title ?? epubURL.deletingPathExtension().lastPathComponent
@@ -160,7 +160,7 @@ public final class LocalLibraryManager: Sendable {
         let ebookAsset: BookAsset?
         let readaloudAsset: BookReadaloud?
 
-        if isReadalong {
+        if isReadaloud {
             ebookAsset = nil
             readaloudAsset = BookReadaloud(
                 uuid: bookUUID,

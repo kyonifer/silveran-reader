@@ -441,11 +441,11 @@ struct WatchBookSearchSheet: View {
             } message: {
                 if unsupportedCategory == .ebook {
                     Text(
-                        "Ebook playback on Apple Watch is not yet supported. Only readalong books can be transferred."
+                        "Ebook playback on Apple Watch is not yet supported. Only readaloud books can be transferred."
                     )
                 } else {
                     Text(
-                        "Audiobook playback on Apple Watch is not yet supported. Only readalong books can be transferred."
+                        "Audiobook playback on Apple Watch is not yet supported. Only readaloud books can be transferred."
                     )
                 }
             }
@@ -506,7 +506,7 @@ struct BookSearchRow: View {
                         onSelect(.synced)
                     } label: {
                         Label(
-                            syncedOnWatch ? "On Watch" : "Readalong",
+                            syncedOnWatch ? "On Watch" : "Readaloud",
                             systemImage: syncedOnWatch ? "checkmark" : "waveform"
                         )
                         .font(.caption)

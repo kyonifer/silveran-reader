@@ -7,7 +7,7 @@ import UIKit
 class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     private var interfaceController: CPInterfaceController?
     private var isLoadingBook = false
-    private var readalongListTemplate: CPListTemplate?
+    private var readaloudListTemplate: CPListTemplate?
     private var audiobookListTemplate: CPListTemplate?
     private var lastKnownBookId: String?
     private var lastKnownIsPlaying: Bool = false
@@ -81,9 +81,9 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
 
     @MainActor
     private func refreshListTemplates() async {
-        if let readalongTemplate = readalongListTemplate {
+        if let readaloudTemplate = readaloudListTemplate {
             let sections = await buildListSections(category: .synced)
-            readalongTemplate.updateSections(sections)
+            readaloudTemplate.updateSections(sections)
         }
         if let audiobookTemplate = audiobookListTemplate {
             let sections = await buildListSections(category: .audio)
@@ -140,12 +140,12 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
 
     @MainActor
     private func buildTabBarTemplate() async -> CPTabBarTemplate {
-        let readalongTab = await buildListTemplate(
-            title: "Readalongs",
+        let readaloudTab = await buildListTemplate(
+            title: "Readalouds",
             category: .synced,
             systemImage: "book.and.wrench"
         )
-        readalongListTemplate = readalongTab
+        readaloudListTemplate = readaloudTab
 
         let audiobooksTab = await buildListTemplate(
             title: "Audiobooks",
@@ -154,7 +154,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
         )
         audiobookListTemplate = audiobooksTab
 
-        return CPTabBarTemplate(templates: [readalongTab, audiobooksTab])
+        return CPTabBarTemplate(templates: [readaloudTab, audiobooksTab])
     }
 
     @MainActor

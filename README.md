@@ -1,6 +1,6 @@
 # Silveran Reader
 
-A book reading app for ebooks, audiobooks, and readalong books, with tight [Storyteller](https://gitlab.com/storyteller-platform/storyteller) integration.
+A book reading app for ebooks, audiobooks, and readaloud books, with tight [Storyteller](https://gitlab.com/storyteller-platform/storyteller) integration.
 
 ## Implemented Features
 
@@ -40,7 +40,7 @@ A book reading app for ebooks, audiobooks, and readalong books, with tight [Stor
 
 ## Design Goals
 
-- First-class support for reading ebooks with synced audio narration (readalong books)
+- First-class support for reading ebooks with synced audio narration (readaloud books)
 - Native look and feel, especially on desktop (macOS only currently)
 - Support full integration into a [storyteller server](https://storyteller-platform.gitlab.io/storyteller/), including progress sync
 - Support usage as a standalone desktop app

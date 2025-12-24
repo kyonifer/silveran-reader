@@ -290,7 +290,7 @@ class EbookPlayerViewModel {
         }
 
         await AudiobookActor.shared.cleanup()
-        debugLog("[EbookPlayerViewModel] Cleaned up AudiobookActor before loading readalong")
+        debugLog("[EbookPlayerViewModel] Cleaned up AudiobookActor before loading readaloud")
 
         do {
             try await SMILPlayerActor.shared.loadBook(
