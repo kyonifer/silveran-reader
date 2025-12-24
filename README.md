@@ -32,6 +32,12 @@ A book reading app for ebooks, audiobooks, and readalong books, with tight [Stor
 |---------|--------|--------|
 | ![Library](https://raw.githubusercontent.com/kyonifer/s-r-assets/screenshots/screenshots/ios_library.png) | ![Book 1](https://raw.githubusercontent.com/kyonifer/s-r-assets/screenshots/screenshots/ios_book1.png) | ![Book 2](https://raw.githubusercontent.com/kyonifer/s-r-assets/screenshots/screenshots/ios_book2.png) |
 
+### watchOS
+
+| Main | Library | Player | Readaloud |
+|------|---------|--------|-----------|
+| ![Main](https://raw.githubusercontent.com/kyonifer/s-r-assets/screenshots/screenshots/watch_main.png) | ![Library](https://raw.githubusercontent.com/kyonifer/s-r-assets/screenshots/screenshots/watch_library.png) | ![Player](https://raw.githubusercontent.com/kyonifer/s-r-assets/screenshots/screenshots/watch_player.png) | ![Readaloud](https://raw.githubusercontent.com/kyonifer/s-r-assets/screenshots/screenshots/watch_readaloud.png) |
+
 ## Design Goals
 
 - First-class support for reading ebooks with synced audio narration (readalong books)
