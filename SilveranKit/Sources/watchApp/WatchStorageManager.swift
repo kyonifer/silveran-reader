@@ -172,6 +172,48 @@ public final class WatchStorageManager: Sendable {
         print("[WatchStorageManager] Cancelled transfer for \(uuid)_\(category)")
     }
 
+    public func saveDownloadedBook(
+        from sourceURL: URL,
+        uuid: String,
+        title: String,
+        category: String,
+        fileExtension: String
+    ) -> Bool {
+        let bookDir = getBookDirectory(uuid: uuid, category: category)
+
+        do {
+            try fileManager.createDirectory(at: bookDir, withIntermediateDirectories: true)
+
+            let fileName = "book.\(fileExtension)"
+            let destURL = bookDir.appendingPathComponent(fileName)
+
+            if fileManager.fileExists(atPath: destURL.path) {
+                try fileManager.removeItem(at: destURL)
+            }
+
+            try fileManager.copyItem(at: sourceURL, to: destURL)
+
+            let fileSize = (try? fileManager.attributesOfItem(atPath: destURL.path)[.size] as? Int64) ?? 0
+            print("[WatchStorageManager] Saved book: \(fileName), size: \(fileSize) bytes")
+
+            let entry = WatchBookEntry(
+                uuid: uuid,
+                title: title,
+                authors: [],
+                category: category,
+                addedAt: Date()
+            )
+            saveBookEntry(entry)
+
+            try? fileManager.removeItem(at: sourceURL)
+
+            return true
+        } catch {
+            print("[WatchStorageManager] Failed to save downloaded book: \(error)")
+            return false
+        }
+    }
+
     public func saveBookEntry(_ entry: WatchBookEntry) {
         var entries = loadAllBooks()
         entries.removeAll { $0.uuid == entry.uuid && $0.category == entry.category }

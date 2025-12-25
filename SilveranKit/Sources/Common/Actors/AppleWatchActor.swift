@@ -432,6 +432,39 @@ public actor AppleWatchActor: NSObject {
         )
     }
 
+    public func sendCredentialsToWatch() async {
+        guard let session, session.activationState == .activated, session.isReachable else {
+            debugLog("[AppleWatchActor] Cannot send credentials - watch not reachable")
+            return
+        }
+
+        do {
+            guard let credentials = try await AuthenticationActor.shared.loadCredentials() else {
+                debugLog("[AppleWatchActor] No credentials to send to watch")
+                return
+            }
+
+            let message: [String: Any] = [
+                "type": "credentialsSync",
+                "url": credentials.url,
+                "username": credentials.username,
+                "password": credentials.password,
+            ]
+
+            session.sendMessage(
+                message,
+                replyHandler: { _ in
+                    debugLog("[AppleWatchActor] Credentials sent to watch successfully")
+                },
+                errorHandler: { error in
+                    debugLog("[AppleWatchActor] Failed to send credentials to watch: \(error)")
+                }
+            )
+        } catch {
+            debugLog("[AppleWatchActor] Failed to load credentials for watch sync: \(error)")
+        }
+    }
+
     nonisolated private func triggerLibraryRefresh() {
         Task {
             await requestWatchLibrary()
@@ -725,6 +758,23 @@ extension AppleWatchActor: WCSessionDelegate {
                     }
                 }
                 replyHandler(["status": "ok"])
+            case "requestCredentials":
+                let sendableReply = SendableReplyHandler(replyHandler)
+                Task {
+                    do {
+                        if let credentials = try await AuthenticationActor.shared.loadCredentials() {
+                            sendableReply.reply([
+                                "url": credentials.url,
+                                "username": credentials.username,
+                                "password": credentials.password,
+                            ])
+                        } else {
+                            sendableReply.reply(["error": "No credentials configured"])
+                        }
+                    } catch {
+                        sendableReply.reply(["error": "Failed to load credentials"])
+                    }
+                }
             default:
                 replyHandler(["error": "Unhandled message type"])
         }

@@ -3,7 +3,7 @@ import Foundation
 struct AccessToken: Decodable {
     let accessToken: String
     let tokenType: String
-    let expiresIn: Int?
+    let expiresIn: Int64?
 }
 struct StorytellerCollectionUser: Codable {
     let id: String

@@ -34,6 +34,14 @@ public actor StorytellerActor {
         apiBaseURL != nil && username != nil && password != nil
     }
 
+    public var currentApiBaseURL: URL? {
+        apiBaseURL
+    }
+
+    public var currentAccessToken: String? {
+        accessToken?.accessToken
+    }
+
     private let urlSession: URLSession
     private let downloadDelegate: StorytellerDownloadDelegate
     private let decoder: JSONDecoder

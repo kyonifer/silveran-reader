@@ -11,9 +11,14 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
     nonisolated(unsafe) var onTransferComplete: (() -> Void)?
     nonisolated(unsafe) var onBookDeleted: (() -> Void)?
     nonisolated(unsafe) var onPlaybackStateReceived: ((RemotePlaybackState?) -> Void)?
+    nonisolated(unsafe) var onCredentialsReceived: ((String, String, String) -> Void)?
 
     private override init() {
         super.init()
+    }
+
+    public var isPhoneReachable: Bool {
+        session?.isReachable ?? false
     }
 
     public func activate() {
@@ -64,6 +69,8 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
             case "playbackState":
                 handlePlaybackState(message)
                 replyHandler?(["status": "ok"])
+            case "credentialsSync":
+                handleCredentialsSync(message, replyHandler: replyHandler)
             default:
                 replyHandler?(["error": "Unhandled message type: \(type)"])
         }
@@ -112,6 +119,76 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
 
         WatchStorageManager.shared.cancelChunkedTransfer(uuid: uuid, category: category)
         replyHandler?(["status": "ok"])
+    }
+
+    private func handleCredentialsSync(
+        _ message: [String: Any],
+        replyHandler: (([String: Any]) -> Void)?
+    ) {
+        guard let url = message["url"] as? String,
+            let username = message["username"] as? String,
+            let password = message["password"] as? String
+        else {
+            replyHandler?(["error": "Missing credentials fields"])
+            return
+        }
+
+        print("[WatchSessionManager] Received credentials from iPhone")
+
+        Task {
+            do {
+                try await AuthenticationActor.shared.saveCredentials(
+                    url: url,
+                    username: username,
+                    password: password
+                )
+                print("[WatchSessionManager] Credentials saved to keychain")
+                onCredentialsReceived?(url, username, password)
+            } catch {
+                print("[WatchSessionManager] Failed to save credentials: \(error)")
+            }
+        }
+
+        replyHandler?(["status": "ok"])
+    }
+
+    public func requestCredentialsFromPhone() {
+        guard let session, session.isReachable else {
+            print("[WatchSessionManager] iPhone not reachable for credentials request")
+            return
+        }
+
+        let message: [String: Any] = ["type": "requestCredentials"]
+        session.sendMessage(
+            message,
+            replyHandler: { [weak self] reply in
+                guard let url = reply["url"] as? String,
+                    let username = reply["username"] as? String,
+                    let password = reply["password"] as? String
+                else {
+                    print("[WatchSessionManager] Invalid credentials reply from iPhone")
+                    return
+                }
+
+                let callback = self?.onCredentialsReceived
+                Task { @MainActor in
+                    do {
+                        try await AuthenticationActor.shared.saveCredentials(
+                            url: url,
+                            username: username,
+                            password: password
+                        )
+                        print("[WatchSessionManager] Credentials received and saved")
+                        callback?(url, username, password)
+                    } catch {
+                        print("[WatchSessionManager] Failed to save received credentials: \(error)")
+                    }
+                }
+            },
+            errorHandler: { error in
+                print("[WatchSessionManager] Failed to request credentials: \(error)")
+            }
+        )
     }
 
     private func handleLibraryRequest(replyHandler: (([String: Any]) -> Void)?) {
@@ -268,10 +345,6 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
                 print("[WatchSessionManager] Failed to send playback command: \(error)")
             }
         )
-    }
-
-    public var isPhoneReachable: Bool {
-        session?.isReachable ?? false
     }
 }
 

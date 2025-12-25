@@ -24,7 +24,7 @@ struct WatchModeSelectionView: View {
                 }
 
                 NavigationLink {
-                    WatchLibraryView()
+                    WatchOfflineMenuView()
                 } label: {
                     Label {
                         VStack(alignment: .leading, spacing: 2) {

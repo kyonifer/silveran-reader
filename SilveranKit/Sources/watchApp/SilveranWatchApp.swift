@@ -1,3 +1,4 @@
+import SilveranKitCommon
 import SwiftUI
 import WatchConnectivity
 
@@ -13,6 +14,30 @@ struct SilveranWatchApp: App {
         WindowGroup {
             ContentView()
                 .environment(watchViewModel)
+                .task {
+                    await initializeStorytellerConnection()
+                }
+        }
+    }
+
+    private func initializeStorytellerConnection() async {
+        do {
+            if let credentials = try await AuthenticationActor.shared.loadCredentials() {
+                let success = await StorytellerActor.shared.setLogin(
+                    baseURL: credentials.url,
+                    username: credentials.username,
+                    password: credentials.password
+                )
+                if success {
+                    debugLog("[WatchApp] Storyteller connected successfully")
+                } else {
+                    debugLog("[WatchApp] Storyteller connection failed")
+                }
+            } else {
+                debugLog("[WatchApp] No Storyteller credentials configured")
+            }
+        } catch {
+            debugLog("[WatchApp] Failed to load Storyteller credentials: \(error)")
         }
     }
 }

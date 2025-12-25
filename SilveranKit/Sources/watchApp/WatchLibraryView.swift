@@ -13,7 +13,7 @@ struct WatchLibraryView: View {
                 bookList
             }
         }
-        .navigationTitle("Library")
+        .navigationTitle("Available")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
@@ -29,20 +29,21 @@ struct WatchLibraryView: View {
     }
 
     private var emptyState: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 10) {
             Image(systemName: "books.vertical")
-                .font(.system(size: 32))
+                .font(.system(size: 28))
                 .foregroundStyle(.secondary)
 
             Text("No Books")
-                .font(.headline)
+                .font(.caption)
 
-            Text("Send books from the\nMore menu of the iPhone app")
+            Text("Download from server\nor transfer from iPhone")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .padding()
+        .padding(.horizontal)
     }
 
     private var bookList: some View {
