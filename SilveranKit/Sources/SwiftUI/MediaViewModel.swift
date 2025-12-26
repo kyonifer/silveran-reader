@@ -279,8 +279,6 @@ public final class MediaViewModel {
                         "[MediaViewModel] Skipping Storyteller refresh - not connected to server"
                     )
                 }
-
-                await ProgressSyncActor.shared.reconcileWithCloudKit()
             }
         }
     }

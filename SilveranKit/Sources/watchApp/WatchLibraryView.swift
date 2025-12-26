@@ -3,28 +3,102 @@ import SwiftUI
 
 struct WatchLibraryView: View {
     @Environment(WatchViewModel.self) private var viewModel
-    @State private var showSyncView = false
+    @State private var isSyncing = false
+    @State private var syncResult: SyncResult?
 
-    var body: some View {
-        Group {
-            if viewModel.books.isEmpty {
-                emptyState
-            } else {
-                bookList
+    enum SyncResult {
+        case success(synced: Int)
+        case failure(failed: Int)
+
+        var message: String {
+            switch self {
+            case .success(let count):
+                return count > 0 ? "Progress synced for \(count) book\(count == 1 ? "" : "s")" : "Reading progress up to date"
+            case .failure(let count):
+                return "Failed to sync \(count) book\(count == 1 ? "" : "s")"
             }
         }
-        .navigationTitle("Available")
+
+        var isSuccess: Bool {
+            if case .success = self { return true }
+            return false
+        }
+    }
+
+    var body: some View {
+        ZStack(alignment: .top) {
+            Group {
+                if viewModel.books.isEmpty {
+                    emptyState
+                } else {
+                    bookList
+                }
+            }
+
+            if let result = syncResult {
+                syncBanner(result)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .navigationTitle("Read Books")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
-                    showSyncView = true
+                    Task { await performSync() }
                 } label: {
-                    Image(systemName: "arrow.triangle.2.circlepath.icloud")
+                    if isSyncing {
+                        ProgressView()
+                            .progressViewStyle(.circular)
+                    } else {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                    }
                 }
+                .disabled(isSyncing)
             }
         }
-        .sheet(isPresented: $showSyncView) {
-            WatchCloudKitSyncView()
+    }
+
+    private func syncBanner(_ result: SyncResult) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: result.isSuccess ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                .font(.caption2)
+            Text(result.message)
+                .font(.caption2)
+        }
+        .foregroundStyle(result.isSuccess ? .green : .orange)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(.ultraThinMaterial)
+        )
+        .padding(.top, 4)
+    }
+
+    private func performSync() async {
+        isSyncing = true
+        syncResult = nil
+
+        let result = await ProgressSyncActor.shared.syncPendingQueue()
+
+        if let library = await StorytellerActor.shared.fetchLibraryInformation() {
+            try? await LocalMediaActor.shared.updateStorytellerMetadata(library)
+        }
+
+        viewModel.loadBooks()
+
+        withAnimation {
+            if result.failed > 0 {
+                syncResult = .failure(failed: result.failed)
+            } else {
+                syncResult = .success(synced: result.synced)
+            }
+        }
+        isSyncing = false
+
+        try? await Task.sleep(for: .seconds(3))
+        withAnimation {
+            syncResult = nil
         }
     }
 
@@ -49,36 +123,29 @@ struct WatchLibraryView: View {
     private var bookList: some View {
         List {
             ForEach(viewModel.books) { book in
-                if book.category == "synced" {
-                    NavigationLink {
-                        WatchPlayerView(book: book)
-                    } label: {
-                        BookRow(book: book)
-                    }
-                } else {
-                    NavigationLink {
-                        BookDetailView(book: book)
-                    } label: {
-                        BookRow(book: book)
-                    }
+                NavigationLink {
+                    WatchPlayerView(book: book)
+                } label: {
+                    LibraryBookRow(book: book)
                 }
             }
             .onDelete { indexSet in
                 for index in indexSet {
-                    viewModel.deleteBook(viewModel.books[index])
+                    let book = viewModel.books[index]
+                    viewModel.deleteBook(book, category: .synced)
                 }
             }
         }
     }
 }
 
-struct BookRow: View {
-    let book: WatchBookEntry
+private struct LibraryBookRow: View {
+    let book: BookMetadata
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 4) {
-                Image(systemName: categoryIcon)
+                Image(systemName: "waveform")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                 Text(book.title)
@@ -86,63 +153,13 @@ struct BookRow: View {
                     .lineLimit(2)
             }
 
-            if !book.authorDisplay.isEmpty {
-                Text(book.authorDisplay)
+            if let author = book.authors?.first?.name {
+                Text(author)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
         }
         .padding(.vertical, 2)
-    }
-
-    private var categoryIcon: String {
-        switch book.category {
-            case "ebook":
-                return "book.closed"
-            case "synced":
-                return "waveform"
-            case "audio":
-                return "headphones"
-            default:
-                return "doc"
-        }
-    }
-}
-
-struct BookDetailView: View {
-    let book: WatchBookEntry
-    @Environment(WatchViewModel.self) private var viewModel
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                Text(book.title)
-                    .font(.headline)
-
-                if !book.authorDisplay.isEmpty {
-                    Text(book.authorDisplay)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Divider()
-
-                Text("EPUB reading not yet supported on Apple Watch")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Button(role: .destructive) {
-                    viewModel.deleteBook(book)
-                } label: {
-                    Label("Delete", systemImage: "trash")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-            }
-            .padding()
-        }
-        .navigationTitle("Book")
-        .navigationBarTitleDisplayMode(.inline)
     }
 }

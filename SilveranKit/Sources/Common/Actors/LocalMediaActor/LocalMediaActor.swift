@@ -701,6 +701,40 @@ public actor LocalMediaActor: GlobalActor {
         try await filesystem.ensureLocalStorageDirectories()
     }
 
+    /// Import a pre-downloaded file into LMA storage. Used by watch for background downloads
+    /// and iPhone transfers. Uses moveItem (not copy) to avoid doubling storage usage.
+    public func importDownloadedFile(
+        from tempURL: URL,
+        metadata: BookMetadata,
+        category: LocalMediaCategory,
+        filename: String
+    ) async throws {
+        try await filesystem.ensureLocalStorageDirectories()
+
+        let destinationDirectory = await filesystem.getMediaDirectory(
+            domain: .storyteller,
+            category: category,
+            bookName: metadata.title,
+            uuidIdentifier: metadata.uuid
+        )
+        let bookRoot = destinationDirectory.deletingLastPathComponent()
+        try await filesystem.ensureDirectoryExists(at: bookRoot)
+        try await filesystem.ensureDirectoryExists(at: destinationDirectory)
+
+        let fm = FileManager.default
+        let destinationURL = destinationDirectory.appendingPathComponent(filename)
+
+        if fm.fileExists(atPath: destinationURL.path) {
+            try fm.removeItem(at: destinationURL)
+        }
+
+        try fm.moveItem(at: tempURL, to: destinationURL)
+
+        debugLog("[LMA] importDownloadedFile: moved \(filename) to \(destinationURL.path)")
+
+        try await scanForMedia()
+    }
+
     public func removeAllStorytellerData() async throws {
         try await filesystem.removeAllStorytellerData()
 

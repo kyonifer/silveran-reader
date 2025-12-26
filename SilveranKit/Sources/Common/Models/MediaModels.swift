@@ -423,10 +423,9 @@ public struct PendingProgressSync: Codable, Sendable, Hashable {
     public let queuedAt: Date
     public var attemptCount: Int
     public var syncedToStoryteller: Bool
-    public var syncedToCloudKit: Bool
 
     public var isFullySynced: Bool {
-        syncedToStoryteller && syncedToCloudKit
+        syncedToStoryteller
     }
 
     public init(
@@ -435,8 +434,7 @@ public struct PendingProgressSync: Codable, Sendable, Hashable {
         timestamp: Double,
         queuedAt: Date = Date(),
         attemptCount: Int = 0,
-        syncedToStoryteller: Bool = false,
-        syncedToCloudKit: Bool = false
+        syncedToStoryteller: Bool = false
     ) {
         self.bookId = bookId
         self.locator = locator
@@ -444,7 +442,6 @@ public struct PendingProgressSync: Codable, Sendable, Hashable {
         self.queuedAt = queuedAt
         self.attemptCount = attemptCount
         self.syncedToStoryteller = syncedToStoryteller
-        self.syncedToCloudKit = syncedToCloudKit
     }
 }
 

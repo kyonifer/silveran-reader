@@ -6,6 +6,7 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
     public static let shared = WatchSessionManager()
 
     private var session: WCSession?
+    nonisolated(unsafe) private var cachedBookInfos: [WatchBookInfoResponse] = []
 
     nonisolated(unsafe) var onTransferProgress: ((String, Int, Int) -> Void)?
     nonisolated(unsafe) var onTransferComplete: (() -> Void)?
@@ -15,6 +16,21 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
 
     private override init() {
         super.init()
+    }
+
+    public func refreshCachedBooks() {
+        Task {
+            let books = await LocalMediaActor.shared.localStorytellerMetadata
+            cachedBookInfos = books.map { book in
+                WatchBookInfoResponse(
+                    id: book.uuid,
+                    title: book.title,
+                    authorNames: book.authors?.compactMap { $0.name } ?? [],
+                    category: "synced",
+                    sizeBytes: 0
+                )
+            }
+        }
     }
 
     public var isPhoneReachable: Bool {
@@ -27,6 +43,7 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
         wcSession.delegate = self
         wcSession.activate()
         session = wcSession
+        refreshCachedBooks()
     }
 
     public func session(
@@ -95,14 +112,21 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
         replyHandler: (([String: Any]) -> Void)?
     ) {
         guard let uuid = message["uuid"] as? String,
-            let category = message["category"] as? String
+            let categoryString = message["category"] as? String
         else {
             replyHandler?(["error": "Missing uuid or category"])
             return
         }
 
-        WatchStorageManager.shared.deleteBook(uuid: uuid, category: category)
-        onBookDeleted?()
+        let category: LocalMediaCategory = categoryString == "synced" ? .synced : .ebook
+
+        Task {
+            try? await LocalMediaActor.shared.deleteMedia(for: uuid, category: category)
+            refreshCachedBooks()
+            await MainActor.run {
+                onBookDeleted?()
+            }
+        }
         replyHandler?(["status": "ok"])
     }
 
@@ -192,22 +216,8 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
     }
 
     private func handleLibraryRequest(replyHandler: (([String: Any]) -> Void)?) {
-        let books = WatchStorageManager.shared.loadAllBooks()
-        let bookInfos = books.map { book in
-            WatchBookInfoResponse(
-                id: book.uuid,
-                title: book.title,
-                authorNames: book.authors,
-                category: book.category,
-                sizeBytes: WatchStorageManager.shared.getBookSize(
-                    uuid: book.uuid,
-                    category: book.category
-                )
-            )
-        }
-
         do {
-            let data = try JSONEncoder().encode(bookInfos)
+            let data = try JSONEncoder().encode(cachedBookInfos)
             replyHandler?(["books": data])
         } catch {
             replyHandler?(["error": "Failed to encode library"])
@@ -241,7 +251,7 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
             "[WatchSessionManager] Received chunk \(chunkMetadata.chunkIndex + 1)/\(chunkMetadata.totalChunks) for: \(chunkMetadata.title) [\(chunkMetadata.category)]"
         )
 
-        let isComplete = WatchStorageManager.shared.receiveChunk(
+        let result = WatchStorageManager.shared.receiveChunk(
             from: file.fileURL,
             metadata: chunkMetadata
         )
@@ -252,12 +262,74 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
             chunkMetadata.totalChunks
         )
 
-        if isComplete {
+        if result.isComplete, let manifest = result.manifest {
             print(
                 "[WatchSessionManager] All chunks received for: \(chunkMetadata.title) [\(chunkMetadata.category)]"
             )
+
+            Task {
+                await importTransferredBook(manifest: manifest)
+            }
+
             onTransferComplete?()
             notifyPhone(bookUUID: chunkMetadata.uuid, category: chunkMetadata.category)
+        }
+    }
+
+    private func importTransferredBook(manifest: TransferManifest) async {
+        guard let tempURL = WatchStorageManager.shared.assembleChunksToTempFile(manifest: manifest) else {
+            print("[WatchSessionManager] Failed to assemble chunks")
+            return
+        }
+
+        let category: LocalMediaCategory = manifest.category == "synced" ? .synced : .ebook
+
+        let authors: [BookCreator] = manifest.authors.map { name in
+            BookCreator(
+                uuid: nil,
+                id: nil,
+                name: name,
+                fileAs: nil,
+                role: nil,
+                createdAt: nil,
+                updatedAt: nil
+            )
+        }
+
+        let bookMetadata = BookMetadata(
+            uuid: manifest.uuid,
+            title: manifest.title,
+            subtitle: nil,
+            description: nil,
+            language: nil,
+            createdAt: nil,
+            updatedAt: nil,
+            publicationDate: nil,
+            authors: authors,
+            narrators: nil,
+            creators: nil,
+            series: nil,
+            tags: nil,
+            collections: nil,
+            ebook: nil,
+            audiobook: nil,
+            readaloud: nil,
+            status: nil,
+            position: nil
+        )
+
+        do {
+            try await LocalMediaActor.shared.importDownloadedFile(
+                from: tempURL,
+                metadata: bookMetadata,
+                category: category,
+                filename: "book.\(manifest.fileExtension)"
+            )
+            print("[WatchSessionManager] Imported book to LMA: \(manifest.title)")
+            refreshCachedBooks()
+        } catch {
+            print("[WatchSessionManager] Failed to import book to LMA: \(error)")
+            try? FileManager.default.removeItem(at: tempURL)
         }
     }
 

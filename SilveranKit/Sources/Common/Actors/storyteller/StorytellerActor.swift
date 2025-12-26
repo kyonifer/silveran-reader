@@ -1682,6 +1682,9 @@ public actor StorytellerActor {
         }
 
         accessToken = nil
+        username = nil
+        password = nil
+        self.apiBaseURL = nil
         libraryMetadata.removeAll()
         await updateConnectionStatus(.disconnected)
         monitoringTask?.cancel()

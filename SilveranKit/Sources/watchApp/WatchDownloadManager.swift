@@ -6,19 +6,15 @@ public actor WatchDownloadManager {
     public static let shared = WatchDownloadManager()
 
     private var backgroundSession: URLSession
-    private var activeDownloads: [String: DownloadState] = [:]
+    private var activeDownloads: [String: DownloadInfo] = [:]
     private var activeTasks: [String: URLSessionDownloadTask] = [:]
     private var progressHandlers: [String: @Sendable (Double) -> Void] = [:]
     private var bytesHandlers: [String: @Sendable (Int64, Int64) -> Void] = [:]
     private var completionHandlers: [String: @Sendable (Bool) -> Void] = [:]
 
-    private struct DownloadState: Codable {
-        let bookId: String
-        let title: String
-        let format: String
-        let category: String
-        var resumeData: Data?
-        var isComplete: Bool = false
+    private struct DownloadInfo {
+        let metadata: BookMetadata
+        let category: LocalMediaCategory
     }
 
     private init() {
@@ -67,7 +63,7 @@ public actor WatchDownloadManager {
         bytesHandler: (@Sendable (Int64, Int64) -> Void)? = nil
     ) async {
         let formatString = book.hasAvailableReadaloud ? "readaloud" : "ebook"
-        let category = book.hasAvailableReadaloud ? "synced" : "ebook"
+        let category: LocalMediaCategory = book.hasAvailableReadaloud ? .synced : .ebook
 
         if let existingTask = activeTasks[book.uuid] {
             debugLog("[WatchDownloadManager] Cancelling existing task for: \(book.title)")
@@ -107,19 +103,13 @@ public actor WatchDownloadManager {
         request.setValue("application/octet-stream", forHTTPHeaderField: "Accept")
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
 
-        let state = DownloadState(
-            bookId: book.uuid,
-            title: book.title,
-            format: formatString,
-            category: category
-        )
-        activeDownloads[book.uuid] = state
-        persistDownloads()
+        let downloadInfo = DownloadInfo(metadata: book, category: category)
+        activeDownloads[book.uuid] = downloadInfo
 
         WatchDownloadDelegate.shared.registerDownload(
             bookId: book.uuid,
             title: book.title,
-            category: category
+            category: category.rawValue
         )
 
         let task = backgroundSession.downloadTask(with: request)
@@ -143,7 +133,6 @@ public actor WatchDownloadManager {
         activeDownloads.removeValue(forKey: bookId)
         progressHandlers.removeValue(forKey: bookId)
         bytesHandlers.removeValue(forKey: bookId)
-        persistDownloads()
 
         if let handler = completionHandlers.removeValue(forKey: bookId) {
             handler(false)
@@ -198,13 +187,12 @@ public actor WatchDownloadManager {
         }
     }
 
-    private func processDownloadComplete(bookId: String, tempURL: URL, success: Bool) {
+    private func processDownloadComplete(bookId: String, tempURL: URL, success: Bool) async {
         defer {
             activeTasks.removeValue(forKey: bookId)
             activeDownloads.removeValue(forKey: bookId)
             progressHandlers.removeValue(forKey: bookId)
             bytesHandlers.removeValue(forKey: bookId)
-            persistDownloads()
 
             if let handler = completionHandlers.removeValue(forKey: bookId) {
                 handler(success)
@@ -216,24 +204,21 @@ public actor WatchDownloadManager {
             return
         }
 
-        guard let state = activeDownloads[bookId] else {
-            debugLog("[WatchDownloadManager] No state found for: \(bookId)")
+        guard let downloadInfo = activeDownloads[bookId] else {
+            debugLog("[WatchDownloadManager] No download info found for: \(bookId)")
             return
         }
 
-        let fileExt = state.format == "synced" ? "epub" : "epub"
-        let success = WatchStorageManager.shared.saveDownloadedBook(
-            from: tempURL,
-            uuid: bookId,
-            title: state.title,
-            category: state.category,
-            fileExtension: fileExt
-        )
-
-        if success {
-            debugLog("[WatchDownloadManager] Saved book: \(state.title)")
-        } else {
-            debugLog("[WatchDownloadManager] Failed to save book: \(state.title)")
+        do {
+            try await LocalMediaActor.shared.importDownloadedFile(
+                from: tempURL,
+                metadata: downloadInfo.metadata,
+                category: downloadInfo.category,
+                filename: "book.epub"
+            )
+            debugLog("[WatchDownloadManager] Saved book via LMA: \(downloadInfo.metadata.title)")
+        } catch {
+            debugLog("[WatchDownloadManager] Failed to save book: \(error)")
         }
     }
 
@@ -246,48 +231,6 @@ public actor WatchDownloadManager {
         }
 
         return (url, accessToken)
-    }
-
-    private func persistDownloads() {
-        let downloadsURL = getDownloadsStateURL()
-        do {
-            let data = try JSONEncoder().encode(activeDownloads)
-            try data.write(to: downloadsURL)
-        } catch {
-            debugLog("[WatchDownloadManager] Failed to persist downloads: \(error)")
-        }
-    }
-
-    private nonisolated func loadPersistedDownloadsSync() {
-        let docsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        let downloadsURL = docsDir.appendingPathComponent("active_downloads.json")
-        guard FileManager.default.fileExists(atPath: downloadsURL.path) else { return }
-
-        do {
-            let data = try Data(contentsOf: downloadsURL)
-            let downloads = try JSONDecoder().decode([String: DownloadState].self, from: data)
-            debugLog("[WatchDownloadManager] Found \(downloads.count) persisted downloads")
-        } catch {
-            debugLog("[WatchDownloadManager] Failed to load persisted downloads: \(error)")
-        }
-    }
-
-    private func loadPersistedDownloads() {
-        let downloadsURL = getDownloadsStateURL()
-        guard FileManager.default.fileExists(atPath: downloadsURL.path) else { return }
-
-        do {
-            let data = try Data(contentsOf: downloadsURL)
-            activeDownloads = try JSONDecoder().decode([String: DownloadState].self, from: data)
-            debugLog("[WatchDownloadManager] Loaded \(activeDownloads.count) persisted downloads")
-        } catch {
-            debugLog("[WatchDownloadManager] Failed to load persisted downloads: \(error)")
-        }
-    }
-
-    private func getDownloadsStateURL() -> URL {
-        let docsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        return docsDir.appendingPathComponent("active_downloads.json")
     }
 }
 

@@ -7,7 +7,6 @@ struct SilveranWatchApp: App {
 
     init() {
         WatchSessionManager.shared.activate()
-        WatchStorageManager.shared.cleanupOrphanedFiles()
     }
 
     var body: some Scene {
@@ -30,6 +29,7 @@ struct SilveranWatchApp: App {
                 )
                 if success {
                     debugLog("[WatchApp] Storyteller connected successfully")
+                    await syncOnLaunch()
                 } else {
                     debugLog("[WatchApp] Storyteller connection failed")
                 }
@@ -38,6 +38,16 @@ struct SilveranWatchApp: App {
             }
         } catch {
             debugLog("[WatchApp] Failed to load Storyteller credentials: \(error)")
+        }
+    }
+
+    private func syncOnLaunch() async {
+        let result = await ProgressSyncActor.shared.syncPendingQueue()
+        debugLog("[WatchApp] Sync on launch: synced=\(result.synced), failed=\(result.failed)")
+
+        if let library = await StorytellerActor.shared.fetchLibraryInformation() {
+            try? await LocalMediaActor.shared.updateStorytellerMetadata(library)
+            debugLog("[WatchApp] Library metadata updated: \(library.count) books")
         }
     }
 }

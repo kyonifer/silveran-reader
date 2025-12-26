@@ -12,7 +12,7 @@ struct WatchOfflineMenuView: View {
             } label: {
                 Label {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Available Books")
+                        Text("Read Books")
                             .font(.caption)
                         Text("\(viewModel.books.count) downloaded")
                             .font(.caption2)
@@ -29,9 +29,9 @@ struct WatchOfflineMenuView: View {
             } label: {
                 Label {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Server Download")
+                        Text("Download Books")
                             .font(.caption)
-                        Text("Browse Storyteller")
+                        Text("From Storyteller")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
@@ -77,38 +77,46 @@ struct WatchOfflineMenuView: View {
 struct WatchDownloadMenuView: View {
     var body: some View {
         List {
-            NavigationLink {
-                WatchCurrentlyReadingView()
-            } label: {
-                Label {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Currently Reading")
-                            .font(.caption)
-                        Text("Books in progress")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
+            Section {
+                NavigationLink {
+                    WatchCurrentlyReadingView()
+                } label: {
+                    Label {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Currently Reading")
+                                .font(.caption)
+                            Text("Books in progress")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    } icon: {
+                        Image(systemName: "book")
+                            .foregroundStyle(.blue)
                     }
-                } icon: {
-                    Image(systemName: "book")
-                        .foregroundStyle(.blue)
                 }
-            }
 
-            NavigationLink {
-                WatchAllBooksView()
-            } label: {
-                Label {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("All Books")
-                            .font(.caption)
-                        Text("Full library")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
+                NavigationLink {
+                    WatchAllBooksView()
+                } label: {
+                    Label {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("All Books")
+                                .font(.caption)
+                            Text("Full library")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    } icon: {
+                        Image(systemName: "books.vertical")
+                            .foregroundStyle(.purple)
                     }
-                } icon: {
-                    Image(systemName: "books.vertical")
-                        .foregroundStyle(.purple)
                 }
+            } header: {
+                Text("Browse by:")
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+                    .textCase(nil)
+                    .padding(.bottom, 4)
             }
         }
         .navigationTitle("Download")
