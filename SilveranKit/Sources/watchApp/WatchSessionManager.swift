@@ -284,41 +284,47 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
 
         let category: LocalMediaCategory = manifest.category == "synced" ? .synced : .ebook
 
-        let authors: [BookCreator] = manifest.authors.map { name in
-            BookCreator(
-                uuid: nil,
-                id: nil,
-                name: name,
-                fileAs: nil,
-                role: nil,
+        let bookMetadata: BookMetadata
+        if let transferredMetadata = manifest.bookMetadata {
+            bookMetadata = transferredMetadata
+        } else {
+            let authors: [BookCreator] = manifest.authors.map { name in
+                BookCreator(
+                    uuid: nil,
+                    id: nil,
+                    name: name,
+                    fileAs: nil,
+                    role: nil,
+                    createdAt: nil,
+                    updatedAt: nil
+                )
+            }
+            bookMetadata = BookMetadata(
+                uuid: manifest.uuid,
+                title: manifest.title,
+                subtitle: nil,
+                description: nil,
+                language: nil,
                 createdAt: nil,
-                updatedAt: nil
+                updatedAt: nil,
+                publicationDate: nil,
+                authors: authors,
+                narrators: nil,
+                creators: nil,
+                series: nil,
+                tags: nil,
+                collections: nil,
+                ebook: nil,
+                audiobook: nil,
+                readaloud: nil,
+                status: nil,
+                position: nil
             )
         }
 
-        let bookMetadata = BookMetadata(
-            uuid: manifest.uuid,
-            title: manifest.title,
-            subtitle: nil,
-            description: nil,
-            language: nil,
-            createdAt: nil,
-            updatedAt: nil,
-            publicationDate: nil,
-            authors: authors,
-            narrators: nil,
-            creators: nil,
-            series: nil,
-            tags: nil,
-            collections: nil,
-            ebook: nil,
-            audiobook: nil,
-            readaloud: nil,
-            status: nil,
-            position: nil
-        )
-
         do {
+            await mergeBookMetadataIntoLMA(bookMetadata)
+
             try await LocalMediaActor.shared.importDownloadedFile(
                 from: tempURL,
                 metadata: bookMetadata,
@@ -331,6 +337,87 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
             print("[WatchSessionManager] Failed to import book to LMA: \(error)")
             try? FileManager.default.removeItem(at: tempURL)
         }
+    }
+
+    private func mergeBookMetadataIntoLMA(_ book: BookMetadata) async {
+        var current = await LocalMediaActor.shared.localStorytellerMetadata
+
+        if let idx = current.firstIndex(where: { $0.uuid == book.uuid }) {
+            if isNewer(book, than: current[idx]) {
+                current[idx] = book
+            }
+        } else {
+            current.append(book)
+        }
+
+        try? await LocalMediaActor.shared.updateStorytellerMetadata(current)
+    }
+
+    private func isNewer(_ newBook: BookMetadata, than existingBook: BookMetadata) -> Bool {
+        guard let newDateStr = newBook.updatedAt else { return false }
+        guard let existingDateStr = existingBook.updatedAt else { return true }
+        return newDateStr > existingDateStr
+    }
+
+    public func requestLibraryMetadataFromPhone() async -> Bool {
+        guard let session, session.isReachable else {
+            print("[WatchSessionManager] iPhone not reachable for library metadata request")
+            return false
+        }
+
+        return await withCheckedContinuation { continuation in
+            let message: [String: Any] = ["type": "requestLibraryMetadata"]
+            session.sendMessage(
+                message,
+                replyHandler: { [weak self] reply in
+                    guard let self else {
+                        continuation.resume(returning: false)
+                        return
+                    }
+                    self.handleLibraryMetadataReply(reply, continuation: continuation)
+                },
+                errorHandler: { error in
+                    print("[WatchSessionManager] Failed to request library metadata: \(error)")
+                    continuation.resume(returning: false)
+                }
+            )
+        }
+    }
+
+    private func handleLibraryMetadataReply(_ reply: [String: Any], continuation: CheckedContinuation<Bool, Never>) {
+        guard let metadataData = reply["metadata"] as? Data else {
+            print("[WatchSessionManager] No metadata in phone reply")
+            continuation.resume(returning: false)
+            return
+        }
+
+        do {
+            let phoneMetadata = try JSONDecoder().decode([BookMetadata].self, from: metadataData)
+            Task {
+                await self.mergePhoneMetadataIntoLMA(phoneMetadata)
+                print("[WatchSessionManager] Merged \(phoneMetadata.count) books from iPhone")
+                continuation.resume(returning: true)
+            }
+        } catch {
+            print("[WatchSessionManager] Failed to decode phone metadata: \(error)")
+            continuation.resume(returning: false)
+        }
+    }
+
+    private func mergePhoneMetadataIntoLMA(_ phoneBooks: [BookMetadata]) async {
+        var current = await LocalMediaActor.shared.localStorytellerMetadata
+
+        for phoneBook in phoneBooks {
+            if let idx = current.firstIndex(where: { $0.uuid == phoneBook.uuid }) {
+                if isNewer(phoneBook, than: current[idx]) {
+                    current[idx] = phoneBook
+                }
+            } else {
+                current.append(phoneBook)
+            }
+        }
+
+        try? await LocalMediaActor.shared.updateStorytellerMetadata(current)
     }
 
     private func notifyPhone(bookUUID: String, category: String) {

@@ -79,8 +79,11 @@ public final class WatchStorageManager: Sendable {
 
         if fileManager.fileExists(atPath: manifestURL.path),
             let data = try? Data(contentsOf: manifestURL),
-            let manifest = try? JSONDecoder().decode(TransferManifest.self, from: data)
+            var manifest = try? JSONDecoder().decode(TransferManifest.self, from: data)
         {
+            if manifest.bookMetadata == nil, let bookMeta = metadata.bookMetadata {
+                manifest.bookMetadata = bookMeta
+            }
             return manifest
         }
 
@@ -92,7 +95,8 @@ public final class WatchStorageManager: Sendable {
             totalChunks: metadata.totalChunks,
             totalFileSize: metadata.totalFileSize,
             fileExtension: metadata.fileExtension,
-            receivedChunks: []
+            receivedChunks: [],
+            bookMetadata: metadata.bookMetadata
         )
     }
 
@@ -156,6 +160,7 @@ public struct TransferManifest: Codable {
     public let totalFileSize: Int64
     public let fileExtension: String
     public var receivedChunks: Set<Int>
+    public var bookMetadata: BookMetadata?
 }
 
 public struct ChunkTransferMetadata: Codable, Sendable {
@@ -167,4 +172,5 @@ public struct ChunkTransferMetadata: Codable, Sendable {
     public let totalChunks: Int
     public let totalFileSize: Int64
     public let fileExtension: String
+    public let bookMetadata: BookMetadata?
 }

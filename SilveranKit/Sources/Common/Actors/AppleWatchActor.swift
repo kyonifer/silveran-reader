@@ -309,7 +309,8 @@ public actor AppleWatchActor: NSObject {
                 chunkIndex: chunkIndex,
                 totalChunks: actualChunkCount,
                 totalFileSize: totalSize,
-                fileExtension: fileExtension
+                fileExtension: fileExtension,
+                bookMetadata: chunkIndex == 0 ? book : nil
             )
             let metadataData = try JSONEncoder().encode(chunkMetadata)
 
@@ -775,6 +776,18 @@ extension AppleWatchActor: WCSessionDelegate {
                         sendableReply.reply(["error": "Failed to load credentials"])
                     }
                 }
+            case "requestLibraryMetadata":
+                let sendableReply = SendableReplyHandler(replyHandler)
+                Task {
+                    let metadata = await StorytellerActor.shared.libraryMetadata
+                    if metadata.isEmpty {
+                        sendableReply.reply(["error": "No library metadata available"])
+                    } else if let data = try? JSONEncoder().encode(metadata) {
+                        sendableReply.reply(["metadata": data])
+                    } else {
+                        sendableReply.reply(["error": "Failed to encode metadata"])
+                    }
+                }
             default:
                 replyHandler(["error": "Unhandled message type"])
         }
@@ -921,6 +934,7 @@ struct ChunkTransferMetadata: Codable, Sendable {
     let totalChunks: Int
     let totalFileSize: Int64
     let fileExtension: String
+    let bookMetadata: BookMetadata?
 }
 
 enum WatchTransferError: Error, LocalizedError {
