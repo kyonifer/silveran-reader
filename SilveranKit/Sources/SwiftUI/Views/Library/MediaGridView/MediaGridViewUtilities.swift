@@ -97,8 +97,8 @@ enum MediaGridViewUtilities {
                     category: .synced,
                     title: "Readaloud",
                     openTitle: "Read Readaloud",
-                    iconName: "readalong",
-                    iconType: .custom("readalong")
+                    iconName: "waveform",
+                    iconType: .readaloud
                 )
             )
         }
@@ -126,6 +126,7 @@ struct MediaDownloadOption: Identifiable {
     enum IconType: Equatable {
         case system(String)
         case custom(String)
+        case readaloud
     }
 
     let id: LocalMediaCategory

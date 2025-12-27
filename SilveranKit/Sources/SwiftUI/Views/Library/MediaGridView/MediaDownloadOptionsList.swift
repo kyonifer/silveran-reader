@@ -66,6 +66,8 @@ struct MediaDownloadOptionRow: View {
                                 .resizable()
                                 .aspectRatio(contentMode: .fit)
                                 .frame(width: 24, height: 24)
+                        case .readaloud:
+                            Image(systemName: "waveform")
                     }
                 }
                 .frame(width: 20, height: 20)
@@ -122,6 +124,8 @@ struct MediaDownloadOptionRow: View {
                                     .resizable()
                                     .aspectRatio(contentMode: .fit)
                                     .frame(width: 18, height: 18)
+                            case .readaloud:
+                                Image(systemName: "waveform")
                         }
                     }
                     .font(.system(size: 16))
@@ -208,6 +212,8 @@ struct MediaDownloadOptionRow: View {
                                         .resizable()
                                         .aspectRatio(contentMode: .fit)
                                         .frame(width: 18, height: 18)
+                                case .readaloud:
+                                    Image(systemName: "waveform")
                             }
                         }
                         .font(.system(size: 16))

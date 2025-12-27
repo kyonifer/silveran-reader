@@ -32,7 +32,7 @@ struct iOSBookDetailView: View {
     private var coverSection: some View {
         let variant = mediaViewModel.coverVariant(for: item)
         let image = mediaViewModel.coverImage(for: item, variant: variant)
-        let placeholderColor = Color(red: 56 / 255, green: 18 / 255, blue: 108 / 255)
+        let placeholderColor = Color(white: 0.2)
 
         return HStack {
             Spacer()

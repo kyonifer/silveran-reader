@@ -8,7 +8,7 @@ struct MediaGridSortAndFilterBar: View {
     @Binding var selectedAuthor: String?
     @Binding var selectedStatus: String?
     @Binding var selectedLocation: MediaGridView.LocationFilterOption
-    @Binding var showCardTopTabs: Bool
+    @Binding var showAudioIndicator: Bool
     @Binding var showSourceBadge: Bool
     let availableTags: [String]
     let availableSeries: [String]
@@ -244,12 +244,12 @@ struct MediaGridSortAndFilterBar: View {
     private var viewOptionsMenu: some View {
         Menu {
             Button {
-                showCardTopTabs.toggle()
+                showAudioIndicator.toggle()
             } label: {
                 HStack {
-                    Text("Always Show Media Icons")
+                    Text("Show Audio Indicator")
                     Spacer()
-                    if showCardTopTabs {
+                    if showAudioIndicator {
                         Image(systemName: "checkmark")
                             .imageScale(.small)
                     }

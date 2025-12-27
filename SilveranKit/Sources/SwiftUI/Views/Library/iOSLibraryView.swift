@@ -419,6 +419,7 @@ struct CollectionsListView: View {
     @Binding var searchText: String
     @Binding var navigationPath: NavigationPath
     @Environment(MediaViewModel.self) private var mediaViewModel
+    @State private var settingsViewModel = SettingsViewModel()
 
     private let horizontalPadding: CGFloat = 24
     private let sectionSpacing: CGFloat = 32
@@ -520,6 +521,7 @@ struct CollectionsListView: View {
                 books: books,
                 mediaKind: .ebook,
                 availableWidth: stackWidth,
+                showAudioIndicator: settingsViewModel.showAudioIndicator,
                 onSelect: { _ in
                     navigateToCollection(navIdentifier)
                 },

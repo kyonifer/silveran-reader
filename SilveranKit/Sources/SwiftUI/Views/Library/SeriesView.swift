@@ -14,6 +14,7 @@ struct SeriesView: View {
     var showOfflineSheet: Binding<Bool>?
     #endif
     @Environment(MediaViewModel.self) private var mediaViewModel
+    @State private var settingsViewModel = SettingsViewModel()
     @State private var activeInfoItem: BookMetadata? = nil
     @State private var isSidebarVisible: Bool = false
     @State private var navigationPath = NavigationPath()
@@ -228,6 +229,7 @@ struct SeriesView: View {
                 books: displayBooks,
                 mediaKind: mediaKind,
                 availableWidth: stackWidth,
+                showAudioIndicator: settingsViewModel.showAudioIndicator,
                 onSelect: { _ in
                     navigateToSeries(navigationKey)
                 },

@@ -10,17 +10,20 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
     public var playback: Playback
     public var readingBar: ReadingBar
     public var sync: Sync
+    public var library: Library
 
     public init(
         reading: Reading = Reading(),
         playback: Playback = Playback(),
         readingBar: ReadingBar = ReadingBar(),
-        sync: Sync = Sync()
+        sync: Sync = Sync(),
+        library: Library = Library()
     ) {
         self.reading = reading
         self.playback = playback
         self.readingBar = readingBar
         self.sync = sync
+        self.library = library
     }
 
     public struct Reading: Codable, Equatable, Sendable {
@@ -156,6 +159,16 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
             metadataRefreshIntervalSeconds < 0
         }
     }
+
+    public struct Library: Codable, Equatable, Sendable {
+        public var showAudioIndicator: Bool
+
+        public init(
+            showAudioIndicator: Bool = true
+        ) {
+            self.showAudioIndicator = showAudioIndicator
+        }
+    }
 }
 
 @globalActor
@@ -226,7 +239,8 @@ public actor SettingsActor {
         progressSyncIntervalSeconds: Double? = nil,
         metadataRefreshIntervalSeconds: Double? = nil,
         isManuallyOffline: Bool? = nil,
-        iCloudSyncEnabled: Bool? = nil
+        iCloudSyncEnabled: Bool? = nil,
+        showAudioIndicator: Bool? = nil
     ) throws {
         var updated = config
 
@@ -282,6 +296,9 @@ public actor SettingsActor {
         if let iCloudSyncEnabled {
             debugLog("[SettingsActor] Updating iCloudSyncEnabled to \(iCloudSyncEnabled)")
             updated.sync.iCloudSyncEnabled = iCloudSyncEnabled
+        }
+        if let showAudioIndicator {
+            updated.library.showAudioIndicator = showAudioIndicator
         }
 
         #if os(iOS)

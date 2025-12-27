@@ -598,6 +598,7 @@ private struct HomeSectionRow: View {
     #if os(iOS)
     let onNavigateToSection: (HomeView.HomeSection) -> Void
     #endif
+    @State private var settingsViewModel = SettingsViewModel()
 
     private let horizontalSpacing: CGFloat = 14
     private let tileWidth: CGFloat = 125
@@ -753,7 +754,7 @@ private struct HomeSectionRow: View {
             mediaKind: section.mediaKind,
             metrics: metrics,
             isSelected: isItemSelected(item.id),
-            showTopTabs: false,
+            showAudioIndicator: settingsViewModel.showAudioIndicator,
             sourceLabel: nil,
             onSelect: { selected in
                 select(selected)
@@ -776,7 +777,7 @@ private struct HomeSectionRow: View {
             mediaKind: section.mediaKind,
             metrics: metrics,
             isSelected: isItemSelected(item.id),
-            showTopTabs: false,
+            showAudioIndicator: settingsViewModel.showAudioIndicator,
             sourceLabel: nil,
             onSelect: { selected in
                 select(selected)

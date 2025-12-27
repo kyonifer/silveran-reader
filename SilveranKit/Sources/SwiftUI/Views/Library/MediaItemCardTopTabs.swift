@@ -43,12 +43,7 @@ struct MediaItemCardTopTabs: View {
                 case .audio:
                     Image(systemName: "headphones")
                 case .synced:
-                    Image("readalong")
-                        .renderingMode(.template)
-                        .resizable()
-                        .antialiased(true)
-                        .aspectRatio(contentMode: .fit)
-                        .padding(.top, 3)
+                    ReadaloudIcon(size: 26)
             }
         }
     }

@@ -47,6 +47,8 @@ public final class SettingsViewModel {
     public var metadataRefreshIntervalSeconds: Double = 300
     public var iCloudSyncEnabled: Bool = true
 
+    public var showAudioIndicator: Bool = false
+
     public var isLoaded: Bool = false
 
     @ObservationIgnored private var observerID: UUID?
@@ -117,6 +119,8 @@ public final class SettingsViewModel {
         metadataRefreshIntervalSeconds = config.sync.metadataRefreshIntervalSeconds
         iCloudSyncEnabled = config.sync.iCloudSyncEnabled
 
+        showAudioIndicator = config.library.showAudioIndicator
+
         isLoaded = true
         debugLog("[SettingsViewModel] Settings loaded")
     }
@@ -164,7 +168,8 @@ public final class SettingsViewModel {
             alwaysShowMiniPlayer: alwaysShowMiniPlayerValue,
             progressSyncIntervalSeconds: progressSyncIntervalSeconds,
             metadataRefreshIntervalSeconds: metadataRefreshIntervalSeconds,
-            iCloudSyncEnabled: iCloudSyncEnabled
+            iCloudSyncEnabled: iCloudSyncEnabled,
+            showAudioIndicator: showAudioIndicator
         )
     }
 

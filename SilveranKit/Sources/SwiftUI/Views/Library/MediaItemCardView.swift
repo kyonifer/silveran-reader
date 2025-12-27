@@ -70,7 +70,7 @@ struct MediaItemCardView: View {
     let mediaKind: MediaKind
     let metrics: MediaItemCardMetrics
     let isSelected: Bool
-    let showTopTabs: Bool
+    let showAudioIndicator: Bool
     let sourceLabel: String?
     let onSelect: (BookMetadata) -> Void
     let onInfo: (BookMetadata) -> Void
@@ -93,7 +93,7 @@ struct MediaItemCardView: View {
     }
 
     private var cardContent: some View {
-        let placeholderColor = Color(red: 56 / 255, green: 18 / 255, blue: 108 / 255)
+        let placeholderColor = Color(white: 0.2)
         let coverVariant = mediaViewModel.coverVariant(for: item)
         let containerAspectRatio: CGFloat = coverVariant.preferredAspectRatio
 
@@ -101,23 +101,30 @@ struct MediaItemCardView: View {
             ZStack(alignment: .top) {
                 VStack(spacing: 0) {
                     Spacer(minLength: 0)
-                    ZStack(alignment: .bottomTrailing) {
-                        MediaItemCoverImage(
-                            item: item,
-                            placeholderColor: placeholderColor,
-                            variant: coverVariant
+                    MediaItemCoverImage(
+                        item: item,
+                        placeholderColor: placeholderColor,
+                        variant: coverVariant
+                    )
+                    .frame(width: metrics.coverWidth)
+                    .aspectRatio(containerAspectRatio, contentMode: .fit)
+                    .clipShape(
+                        RoundedRectangle(
+                            cornerRadius: metrics.coverCornerRadius,
+                            style: .continuous
                         )
-                        .frame(width: metrics.coverWidth)
-                        .aspectRatio(containerAspectRatio, contentMode: .fit)
-                        .clipShape(
-                            RoundedRectangle(
-                                cornerRadius: metrics.coverCornerRadius,
-                                style: .continuous
-                            )
-                        )
+                    )
+                    .overlay(alignment: .bottomLeading) {
                         if let sourceLabel = sourceLabel {
                             SourceBadge(label: sourceLabel)
-                                .padding(8)
+                                .padding(4)
+                        }
+                    }
+                    .overlay(alignment: .bottomTrailing) {
+                        if showAudioIndicator {
+                            AudioIndicatorBadge(item: item, coverVariant: coverVariant)
+                                .padding(.trailing, 2)
+                                .padding(.bottom, 4)
                         }
                     }
                     Spacer(minLength: 0)
@@ -128,7 +135,7 @@ struct MediaItemCardView: View {
                     item: item,
                     coverWidth: metrics.coverWidth,
                     isSelected: isSelected,
-                    alwaysShow: showTopTabs
+                    alwaysShow: false
                 )
                 .environment(mediaViewModel)
                 #endif
@@ -345,3 +352,55 @@ private struct SourceBadge: View {
     }
 }
 
+struct ReadaloudIcon: View {
+    let size: CGFloat
+
+    var body: some View {
+        VStack(spacing: -size * 0.3) {
+            Image(systemName: "waveform")
+                .font(.system(size: size * 0.5, weight: .bold))
+            Image("readalong")
+                .renderingMode(.template)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: size)
+        }
+        .offset(y: size * 0.2)
+    }
+}
+
+struct AudioIndicatorBadge: View {
+    let item: BookMetadata
+    let coverVariant: MediaViewModel.CoverVariant
+
+    private var shouldShow: Bool {
+        guard coverVariant == .standard else { return false }
+        return item.hasAvailableReadaloud || item.hasAvailableAudiobook
+    }
+
+    private var helpText: String {
+        item.hasAvailableReadaloud ? "Readaloud available" : "Audiobook available"
+    }
+
+    var body: some View {
+        if shouldShow {
+            ZStack {
+                Circle()
+                    .fill(Color.black.opacity(0.7))
+                if item.hasAvailableReadaloud {
+                    Image(systemName: "waveform")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.gray)
+                } else {
+                    Image(systemName: "headphones")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(.gray)
+                }
+            }
+            .frame(width: 18, height: 18)
+            #if os(macOS)
+            .help(helpText)
+            #endif
+        }
+    }
+}

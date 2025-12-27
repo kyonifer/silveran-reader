@@ -4,6 +4,7 @@ struct SeriesStackView: View {
     let books: [BookMetadata]
     let mediaKind: MediaKind
     let availableWidth: CGFloat
+    let showAudioIndicator: Bool
     let onSelect: (BookMetadata) -> Void
     let onInfo: (BookMetadata) -> Void
     @Environment(MediaViewModel.self) private var mediaViewModel
@@ -27,7 +28,7 @@ struct SeriesStackView: View {
     private func coverView(for book: BookMetadata, index: Int, layout: LayoutInfo) -> some View {
         let coverVariant = mediaViewModel.coverVariant(for: book)
         let coverWidth = coverHeight * coverVariant.preferredAspectRatio
-        let placeholderColor = Color(red: 56 / 255, green: 18 / 255, blue: 108 / 255)
+        let placeholderColor = Color(white: 0.2)
 
         return Button {
             onSelect(book)
@@ -46,6 +47,12 @@ struct SeriesStackView: View {
             }
             .frame(width: coverWidth, height: coverHeight)
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(alignment: .bottomLeading) {
+                if showAudioIndicator {
+                    AudioIndicatorBadge(item: book, coverVariant: coverVariant)
+                        .padding(2)
+                }
+            }
             .shadow(color: .black.opacity(0.2), radius: 4, x: 0, y: 2)
             .contentShape(Rectangle())
         }

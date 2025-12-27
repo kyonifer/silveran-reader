@@ -34,6 +34,7 @@ struct MediaGridView: View {
     let title: String
     let searchText: String
     @Environment(MediaViewModel.self) private var mediaViewModel: MediaViewModel
+    @State private var settingsViewModel = SettingsViewModel()
     let mediaKind: MediaKind
     let tagFilter: String?
     let seriesFilter: String?
@@ -69,7 +70,6 @@ struct MediaGridView: View {
     @State private var selectedStatus: String? = nil
     @State private var selectedLocation: LocationFilterOption = .all
     @State private var shouldEnsureActiveItemVisible: Bool = false
-    @State private var showCardTopTabs: Bool = false
     @State private var showSourceBadge: Bool = false
 
     private static let defaultHorizontalSpacing: CGFloat = 16
@@ -319,7 +319,13 @@ struct MediaGridView: View {
                     selectedAuthor: $selectedAuthor,
                     selectedStatus: $selectedStatus,
                     selectedLocation: $selectedLocation,
-                    showCardTopTabs: $showCardTopTabs,
+                    showAudioIndicator: Binding(
+                        get: { settingsViewModel.showAudioIndicator },
+                        set: { newValue in
+                            settingsViewModel.showAudioIndicator = newValue
+                            Task { try? await settingsViewModel.save() }
+                        }
+                    ),
                     showSourceBadge: $showSourceBadge,
                     availableTags: availableTags,
                     availableSeries: availableSeries,
@@ -416,7 +422,7 @@ struct MediaGridView: View {
             mediaKind: mediaKind,
             metrics: metrics,
             isSelected: activeInfoItem?.id == item.id,
-            showTopTabs: showCardTopTabs,
+            showAudioIndicator: settingsViewModel.showAudioIndicator,
             sourceLabel: sourceLabel,
             onSelect: { [self] selected in
                 selectItem(selected)
@@ -439,7 +445,7 @@ struct MediaGridView: View {
             mediaKind: mediaKind,
             metrics: metrics,
             isSelected: activeInfoItem?.id == item.id,
-            showTopTabs: showCardTopTabs,
+            showAudioIndicator: settingsViewModel.showAudioIndicator,
             sourceLabel: sourceLabel,
             onSelect: { selected in
                 selectItem(selected)

@@ -14,6 +14,7 @@ struct CollectionsView: View {
     var showOfflineSheet: Binding<Bool>?
     #endif
     @Environment(MediaViewModel.self) private var mediaViewModel
+    @State private var settingsViewModel = SettingsViewModel()
     @State private var activeInfoItem: BookMetadata? = nil
     @State private var isSidebarVisible: Bool = false
     @State private var navigationPath = NavigationPath()
@@ -229,6 +230,7 @@ struct CollectionsView: View {
                 books: displayBooks,
                 mediaKind: mediaKind,
                 availableWidth: stackWidth,
+                showAudioIndicator: settingsViewModel.showAudioIndicator,
                 onSelect: { book in
                     if let collectionId = collection?.uuid ?? collection?.name {
                         navigateToCollection(collectionId)
