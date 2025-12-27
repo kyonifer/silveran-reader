@@ -190,7 +190,7 @@ public final class MediaViewModel {
         }
     }
 
-    private func refreshMetadata() async {
+    public func refreshMetadata() async {
         debugLog("[MediaViewModel] refreshMetadata: Starting")
         let status = await StorytellerActor.shared.connectionStatus
         let storytellerPaths = await LocalMediaActor.shared.localStorytellerBookPaths
