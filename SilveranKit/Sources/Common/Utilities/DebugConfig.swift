@@ -15,12 +15,16 @@ public final class DebugLogBuffer: @unchecked Sendable {
     private init() {}
 
     func append(_ message: String) {
+        #if os(watchOS)
+        return
+        #else
         lock.lock()
         defer { lock.unlock() }
         buffer.append(message)
         if buffer.count > maxSize {
             buffer.removeFirst()
         }
+        #endif
     }
 
     public func getMessages() -> [String] {
