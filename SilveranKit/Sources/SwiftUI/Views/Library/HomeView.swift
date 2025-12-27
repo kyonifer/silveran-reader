@@ -40,6 +40,7 @@ struct HomeView: View {
     @State private var selection: Selection? = nil
     @State private var isSidebarVisible: Bool = false
     @State private var sections: [HomeSection] = []
+    @State private var settingsViewModel = SettingsViewModel()
     #if os(macOS)
     // Workaround for macOS Sequoia bug where parent view's onTapGesture fires after card tap
     @State private var cardTapInProgress: Bool = false
@@ -178,6 +179,7 @@ struct HomeView: View {
                                         isSidebarVisible: $isSidebarVisible,
                                         sidebarSections: $sidebarSections,
                                         selectedSidebarItem: $selectedSidebarItem,
+                                        showAudioIndicator: settingsViewModel.showAudioIndicator,
                                         onNavigateToSection: { navigateToSection($0) }
                                     )
                                     .id(section.id)
@@ -190,6 +192,7 @@ struct HomeView: View {
                                         isSidebarVisible: $isSidebarVisible,
                                         sidebarSections: $sidebarSections,
                                         selectedSidebarItem: $selectedSidebarItem,
+                                        showAudioIndicator: settingsViewModel.showAudioIndicator,
                                         cardTapInProgress: $cardTapInProgress
                                     )
                                     .id(section.id)
@@ -245,10 +248,17 @@ struct HomeView: View {
         }
         #endif
         .onAppear {
-            loadSections()
+            if mediaViewModel.isReady {
+                loadSections()
+            }
         }
         .onChange(of: selection) { _, _ in
             reconcileSidebarVisibility()
+        }
+        .onChange(of: mediaViewModel.isReady) {
+            if mediaViewModel.isReady {
+                loadSections()
+            }
         }
         .onChange(of: mediaViewModel.libraryVersion) {
             loadSections()
@@ -592,13 +602,13 @@ private struct HomeSectionRow: View {
     @Binding var isSidebarVisible: Bool
     @Binding var sidebarSections: [SidebarSectionDescription]
     @Binding var selectedSidebarItem: SidebarItemDescription?
+    let showAudioIndicator: Bool
     #if os(macOS)
     @Binding var cardTapInProgress: Bool
     #endif
     #if os(iOS)
     let onNavigateToSection: (HomeView.HomeSection) -> Void
     #endif
-    @State private var settingsViewModel = SettingsViewModel()
 
     private let horizontalSpacing: CGFloat = 14
     private let tileWidth: CGFloat = 125
@@ -754,7 +764,7 @@ private struct HomeSectionRow: View {
             mediaKind: section.mediaKind,
             metrics: metrics,
             isSelected: isItemSelected(item.id),
-            showAudioIndicator: settingsViewModel.showAudioIndicator,
+            showAudioIndicator: showAudioIndicator,
             sourceLabel: nil,
             onSelect: { selected in
                 select(selected)
@@ -777,7 +787,7 @@ private struct HomeSectionRow: View {
             mediaKind: section.mediaKind,
             metrics: metrics,
             isSelected: isItemSelected(item.id),
-            showAudioIndicator: settingsViewModel.showAudioIndicator,
+            showAudioIndicator: showAudioIndicator,
             sourceLabel: nil,
             onSelect: { selected in
                 select(selected)

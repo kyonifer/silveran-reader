@@ -31,11 +31,22 @@ struct SyncNotificationView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
+        #if os(macOS)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(backgroundColor)
+                .fill(.regularMaterial)
         )
-        .shadow(color: .black.opacity(0.1), radius: 8, x: 0, y: 2)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(Color.primary.opacity(0.1), lineWidth: 1)
+        )
+        #else
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color(.systemBackground))
+        )
+        #endif
+        .shadow(color: .black.opacity(0.15), radius: 10, x: 0, y: 4)
         .padding(.horizontal, 16)
     }
 
@@ -60,13 +71,5 @@ struct SyncNotificationView: View {
             case .error:
                 .red
         }
-    }
-
-    private var backgroundColor: Color {
-        #if os(macOS)
-        Color(nsColor: .controlBackgroundColor)
-        #else
-        Color(.systemBackground)
-        #endif
     }
 }

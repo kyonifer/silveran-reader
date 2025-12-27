@@ -7,6 +7,8 @@ struct SidebarView: View {
     @Binding var isSearchFocused: Bool
     @Environment(MediaViewModel.self) private var mediaViewModel
     @State private var selectedUuid: UUID?
+    @State private var isRefreshing: Bool = false
+    @State private var storytellerConfigured: Bool = false
 
     var body: some View {
         List(selection: $selectedUuid) {
@@ -55,6 +57,35 @@ struct SidebarView: View {
             prompt: "Search"
         )
         .navigationSplitViewColumnWidth(min: 180, ideal: 250)
+        #if os(macOS)
+        .safeAreaInset(edge: .bottom) {
+            if storytellerConfigured {
+                HStack {
+                    Button {
+                        Task { await refreshMetadata() }
+                    } label: {
+                        HStack(spacing: 6) {
+                            if isRefreshing {
+                                ProgressView()
+                                    .controlSize(.small)
+                            } else {
+                                Image(systemName: "arrow.triangle.2.circlepath")
+                            }
+                            Text("Refresh Library")
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(isRefreshing)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+            }
+        }
+        .task {
+            storytellerConfigured = await StorytellerActor.shared.isConfigured
+        }
+        #endif
     }
 
     private func findItem(by id: UUID) -> SidebarItemDescription? {
@@ -90,4 +121,30 @@ struct SidebarView: View {
                     .frame(width: 8, height: 8)
         }
     }
+
+    #if os(macOS)
+    private func refreshMetadata() async {
+        isRefreshing = true
+
+        if let library = await StorytellerActor.shared.fetchLibraryInformation() {
+            do {
+                try await LocalMediaActor.shared.updateStorytellerMetadata(library)
+                await mediaViewModel.refreshMetadata()
+                mediaViewModel.showSyncNotification(
+                    SyncNotification(message: "Library refreshed", type: .success)
+                )
+            } catch {
+                mediaViewModel.showSyncNotification(
+                    SyncNotification(message: "Failed to update metadata", type: .error)
+                )
+            }
+        } else {
+            mediaViewModel.showSyncNotification(
+                SyncNotification(message: "Failed to fetch metadata from server", type: .error)
+            )
+        }
+
+        isRefreshing = false
+    }
+    #endif
 }

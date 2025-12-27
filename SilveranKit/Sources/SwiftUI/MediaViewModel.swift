@@ -14,6 +14,7 @@ import UIKit
 public final class MediaViewModel {
     public var library: BookLibrary
     var libraryVersion: Int = 0
+    var isReady: Bool = false
     var connectionStatus: ConnectionStatus = .disconnected
     var lastNetworkOpSucceeded: Bool? = nil
     var cachedConfig: SilveranGlobalConfig = SilveranGlobalConfig()
@@ -236,6 +237,7 @@ public final class MediaViewModel {
         )
 
         await loadCachedCoversFromDisk()
+        isReady = true
     }
 
     private func startMetadataRefreshTask() {
