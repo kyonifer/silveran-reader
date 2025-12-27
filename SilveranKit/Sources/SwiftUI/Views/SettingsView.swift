@@ -101,6 +101,7 @@ public struct SettingsView: View {
     }
 
     private func reloadConfig() async {
+        guard persistTask == nil else { return }
         let loaded = await SettingsActor.shared.config
         await MainActor.run {
             config = loaded
@@ -112,6 +113,7 @@ public struct SettingsView: View {
 
         persistTask?.cancel()
         persistTask = Task {
+            defer { persistTask = nil }
             try? await Task.sleep(for: .milliseconds(300))
             guard !Task.isCancelled else { return }
 
@@ -144,7 +146,13 @@ public struct SettingsView: View {
                     alwaysShowMiniPlayer: newValue.readingBar.alwaysShowMiniPlayer,
                     progressSyncIntervalSeconds: newValue.sync.progressSyncIntervalSeconds,
                     metadataRefreshIntervalSeconds: newValue.sync.metadataRefreshIntervalSeconds,
-                    iCloudSyncEnabled: newValue.sync.iCloudSyncEnabled
+                    iCloudSyncEnabled: newValue.sync.iCloudSyncEnabled,
+                    userHighlightColor1: newValue.reading.userHighlightColor1,
+                    userHighlightColor2: newValue.reading.userHighlightColor2,
+                    userHighlightColor3: newValue.reading.userHighlightColor3,
+                    userHighlightColor4: newValue.reading.userHighlightColor4,
+                    userHighlightColor5: newValue.reading.userHighlightColor5,
+                    userHighlightColor6: newValue.reading.userHighlightColor6
                 )
                 debugLog("[SettingsView] Config persisted successfully")
             } catch {
@@ -199,7 +207,7 @@ extension SettingsView {
             }
             .padding(12)
         }
-        .frame(width: 620, height: 560)
+        .frame(width: 820, height: 580)
     }
 }
 #else
@@ -530,35 +538,64 @@ private struct MacReaderSettingsView: View {
                 Text("Appearance")
                     .font(.headline)
 
-                Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 18) {
-                    GridRow {
-                        label("Highlight Color")
-                        AppearanceColorControl(
-                            hex: $reading.highlightColor,
-                            isRequired: true,
-                            defaultLightColor: "#CCCCCC",
-                            defaultDarkColor: "#333333"
-                        )
+                HStack(alignment: .top, spacing: 48) {
+                    Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 18) {
+                        GridRow {
+                            label("Read Aloud Highlight")
+                            AppearanceColorControl(
+                                hex: $reading.highlightColor,
+                                isRequired: false,
+                                defaultLightColor: "#CCCCCC",
+                                defaultDarkColor: "#333333"
+                            )
+                        }
+
+                        GridRow {
+                            label("Background Color")
+                            AppearanceColorControl(
+                                hex: $reading.backgroundColor,
+                                isRequired: false,
+                                defaultLightColor: kDefaultBackgroundColorLight,
+                                defaultDarkColor: kDefaultBackgroundColorDark
+                            )
+                        }
+
+                        GridRow {
+                            label("Foreground Color")
+                            AppearanceColorControl(
+                                hex: $reading.foregroundColor,
+                                isRequired: false,
+                                defaultLightColor: kDefaultForegroundColorLight,
+                                defaultDarkColor: kDefaultForegroundColorDark
+                            )
+                        }
                     }
 
-                    GridRow {
-                        label("Background Color")
-                        AppearanceColorControl(
-                            hex: $reading.backgroundColor,
-                            isRequired: false,
-                            defaultLightColor: kDefaultBackgroundColorLight,
-                            defaultDarkColor: kDefaultBackgroundColorDark
-                        )
-                    }
-
-                    GridRow {
-                        label("Foreground Color")
-                        AppearanceColorControl(
-                            hex: $reading.foregroundColor,
-                            isRequired: false,
-                            defaultLightColor: kDefaultForegroundColorLight,
-                            defaultDarkColor: kDefaultForegroundColorDark
-                        )
+                    Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 18) {
+                        GridRow {
+                            label("Highlight #1 (Yellow)")
+                            UserHighlightColorControl(hex: $reading.userHighlightColor1, defaultHex: "#B5B83E")
+                        }
+                        GridRow {
+                            label("Highlight #2 (Blue)")
+                            UserHighlightColorControl(hex: $reading.userHighlightColor2, defaultHex: "#4E90C7")
+                        }
+                        GridRow {
+                            label("Highlight #3 (Green)")
+                            UserHighlightColorControl(hex: $reading.userHighlightColor3, defaultHex: "#198744")
+                        }
+                        GridRow {
+                            label("Highlight #4 (Pink)")
+                            UserHighlightColorControl(hex: $reading.userHighlightColor4, defaultHex: "#E25EA3")
+                        }
+                        GridRow {
+                            label("Highlight #5 (Orange)")
+                            UserHighlightColorControl(hex: $reading.userHighlightColor5, defaultHex: "#CE8C4A")
+                        }
+                        GridRow {
+                            label("Highlight #6 (Purple)")
+                            UserHighlightColorControl(hex: $reading.userHighlightColor6, defaultHex: "#B366FF")
+                        }
                     }
                 }
 
@@ -626,16 +663,38 @@ private struct MacReadingBarSettingsView: View {
 }
 
 private struct MacSliderControl: View {
-    let value: Binding<Double>
+    @Binding var value: Double
     let range: ClosedRange<Double>
     let step: Double
     let formatter: (Double) -> String
+    @State private var localValue: Double = 0
+    @State private var debounceTask: Task<Void, Never>?
+    @State private var isUpdatingFromSlider = false
 
     var body: some View {
         HStack(spacing: 12) {
-            Slider(value: value, in: range, step: step)
+            Slider(value: $localValue, in: range, step: step)
                 .frame(minWidth: 280, idealWidth: 320, maxWidth: 360)
-            Text(formatter(value.wrappedValue))
+                .onAppear {
+                    localValue = value
+                }
+                .onChange(of: localValue) { _, newValue in
+                    debounceTask?.cancel()
+                    debounceTask = Task {
+                        try? await Task.sleep(for: .milliseconds(300))
+                        guard !Task.isCancelled else { return }
+                        await MainActor.run {
+                            isUpdatingFromSlider = true
+                            value = newValue
+                            isUpdatingFromSlider = false
+                        }
+                    }
+                }
+                .onChange(of: value) { _, newValue in
+                    guard !isUpdatingFromSlider else { return }
+                    localValue = newValue
+                }
+            Text(formatter(localValue))
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(.secondary)
                 .frame(width: 60, alignment: .trailing)
@@ -736,11 +795,11 @@ private struct ReadingSettingsFields: View {
             Text("Highlight Color")
                 .font(.subheadline)
                 .foregroundStyle(.primary)
-            HighlightColorControl(
-                hex: Binding(
-                    get: { reading.highlightColor ?? "#333333" },
-                    set: { reading.highlightColor = $0 }
-                )
+            AppearanceColorControl(
+                hex: $reading.highlightColor,
+                isRequired: false,
+                defaultLightColor: "#CCCCCC",
+                defaultDarkColor: "#333333"
             )
         }
     }
@@ -844,27 +903,72 @@ private struct ReadingBarSettingsFields: View {
     }
 }
 
-private struct HighlightColorControl: View {
-    let hex: Binding<String>
+private struct UserHighlightColorControl: View {
+    @Binding var hex: String
+    let defaultHex: String
+    @State private var localColor: Color = .yellow
+    @State private var debounceTask: Task<Void, Never>?
+    @State private var isUpdatingFromPicker = false
+
+    private var isDefault: Bool {
+        hex.uppercased() == defaultHex.uppercased()
+    }
 
     var body: some View {
         HStack(spacing: 12) {
+            Button {
+                hex = defaultHex
+                localColor = Color(hex: defaultHex) ?? .yellow
+            } label: {
+                Text("Default")
+                    .font(.caption)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(isDefault ? Color.accentColor : Color.secondary.opacity(0.2))
+                    .foregroundStyle(isDefault ? .white : .primary)
+                    .cornerRadius(4)
+            }
+            .buttonStyle(.plain)
+
             ColorPicker(
-                "Highlight Color",
-                selection: highlightColorBinding(for: hex),
-                supportsOpacity: false,
+                "",
+                selection: $localColor,
+                supportsOpacity: false
             )
             .labelsHidden()
             .frame(width: 48, height: 28)
-            .accessibilityLabel("Highlight Color")
-            TextField("#RRGGBB", text: hex)
+            .onAppear {
+                localColor = Color(hex: hex) ?? .yellow
+            }
+            .onChange(of: localColor) { _, newColor in
+                debounceTask?.cancel()
+                debounceTask = Task {
+                    try? await Task.sleep(for: .milliseconds(300))
+                    guard !Task.isCancelled else { return }
+                    if let newHex = newColor.hexString() {
+                        await MainActor.run {
+                            isUpdatingFromPicker = true
+                            hex = newHex
+                            isUpdatingFromPicker = false
+                        }
+                    }
+                }
+            }
+
+            TextField("#RRGGBB", text: $hex)
                 .textFieldStyle(.roundedBorder)
                 .font(.system(.body, design: .monospaced))
                 #if os(iOS)
-            .textInputAutocapitalization(.characters)
-            .autocorrectionDisabled(true)
+                .textInputAutocapitalization(.characters)
+                .autocorrectionDisabled(true)
                 #endif
-                .frame(maxWidth: 120)
+                .frame(maxWidth: 100)
+                .onChange(of: hex) { _, newHex in
+                    guard !isUpdatingFromPicker else { return }
+                    if let color = Color(hex: newHex) {
+                        localColor = color
+                    }
+                }
         }
     }
 }
@@ -874,9 +978,10 @@ private struct AppearanceColorControl: View {
     let isRequired: Bool
     let defaultLightColor: String?
     let defaultDarkColor: String?
-    @State private var showCustomPicker = false
-    @State private var pickerColor: Color = .gray
     @Environment(\.colorScheme) private var colorScheme
+    @State private var localColor: Color = .gray
+    @State private var debounceTask: Task<Void, Never>?
+    @State private var isUpdatingFromPicker = false
 
     init(
         hex: Binding<String?>,
@@ -900,132 +1005,75 @@ private struct AppearanceColorControl: View {
         self.defaultDarkColor = nil
     }
 
-    private var defaultColor: Color {
-        let defaultHex = colorScheme == .dark ? defaultDarkColor : defaultLightColor
-        if let hex = defaultHex, let color = Color(hex: hex) {
-            return color
-        }
-        return Color.primary.opacity(0.1)
+    private var defaultHex: String {
+        (colorScheme == .dark ? defaultDarkColor : defaultLightColor) ?? "#888888"
     }
 
-    private static let presetColors: [(light: String, dark: String)] = [
-        ("#AAAAAA", "#333333"),
-        ("#FFC857", "#B8860B"),
-        ("#4DABF7", "#1C7ED6"),
-    ]
-
-    private var isCustomColorSelected: Bool {
-        guard let currentHex = hex.wrappedValue else { return false }
-        return !Self.presetColors.contains { $0.light == currentHex || $0.dark == currentHex }
+    private var textBinding: Binding<String> {
+        Binding(
+            get: { hex.wrappedValue ?? "" },
+            set: { hex.wrappedValue = $0.isEmpty ? nil : $0 }
+        )
     }
 
     var body: some View {
-        HStack(spacing: 8) {
-            Button {
-                hex.wrappedValue = nil
-            } label: {
-                VStack(spacing: 4) {
-                    Circle()
-                        .fill(defaultColor)
-                        .frame(width: 28, height: 28)
-                        .overlay(
-                            Circle()
-                                .strokeBorder(
-                                    hex.wrappedValue == nil ? Color.primary : Color.clear,
-                                    lineWidth: 2
-                                )
-                        )
+        HStack(spacing: 12) {
+            if !isRequired {
+                Button {
+                    hex.wrappedValue = nil
+                } label: {
                     Text("Default")
-                        .font(.caption2)
+                        .font(.caption)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(hex.wrappedValue == nil ? Color.accentColor : Color.secondary.opacity(0.2))
+                        .foregroundStyle(hex.wrappedValue == nil ? .white : .primary)
+                        .cornerRadius(4)
                 }
-            }
-            .buttonStyle(.plain)
-
-            if isRequired {
-                colorButton(lightColor: "#FFC857", darkColor: "#B8860B", label: "Yellow")
-                colorButton(lightColor: "#4DABF7", darkColor: "#1C7ED6", label: "Blue")
+                .buttonStyle(.plain)
             }
 
-            Button {
-                if let hexValue = hex.wrappedValue {
-                    pickerColor = Color(hex: hexValue) ?? .gray
-                } else {
-                    pickerColor = .gray
-                }
-                showCustomPicker = true
-            } label: {
-                VStack(spacing: 4) {
-                    ZStack {
-                        if let hexValue = hex.wrappedValue {
-                            Circle()
-                                .fill(Color(hex: hexValue) ?? .gray)
-                                .frame(width: 28, height: 28)
-                        } else {
-                            Circle()
-                                .fill(Color.primary.opacity(0.1))
-                                .frame(width: 28, height: 28)
+            ColorPicker(
+                "",
+                selection: $localColor,
+                supportsOpacity: false
+            )
+            .labelsHidden()
+            .frame(width: 48, height: 28)
+            .onAppear {
+                localColor = Color(hex: hex.wrappedValue ?? defaultHex) ?? .gray
+            }
+            .onChange(of: localColor) { _, newColor in
+                debounceTask?.cancel()
+                debounceTask = Task {
+                    try? await Task.sleep(for: .milliseconds(300))
+                    guard !Task.isCancelled else { return }
+                    if let newHex = newColor.hexString() {
+                        await MainActor.run {
+                            isUpdatingFromPicker = true
+                            hex.wrappedValue = newHex
+                            isUpdatingFromPicker = false
                         }
-                        Circle()
-                            .strokeBorder(
-                                isCustomColorSelected ? Color.primary : Color.clear,
-                                lineWidth: 2
-                            )
-                            .frame(width: 28, height: 28)
-                        Image(systemName: "eyedropper")
-                            .font(.system(size: 12))
-                            .foregroundStyle(.white)
-                            .shadow(color: .black.opacity(0.3), radius: 1)
                     }
-                    Text("Custom")
-                        .font(.caption2)
                 }
             }
-            .buttonStyle(.plain)
-            .popover(isPresented: $showCustomPicker) {
-                ColorPicker("Custom Color", selection: $pickerColor, supportsOpacity: false)
-                    .padding()
-                    .onChange(of: pickerColor) { _, newColor in
-                        hex.wrappedValue = newColor.hexString()
+
+            TextField("#RRGGBB", text: textBinding)
+                .textFieldStyle(.roundedBorder)
+                .font(.system(.body, design: .monospaced))
+                #if os(iOS)
+                .textInputAutocapitalization(.characters)
+                .autocorrectionDisabled(true)
+                #endif
+                .frame(maxWidth: 100)
+                .onChange(of: hex.wrappedValue) { _, newHex in
+                    guard !isUpdatingFromPicker else { return }
+                    if let h = newHex, let color = Color(hex: h) {
+                        localColor = color
                     }
-            }
+                }
         }
-        .frame(width: 220, alignment: .leading)
     }
-
-    private func colorButton(lightColor: String, darkColor: String, label: String) -> some View {
-        let colorToUse = colorScheme == .dark ? darkColor : lightColor
-        let currentHex = hex.wrappedValue ?? ""
-        let isSelected = currentHex == lightColor || currentHex == darkColor
-
-        return Button {
-            hex.wrappedValue = colorToUse
-        } label: {
-            VStack(spacing: 4) {
-                Circle()
-                    .fill(Color(hex: colorToUse) ?? .gray)
-                    .frame(width: 28, height: 28)
-                    .overlay(
-                        Circle()
-                            .strokeBorder(
-                                isSelected ? Color.primary : Color.clear,
-                                lineWidth: 2
-                            )
-                    )
-                Text(label)
-                    .font(.caption2)
-            }
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-private func highlightColorBinding(for hexBinding: Binding<String>) -> Binding<Color> {
-    Binding<Color>(
-        get: { Color(hex: hexBinding.wrappedValue) ?? .yellow },
-        set: { newValue in
-            hexBinding.wrappedValue = newValue.hexString() ?? hexBinding.wrappedValue
-        },
-    )
 }
 
 extension Color {
@@ -1046,11 +1094,21 @@ extension Color {
     #if os(macOS)
     func hexString() -> String? {
         let nsColor = NSColor(self)
-        guard let converted = nsColor.usingColorSpace(.sRGB) else { return nil }
-        let r = Int(round(converted.redComponent * 255))
-        let g = Int(round(converted.greenComponent * 255))
-        let b = Int(round(converted.blueComponent * 255))
-        return String(format: "#%02X%02X%02X", r, g, b)
+        if let converted = nsColor.usingColorSpace(.sRGB) {
+            let r = Int(round(converted.redComponent * 255))
+            let g = Int(round(converted.greenComponent * 255))
+            let b = Int(round(converted.blueComponent * 255))
+            return String(format: "#%02X%02X%02X", r, g, b)
+        }
+        if let converted = nsColor.usingColorSpace(.deviceRGB) {
+            let r = Int(round(converted.redComponent * 255))
+            let g = Int(round(converted.greenComponent * 255))
+            let b = Int(round(converted.blueComponent * 255))
+            return String(format: "#%02X%02X%02X", r, g, b)
+        }
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        nsColor.getRed(&r, green: &g, blue: &b, alpha: &a)
+        return String(format: "#%02X%02X%02X", Int(r * 255), Int(g * 255), Int(b * 255))
     }
     #else
     func hexString() -> String? {

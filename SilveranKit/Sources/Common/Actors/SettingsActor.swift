@@ -40,6 +40,12 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
         public var customCSS: String?
         public var enableMarginClickNavigation: Bool
         public var singleColumnMode: Bool
+        public var userHighlightColor1: String
+        public var userHighlightColor2: String
+        public var userHighlightColor3: String
+        public var userHighlightColor4: String
+        public var userHighlightColor5: String
+        public var userHighlightColor6: String
 
         public init(
             fontSize: Double = 24,
@@ -54,7 +60,13 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
             foregroundColor: String? = nil,
             customCSS: String? = nil,
             enableMarginClickNavigation: Bool = true,
-            singleColumnMode: Bool? = nil
+            singleColumnMode: Bool? = nil,
+            userHighlightColor1: String = "#B5B83E",
+            userHighlightColor2: String = "#4E90C7",
+            userHighlightColor3: String = "#198744",
+            userHighlightColor4: String = "#E25EA3",
+            userHighlightColor5: String = "#CE8C4A",
+            userHighlightColor6: String = "#B366FF"
         ) {
             self.fontSize = fontSize
             self.fontFamily = fontFamily
@@ -73,6 +85,12 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
             self.singleColumnMode = singleColumnMode ?? true
             self.customCSS = customCSS
             self.enableMarginClickNavigation = enableMarginClickNavigation
+            self.userHighlightColor1 = userHighlightColor1
+            self.userHighlightColor2 = userHighlightColor2
+            self.userHighlightColor3 = userHighlightColor3
+            self.userHighlightColor4 = userHighlightColor4
+            self.userHighlightColor5 = userHighlightColor5
+            self.userHighlightColor6 = userHighlightColor6
         }
     }
 
@@ -240,7 +258,13 @@ public actor SettingsActor {
         metadataRefreshIntervalSeconds: Double? = nil,
         isManuallyOffline: Bool? = nil,
         iCloudSyncEnabled: Bool? = nil,
-        showAudioIndicator: Bool? = nil
+        showAudioIndicator: Bool? = nil,
+        userHighlightColor1: String? = nil,
+        userHighlightColor2: String? = nil,
+        userHighlightColor3: String? = nil,
+        userHighlightColor4: String? = nil,
+        userHighlightColor5: String? = nil,
+        userHighlightColor6: String? = nil
     ) throws {
         var updated = config
 
@@ -299,6 +323,24 @@ public actor SettingsActor {
         }
         if let showAudioIndicator {
             updated.library.showAudioIndicator = showAudioIndicator
+        }
+        if let userHighlightColor1 {
+            updated.reading.userHighlightColor1 = userHighlightColor1
+        }
+        if let userHighlightColor2 {
+            updated.reading.userHighlightColor2 = userHighlightColor2
+        }
+        if let userHighlightColor3 {
+            updated.reading.userHighlightColor3 = userHighlightColor3
+        }
+        if let userHighlightColor4 {
+            updated.reading.userHighlightColor4 = userHighlightColor4
+        }
+        if let userHighlightColor5 {
+            updated.reading.userHighlightColor5 = userHighlightColor5
+        }
+        if let userHighlightColor6 {
+            updated.reading.userHighlightColor6 = userHighlightColor6
         }
 
         #if os(iOS)

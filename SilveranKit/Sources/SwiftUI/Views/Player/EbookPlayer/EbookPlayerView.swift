@@ -13,6 +13,11 @@ extension Notification.Name {
 }
 #endif
 
+private struct PendingSelectionWrapper: Identifiable {
+    let selection: TextSelectionMessage
+    var id: String { selection.cfi }
+}
+
 public struct EbookPlayerView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.scenePhase) private var scenePhase
@@ -130,6 +135,56 @@ public struct EbookPlayerView: View {
         }
         .onChange(of: scenePhase) { _, newPhase in
             viewModel.handleScenePhaseChange(newPhase)
+        }
+        .onChange(of: viewModel.settingsVM.highlightColorsHash) { _, _ in
+            Task { await viewModel.refreshHighlightColors() }
+        }
+        #if os(iOS)
+        .sheet(isPresented: $viewModel.showBookmarksPanel) {
+            NavigationStack {
+                BookmarksPanel(
+                    bookmarks: viewModel.bookmarks,
+                    highlights: viewModel.coloredHighlights,
+                    onDismiss: { viewModel.showBookmarksPanel = false },
+                    onNavigate: { highlight in
+                        Task {
+                            await viewModel.navigateToHighlight(highlight)
+                            viewModel.showBookmarksPanel = false
+                        }
+                    },
+                    onDelete: { highlight in
+                        Task { await viewModel.deleteHighlight(highlight) }
+                    },
+                    onAddBookmark: {
+                        Task { await viewModel.addBookmarkAtCurrentPage() }
+                    },
+                    initialTab: viewModel.bookmarksPanelInitialTab
+                )
+                .navigationTitle("Bookmarks & Highlights")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Done") {
+                            viewModel.showBookmarksPanel = false
+                        }
+                    }
+                }
+            }
+        }
+        #endif
+        .sheet(item: Binding(
+            get: { viewModel.pendingSelection.map { PendingSelectionWrapper(selection: $0) } },
+            set: { _ in viewModel.cancelPendingSelection() }
+        )) { wrapper in
+            HighlightCreationSheet(
+                selectedText: wrapper.selection.text,
+                onSave: { color, note in
+                    Task {
+                        await viewModel.addHighlight(from: wrapper.selection, color: color, note: note)
+                    }
+                },
+                onCancel: { viewModel.cancelPendingSelection() }
+            )
         }
     }
 
@@ -266,6 +321,7 @@ public struct EbookPlayerView: View {
                     sleepTimerType: viewModel.mediaOverlayManager?.sleepTimerType,
                     showCustomizePopover: $viewModel.showCustomizePopover,
                     showSearchSheet: $viewModel.showSearchPanel,
+                    showBookmarksPanel: $viewModel.showBookmarksPanel,
                     searchManager: viewModel.searchManager,
                     onDismiss: { dismiss() },
                     onChapterSelected: viewModel.handleChapterSelectionByHref,

@@ -1,5 +1,6 @@
 import "./foliate-js/view.js";
 import { debugLog } from "./DebugConfig.js";
+import BookmarkManager from "./BookmarkManager.js";
 
 const getCSS = ({
   lineSpacing = 1.4,
@@ -137,6 +138,10 @@ class FoliateManager {
   #highlightedElement = null;
   #resizeHandler = null;
   #pendingHighlight = null;
+  #bookmarkManager = (() => {
+    console.log("[FoliateManager] Creating BookmarkManager instance");
+    return new BookmarkManager();
+  })();
 
   async open(file) {
     debugLog("FoliateManager", "open() called with file:", file.name);
@@ -152,6 +157,8 @@ class FoliateManager {
 
     debugLog("FoliateManager", "Opening file in foliate-view...");
     await this.#view.open(file);
+
+    this.#bookmarkManager.setView(this.#view);
 
     debugLog("FoliateManager", "Book opened, reporting structure to Swift");
     await this.#reportBookStructureReady();
@@ -173,6 +180,25 @@ class FoliateManager {
     this.#view.addEventListener("load", ({ detail }) => {
       const { doc, index } = detail;
       if (doc) {
+        let isDragging = false;
+
+        doc.addEventListener("touchmove", (event) => {
+          const selection = doc.getSelection?.();
+          if (selection && !selection.isCollapsed) {
+            event.stopPropagation();
+          }
+        }, { capture: true });
+
+        doc.addEventListener("mousedown", () => {
+          isDragging = false;
+        });
+
+        doc.addEventListener("mousemove", (e) => {
+          if (e.buttons === 1) {
+            isDragging = true;
+          }
+        });
+
         doc.addEventListener("click", (event) => {
           if (clickTimer !== null) {
             clearTimeout(clickTimer);
@@ -180,8 +206,22 @@ class FoliateManager {
             return;
           }
 
+          if (isDragging) {
+            isDragging = false;
+            return;
+          }
+
+          const selection = doc.getSelection?.();
+          if (selection && !selection.isCollapsed) {
+            return;
+          }
+
           clickTimer = setTimeout(() => {
             clickTimer = null;
+            const selectionNow = doc.getSelection?.();
+            if (selectionNow && !selectionNow.isCollapsed) {
+              return;
+            }
             this.#handleSingleClick(event);
           }, 150);
         });
@@ -194,6 +234,8 @@ class FoliateManager {
 
           this.#handleDoubleClick(event, index, doc);
         });
+
+        this.#bookmarkManager.setupSection(index, doc);
       }
     });
 
@@ -207,6 +249,8 @@ class FoliateManager {
       console.warn("[FM2] Relocate event missing detail or CFI");
       return;
     }
+
+    this.#bookmarkManager.redrawAllOverlayers();
 
     this.#lastRelocateRange = detail.range || null;
     debugLog("trace", "[FM2] Stored relocate range:", this.#lastRelocateRange ? "available" : "null");
@@ -460,23 +504,13 @@ class FoliateManager {
       return null;
     }
 
-    const sectionIndex = this.#view.renderer?.section?.current;
     const pageIndex = this.#view.renderer?.page;
-    const cfi = this.#view.getCFI?.();
-    const href = sectionIndex != null
-      ? this.#view?.book?.sections?.[sectionIndex]?.id || null
-      : null;
-
-    const sectionFractions = this.#view?.getSectionFractions?.() || [];
     const fraction = this.#view.renderer?.getOverallProgress?.();
 
-    debugLog("FoliateManager", "getCurrentLocation() - section:", sectionIndex, "page:", pageIndex);
+    debugLog("FoliateManager", "getCurrentLocation() - page:", pageIndex, "fraction:", fraction);
 
     return {
-      sectionIndex: sectionIndex,
       pageIndex: pageIndex,
-      cfi: cfi,
-      href: href,
       fraction: fraction,
     };
   }
@@ -716,6 +750,37 @@ class FoliateManager {
     }
 
     return ids;
+  }
+
+  getFirstVisiblePosition() {
+    const ids = this.getFullyVisibleElementIds();
+    if (!ids.length) {
+      debugLog("FoliateManager", "getFirstVisiblePosition: No visible elements");
+      return null;
+    }
+
+    const firstId = ids[0];
+    const range = this.#lastRelocateRange;
+    const doc = range?.startContainer?.ownerDocument || range?.commonAncestorContainer?.ownerDocument;
+    if (!doc) return null;
+
+    const el = doc.getElementById(firstId);
+    if (!el) return null;
+
+    const contents = this.#view?.renderer?.getContents?.() || [];
+    const content = contents.find(c => c.doc === doc);
+    const sectionIndex = content?.index ?? 0;
+    const href = this.#view?.book?.sections?.[sectionIndex]?.id || "";
+    const title = this.#view?.book?.toc?.find((t) => t.href?.startsWith(href))?.label || null;
+
+    const elRange = doc.createRange();
+    elRange.selectNodeContents(el);
+    const cfi = this.#view?.getCFI?.(sectionIndex, elRange) || null;
+    const text = el.textContent?.trim()?.substring(0, 150) || firstId;
+
+    debugLog("FoliateManager", `getFirstVisiblePosition: id=${firstId}, section=${sectionIndex}`);
+
+    return { sectionIndex, cfi, text, href, title, elementId: firstId };
   }
 
   // MARK: - Highlight methods (Swift controls audio directly)
@@ -978,6 +1043,24 @@ class FoliateManager {
       visibleRatio,
       offScreenRatio: progressionRatio
     };
+  }
+
+  // MARK: - User highlight rendering (delegated to BookmarkManager)
+
+  renderHighlights(jsonString) {
+    this.#bookmarkManager.renderHighlights(jsonString);
+  }
+
+  clearAllHighlights() {
+    this.#bookmarkManager.clearAllHighlights();
+  }
+
+  removeHighlight(id) {
+    this.#bookmarkManager.removeHighlight(id);
+  }
+
+  captureCurrentSelection() {
+    return this.#bookmarkManager.captureCurrentSelection();
   }
 }
 

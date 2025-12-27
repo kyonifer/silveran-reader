@@ -156,6 +156,16 @@ private class WebViewCoordinator2: NSObject, WKNavigationDelegate, WKScriptMessa
                     let msg = try decoder.decode(SearchErrorMessage.self, from: data)
                     bridge.sendSwiftSearchError(msg)
 
+                case "TextSelection":
+                    let data = try JSONSerialization.data(withJSONObject: message.body)
+                    let msg = try decoder.decode(TextSelectionMessage.self, from: data)
+                    bridge.sendSwiftTextSelected(msg)
+
+                case "HighlightTapped":
+                    let data = try JSONSerialization.data(withJSONObject: message.body)
+                    let msg = try decoder.decode(HighlightTappedMessage.self, from: data)
+                    bridge.sendSwiftHighlightTapped(msg)
+
                 default:
                     debugLog("[EbookPlayerWebView] Unknown message type: \(message.name)")
             }
@@ -188,6 +198,45 @@ private class WebViewCoordinator2: NSObject, WKNavigationDelegate, WKScriptMessa
     }
 }
 
+#if os(iOS)
+@available(iOS 17.0, *)
+class HighlightableWebView: WKWebView {
+    var commsBridge: WebViewCommsBridge?
+
+    override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+        if action == #selector(highlightSelection(_:)) {
+            return true
+        }
+        return super.canPerformAction(action, withSender: sender)
+    }
+
+    @objc func highlightSelection(_ sender: Any?) {
+        guard let bridge = commsBridge else { return }
+        Task { @MainActor in
+            do {
+                try await bridge.sendJsCaptureCurrentSelection()
+            } catch {
+                debugLog("[HighlightableWebView] Failed to capture selection: \(error)")
+            }
+        }
+    }
+
+    override func buildMenu(with builder: any UIMenuBuilder) {
+        super.buildMenu(with: builder)
+
+        let highlightAction = UIAction(
+            title: "Highlight",
+            image: UIImage(systemName: "highlighter")
+        ) { [weak self] _ in
+            self?.highlightSelection(nil)
+        }
+
+        let highlightMenu = UIMenu(title: "", options: .displayInline, children: [highlightAction])
+        builder.insertChild(highlightMenu, atStartOfMenu: .standardEdit)
+    }
+}
+#endif
+
 @available(macOS 14.0, iOS 17.0, *)
 @MainActor
 private func makeWebViewConfiguration2(coordinator: WebViewCoordinator2) -> WKWebViewConfiguration {
@@ -213,6 +262,8 @@ private func makeWebViewConfiguration2(coordinator: WebViewCoordinator2) -> WKWe
     contentController.add(coordinator, name: "SearchProgress")
     contentController.add(coordinator, name: "SearchComplete")
     contentController.add(coordinator, name: "SearchError")
+    contentController.add(coordinator, name: "TextSelection")
+    contentController.add(coordinator, name: "HighlightTapped")
 
     contentController.addUserScript(consoleOverrideScript)
     config.userContentController = contentController
@@ -367,12 +418,13 @@ private struct WebViewRepresentable2: PlatformViewRepresentable {
 
     private func makeWebView(context: Context) -> WKWebView {
         let config = makeWebViewConfiguration2(coordinator: context.coordinator)
-        let wkWebView = WKWebView(frame: .zero, configuration: config)
 
         #if os(macOS)
+        let wkWebView = WKWebView(frame: .zero, configuration: config)
         wkWebView.wantsLayer = true
         wkWebView.layer?.backgroundColor = .clear
         #else
+        let wkWebView = HighlightableWebView(frame: .zero, configuration: config)
         wkWebView.isOpaque = false
         wkWebView.backgroundColor = .clear
         wkWebView.scrollView.backgroundColor = .clear
@@ -390,6 +442,10 @@ private struct WebViewRepresentable2: PlatformViewRepresentable {
             context.coordinator.commsBridge = bridge
             self.commsBridge = bridge
             self.onBridgeReady?(bridge)
+
+            #if os(iOS)
+            wkWebView.commsBridge = bridge
+            #endif
 
             #if os(macOS)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {

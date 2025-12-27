@@ -15,6 +15,7 @@ struct EbookPlayerTopToolbar: View {
 
     @Binding var showCustomizePopover: Bool
     @Binding var showSearchSheet: Bool
+    @Binding var showBookmarksPanel: Bool
 
     let searchManager: EbookSearchManager?
 
@@ -62,7 +63,7 @@ struct EbookPlayerTopToolbar: View {
 
                 Spacer()
 
-                HStack(spacing: 20) {
+                HStack(spacing: 12) {
                     if hasAudioNarration {
                         sleepTimerButton
                     }
@@ -78,6 +79,16 @@ struct EbookPlayerTopToolbar: View {
                         buttonSize: 44,
                         showBackground: false
                     )
+
+                    Button {
+                        showBookmarksPanel = true
+                    } label: {
+                        Image(systemName: "bookmark")
+                            .font(.system(size: 20, weight: .regular))
+                            .foregroundStyle(toolbarForegroundColor)
+                            .contentShape(Rectangle())
+                    }
+                    .frame(width: 44, height: 44)
 
                     Button {
                         showSearchSheet = true

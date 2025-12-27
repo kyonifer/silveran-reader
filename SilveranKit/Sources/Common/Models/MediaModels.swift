@@ -295,11 +295,22 @@ public struct BookLocator: Codable, Sendable, Hashable {
             public let cssSelector: String
             public let textNodeIndex: Int
             public let charOffset: Int?
+
+            public init(cssSelector: String, textNodeIndex: Int, charOffset: Int?) {
+                self.cssSelector = cssSelector
+                self.textNodeIndex = textNodeIndex
+                self.charOffset = charOffset
+            }
         }
 
         public struct DomRange: Codable, Sendable, Hashable {
             public let start: DomRangeBoundary
             public let end: DomRangeBoundary?
+
+            public init(start: DomRangeBoundary, end: DomRangeBoundary?) {
+                self.start = start
+                self.end = end
+            }
         }
 
         public let fragments: [String]?

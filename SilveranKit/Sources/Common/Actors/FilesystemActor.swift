@@ -327,6 +327,74 @@ public actor FilesystemActor {
         }
     }
 
+    public func getHighlightsDirectory() -> URL {
+        applicationSupportBaseDirectory()
+            .appendingPathComponent("Highlights", isDirectory: true)
+    }
+
+    public func loadHighlights(bookId: String) throws -> [Highlight]? {
+        let highlightsDir = getHighlightsDirectory()
+        let sanitizedBookId = bookId.replacingOccurrences(of: "/", with: "_")
+        let fileURL = highlightsDir.appendingPathComponent(
+            "\(sanitizedBookId).json",
+            isDirectory: false
+        )
+
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: fileURL.path) else {
+            return nil
+        }
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let data = try Data(contentsOf: fileURL)
+        let bookHighlights = try decoder.decode(BookHighlights.self, from: data)
+        return bookHighlights.highlights
+    }
+
+    public func saveHighlights(bookId: String, highlights: [Highlight]) throws {
+        let highlightsDir = getHighlightsDirectory()
+        try ensureDirectoryExists(at: highlightsDir)
+
+        let sanitizedBookId = bookId.replacingOccurrences(of: "/", with: "_")
+        let fileURL = highlightsDir.appendingPathComponent(
+            "\(sanitizedBookId).json",
+            isDirectory: false
+        )
+
+        let bookHighlights = BookHighlights(bookId: bookId, highlights: highlights)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        let data = try encoder.encode(bookHighlights)
+
+        let tempURL = highlightsDir.appendingPathComponent(
+            "\(sanitizedBookId).tmp",
+            isDirectory: false
+        )
+        try data.write(to: tempURL, options: .atomic)
+
+        let fm = FileManager.default
+        if fm.fileExists(atPath: fileURL.path) {
+            try fm.removeItem(at: fileURL)
+        }
+        try fm.moveItem(at: tempURL, to: fileURL)
+    }
+
+    public func deleteHighlights(bookId: String) throws {
+        let highlightsDir = getHighlightsDirectory()
+        let sanitizedBookId = bookId.replacingOccurrences(of: "/", with: "_")
+        let fileURL = highlightsDir.appendingPathComponent(
+            "\(sanitizedBookId).json",
+            isDirectory: false
+        )
+
+        let fm = FileManager.default
+        if fm.fileExists(atPath: fileURL.path) {
+            try fm.removeItem(at: fileURL)
+        }
+    }
+
     private func existingFolder(
         matching uuidSanitized: String,
         in domainDirectory: URL

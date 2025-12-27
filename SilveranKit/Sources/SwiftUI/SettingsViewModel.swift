@@ -49,6 +49,13 @@ public final class SettingsViewModel {
 
     public var showAudioIndicator: Bool = false
 
+    public var userHighlightColor1: String = "#B5B83E"
+    public var userHighlightColor2: String = "#4E90C7"
+    public var userHighlightColor3: String = "#198744"
+    public var userHighlightColor4: String = "#E25EA3"
+    public var userHighlightColor5: String = "#CE8C4A"
+    public var userHighlightColor6: String = "#B366FF"
+
     public var isLoaded: Bool = false
 
     @ObservationIgnored private var observerID: UUID?
@@ -64,6 +71,21 @@ public final class SettingsViewModel {
             showPageNumber: showPageNumber,
             overlayTransparency: overlayTransparency
         )
+    }
+
+    public func hexColor(for color: HighlightColor) -> String {
+        switch color {
+        case .yellow: return userHighlightColor1
+        case .blue: return userHighlightColor2
+        case .green: return userHighlightColor3
+        case .pink: return userHighlightColor4
+        case .orange: return userHighlightColor5
+        case .purple: return userHighlightColor6
+        }
+    }
+
+    public var highlightColorsHash: String {
+        "\(userHighlightColor1)\(userHighlightColor2)\(userHighlightColor3)\(userHighlightColor4)\(userHighlightColor5)\(userHighlightColor6)"
     }
 
     public init() {
@@ -120,6 +142,13 @@ public final class SettingsViewModel {
         iCloudSyncEnabled = config.sync.iCloudSyncEnabled
 
         showAudioIndicator = config.library.showAudioIndicator
+
+        userHighlightColor1 = config.reading.userHighlightColor1
+        userHighlightColor2 = config.reading.userHighlightColor2
+        userHighlightColor3 = config.reading.userHighlightColor3
+        userHighlightColor4 = config.reading.userHighlightColor4
+        userHighlightColor5 = config.reading.userHighlightColor5
+        userHighlightColor6 = config.reading.userHighlightColor6
 
         isLoaded = true
     }

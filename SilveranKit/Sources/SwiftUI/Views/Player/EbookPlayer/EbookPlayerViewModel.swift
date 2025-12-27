@@ -77,6 +77,18 @@ class EbookPlayerViewModel {
     var isJoiningExistingSession = false
     var showKeybindingsPopover = false
     var showSearchPanel = false
+    var showBookmarksPanel = false
+    var bookmarksPanelInitialTab: BookmarksPanel.Tab = .bookmarks
+    var highlights: [Highlight] = []
+    var pendingSelection: TextSelectionMessage? = nil
+
+    var bookmarks: [Highlight] {
+        highlights.filter { $0.isBookmark }.sorted { $0.createdAt > $1.createdAt }
+    }
+
+    var coloredHighlights: [Highlight] {
+        highlights.filter { !$0.isBookmark }.sorted { $0.createdAt > $1.createdAt }
+    }
 
     init(bookData: PlayerBookData?, settingsVM: SettingsViewModel = SettingsViewModel()) {
         self.bookData = bookData
@@ -553,6 +565,8 @@ class EbookPlayerViewModel {
                 }
 
                 self.styleManager?.sendInitialStyles(colorScheme: initialColorScheme)
+
+                await self.loadHighlights()
             }
         }
 
@@ -604,6 +618,20 @@ class EbookPlayerViewModel {
                 self.mediaOverlayManager?.handleElementVisibility(message)
             }
         }
+
+        bridge.onTextSelected = { [weak self] message in
+            guard let self else { return }
+            Task { @MainActor in
+                self.handleTextSelectionComplete(message)
+            }
+        }
+
+        bridge.onHighlightTapped = { [weak self] message in
+            guard let self else { return }
+            Task { @MainActor in
+                self.handleHighlightTapped(message.highlightId)
+            }
+        }
     }
 
     func handlePlaybackProgressUpdate(_ message: PlaybackProgressUpdateMessage) {
@@ -616,5 +644,203 @@ class EbookPlayerViewModel {
         Task { @MainActor in
             await searchManager?.navigateToResult(result)
         }
+    }
+
+    // MARK: - Highlights / Bookmarks
+
+    func loadHighlights() async {
+        guard let bookId = bookData?.metadata.uuid else { return }
+
+        highlights = await BookmarkActor.shared.getHighlights(bookId: bookId)
+        debugLog("[EbookPlayerViewModel] Loaded \(highlights.count) highlights for book \(bookId)")
+
+        await sendHighlightsToJS()
+    }
+
+    func addHighlight(from selection: TextSelectionMessage, color: HighlightColor?, note: String? = nil) async {
+        guard let bookId = bookData?.metadata.uuid else { return }
+
+        let locator = BookLocator(
+            href: selection.href,
+            type: "application/xhtml+xml",
+            title: selection.title,
+            locations: BookLocator.Locations(
+                fragments: [selection.cfi],
+                progression: nil,
+                position: nil,
+                totalProgression: nil,
+                cssSelector: selection.startCssSelector,
+                partialCfi: selection.cfi,
+                domRange: BookLocator.Locations.DomRange(
+                    start: BookLocator.Locations.DomRangeBoundary(
+                        cssSelector: selection.startCssSelector,
+                        textNodeIndex: selection.startTextNodeIndex,
+                        charOffset: selection.startCharOffset
+                    ),
+                    end: BookLocator.Locations.DomRangeBoundary(
+                        cssSelector: selection.endCssSelector,
+                        textNodeIndex: selection.endTextNodeIndex,
+                        charOffset: selection.endCharOffset
+                    )
+                )
+            ),
+            text: BookLocator.Text(
+                after: nil,
+                before: nil,
+                highlight: selection.text
+            )
+        )
+
+        let highlight = Highlight(
+            bookId: bookId,
+            locator: locator,
+            text: selection.text,
+            color: color,
+            note: note
+        )
+
+        await BookmarkActor.shared.addHighlight(highlight)
+        highlights = await BookmarkActor.shared.getHighlights(bookId: bookId)
+
+        pendingSelection = nil
+
+        await sendHighlightsToJS()
+
+        debugLog("[EbookPlayerViewModel] Added highlight: isBookmark=\(highlight.isBookmark)")
+    }
+
+    func deleteHighlight(_ highlight: Highlight) async {
+        guard let bookId = bookData?.metadata.uuid else { return }
+
+        await BookmarkActor.shared.deleteHighlight(id: highlight.id, bookId: bookId)
+        highlights = await BookmarkActor.shared.getHighlights(bookId: bookId)
+
+        if let bridge = commsBridge {
+            do {
+                try await bridge.sendJsRemoveHighlight(id: highlight.id.uuidString)
+            } catch {
+                debugLog("[EbookPlayerViewModel] Failed to remove highlight from JS: \(error)")
+            }
+        }
+
+        debugLog("[EbookPlayerViewModel] Deleted highlight: \(highlight.id)")
+    }
+
+    func navigateToHighlight(_ highlight: Highlight) async {
+        guard let bridge = commsBridge else { return }
+
+        if let cfi = highlight.locator.locations?.partialCfi {
+            do {
+                try await bridge.sendJsGoToCFICommand(cfi: cfi)
+                debugLog("[EbookPlayerViewModel] Navigated to highlight CFI: \(cfi)")
+            } catch {
+                debugLog("[EbookPlayerViewModel] Failed to navigate to highlight: \(error)")
+            }
+        } else {
+            var href = highlight.locator.href
+            if let fragment = highlight.locator.locations?.fragments?.first {
+                href = "\(href)#\(fragment)"
+            }
+            do {
+                try await bridge.sendJsGoToHrefCommand(href: href)
+                debugLog("[EbookPlayerViewModel] Navigated to highlight href: \(href)")
+            } catch {
+                debugLog("[EbookPlayerViewModel] Failed to navigate to highlight: \(error)")
+            }
+        }
+    }
+
+    func refreshHighlightColors() async {
+        await sendHighlightsToJS()
+    }
+
+    private func sendHighlightsToJS() async {
+        guard let bridge = commsBridge else { return }
+
+        let coloredOnly = highlights.filter { !$0.isBookmark }
+        let renderData = coloredOnly.compactMap { highlight -> HighlightRenderData? in
+            guard let cfi = highlight.locator.locations?.partialCfi,
+                  let color = highlight.color
+            else { return nil }
+
+            let sectionIndex = findSectionIndex(for: highlight.locator.href, in: bookStructure) ?? 0
+
+            return HighlightRenderData(
+                id: highlight.id.uuidString,
+                sectionIndex: sectionIndex,
+                cfi: cfi,
+                color: settingsVM.hexColor(for: color)
+            )
+        }
+
+        do {
+            try await bridge.sendJsRenderHighlights(renderData)
+            debugLog("[EbookPlayerViewModel] Sent \(renderData.count) highlights to JS")
+        } catch {
+            debugLog("[EbookPlayerViewModel] Failed to send highlights to JS: \(error)")
+        }
+    }
+
+    func handleTextSelectionComplete(_ message: TextSelectionMessage) {
+        debugLog("[EbookPlayerViewModel] Text selection complete: \(message.text.prefix(50))...")
+        pendingSelection = message
+    }
+
+    func handleHighlightTapped(_ highlightId: String) {
+        guard let uuid = UUID(uuidString: highlightId),
+              highlights.first(where: { $0.id == uuid }) != nil
+        else {
+            debugLog("[EbookPlayerViewModel] Tapped highlight not found: \(highlightId)")
+            return
+        }
+
+        debugLog("[EbookPlayerViewModel] Highlight tapped: \(highlightId)")
+        bookmarksPanelInitialTab = .highlights
+        showBookmarksPanel = true
+    }
+
+    func cancelPendingSelection() {
+        pendingSelection = nil
+    }
+
+    func addBookmarkAtCurrentPage() async {
+        guard let bookId = bookData?.metadata.uuid else {
+            debugLog("[EbookPlayerViewModel] Cannot add bookmark - missing book ID")
+            return
+        }
+
+        guard let position = try? await commsBridge?.sendJsGetFirstVisiblePosition() else {
+            debugLog("[EbookPlayerViewModel] Cannot add bookmark - failed to get visible position from JS")
+            return
+        }
+
+        let locator = BookLocator(
+            href: position.href,
+            type: "application/xhtml+xml",
+            title: position.title,
+            locations: BookLocator.Locations(
+                fragments: position.elementId.map { [$0] },
+                progression: nil,
+                position: nil,
+                totalProgression: progressManager?.bookFraction,
+                cssSelector: nil,
+                partialCfi: position.cfi,
+                domRange: nil
+            ),
+            text: nil
+        )
+
+        let highlight = Highlight(
+            bookId: bookId,
+            locator: locator,
+            text: position.text,
+            color: nil,
+            note: nil
+        )
+
+        await BookmarkActor.shared.addHighlight(highlight)
+        highlights = await BookmarkActor.shared.getHighlights(bookId: bookId)
+
+        debugLog("[EbookPlayerViewModel] Added bookmark: \(position.text.prefix(50))...")
     }
 }

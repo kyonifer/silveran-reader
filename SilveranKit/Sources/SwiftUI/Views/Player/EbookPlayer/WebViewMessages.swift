@@ -99,3 +99,35 @@ struct SearchCompleteMessage: Codable {}
 struct SearchErrorMessage: Codable {
     let message: String
 }
+
+// MARK: - Highlight Messages
+
+/// Sent from JS when user completes a text selection (after long-press)
+struct TextSelectionMessage: Codable {
+    let sectionIndex: Int
+    let cfi: String
+    let text: String
+    let href: String
+    let title: String?
+    let startCssSelector: String
+    let startTextNodeIndex: Int
+    let startCharOffset: Int
+    let endCssSelector: String
+    let endTextNodeIndex: Int
+    let endCharOffset: Int
+}
+
+/// Sent from JS when user taps on an existing highlight
+struct HighlightTappedMessage: Codable {
+    let highlightId: String
+}
+
+/// Response from getFirstVisiblePosition() for bookmark creation
+struct FirstVisiblePosition: Codable {
+    let sectionIndex: Int
+    let cfi: String?
+    let text: String
+    let href: String
+    let title: String?
+    let elementId: String?
+}

@@ -53,6 +53,14 @@ class WebViewCommsBridge {
     /// Notifies when search encounters an error
     var onSearchError: ((SearchErrorMessage) -> Void)?
 
+    // MARK: - Highlight callbacks
+
+    /// Notifies when user completes a text selection (for creating highlights)
+    var onTextSelected: ((TextSelectionMessage) -> Void)?
+
+    /// Notifies when user taps on an existing highlight
+    var onHighlightTapped: ((HighlightTappedMessage) -> Void)?
+
     init(webView: WKWebView? = nil) {
         self.webView = webView
     }
@@ -228,6 +236,27 @@ class WebViewCommsBridge {
         return decoded
     }
 
+    /// Swift is requesting the first visible position from JS for bookmarks
+    /// Returns: Position data including sectionIndex, CFI, text, href, title
+    func sendJsGetFirstVisiblePosition() async throws -> FirstVisiblePosition? {
+        guard let webView = webView else {
+            throw WebViewCommsBridgeError.webViewNotAvailable
+        }
+
+        let result = try await webView.evaluateJavaScript(
+            "JSON.stringify(window.foliateManager.getFirstVisiblePosition())"
+        )
+
+        guard let jsonString = result as? String,
+            jsonString != "null",
+            let jsonData = jsonString.data(using: .utf8)
+        else {
+            return nil
+        }
+
+        return try? JSONDecoder().decode(FirstVisiblePosition.self, from: jsonData)
+    }
+
     // MARK: - Highlight controls (Swift controls audio directly)
 
     /// Swift commands JS to highlight a specific text fragment
@@ -392,6 +421,75 @@ class WebViewCommsBridge {
         debugLog("[WebViewCommsBridge] sendJsGoToCFICommand(cfi: \(cfi))")
         _ = try await webView.evaluateJavaScript(
             "(function() { window.foliateManager.goToCFI('\(escapedCFI)'); })()"
+        )
+    }
+
+    // MARK: - Highlight dispatch methods (JS → Swift)
+
+    func sendSwiftTextSelected(_ message: TextSelectionMessage) {
+        debugLog(
+            "[WebViewCommsBridge] sendSwiftTextSelected - section: \(message.sectionIndex), text: \(message.text.prefix(50))..."
+        )
+        onTextSelected?(message)
+    }
+
+    func sendSwiftHighlightTapped(_ message: HighlightTappedMessage) {
+        debugLog("[WebViewCommsBridge] sendSwiftHighlightTapped - id: \(message.highlightId)")
+        onHighlightTapped?(message)
+    }
+
+    // MARK: - Highlight commands (Swift → JS)
+
+    /// Swift commands JS to render user highlights
+    func sendJsRenderHighlights(_ highlights: [HighlightRenderData]) async throws {
+        guard let webView = webView else {
+            throw WebViewCommsBridgeError.webViewNotAvailable
+        }
+
+        let encoder = JSONEncoder()
+        let jsonData = try encoder.encode(highlights)
+        let jsonString = String(data: jsonData, encoding: .utf8)!
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "'", with: "\\'")
+
+        debugLog("[WebViewCommsBridge] sendJsRenderHighlights - \(highlights.count) highlights")
+        _ = try await webView.evaluateJavaScript(
+            "(function() { window.foliateManager.renderHighlights('\(jsonString)'); })()"
+        )
+    }
+
+    /// Swift commands JS to clear all user highlights
+    func sendJsClearAllHighlights() async throws {
+        guard let webView = webView else {
+            throw WebViewCommsBridgeError.webViewNotAvailable
+        }
+
+        debugLog("[WebViewCommsBridge] sendJsClearAllHighlights()")
+        _ = try await webView.evaluateJavaScript("window.foliateManager.clearAllHighlights()")
+    }
+
+    /// Swift commands JS to remove a specific highlight
+    func sendJsRemoveHighlight(id: String) async throws {
+        guard let webView = webView else {
+            throw WebViewCommsBridgeError.webViewNotAvailable
+        }
+
+        let escapedId = id.replacingOccurrences(of: "'", with: "\\'")
+        debugLog("[WebViewCommsBridge] sendJsRemoveHighlight(id: \(id))")
+        _ = try await webView.evaluateJavaScript(
+            "window.foliateManager.removeHighlight('\(escapedId)')"
+        )
+    }
+
+    /// Swift commands JS to capture the current text selection and send it as TextSelection message
+    func sendJsCaptureCurrentSelection() async throws {
+        guard let webView = webView else {
+            throw WebViewCommsBridgeError.webViewNotAvailable
+        }
+
+        debugLog("[WebViewCommsBridge] sendJsCaptureCurrentSelection")
+        _ = try await webView.evaluateJavaScript(
+            "window.foliateManager.captureCurrentSelection()"
         )
     }
 }

@@ -39,6 +39,37 @@ struct EbookPlayerToolbar: ToolbarContent {
                 )
             }
         }
+        ToolbarItem(id: "bookmarks-toggle") {
+            Button {
+                viewModel.bookmarksPanelInitialTab = .bookmarks
+                withAnimation(.easeInOut) { viewModel.showBookmarksPanel.toggle() }
+            } label: {
+                Label("Bookmarks", systemImage: "bookmark")
+                    .labelStyle(.iconOnly)
+            }
+            .help("Bookmarks & Highlights")
+            .keyboardShortcut("b", modifiers: .command)
+            .popover(isPresented: $viewModel.showBookmarksPanel) {
+                BookmarksPanel(
+                    bookmarks: viewModel.bookmarks,
+                    highlights: viewModel.coloredHighlights,
+                    onDismiss: { viewModel.showBookmarksPanel = false },
+                    onNavigate: { highlight in
+                        Task {
+                            await viewModel.navigateToHighlight(highlight)
+                            viewModel.showBookmarksPanel = false
+                        }
+                    },
+                    onDelete: { highlight in
+                        Task { await viewModel.deleteHighlight(highlight) }
+                    },
+                    onAddBookmark: {
+                        Task { await viewModel.addBookmarkAtCurrentPage() }
+                    },
+                    initialTab: viewModel.bookmarksPanelInitialTab
+                )
+            }
+        }
         ToolbarItem(id: "search-toggle") {
             Button {
                 withAnimation(.easeInOut) { viewModel.showSearchPanel.toggle() }
