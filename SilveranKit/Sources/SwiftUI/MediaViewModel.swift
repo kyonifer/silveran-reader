@@ -263,7 +263,6 @@ public final class MediaViewModel {
                 try? await Task.sleep(for: .seconds(refreshInterval))
 
                 guard !Task.isCancelled else {
-                    debugLog("[MediaViewModel] Metadata refresh task cancelled")
                     return
                 }
 

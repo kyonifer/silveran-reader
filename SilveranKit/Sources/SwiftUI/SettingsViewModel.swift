@@ -59,6 +59,7 @@ public final class SettingsViewModel {
     public var isLoaded: Bool = false
 
     @ObservationIgnored private var observerID: UUID?
+    @ObservationIgnored private var saveTask: Task<Void, Never>?
 
     public var readingBarConfig: SilveranGlobalConfig.ReadingBar {
         SilveranGlobalConfig.ReadingBar(
@@ -156,16 +157,26 @@ public final class SettingsViewModel {
     private func registerObserver() async {
         let id = await SettingsActor.shared.request_notify { @MainActor [weak self] in
             guard let self else { return }
+            guard self.saveTask == nil else { return }
             Task { @MainActor [weak self] in
                 guard let self else { return }
-                debugLog("[SettingsViewModel] Settings changed, reloading")
                 await self.loadSettings()
             }
         }
         observerID = id
     }
 
-    public func save() async throws {
+    public func save() {
+        saveTask?.cancel()
+        saveTask = Task {
+            try? await Task.sleep(for: .milliseconds(300))
+            guard !Task.isCancelled else { return }
+            try? await persistNow()
+            saveTask = nil
+        }
+    }
+
+    private func persistNow() async throws {
         try await SettingsActor.shared.updateConfig(
             fontSize: fontSize,
             fontFamily: fontFamily,

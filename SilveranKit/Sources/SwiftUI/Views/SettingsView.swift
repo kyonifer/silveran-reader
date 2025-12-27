@@ -6,6 +6,19 @@ import AppKit
 import UIKit
 #endif
 
+#if os(macOS)
+@MainActor
+public final class SettingsTabRequest: ObservableObject {
+    public static let shared = SettingsTabRequest()
+    @Published public var requestedTab: Int? = nil
+    private init() {}
+
+    public func requestReaderSettings() {
+        requestedTab = 1
+    }
+}
+#endif
+
 @MainActor
 private class SettingsReloader: ObservableObject {
     @Published var trigger = 0
@@ -34,9 +47,11 @@ public struct SettingsView: View {
     @State private var saveError: String?
     @State private var showResetConfirmation = false
     @State private var persistTask: Task<Void, Never>?
+    @State private var isReloadingFromActor = false
+    @State private var lastPersistTime: Date = .distantPast
     @StateObject private var reloader = SettingsReloader()
     #if os(macOS)
-    @State private var selectedTab: SettingsTab = .general
+    @State private var selectedTab: SettingsTab = .readerSettings
     #endif
 
     public init() {}
@@ -56,6 +71,18 @@ public struct SettingsView: View {
         .onChange(of: reloader.trigger) { _, _ in
             Task { await reloadConfig() }
         }
+        #if os(macOS)
+        .onReceive(SettingsTabRequest.shared.$requestedTab) { newValue in
+            if let tab = newValue {
+                if tab == 1 {
+                    selectedTab = .readerSettings
+                }
+                DispatchQueue.main.async {
+                    SettingsTabRequest.shared.requestedTab = nil
+                }
+            }
+        }
+        #endif
         .alert(
             "Unable to Save Settings",
             isPresented: Binding(
@@ -95,22 +122,29 @@ public struct SettingsView: View {
         guard !isLoaded else { return }
         let loaded = await SettingsActor.shared.config
         await MainActor.run {
+            isReloadingFromActor = true
             config = loaded
             isLoaded = true
+            isReloadingFromActor = false
         }
     }
 
     private func reloadConfig() async {
         guard persistTask == nil else { return }
+        let timeSinceLastPersist = Date().timeIntervalSince(lastPersistTime)
+        guard timeSinceLastPersist > 1.0 else { return }
         let loaded = await SettingsActor.shared.config
         await MainActor.run {
+            isReloadingFromActor = true
             config = loaded
+            isReloadingFromActor = false
         }
     }
 
     private func persistConfig(newValue: SilveranGlobalConfig) {
-        guard isLoaded else { return }
+        guard isLoaded, !isReloadingFromActor else { return }
 
+        lastPersistTime = Date()
         persistTask?.cancel()
         persistTask = Task {
             defer { persistTask = nil }
@@ -118,9 +152,6 @@ public struct SettingsView: View {
             guard !Task.isCancelled else { return }
 
             do {
-                debugLog(
-                    "[SettingsView] Persisting config - Progress: \(newValue.sync.progressSyncIntervalSeconds)s, Metadata: \(newValue.sync.metadataRefreshIntervalSeconds)s"
-                )
                 try await SettingsActor.shared.updateConfig(
                     fontSize: newValue.reading.fontSize,
                     fontFamily: newValue.reading.fontFamily,
@@ -154,12 +185,10 @@ public struct SettingsView: View {
                     userHighlightColor5: newValue.reading.userHighlightColor5,
                     userHighlightColor6: newValue.reading.userHighlightColor6
                 )
-                debugLog("[SettingsView] Config persisted successfully")
             } catch {
                 await MainActor.run {
                     saveError = error.localizedDescription
                 }
-                debugLog("[SettingsView] Failed to persist config: \(error)")
             }
         }
     }
@@ -435,6 +464,11 @@ private struct MacReaderSettingsView: View {
     @Binding var reading: SilveranGlobalConfig.Reading
     @Binding var playback: SilveranGlobalConfig.Playback
     private let labelWidth: CGFloat = 150
+    @State private var fontPanelResponder: MacFontPanelResponder? = nil
+
+    private func isCustomFont(_ fontFamily: String) -> Bool {
+        !["System Default", "serif", "sans-serif", "monospace"].contains(fontFamily)
+    }
 
     var body: some View {
         MacSettingsContainer(tab: .readerSettings) {
@@ -456,14 +490,25 @@ private struct MacReaderSettingsView: View {
 
                 GridRow {
                     label("Font")
-                    Picker("", selection: $reading.fontFamily) {
-                        Text("System Default").tag("System Default")
-                        Text("Serif").tag("serif")
-                        Text("Sans-Serif").tag("sans-serif")
-                        Text("Monospace").tag("monospace")
+                    HStack(spacing: 12) {
+                        Picker("", selection: $reading.fontFamily) {
+                            Text("System Default").tag("System Default")
+                            Text("Serif").tag("serif")
+                            Text("Sans-Serif").tag("sans-serif")
+                            Text("Monospace").tag("monospace")
+                            if isCustomFont(reading.fontFamily) {
+                                Text(reading.fontFamily).tag(reading.fontFamily)
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(width: 180)
+
+                        Button("Custom...") {
+                            selectCustomFont()
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.blue)
                     }
-                    .labelsHidden()
-                    .frame(width: 220)
                 }
 
                 GridRow {
@@ -621,6 +666,41 @@ private struct MacReaderSettingsView: View {
             .frame(width: labelWidth, alignment: .trailing)
             .foregroundStyle(.secondary)
     }
+
+    @MainActor
+    private func selectCustomFont() {
+        if fontPanelResponder == nil {
+            fontPanelResponder = MacFontPanelResponder()
+        }
+
+        guard let responder = fontPanelResponder else { return }
+
+        responder.onFontChanged = { fontName in
+            reading.fontFamily = fontName
+        }
+
+        let fontManager = NSFontManager.shared
+        fontManager.target = responder
+        fontManager.action = #selector(MacFontPanelResponder.changeFont(_:))
+
+        let fontPanel = NSFontPanel.shared
+        let currentFont =
+            NSFont(name: reading.fontFamily, size: reading.fontSize)
+            ?? NSFont.systemFont(ofSize: reading.fontSize)
+        fontPanel.setPanelFont(currentFont, isMultiple: false)
+        fontPanel.orderFront(nil)
+    }
+}
+
+@MainActor
+private class MacFontPanelResponder: NSObject {
+    var onFontChanged: ((String) -> Void)?
+
+    @objc func changeFont(_ sender: Any?) {
+        guard let fontManager = sender as? NSFontManager else { return }
+        let selectedFont = fontManager.convert(NSFont.systemFont(ofSize: 16))
+        onFontChanged?(selectedFont.fontName)
+    }
 }
 
 private struct MacReadingBarSettingsView: View {
@@ -635,15 +715,7 @@ private struct MacReadingBarSettingsView: View {
                 Divider()
 
                 Group {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Transparency: \(Int(readingBar.overlayTransparency * 100))%")
-                            .font(.subheadline)
-                        Slider(
-                            value: $readingBar.overlayTransparency,
-                            in: 0.1...1.0,
-                            step: 0.01
-                        )
-                    }
+                    DebouncedOpacitySlider(value: $readingBar.overlayTransparency)
 
                     Toggle("Show Player Controls", isOn: $readingBar.showPlayerControls)
                     Toggle("Show Progress Bar", isOn: $readingBar.showProgressBar)
@@ -704,6 +776,40 @@ private struct MacSliderControl: View {
 
 #endif
 
+private struct DebouncedOpacitySlider: View {
+    @Binding var value: Double
+    @State private var localValue: Double = 0
+    @State private var debounceTask: Task<Void, Never>?
+    @State private var isUpdatingFromSlider = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Opacity: \(Int(localValue * 100))%")
+                .font(.subheadline)
+            Slider(value: $localValue, in: 0.1...1.0, step: 0.01)
+                .onAppear {
+                    localValue = value
+                }
+                .onChange(of: localValue) { _, newValue in
+                    debounceTask?.cancel()
+                    debounceTask = Task {
+                        try? await Task.sleep(for: .milliseconds(150))
+                        guard !Task.isCancelled else { return }
+                        await MainActor.run {
+                            isUpdatingFromSlider = true
+                            value = newValue
+                            isUpdatingFromSlider = false
+                        }
+                    }
+                }
+                .onChange(of: value) { _, newValue in
+                    guard !isUpdatingFromSlider else { return }
+                    localValue = newValue
+                }
+        }
+    }
+}
+
 private struct ReadingSettingsFields: View {
     @Binding var reading: SilveranGlobalConfig.Reading
     @Binding var playback: SilveranGlobalConfig.Playback
@@ -725,69 +831,48 @@ private struct ReadingSettingsFields: View {
             Text("Monospace").tag("monospace")
         }
 
-        sliderBlock(
+        DebouncedSettingsSlider(
             title: "Margin (Left/Right)",
             value: $reading.marginLeftRight,
             range: 0...30,
             step: 1,
-            formatted: { String(format: "%.0f%%", $0) }
+            formatter: { String(format: "%.0f%%", $0) }
         )
 
-        sliderBlock(
+        DebouncedSettingsSlider(
             title: "Margin (Top/Bottom)",
             value: $reading.marginTopBottom,
             range: 0...30,
             step: 1,
-            formatted: { String(format: "%.0f%%", $0) }
+            formatter: { String(format: "%.0f%%", $0) }
         )
 
-        sliderBlock(
+        DebouncedSettingsSlider(
             title: "Word Spacing",
             value: $reading.wordSpacing,
             range: -0.5...2.0,
             step: 0.1,
-            formatted: { String(format: "%.1fem", $0) }
+            formatter: { String(format: "%.1fem", $0) }
         )
 
-        sliderBlock(
+        DebouncedSettingsSlider(
             title: "Letter Spacing",
             value: $reading.letterSpacing,
             range: -0.1...0.5,
             step: 0.01,
-            formatted: { String(format: "%.2fem", $0) }
+            formatter: { String(format: "%.2fem", $0) }
         )
 
         highlightColorRow
 
-        sliderBlock(
+        DebouncedSettingsSlider(
             title: "Default Playback Speed",
             value: $playback.defaultPlaybackSpeed,
             range: 0.5...3.0,
             step: 0.05,
-            formatted: { String(format: "%.2fx", $0) }
+            formatter: { String(format: "%.2fx", $0) }
         )
         #endif
-    }
-
-    private func sliderBlock(
-        title: String,
-        value: Binding<Double>,
-        range: ClosedRange<Double>,
-        step: Double,
-        formatted: @escaping (Double) -> String,
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.subheadline)
-                .foregroundStyle(.primary)
-            HStack(spacing: 12) {
-                Slider(value: value, in: range, step: step)
-                Text(formatted(value.wrappedValue))
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
-                    .frame(width: 54, alignment: .trailing)
-            }
-        }
     }
 
     private var highlightColorRow: some View {
@@ -801,6 +886,52 @@ private struct ReadingSettingsFields: View {
                 defaultLightColor: "#CCCCCC",
                 defaultDarkColor: "#333333"
             )
+        }
+    }
+}
+
+private struct DebouncedSettingsSlider: View {
+    let title: String
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+    let step: Double
+    let formatter: (Double) -> String
+
+    @State private var localValue: Double = 0
+    @State private var debounceTask: Task<Void, Never>?
+    @State private var isUpdatingFromSlider = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.subheadline)
+                .foregroundStyle(.primary)
+            HStack(spacing: 12) {
+                Slider(value: $localValue, in: range, step: step)
+                    .onAppear {
+                        localValue = value
+                    }
+                    .onChange(of: localValue) { _, newValue in
+                        debounceTask?.cancel()
+                        debounceTask = Task {
+                            try? await Task.sleep(for: .milliseconds(150))
+                            guard !Task.isCancelled else { return }
+                            await MainActor.run {
+                                isUpdatingFromSlider = true
+                                value = newValue
+                                isUpdatingFromSlider = false
+                            }
+                        }
+                    }
+                    .onChange(of: value) { _, newValue in
+                        guard !isUpdatingFromSlider else { return }
+                        localValue = newValue
+                    }
+                Text(formatter(localValue))
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .frame(width: 54, alignment: .trailing)
+            }
         }
     }
 }
@@ -878,15 +1009,8 @@ private struct ReadingBarSettingsFields: View {
     var body: some View {
         Toggle("Enable Overlay Stats", isOn: $readingBar.enabled)
 
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Transparency: \(Int(readingBar.overlayTransparency * 100))%")
-            Slider(
-                value: $readingBar.overlayTransparency,
-                in: 0.1...1.0,
-                step: 0.01
-            )
-        }
-        .disabled(!readingBar.enabled)
+        DebouncedOpacitySlider(value: $readingBar.overlayTransparency)
+            .disabled(!readingBar.enabled)
 
         Toggle("Show Player Controls", isOn: $readingBar.showPlayerControls)
             .disabled(!readingBar.enabled)
