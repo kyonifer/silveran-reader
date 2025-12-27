@@ -282,7 +282,8 @@ struct MediaItemCardTopTabsButtonOverlay: View {
                 windowID = "EbookPlayer"
         }
         let path = mediaViewModel.localMediaPath(for: item.id, category: category)
-        let cover = mediaViewModel.coverImage(for: item, variant: .standard)
+        let variant: MediaViewModel.CoverVariant = item.hasAvailableAudiobook ? .audioSquare : .standard
+        let cover = mediaViewModel.coverImage(for: item, variant: variant)
         let bookData = PlayerBookData(
             metadata: item,
             localMediaPath: path,

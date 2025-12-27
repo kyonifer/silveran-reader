@@ -328,7 +328,8 @@ struct MediaDownloadOptionRow: View {
     private func makePlayerBookData() -> PlayerBookData {
         let freshMetadata = mediaViewModel.library.bookMetaData.first { $0.id == item.id } ?? item
         let path = mediaViewModel.localMediaPath(for: item.id, category: option.category)
-        let cover = mediaViewModel.coverImage(for: freshMetadata, variant: .standard)
+        let variant: MediaViewModel.CoverVariant = freshMetadata.hasAvailableAudiobook ? .audioSquare : .standard
+        let cover = mediaViewModel.coverImage(for: freshMetadata, variant: variant)
         return PlayerBookData(
             metadata: freshMetadata,
             localMediaPath: path,

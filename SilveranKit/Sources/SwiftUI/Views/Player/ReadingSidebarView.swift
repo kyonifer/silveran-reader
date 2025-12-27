@@ -133,7 +133,8 @@ public struct ReadingSidebarView: View {
         }
         .frame(minHeight: 400)
         .frame(maxHeight: .infinity)
-        .padding(.vertical, 2)
+        .padding(.top, 2)
+        .padding(.bottom, 12)
         .padding(.horizontal, 20)
         .background(backgroundColor)
         .onGeometryChange(for: CGFloat.self) { proxy in
@@ -160,15 +161,28 @@ public struct ReadingSidebarView: View {
         }
     }
 
+    private var isSquareCover: Bool {
+        bookData?.metadata.hasAvailableAudiobook == true
+    }
+
     private var metadataSection: some View {
         VStack(spacing: 12) {
             if let coverArt = model.coverArt, let scale = coverScale {
-                coverArt
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: 180 * scale, height: 180 * scale)
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .shadow(radius: 8)
+                if isSquareCover {
+                    coverArt
+                        .resizable()
+                        .aspectRatio(1, contentMode: .fit)
+                        .frame(maxWidth: .infinity)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .shadow(radius: 8)
+                } else {
+                    coverArt
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 180 * scale, height: 180 * scale)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .shadow(radius: 8)
+                }
             }
 
             VStack(spacing: 8) {

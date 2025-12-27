@@ -114,7 +114,8 @@ public struct iOSLibraryView: View {
                let category = CarPlayCoordinator.shared.activeCategory,
                let path = mediaViewModel.localMediaPath(for: book.id, category: category)
             {
-                let cover = mediaViewModel.coverImage(for: book, variant: .standard)
+                let variant: MediaViewModel.CoverVariant = book.hasAvailableAudiobook ? .audioSquare : .standard
+                let cover = mediaViewModel.coverImage(for: book, variant: variant)
                 NavigationStack {
                     playerView(for: PlayerBookData(
                         metadata: book,
