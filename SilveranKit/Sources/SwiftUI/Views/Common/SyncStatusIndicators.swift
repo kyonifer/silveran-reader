@@ -58,7 +58,7 @@ struct SyncStatusIndicators: View {
         if let library = await StorytellerActor.shared.fetchLibraryInformation() {
             do {
                 try await LocalMediaActor.shared.updateStorytellerMetadata(library)
-                await mediaViewModel.refreshMetadata()
+                await mediaViewModel.refreshMetadata(source: "SyncStatusIndicators.refresh")
                 mediaViewModel.showSyncNotification(
                     SyncNotification(message: "Metadata refreshed", type: .success)
                 )

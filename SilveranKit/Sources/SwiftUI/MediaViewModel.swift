@@ -137,20 +137,6 @@ public final class MediaViewModel {
                 audiobookCoverCache: [:]
             )
             Task { [weak self] in
-                await StorytellerActor.shared.request_notify { @MainActor [weak self] in
-                    guard let self else {
-                        debugLog("[MediaViewModel] Callback self is nil")
-                        return
-                    }
-                    debugLog(
-                        "[MediaViewModel] Observer callback triggered - fetching updated metadata"
-                    )
-                    Task { @MainActor [weak self] in
-                        guard let self else { return }
-                        await self.refreshMetadata()
-                    }
-                }
-
                 await ProgressSyncActor.shared.registerSyncNotificationCallback {
                     @MainActor [weak self] synced, failed in
                     guard let self else { return }
@@ -182,8 +168,6 @@ public final class MediaViewModel {
                         "[MediaViewModel] init: connectionStatus is now \(self?.connectionStatus ?? .disconnected)"
                     )
                 }
-
-                await self?.refreshMetadata()
             }
             setupPathCacheSync()
             setupSettingsSync()
@@ -191,8 +175,8 @@ public final class MediaViewModel {
         }
     }
 
-    public func refreshMetadata() async {
-        debugLog("[MediaViewModel] refreshMetadata: Starting")
+    public func refreshMetadata(source: String = "unknown") async {
+        debugLog("[HomeView] refreshMetadata: Starting from \(source), current libraryVersion=\(libraryVersion), isReady=\(isReady)")
         let status = await StorytellerActor.shared.connectionStatus
         let storytellerPaths = await LocalMediaActor.shared.localStorytellerBookPaths
         let standalonePaths = await LocalMediaActor.shared.localStandaloneBookPaths
@@ -229,6 +213,7 @@ public final class MediaViewModel {
         localStandaloneBookIds = Set(standaloneMetadata.map { $0.uuid })
         connectionStatus = status
         lastNetworkOpSucceeded = await StorytellerActor.shared.lastNetworkOpSucceeded
+        isReady = true
         debugLog(
             "[MediaViewModel] refreshMetadata: connectionStatus=\(status), lastNetworkOpSucceeded=\(String(describing: lastNetworkOpSucceeded))"
         )
@@ -237,7 +222,6 @@ public final class MediaViewModel {
         )
 
         await loadCachedCoversFromDisk()
-        isReady = true
     }
 
     private func startMetadataRefreshTask() {
@@ -308,13 +292,13 @@ public final class MediaViewModel {
             await LocalMediaActor.shared.addObserver { @MainActor [weak self] in
                 Task { @MainActor in
                     await self?.syncPathCache()
-                    await self?.refreshMetadata()
+                    await self?.refreshMetadata(source: "LocalMediaActor.observer")
                 }
             }
 
             await ProgressSyncActor.shared.addObserver { [weak self] in
                 Task { @MainActor in
-                    await self?.refreshMetadata()
+                    await self?.refreshMetadata(source: "ProgressSyncActor.observer")
                 }
             }
         }
@@ -383,9 +367,11 @@ public final class MediaViewModel {
 
     func itemsByStatus(_ statusName: String, sortBy: StatusSortOrder, limit: Int) -> [BookMetadata]
     {
+        debugLog("[HomeView] itemsByStatus('\(statusName)'): library has \(library.bookMetaData.count) books, isReady=\(isReady)")
         let filtered = library.bookMetaData.filter { metadata in
             metadata.status?.name == statusName
         }
+        debugLog("[HomeView] itemsByStatus('\(statusName)'): filtered to \(filtered.count) books")
 
         let sorted: [BookMetadata]
         switch sortBy {
@@ -401,7 +387,10 @@ public final class MediaViewModel {
                 }
         }
 
-        return Array(sorted.prefix(limit))
+        let result = Array(sorted.prefix(limit))
+        let titles = result.map { $0.title }.joined(separator: ", ")
+        debugLog("[HomeView] itemsByStatus('\(statusName)'): returning [\(titles)]")
+        return result
     }
 
     func recentlyAddedItems(limit: Int) -> [BookMetadata] {

@@ -134,7 +134,7 @@ struct HomeView: View {
                                 .padding(.horizontal, horizontalPadding)
                                 .padding(.bottom, headerBottomPadding)
 
-                            if sections.allSatisfy({ $0.items.isEmpty }) {
+                            if mediaViewModel.isReady && sections.allSatisfy({ $0.items.isEmpty }) {
                                 VStack(spacing: 12) {
                                     Text("No media is available here yet!")
                                         .font(.title)
@@ -248,35 +248,50 @@ struct HomeView: View {
         }
         #endif
         .onAppear {
+            debugLog("[HomeView] onAppear: isReady=\(mediaViewModel.isReady), libraryVersion=\(mediaViewModel.libraryVersion), bookCount=\(mediaViewModel.library.bookMetaData.count)")
             if mediaViewModel.isReady {
-                loadSections()
+                debugLog("[HomeView] onAppear: calling loadSections")
+                loadSections(source: "onAppear")
             }
         }
         .onChange(of: selection) { _, _ in
             reconcileSidebarVisibility()
         }
         .onChange(of: mediaViewModel.isReady) {
+            debugLog("[HomeView] onChange(isReady): isReady=\(mediaViewModel.isReady), libraryVersion=\(mediaViewModel.libraryVersion), bookCount=\(mediaViewModel.library.bookMetaData.count)")
             if mediaViewModel.isReady {
-                loadSections()
+                debugLog("[HomeView] onChange(isReady): calling loadSections")
+                loadSections(source: "onChange(isReady)")
             }
         }
         .onChange(of: mediaViewModel.libraryVersion) {
-            loadSections()
+            debugLog("[HomeView] onChange(libraryVersion): isReady=\(mediaViewModel.isReady), libraryVersion=\(mediaViewModel.libraryVersion), bookCount=\(mediaViewModel.library.bookMetaData.count)")
+            if mediaViewModel.isReady {
+                debugLog("[HomeView] onChange(libraryVersion): calling loadSections")
+                loadSections(source: "onChange(libraryVersion)")
+            }
         }
         .onChange(of: searchText) { _, _ in
-            loadSections()
+            debugLog("[HomeView] onChange(searchText): isReady=\(mediaViewModel.isReady)")
+            if mediaViewModel.isReady {
+                loadSections(source: "onChange(searchText)")
+            }
         }
     }
 
-    private func loadSections() {
+    private func loadSections(source: String) {
+        let currentlyReading = makeStatusSection(
+            title: "Currently Reading",
+            statusName: "Reading",
+            sortBy: .recentPositionUpdate,
+            limit: 12,
+            destination: "Currently Reading"
+        )
+        let readingTitles = currentlyReading.items.map { $0.title }.joined(separator: ", ")
+        debugLog("[HomeView] loadSections(\(source)): Currently Reading books: [\(readingTitles)]")
+
         sections = [
-            makeStatusSection(
-                title: "Currently Reading",
-                statusName: "Reading",
-                sortBy: .recentPositionUpdate,
-                limit: 12,
-                destination: "Currently Reading"
-            ),
+            currentlyReading,
             makeStatusSection(
                 title: "Start Reading",
                 statusName: "To read",

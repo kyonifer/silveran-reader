@@ -129,7 +129,7 @@ struct SidebarView: View {
         if let library = await StorytellerActor.shared.fetchLibraryInformation() {
             do {
                 try await LocalMediaActor.shared.updateStorytellerMetadata(library)
-                await mediaViewModel.refreshMetadata()
+                await mediaViewModel.refreshMetadata(source: "SidebarView.refresh")
                 mediaViewModel.showSyncNotification(
                     SyncNotification(message: "Library refreshed", type: .success)
                 )
