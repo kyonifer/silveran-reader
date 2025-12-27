@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 struct DebugLogView: View {
     @State private var logText: String = ""

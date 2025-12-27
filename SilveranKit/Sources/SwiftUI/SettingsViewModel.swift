@@ -122,7 +122,6 @@ public final class SettingsViewModel {
         showAudioIndicator = config.library.showAudioIndicator
 
         isLoaded = true
-        debugLog("[SettingsViewModel] Settings loaded")
     }
 
     private func registerObserver() async {
@@ -135,7 +134,6 @@ public final class SettingsViewModel {
             }
         }
         observerID = id
-        debugLog("[SettingsViewModel] Observer registered with ID \(id)")
     }
 
     public func save() async throws {

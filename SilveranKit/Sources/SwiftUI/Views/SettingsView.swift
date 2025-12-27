@@ -218,9 +218,64 @@ extension SettingsView {
                         Label("Storyteller Server", systemImage: "server.rack")
                     }
                 }
+
+                Section {
+                    NavigationLink {
+                        IOSDebugLogView()
+                    } label: {
+                        Label("Debug Log", systemImage: "doc.text")
+                    }
+                }
             }
             .navigationTitle("Settings")
         }
+    }
+}
+
+private struct IOSDebugLogView: View {
+    @State private var logText: String = ""
+    @State private var messageCount: Int = 0
+
+    var body: some View {
+        List {
+            Section {
+                Text(logText)
+                    .font(.system(.caption, design: .monospaced))
+                    .textSelection(.enabled)
+            } header: {
+                Text("\(messageCount) messages")
+            }
+        }
+        .navigationTitle("Debug Log")
+        .toolbar {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                Button {
+                    UIPasteboard.general.string = logText
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                }
+                Button {
+                    DebugLogBuffer.shared.clear()
+                    loadMessages()
+                } label: {
+                    Image(systemName: "trash")
+                }
+                Button {
+                    loadMessages()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+            }
+        }
+        .onAppear {
+            loadMessages()
+        }
+    }
+
+    private func loadMessages() {
+        let messages = DebugLogBuffer.shared.getMessages()
+        messageCount = messages.count
+        logText = messages.joined(separator: "\n")
     }
 }
 #endif

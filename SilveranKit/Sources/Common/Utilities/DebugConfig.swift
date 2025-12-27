@@ -10,7 +10,7 @@ public final class DebugLogBuffer: @unchecked Sendable {
 
     private let lock = NSLock()
     private var buffer: [String] = []
-    private let maxSize = 200
+    private let maxSize = 2000
 
     private init() {}
 
