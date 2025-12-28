@@ -8,7 +8,6 @@ A book reading app for ebooks, audiobooks, and readaloud books, with tight [Stor
 - iOS, macOS, CarPlay and Apple Watch support
 - Playback readaloud books with audio-text sync (with mid-sentence page flips)
 - Storyteller server integration (optional)
-- iCloud progress sync across devices  (optional)
 - Customizable playback speed (0.75x - 10x)
 - Customizable fonts, spacing, margins, and colors
 - EPUB and M4B format support
