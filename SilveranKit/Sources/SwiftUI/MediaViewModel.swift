@@ -552,6 +552,8 @@ public final class MediaViewModel {
                     }
                 }
 
+                base = base.filter { matchesLocationFilter($0, filter: config.locationFilter) }
+
                 return base.count
             case .seriesView:
                 return library.bookMetaData.filter { book in
@@ -591,6 +593,24 @@ public final class MediaViewModel {
                 return item.hasAvailableAudiobook || item.hasAvailableReadaloud
             case .withoutAudio:
                 return item.isEbookOnly
+        }
+    }
+
+    private func matchesLocationFilter(_ item: BookMetadata, filter: LocationFilter) -> Bool {
+        switch filter {
+            case .all:
+                return true
+            case .downloaded:
+                return isCategoryDownloaded(.ebook, for: item)
+                    || isCategoryDownloaded(.audio, for: item)
+                    || isCategoryDownloaded(.synced, for: item)
+            case .serverOnly:
+                let hasDownload = isCategoryDownloaded(.ebook, for: item)
+                    || isCategoryDownloaded(.audio, for: item)
+                    || isCategoryDownloaded(.synced, for: item)
+                return !hasDownload && !isLocalStandaloneBook(item.id)
+            case .localFiles:
+                return isLocalStandaloneBook(item.id)
         }
     }
 
