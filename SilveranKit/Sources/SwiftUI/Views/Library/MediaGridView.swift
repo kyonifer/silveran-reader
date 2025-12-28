@@ -795,17 +795,17 @@ struct MediaGridView: View {
         var label: String {
             switch self {
                 case .titleAZ:
-                    "Title (A-Z)"
+                    "Title A-Z"
                 case .titleZA:
-                    "Title (Z-A)"
+                    "Title Z-A"
                 case .authorAZ:
-                    "Author (A-Z)"
+                    "Author A-Z"
                 case .authorZA:
-                    "Author (Z-A)"
+                    "Author Z-A"
                 case .progressHighToLow:
-                    "Progress (High to Low)"
+                    "Progress High-Low"
                 case .progressLowToHigh:
-                    "Progress (Low to High)"
+                    "Progress Low-High"
                 case .recentlyRead:
                     "Recently Read"
                 case .recentlyAdded:
@@ -826,9 +826,9 @@ struct MediaGridView: View {
                 case .authorZA:
                     "Author Z-A"
                 case .progressHighToLow:
-                    "Progress High to Low"
+                    "Progress High-Low"
                 case .progressLowToHigh:
-                    "Progress Low to High"
+                    "Progress Low-High"
                 case .recentlyRead:
                     "Recently Read"
                 case .recentlyAdded:
@@ -929,17 +929,17 @@ struct MediaGridView: View {
                 case .all:
                     "All Titles"
                 case .readaloud:
-                    "Ebook With Audio Narration (Readaloud)"
+                    "Readaloud"
                 case .ebook:
-                    "Ebook Without Audio Narration"
+                    "Ebook Without Audio"
                 case .audiobook:
                     "Audiobook"
                 case .ebookOnly:
-                    "Ebook Only (No other formats)"
+                    "Ebook Only"
                 case .audiobookOnly:
-                    "Audiobook Only (No other formats)"
+                    "Audiobook Only"
                 case .missingReadaloud:
-                    "Missing Readaloud (Unjoined audio+ebook)"
+                    "Missing Readaloud"
             }
         }
 

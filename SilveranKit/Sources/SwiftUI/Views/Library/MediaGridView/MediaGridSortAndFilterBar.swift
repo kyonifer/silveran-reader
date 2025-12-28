@@ -37,10 +37,14 @@ struct MediaGridSortAndFilterBar: View {
                 }
             }
         } label: {
+            #if os(iOS)
+            Label("Sort", systemImage: "arrow.up.arrow.down")
+            #else
             Label(
                 "Sort: \(selectedSortOption.shortLabel)",
                 systemImage: "arrow.up.arrow.down"
             )
+            #endif
         }
         #if os(macOS)
         .menuStyle(.borderlessButton)
@@ -56,10 +60,14 @@ struct MediaGridSortAndFilterBar: View {
             locationSection
             otherSection
         } label: {
+            #if os(iOS)
+            Label("Filters", systemImage: "line.3.horizontal.decrease")
+            #else
             Label(
                 "Filters: \(filtersSummaryText)",
                 systemImage: "line.3.horizontal.decrease"
             )
+            #endif
         }
         #if os(macOS)
         .menuStyle(.borderlessButton)
