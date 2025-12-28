@@ -176,7 +176,6 @@ public final class MediaViewModel {
     }
 
     public func refreshMetadata(source: String = "unknown") async {
-        debugLog("[HomeView] refreshMetadata: Starting from \(source), current libraryVersion=\(libraryVersion), isReady=\(isReady)")
         let status = await StorytellerActor.shared.connectionStatus
         let storytellerPaths = await LocalMediaActor.shared.localStorytellerBookPaths
         let standalonePaths = await LocalMediaActor.shared.localStandaloneBookPaths
@@ -367,11 +366,9 @@ public final class MediaViewModel {
 
     func itemsByStatus(_ statusName: String, sortBy: StatusSortOrder, limit: Int) -> [BookMetadata]
     {
-        debugLog("[HomeView] itemsByStatus('\(statusName)'): library has \(library.bookMetaData.count) books, isReady=\(isReady)")
         let filtered = library.bookMetaData.filter { metadata in
             metadata.status?.name == statusName
         }
-        debugLog("[HomeView] itemsByStatus('\(statusName)'): filtered to \(filtered.count) books")
 
         let sorted: [BookMetadata]
         switch sortBy {
@@ -387,10 +384,7 @@ public final class MediaViewModel {
                 }
         }
 
-        let result = Array(sorted.prefix(limit))
-        let titles = result.map { $0.title }.joined(separator: ", ")
-        debugLog("[HomeView] itemsByStatus('\(statusName)'): returning [\(titles)]")
-        return result
+        return Array(sorted.prefix(limit))
     }
 
     func recentlyAddedItems(limit: Int) -> [BookMetadata] {

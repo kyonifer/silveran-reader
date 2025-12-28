@@ -248,9 +248,7 @@ struct HomeView: View {
         }
         #endif
         .onAppear {
-            debugLog("[HomeView] onAppear: isReady=\(mediaViewModel.isReady), libraryVersion=\(mediaViewModel.libraryVersion), bookCount=\(mediaViewModel.library.bookMetaData.count)")
             if mediaViewModel.isReady {
-                debugLog("[HomeView] onAppear: calling loadSections")
                 loadSections(source: "onAppear")
             }
         }
@@ -258,21 +256,16 @@ struct HomeView: View {
             reconcileSidebarVisibility()
         }
         .onChange(of: mediaViewModel.isReady) {
-            debugLog("[HomeView] onChange(isReady): isReady=\(mediaViewModel.isReady), libraryVersion=\(mediaViewModel.libraryVersion), bookCount=\(mediaViewModel.library.bookMetaData.count)")
             if mediaViewModel.isReady {
-                debugLog("[HomeView] onChange(isReady): calling loadSections")
                 loadSections(source: "onChange(isReady)")
             }
         }
         .onChange(of: mediaViewModel.libraryVersion) {
-            debugLog("[HomeView] onChange(libraryVersion): isReady=\(mediaViewModel.isReady), libraryVersion=\(mediaViewModel.libraryVersion), bookCount=\(mediaViewModel.library.bookMetaData.count)")
             if mediaViewModel.isReady {
-                debugLog("[HomeView] onChange(libraryVersion): calling loadSections")
                 loadSections(source: "onChange(libraryVersion)")
             }
         }
         .onChange(of: searchText) { _, _ in
-            debugLog("[HomeView] onChange(searchText): isReady=\(mediaViewModel.isReady)")
             if mediaViewModel.isReady {
                 loadSections(source: "onChange(searchText)")
             }
@@ -287,8 +280,6 @@ struct HomeView: View {
             limit: 12,
             destination: "Currently Reading"
         )
-        let readingTitles = currentlyReading.items.map { $0.title }.joined(separator: ", ")
-        debugLog("[HomeView] loadSections(\(source)): Currently Reading books: [\(readingTitles)]")
 
         sections = [
             currentlyReading,
