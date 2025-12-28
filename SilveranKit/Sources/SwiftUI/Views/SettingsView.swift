@@ -177,7 +177,6 @@ public struct SettingsView: View {
                     alwaysShowMiniPlayer: newValue.readingBar.alwaysShowMiniPlayer,
                     progressSyncIntervalSeconds: newValue.sync.progressSyncIntervalSeconds,
                     metadataRefreshIntervalSeconds: newValue.sync.metadataRefreshIntervalSeconds,
-                    iCloudSyncEnabled: newValue.sync.iCloudSyncEnabled,
                     userHighlightColor1: newValue.reading.userHighlightColor1,
                     userHighlightColor2: newValue.reading.userHighlightColor2,
                     userHighlightColor3: newValue.reading.userHighlightColor3,

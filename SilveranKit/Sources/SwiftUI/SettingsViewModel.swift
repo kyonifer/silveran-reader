@@ -45,7 +45,6 @@ public final class SettingsViewModel {
 
     public var progressSyncIntervalSeconds: Double = 30
     public var metadataRefreshIntervalSeconds: Double = 300
-    public var iCloudSyncEnabled: Bool = true
 
     public var showAudioIndicator: Bool = false
 
@@ -140,7 +139,6 @@ public final class SettingsViewModel {
 
         progressSyncIntervalSeconds = config.sync.progressSyncIntervalSeconds
         metadataRefreshIntervalSeconds = config.sync.metadataRefreshIntervalSeconds
-        iCloudSyncEnabled = config.sync.iCloudSyncEnabled
 
         showAudioIndicator = config.library.showAudioIndicator
 
@@ -206,7 +204,6 @@ public final class SettingsViewModel {
             alwaysShowMiniPlayer: alwaysShowMiniPlayerValue,
             progressSyncIntervalSeconds: progressSyncIntervalSeconds,
             metadataRefreshIntervalSeconds: metadataRefreshIntervalSeconds,
-            iCloudSyncEnabled: iCloudSyncEnabled,
             showAudioIndicator: showAudioIndicator
         )
     }

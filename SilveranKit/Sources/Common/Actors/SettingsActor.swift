@@ -155,18 +155,15 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
         public var progressSyncIntervalSeconds: Double
         public var metadataRefreshIntervalSeconds: Double
         public var isManuallyOffline: Bool
-        public var iCloudSyncEnabled: Bool
 
         public init(
             progressSyncIntervalSeconds: Double = 30,
             metadataRefreshIntervalSeconds: Double = 300,
-            isManuallyOffline: Bool = false,
-            iCloudSyncEnabled: Bool = true
+            isManuallyOffline: Bool = false
         ) {
             self.progressSyncIntervalSeconds = progressSyncIntervalSeconds
             self.metadataRefreshIntervalSeconds = metadataRefreshIntervalSeconds
             self.isManuallyOffline = isManuallyOffline
-            self.iCloudSyncEnabled = iCloudSyncEnabled
         }
 
         public var isProgressSyncDisabled: Bool {
@@ -257,7 +254,6 @@ public actor SettingsActor {
         progressSyncIntervalSeconds: Double? = nil,
         metadataRefreshIntervalSeconds: Double? = nil,
         isManuallyOffline: Bool? = nil,
-        iCloudSyncEnabled: Bool? = nil,
         showAudioIndicator: Bool? = nil,
         userHighlightColor1: String? = nil,
         userHighlightColor2: String? = nil,
@@ -316,10 +312,6 @@ public actor SettingsActor {
         }
         if let isManuallyOffline {
             updated.sync.isManuallyOffline = isManuallyOffline
-        }
-        if let iCloudSyncEnabled {
-            debugLog("[SettingsActor] Updating iCloudSyncEnabled to \(iCloudSyncEnabled)")
-            updated.sync.iCloudSyncEnabled = iCloudSyncEnabled
         }
         if let showAudioIndicator {
             updated.library.showAudioIndicator = showAudioIndicator
