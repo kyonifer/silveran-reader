@@ -145,9 +145,8 @@ public actor ProgressSyncActor {
         var syncedCount = 0
         var failedCount = 0
 
-        for i in pendingProgressQueue.indices {
-            var pending = pendingProgressQueue[i]
-
+        let queueSnapshot = pendingProgressQueue
+        for var pending in queueSnapshot {
             let isLocalBook = await LocalMediaActor.shared.isLocalStandaloneBook(pending.bookId)
             if isLocalBook {
                 debugLog(
