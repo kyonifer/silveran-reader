@@ -19,6 +19,25 @@ public struct iOSLibraryView: View {
         return mediaViewModel.library.bookMetaData.first { $0.id == bookId }
     }
 
+    private var connectionErrorType: OfflineStatusSheet.ErrorType {
+        if case .error(let message) = mediaViewModel.connectionStatus {
+            return .authError(message)
+        }
+        return .networkOffline
+    }
+
+    private var hasConnectionError: Bool {
+        mediaViewModel.lastNetworkOpSucceeded == false ||
+        { if case .error = mediaViewModel.connectionStatus { return true }; return false }()
+    }
+
+    private var connectionErrorIcon: String {
+        if case .error = mediaViewModel.connectionStatus {
+            return "exclamationmark.triangle"
+        }
+        return "wifi.slash"
+    }
+
     enum Tab: String, CaseIterable {
         case home
         case books
@@ -89,10 +108,25 @@ public struct iOSLibraryView: View {
         }
         .sheet(isPresented: $showOfflineSheet) {
             OfflineStatusSheet(
+                errorType: connectionErrorType,
+                onRetry: {
+                    let _ = await StorytellerActor.shared.fetchLibraryInformation()
+                    if !hasConnectionError {
+                        await MainActor.run {
+                            showOfflineSheet = false
+                        }
+                        return true
+                    }
+                    return false
+                },
                 onGoToDownloads: {
                     showOfflineSheet = false
                     selectedTab = .more
                     moreNavigationPath.append(MoreMenuView.MoreDestination.downloaded)
+                },
+                onGoToSettings: {
+                    showOfflineSheet = false
+                    showSettings = true
                 }
             )
             .presentationDetents([.medium])
@@ -167,11 +201,11 @@ public struct iOSLibraryView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     HStack(spacing: 12) {
-                        if mediaViewModel.lastNetworkOpSucceeded == false {
+                        if hasConnectionError {
                             Button {
                                 showOfflineSheet = true
                             } label: {
-                                Image(systemName: "wifi.slash")
+                                Image(systemName: connectionErrorIcon)
                                     .foregroundStyle(.red)
                             }
                         }
@@ -252,6 +286,19 @@ struct MoreMenuView: View {
         case appleWatch
     }
 
+    private var hasConnectionError: Bool {
+        if mediaViewModel.lastNetworkOpSucceeded == false { return true }
+        if case .error = mediaViewModel.connectionStatus { return true }
+        return false
+    }
+
+    private var connectionErrorIcon: String {
+        if case .error = mediaViewModel.connectionStatus {
+            return "exclamationmark.triangle"
+        }
+        return "wifi.slash"
+    }
+
     var body: some View {
         List {
             Section {
@@ -282,11 +329,11 @@ struct MoreMenuView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 HStack(spacing: 12) {
-                    if mediaViewModel.lastNetworkOpSucceeded == false {
+                    if hasConnectionError {
                         Button {
                             showOfflineSheet = true
                         } label: {
-                            Image(systemName: "wifi.slash")
+                            Image(systemName: connectionErrorIcon)
                                 .foregroundStyle(.red)
                         }
                     }
@@ -666,38 +713,127 @@ struct AuthorsListView: View {
 }
 
 struct OfflineStatusSheet: View {
+    enum ErrorType: Equatable {
+        case networkOffline
+        case authError(String)
+    }
+
+    let errorType: ErrorType
+    let onRetry: () async -> Bool
     let onGoToDownloads: () -> Void
+    let onGoToSettings: (() -> Void)?
+
+    @State private var isRetrying = false
+
+    init(
+        errorType: ErrorType = .networkOffline,
+        onRetry: @escaping () async -> Bool,
+        onGoToDownloads: @escaping () -> Void,
+        onGoToSettings: (() -> Void)? = nil
+    ) {
+        self.errorType = errorType
+        self.onRetry = onRetry
+        self.onGoToDownloads = onGoToDownloads
+        self.onGoToSettings = onGoToSettings
+    }
+
+    private var icon: String {
+        switch errorType {
+        case .networkOffline: return "wifi.slash"
+        case .authError: return "exclamationmark.triangle"
+        }
+    }
+
+    private var title: String {
+        switch errorType {
+        case .networkOffline: return "Not Connected"
+        case .authError: return "Connection Error"
+        }
+    }
+
+    private var message: String {
+        switch errorType {
+        case .networkOffline:
+            return "You are currently not connected to the server. Only downloaded books are available for reading."
+        case .authError(let details):
+            return "Unable to connect to the server: \(details). Please check your server credentials in Settings."
+        }
+    }
 
     var body: some View {
         VStack(spacing: 24) {
-            Image(systemName: "wifi.slash")
+            Image(systemName: icon)
                 .font(.system(size: 48))
                 .foregroundStyle(.orange)
 
             VStack(spacing: 8) {
-                Text("Not Connected")
+                Text(title)
                     .font(.title2.weight(.semibold))
 
-                Text(
-                    "You are currently not connected to the server. Only downloaded books are available for reading."
-                )
-                .font(.body)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
+                Text(message)
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
             }
 
-            Button(action: onGoToDownloads) {
-                HStack {
-                    Image(systemName: "arrow.down.circle.fill")
-                    Text("Go to Downloads")
+            VStack(spacing: 12) {
+                if case .authError = errorType, let onGoToSettings {
+                    Button(action: onGoToSettings) {
+                        HStack {
+                            Image(systemName: "gearshape.fill")
+                            Text("Go to Settings")
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .padding(.horizontal)
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
+
+                HStack(spacing: 12) {
+                    Button {
+                        isRetrying = true
+                        Task {
+                            let _ = await onRetry()
+                            isRetrying = false
+                        }
+                    } label: {
+                        HStack {
+                            if isRetrying {
+                                ProgressView()
+                                    .controlSize(.small)
+                            } else {
+                                Image(systemName: "arrow.clockwise")
+                            }
+                            Text("Retry")
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(isRetrying)
+
+                    Button(action: onGoToDownloads) {
+                        HStack {
+                            Image(systemName: "arrow.down.circle.fill")
+                            Text("Downloads")
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                    }
+                    .buttonStyle(.bordered)
+                }
+                .padding(.horizontal)
             }
-            .buttonStyle(.borderedProminent)
-            .padding(.horizontal)
         }
         .padding(24)
+    }
+}
+
+extension OfflineStatusSheet.ErrorType {
+    var isAuthError: Bool {
+        if case .authError = self { return true }
+        return false
     }
 }
 
@@ -706,16 +842,29 @@ struct IOSLibraryToolbarModifier: ViewModifier {
     @Binding var showOfflineSheet: Bool
     @Environment(MediaViewModel.self) private var mediaViewModel
 
+    private var hasConnectionError: Bool {
+        if mediaViewModel.lastNetworkOpSucceeded == false { return true }
+        if case .error = mediaViewModel.connectionStatus { return true }
+        return false
+    }
+
+    private var connectionErrorIcon: String {
+        if case .error = mediaViewModel.connectionStatus {
+            return "exclamationmark.triangle"
+        }
+        return "wifi.slash"
+    }
+
     func body(content: Content) -> some View {
         content
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     HStack(spacing: 12) {
-                        if mediaViewModel.lastNetworkOpSucceeded == false {
+                        if hasConnectionError {
                             Button {
                                 showOfflineSheet = true
                             } label: {
-                                Image(systemName: "wifi.slash")
+                                Image(systemName: connectionErrorIcon)
                                     .foregroundStyle(.red)
                             }
                         }

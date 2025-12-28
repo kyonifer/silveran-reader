@@ -168,6 +168,20 @@ public final class MediaViewModel {
                         "[MediaViewModel] init: connectionStatus is now \(self?.connectionStatus ?? .disconnected)"
                     )
                 }
+
+                await StorytellerActor.shared.request_notify { @MainActor [weak self] in
+                    guard let self else { return }
+                    Task { @MainActor [weak self] in
+                        guard let self else { return }
+                        let status = await StorytellerActor.shared.connectionStatus
+                        let networkOp = await StorytellerActor.shared.lastNetworkOpSucceeded
+                        self.connectionStatus = status
+                        self.lastNetworkOpSucceeded = networkOp
+                        debugLog(
+                            "[MediaViewModel] StorytellerActor notify: connectionStatus=\(status), lastNetworkOpSucceeded=\(String(describing: networkOp))"
+                        )
+                    }
+                }
             }
             setupPathCacheSync()
             setupSettingsSync()

@@ -33,8 +33,30 @@ struct MediaDownloadOptionRow: View {
     @Environment(\.openWindow) private var openWindow
     #endif
 
-    @State private var showOfflineAlert = false
+    @State private var showConnectionAlert = false
     @State private var isHovered = false
+
+    private var hasConnectionError: Bool {
+        if mediaViewModel.lastNetworkOpSucceeded == false { return true }
+        if case .error = mediaViewModel.connectionStatus { return true }
+        return false
+    }
+
+    private var isAuthError: Bool {
+        if case .error = mediaViewModel.connectionStatus { return true }
+        return false
+    }
+
+    private var connectionAlertTitle: String {
+        isAuthError ? "Connection Error" : "Server Not Connected"
+    }
+
+    private var connectionAlertMessage: String {
+        if case .error(let message) = mediaViewModel.connectionStatus {
+            return "Unable to download: \(message). Please check your server credentials in Settings."
+        }
+        return "Cannot download media while disconnected from the server. Please check your connection and try again."
+    }
 
     var body: some View {
         #if os(iOS)
@@ -45,12 +67,10 @@ struct MediaDownloadOptionRow: View {
                 downloadControls
             }
         }
-        .alert("Server Not Connected", isPresented: $showOfflineAlert) {
+        .alert(connectionAlertTitle, isPresented: $showConnectionAlert) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text(
-                "Cannot download media while disconnected from the server. Please check your connection and try again."
-            )
+            Text(connectionAlertMessage)
         }
         #else
         HStack(spacing: 12) {
@@ -89,12 +109,10 @@ struct MediaDownloadOptionRow: View {
         .onHover { hovering in
             isHovered = hovering
         }
-        .alert("Server Not Connected", isPresented: $showOfflineAlert) {
+        .alert(connectionAlertTitle, isPresented: $showConnectionAlert) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text(
-                "Cannot download media while disconnected from the server. Please check your connection and try again."
-            )
+            Text(connectionAlertMessage)
         }
         #endif
     }
@@ -194,8 +212,8 @@ struct MediaDownloadOptionRow: View {
         HStack(spacing: 8) {
             if !isDownloadInProgress {
                 Button {
-                    if mediaViewModel.lastNetworkOpSucceeded == false {
-                        showOfflineAlert = true
+                    if hasConnectionError {
+                        showConnectionAlert = true
                     } else {
                         mediaViewModel.startDownload(for: item, category: option.category)
                         onAction?()
@@ -275,14 +293,14 @@ struct MediaDownloadOptionRow: View {
         HStack(spacing: 10) {
             if !isDownloadInProgress {
                 Button {
-                    if mediaViewModel.lastNetworkOpSucceeded == false {
-                        showOfflineAlert = true
+                    if hasConnectionError {
+                        showConnectionAlert = true
                     } else {
                         mediaViewModel.startDownload(for: item, category: option.category)
                         onAction?()
                     }
                 } label: {
-                    if isHovered && mediaViewModel.lastNetworkOpSucceeded == false {
+                    if isHovered && hasConnectionError {
                         ZStack {
                             Circle()
                                 .fill(.red)

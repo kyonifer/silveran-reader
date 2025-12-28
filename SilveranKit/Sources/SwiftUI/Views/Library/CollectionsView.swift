@@ -24,6 +24,21 @@ struct CollectionsView: View {
     private let horizontalPadding: CGFloat = 24
     private let sectionSpacing: CGFloat = 32
 
+    #if os(iOS)
+    private var hasConnectionError: Bool {
+        if mediaViewModel.lastNetworkOpSucceeded == false { return true }
+        if case .error = mediaViewModel.connectionStatus { return true }
+        return false
+    }
+
+    private var connectionErrorIcon: String {
+        if case .error = mediaViewModel.connectionStatus {
+            return "exclamationmark.triangle"
+        }
+        return "wifi.slash"
+    }
+    #endif
+
     var body: some View {
         NavigationStack(path: $navigationPath) {
             collectionsListView
@@ -33,13 +48,13 @@ struct CollectionsView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     HStack(spacing: 12) {
-                        if mediaViewModel.lastNetworkOpSucceeded == false,
+                        if hasConnectionError,
                             let showOfflineSheet
                         {
                             Button {
                                 showOfflineSheet.wrappedValue = true
                             } label: {
-                                Image(systemName: "wifi.slash")
+                                Image(systemName: connectionErrorIcon)
                                 .foregroundStyle(.red)
                             }
                         }

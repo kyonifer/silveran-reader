@@ -29,6 +29,7 @@ struct SeriesStackView: View {
         let coverVariant = mediaViewModel.coverVariant(for: book)
         let coverWidth = coverHeight * coverVariant.preferredAspectRatio
         let placeholderColor = Color(white: 0.2)
+        let coverState = mediaViewModel.coverState(for: book, variant: coverVariant)
 
         return Button {
             onSelect(book)
@@ -36,7 +37,7 @@ struct SeriesStackView: View {
             ZStack {
                 placeholderColor
 
-                if let image = mediaViewModel.coverImage(for: book, variant: coverVariant) {
+                if let image = coverState.image {
                     image
                         .resizable()
                         .interpolation(.medium)

@@ -124,9 +124,29 @@ struct MediaItemCardTopTabsButtonOverlay: View {
     #endif
 
     @State private var hoveredTab: MediaItemCardTopTabs.TabCategory?
-    @State private var showOfflineAlert = false
+    @State private var showConnectionAlert = false
 
     private let buttonHeight: CGFloat = 40
+
+    private var hasConnectionError: Bool {
+        if mediaViewModel.lastNetworkOpSucceeded == false { return true }
+        if case .error = mediaViewModel.connectionStatus { return true }
+        return false
+    }
+
+    private var connectionAlertTitle: String {
+        if case .error = mediaViewModel.connectionStatus {
+            return "Connection Error"
+        }
+        return "Server Not Connected"
+    }
+
+    private var connectionAlertMessage: String {
+        if case .error(let message) = mediaViewModel.connectionStatus {
+            return "Unable to download: \(message). Please check your server credentials in Settings."
+        }
+        return "Cannot download media while disconnected from the server. Please check your connection and try again."
+    }
 
     var body: some View {
         Group {
@@ -142,12 +162,10 @@ struct MediaItemCardTopTabsButtonOverlay: View {
             }
         }
         .animation(.easeInOut(duration: 0.2), value: isSelected)
-        .alert("Server Not Connected", isPresented: $showOfflineAlert) {
+        .alert(connectionAlertTitle, isPresented: $showConnectionAlert) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text(
-                "Cannot download media while disconnected from the server. Please check your connection and try again."
-            )
+            Text(connectionAlertMessage)
         }
     }
 
@@ -182,7 +200,7 @@ struct MediaItemCardTopTabsButtonOverlay: View {
                                 .tint(statusColor)
                         }
                     } else if isHovered && status == .availableNotDownloaded {
-                        if mediaViewModel.connectionStatus != .connected {
+                        if hasConnectionError {
                             ZStack {
                                 Circle()
                                     .fill(.red)
@@ -257,8 +275,8 @@ struct MediaItemCardTopTabsButtonOverlay: View {
 
         switch status {
             case .availableNotDownloaded:
-                if mediaViewModel.lastNetworkOpSucceeded == false {
-                    showOfflineAlert = true
+                if hasConnectionError {
+                    showConnectionAlert = true
                 } else {
                     mediaViewModel.startDownload(for: item, category: category)
                 }
