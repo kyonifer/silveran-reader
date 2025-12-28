@@ -8,7 +8,10 @@ struct SidebarView: View {
     @Environment(MediaViewModel.self) private var mediaViewModel
     @State private var selectedUuid: UUID?
     @State private var isRefreshing: Bool = false
-    @State private var storytellerConfigured: Bool = false
+
+    private var storytellerConfigured: Bool {
+        mediaViewModel.connectionStatus != .disconnected
+    }
 
     var body: some View {
         List(selection: $selectedUuid) {
@@ -34,9 +37,32 @@ struct SidebarView: View {
                         }
                     }
                 } header: {
-                    Text(section.name)
-                        .font(.headline)
-                        .padding(.bottom, 3)
+                    HStack {
+                        Text(section.name)
+                            .font(.headline)
+                        #if os(macOS)
+                        if section.name == "Library" && storytellerConfigured {
+                            Spacer()
+                            Button {
+                                Task { await refreshMetadata() }
+                            } label: {
+                                if isRefreshing {
+                                    ProgressView()
+                                        .controlSize(.small)
+                                        .scaleEffect(0.7)
+                                } else {
+                                    Image(systemName: "arrow.triangle.2.circlepath")
+                                        .font(.system(size: 11))
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.secondary)
+                            .disabled(isRefreshing)
+                        }
+                        #endif
+                    }
+                    .padding(.bottom, 3)
+                    .padding(.trailing, 16)
                 }
             }
         }
@@ -57,35 +83,6 @@ struct SidebarView: View {
             prompt: "Search"
         )
         .navigationSplitViewColumnWidth(min: 180, ideal: 250)
-        #if os(macOS)
-        .safeAreaInset(edge: .bottom) {
-            if storytellerConfigured {
-                HStack {
-                    Button {
-                        Task { await refreshMetadata() }
-                    } label: {
-                        HStack(spacing: 6) {
-                            if isRefreshing {
-                                ProgressView()
-                                    .controlSize(.small)
-                            } else {
-                                Image(systemName: "arrow.triangle.2.circlepath")
-                            }
-                            Text("Refresh Library")
-                        }
-                        .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(isRefreshing)
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-            }
-        }
-        .task {
-            storytellerConfigured = await StorytellerActor.shared.isConfigured
-        }
-        #endif
     }
 
     private func findItem(by id: UUID) -> SidebarItemDescription? {
