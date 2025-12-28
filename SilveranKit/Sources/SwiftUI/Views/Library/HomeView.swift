@@ -41,6 +41,7 @@ struct HomeView: View {
     @State private var isSidebarVisible: Bool = false
     @State private var sections: [HomeSection] = []
     @State private var settingsViewModel = SettingsViewModel()
+    @State private var allowEmptyStateDisplay: Bool = false
     #if os(macOS)
     // Workaround for macOS Sequoia bug where parent view's onTapGesture fires after card tap
     @State private var cardTapInProgress: Bool = false
@@ -134,7 +135,7 @@ struct HomeView: View {
                                 .padding(.horizontal, horizontalPadding)
                                 .padding(.bottom, headerBottomPadding)
 
-                            if mediaViewModel.isReady && sections.allSatisfy({ $0.items.isEmpty }) {
+                            if allowEmptyStateDisplay && sections.allSatisfy({ $0.items.isEmpty }) {
                                 VStack(spacing: 12) {
                                     Text("No media is available here yet!")
                                         .font(.title)
@@ -251,6 +252,10 @@ struct HomeView: View {
             if mediaViewModel.isReady {
                 loadSections(source: "onAppear")
             }
+        }
+        .task {
+            try? await Task.sleep(for: .seconds(1))
+            allowEmptyStateDisplay = true
         }
         .onChange(of: selection) { _, _ in
             reconcileSidebarVisibility()

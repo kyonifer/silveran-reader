@@ -6,6 +6,7 @@ public actor AuthenticationActor {
     public static let shared = AuthenticationActor()
 
     private let service = "com.kyonifer.silveran.storyteller"
+    private let accessGroup = "9CJ7KG7UKQ.com.kyonifer.silveran.shared"
     private let serverURLKey = "serverURL"
     private let usernameKey = "username"
     private let passwordKey = "password"
@@ -38,6 +39,7 @@ public actor AuthenticationActor {
                 kSecClass as String: kSecClassGenericPassword,
                 kSecAttrService as String: service,
                 kSecAttrAccount as String: key,
+                kSecAttrAccessGroup as String: accessGroup,
                 kSecUseDataProtectionKeychain as String: true,
             ]
 
@@ -66,6 +68,7 @@ public actor AuthenticationActor {
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
+            kSecAttrAccessGroup as String: accessGroup,
             kSecValueData as String: data,
             kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlocked,
             kSecUseDataProtectionKeychain as String: true,
@@ -82,6 +85,7 @@ public actor AuthenticationActor {
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
+            kSecAttrAccessGroup as String: accessGroup,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
             kSecUseDataProtectionKeychain as String: true,
