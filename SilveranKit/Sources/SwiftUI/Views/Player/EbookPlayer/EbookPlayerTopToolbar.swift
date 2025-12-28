@@ -50,7 +50,7 @@ struct EbookPlayerTopToolbar: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(alignment: .center, spacing: 16) {
+            HStack(alignment: .center, spacing: 8) {
                 Button {
                     onDismiss()
                 } label: {
@@ -61,9 +61,9 @@ struct EbookPlayerTopToolbar: View {
                 }
                 .frame(width: 44, height: 44)
 
-                Spacer()
+                Spacer(minLength: 0)
 
-                HStack(spacing: 12) {
+                HStack(spacing: 4) {
                     if hasAudioNarration {
                         sleepTimerButton
                     }

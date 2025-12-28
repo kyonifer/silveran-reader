@@ -225,13 +225,6 @@ struct DraggableAudioCard<FullContent: View>: View {
                         iconFont: .title3
                     )
 
-                    Button(action: onSkipBackward) {
-                        Image(systemName: "gobackward")
-                            .font(.title3)
-                            .frame(width: 36, height: 36)
-                    }
-                    .buttonStyle(.plain)
-
                     Button(action: onPlayPause) {
                         Image(systemName: isPlaying ? "pause.fill" : "play.fill")
                             .font(.title)
