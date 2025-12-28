@@ -11,7 +11,6 @@ public struct StorytellerServerSettingsView: View {
     @State private var isPasswordVisible = false
     @State private var showRemoveDataConfirmation = false
     @State private var hasSavedCredentials = false
-    @State private var hasTriggeredNetworkPrompt = false
 
     @Environment(MediaViewModel.self) private var mediaViewModel
 
@@ -35,12 +34,6 @@ public struct StorytellerServerSettingsView: View {
                 .keyboardType(.URL)
                     #endif
                     .help("e.g., https://storyteller.example.com")
-                    .onChange(of: serverURL) { _, newValue in
-                        if !hasTriggeredNetworkPrompt && !newValue.isEmpty {
-                            hasTriggeredNetworkPrompt = true
-                            triggerNetworkPermissionPrompt()
-                        }
-                    }
 
                 TextField("Username", text: $username)
                     .textContentType(.username)
@@ -301,16 +294,6 @@ public struct StorytellerServerSettingsView: View {
                 isLoading = false
                 connectionStatus = .failure("Failed to remove: \(error.localizedDescription)")
             }
-        }
-    }
-
-    private func triggerNetworkPermissionPrompt() {
-        Task.detached(priority: .background) {
-            let url = URL(string: "http://192.168.0.1/")!
-            var request = URLRequest(url: url)
-            request.httpMethod = "HEAD"
-            request.timeoutInterval = 0.5
-            _ = try? await URLSession.shared.data(for: request)
         }
     }
 }

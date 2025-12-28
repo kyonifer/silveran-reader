@@ -254,7 +254,7 @@ struct HomeView: View {
             }
         }
         .task {
-            try? await Task.sleep(for: .seconds(1))
+            try? await Task.sleep(for: .seconds(0.5))
             allowEmptyStateDisplay = true
         }
         .onChange(of: selection) { _, _ in
