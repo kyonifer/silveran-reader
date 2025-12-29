@@ -59,20 +59,30 @@ public enum SMILPlayerError: Error, LocalizedError {
     }
 }
 
-// MARK: - Audio Player Delegate
+// MARK: - AVPlayer Observer
 
-private class SMILAudioPlayerDelegate: NSObject, AVAudioPlayerDelegate {
-    func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
-        debugLog("[SMILPlayerActor] Audio file finished playing (success: \(flag))")
-        Task { @SMILPlayerActor in
-            await SMILPlayerActor.shared.handleAudioFinished()
+private class AVPlayerEndObserver: NSObject, @unchecked Sendable {
+    private var observer: NSObjectProtocol?
+
+    func observe(_ playerItem: AVPlayerItem) {
+        cleanup()
+        observer = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemDidPlayToEndTime,
+            object: playerItem,
+            queue: nil
+        ) { _ in
+            debugLog("[SMILPlayerActor] Audio finished playing")
+            Task { @SMILPlayerActor in
+                await SMILPlayerActor.shared.handleAudioFinished()
+            }
         }
     }
 
-    func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
-        debugLog(
-            "[SMILPlayerActor] Audio decode error: \(error?.localizedDescription ?? "unknown")"
-        )
+    func cleanup() {
+        if let obs = observer {
+            NotificationCenter.default.removeObserver(obs)
+            observer = nil
+        }
     }
 }
 
@@ -135,8 +145,8 @@ public actor SMILPlayerActor {
 
     // MARK: - Player State
 
-    private var player: AVAudioPlayer?
-    private let audioDelegate = SMILAudioPlayerDelegate()
+    private var player: AVPlayer?
+    private let endObserver = AVPlayerEndObserver()
     private var bookStructure: [SectionInfo] = []
     private var epubPath: URL?
     private var bookId: String?
@@ -274,7 +284,7 @@ public actor SMILPlayerActor {
         ensureAudioSessionActive()
         #endif
 
-        player.play()
+        player.rate = Float(playbackRate)
         isPlaying = true
         startUpdateTimer()
 
@@ -418,16 +428,17 @@ public actor SMILPlayerActor {
 
     public func skipForward(seconds: Double = 15) async {
         guard let player = player else { return }
-        let newTime = min(player.currentTime + seconds, player.duration)
-        player.currentTime = newTime
+        let duration = player.currentItem?.duration.seconds ?? 0
+        let newTime = min(player.currentTime().seconds + seconds, duration)
+        await player.seek(to: CMTime(seconds: newTime, preferredTimescale: 1000))
         reconcileEntryFromTime(newTime)
         await notifyStateChange()
     }
 
     public func skipBackward(seconds: Double = 15) async {
         guard let player = player else { return }
-        let newTime = max(player.currentTime - seconds, 0)
-        player.currentTime = newTime
+        let newTime = max(player.currentTime().seconds - seconds, 0)
+        await player.seek(to: CMTime(seconds: newTime, preferredTimescale: 1000))
         reconcileEntryFromTime(newTime)
         await notifyStateChange()
     }
@@ -436,7 +447,9 @@ public actor SMILPlayerActor {
 
     public func setPlaybackRate(_ rate: Double) async {
         playbackRate = rate
-        player?.rate = Float(rate)
+        if isPlaying {
+            player?.rate = Float(rate)
+        }
         debugLog("[SMILPlayerActor] Playback rate set to \(rate)")
         await notifyStateChange()
     }
@@ -495,7 +508,7 @@ public actor SMILPlayerActor {
         return AudioPositionSyncData(
             sectionIndex: currentSectionIndex,
             entryIndex: currentEntryIndex,
-            currentTime: player?.currentTime ?? 0,
+            currentTime: player?.currentTime().seconds ?? 0,
             audioFile: currentAudioFile,
             href: entry.textHref,
             fragment: entry.textId
@@ -504,7 +517,7 @@ public actor SMILPlayerActor {
 
     public func reconcilePositionFromPlayer() {
         guard let player = player else { return }
-        reconcileEntryFromTime(player.currentTime)
+        reconcileEntryFromTime(player.currentTime().seconds)
     }
 
     // MARK: - Cleanup
@@ -512,8 +525,14 @@ public actor SMILPlayerActor {
     private func clearBookState() {
         debugLog("[SMILPlayerActor] Clearing book state")
         stopUpdateTimer()
-        player?.stop()
+        endObserver.cleanup()
+        player?.pause()
         player = nil
+
+        if let tempFile = tempAudioFileURL {
+            try? FileManager.default.removeItem(at: tempFile)
+            tempAudioFileURL = nil
+        }
 
         bookStructure = []
         epubPath = nil
@@ -587,11 +606,14 @@ public actor SMILPlayerActor {
         }
 
         if let player = player {
-            player.currentTime = beginTime
+            let duration = player.currentItem?.duration.seconds ?? 0
+            debugLog("[SMILPlayerActor] setCurrentEntry: BEFORE seek - currentTime=\(player.currentTime().seconds), duration=\(duration), target=\(beginTime)")
+            await player.seek(to: CMTime(seconds: beginTime, preferredTimescale: 1000))
+            debugLog("[SMILPlayerActor] setCurrentEntry: AFTER seek - currentTime=\(player.currentTime().seconds)")
 
             if wasRecentlyPlaying {
                 lastPausedWhilePlayingTime = nil
-                player.play()
+                player.rate = Float(playbackRate)
                 isPlaying = true
                 startUpdateTimer()
                 #if os(iOS) || os(watchOS)
@@ -637,8 +659,12 @@ public actor SMILPlayerActor {
         }
 
         await loadAudioFile(currentAudioFile)
-        player?.currentTime = currentEntryBeginTime
+        if let player = player {
+            await player.seek(to: CMTime(seconds: currentEntryBeginTime, preferredTimescale: 1000))
+        }
     }
+
+    private var tempAudioFileURL: URL?
 
     private func loadAudioFile(_ relativeAudioFile: String) async {
         guard let epubPath = epubPath else {
@@ -649,18 +675,32 @@ public actor SMILPlayerActor {
         debugLog("[SMILPlayerActor] Loading audio file: \(relativeAudioFile)")
 
         do {
-            let audioData = try await FilesystemActor.shared.extractAudioData(
+            // Clean up previous temp file
+            if let oldTemp = tempAudioFileURL {
+                try? FileManager.default.removeItem(at: oldTemp)
+            }
+
+            let tempDir = FileManager.default.temporaryDirectory
+            let tempFile = tempDir.appendingPathComponent("smil_audio_\(UUID().uuidString).mp4")
+            tempAudioFileURL = tempFile
+
+            try await FilesystemActor.shared.extractAudioToFile(
                 from: epubPath,
-                audioPath: relativeAudioFile
+                audioPath: relativeAudioFile,
+                destination: tempFile
             )
-            let newPlayer = try AVAudioPlayer(data: audioData)
-            newPlayer.delegate = audioDelegate
-            newPlayer.enableRate = true
-            newPlayer.rate = Float(playbackRate)
+
+            debugLog("[SMILPlayerActor] Extracted to temp file: \(tempFile.path)")
+
+            let playerItem = AVPlayerItem(url: tempFile)
+            let newPlayer = AVPlayer(playerItem: playerItem)
+            newPlayer.rate = 0  // Start paused
             newPlayer.volume = Float(volume)
-            newPlayer.prepareToPlay()
+            endObserver.observe(playerItem)
             self.player = newPlayer
-            debugLog("[SMILPlayerActor] Audio loaded, duration: \(newPlayer.duration)s")
+
+            let duration = playerItem.duration.seconds
+            debugLog("[SMILPlayerActor] Audio loaded, duration: \(duration.isNaN ? 0 : duration)s")
         } catch {
             debugLog("[SMILPlayerActor] Failed to load audio: \(error)")
         }
@@ -688,16 +728,19 @@ public actor SMILPlayerActor {
     private func timerFired() async {
         guard let player = player else { return }
 
-        let currentTime = player.currentTime
-        let duration = player.duration
+        let currentTime = player.currentTime().seconds
+        let duration = player.currentItem?.duration.seconds ?? 0
         let tolerance = 0.02
+        let playerIsPlaying = player.rate > 0
+
+        debugLog("[SMILPlayerActor] timerFired: currentTime=\(currentTime), duration=\(duration), entryEnd=\(currentEntryEndTime), isPlaying=\(playerIsPlaying)")
 
         let reachedEntryEnd = currentTime >= currentEntryEndTime - tolerance
         let reachedFileEnd = duration > 0 && currentTime >= duration - tolerance
 
         if isPlaying && (reachedEntryEnd || reachedFileEnd) {
             await advanceToNextEntry()
-        } else if !isPlaying && reachedFileEnd && !player.isPlaying {
+        } else if !isPlaying && reachedFileEnd && !playerIsPlaying {
             debugLog("[SMILPlayerActor] Audio file ended naturally, advancing...")
             isPlaying = true
             await advanceToNextEntry()
@@ -754,9 +797,11 @@ public actor SMILPlayerActor {
             if nextEntry.audioFile != currentAudioFile {
                 currentAudioFile = nextEntry.audioFile
                 await loadAudioFile(nextEntry.audioFile)
-                player?.currentTime = nextEntry.begin
-                if isPlaying {
-                    player?.play()
+                if let player = player {
+                    await player.seek(to: CMTime(seconds: nextEntry.begin, preferredTimescale: 1000))
+                    if isPlaying {
+                        player.rate = Float(playbackRate)
+                    }
                 }
             }
 
@@ -780,9 +825,11 @@ public actor SMILPlayerActor {
                 currentAudioFile = nextEntry.audioFile
 
                 await loadAudioFile(nextEntry.audioFile)
-                player?.currentTime = nextEntry.begin
-                if isPlaying {
-                    player?.play()
+                if let player = player {
+                    await player.seek(to: CMTime(seconds: nextEntry.begin, preferredTimescale: 1000))
+                    if isPlaying {
+                        player.rate = Float(playbackRate)
+                    }
                 }
 
                 debugLog("[SMILPlayerActor] Advanced to section \(nextSection.index)")
@@ -815,8 +862,8 @@ public actor SMILPlayerActor {
     private func buildCurrentState() -> SMILPlaybackState? {
         guard !bookStructure.isEmpty else { return nil }
 
-        let currentTime = player?.currentTime ?? 0
-        let duration = player?.duration ?? 0
+        let currentTime = player?.currentTime().seconds ?? 0
+        let duration = player?.currentItem?.duration.seconds ?? 0
 
         var chapterLabel: String? = nil
         var chapterElapsed: Double = 0

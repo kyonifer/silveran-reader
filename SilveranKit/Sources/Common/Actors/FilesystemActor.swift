@@ -738,6 +738,46 @@ public actor FilesystemActor {
         )
     }
 
+    public func extractAudioToFile(from epubPath: URL, audioPath: String, destination: URL) async throws {
+        let archive: Archive
+        do {
+            archive = try Archive(url: epubPath, accessMode: .read)
+        } catch {
+            throw NSError(
+                domain: "FilesystemActor",
+                code: 5,
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "Failed to open EPUB archive for audio: \(epubPath.path) - \(error)"
+                ]
+            )
+        }
+
+        let pathsToTry = [audioPath] + ["OPS", "OEBPS", "epub"].map { "\($0)/\(audioPath)" }
+
+        for path in pathsToTry {
+            if let entry = archive[path] {
+                FileManager.default.createFile(atPath: destination.path, contents: nil)
+                let handle = try FileHandle(forWritingTo: destination)
+                defer { try? handle.close() }
+
+                _ = try archive.extract(entry, skipCRC32: true) { chunk in
+                    handle.write(chunk)
+                }
+                debugLog(
+                    "[FilesystemActor] Extracted audio to file: \(destination.path)"
+                )
+                return
+            }
+        }
+
+        throw NSError(
+            domain: "FilesystemActor",
+            code: 6,
+            userInfo: [NSLocalizedDescriptionKey: "Audio file not found in EPUB: \(audioPath)"]
+        )
+    }
+
     private func applicationSupportBaseDirectory() -> URL {
         let fm = FileManager.default
         let appSupport = try! fm.url(
