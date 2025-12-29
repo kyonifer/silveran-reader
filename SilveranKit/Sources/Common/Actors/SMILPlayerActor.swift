@@ -681,7 +681,8 @@ public actor SMILPlayerActor {
             }
 
             let tempDir = FileManager.default.temporaryDirectory
-            let tempFile = tempDir.appendingPathComponent("smil_audio_\(UUID().uuidString).mp4")
+            let ext = (relativeAudioFile as NSString).pathExtension
+            let tempFile = tempDir.appendingPathComponent("smil_audio_\(UUID().uuidString).\(ext)")
             tempAudioFileURL = tempFile
 
             try await FilesystemActor.shared.extractAudioToFile(
