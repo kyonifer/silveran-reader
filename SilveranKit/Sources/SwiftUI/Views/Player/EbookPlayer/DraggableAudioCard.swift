@@ -61,7 +61,9 @@ struct DraggableAudioCard<FullContent: View>: View {
                     case .expanded: expandedHeight
                 }
 
-            let currentHeight = max(0, min(expandedHeight, targetHeight - dragOffset))
+            let currentHeight = isDragging
+                ? max(0, min(expandedHeight, targetHeight - dragOffset))
+                : targetHeight
 
             ZStack(alignment: .bottom) {
                 if isPresented {
