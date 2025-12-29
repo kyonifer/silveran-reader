@@ -11,23 +11,23 @@ public enum HighlightColor: String, Codable, Sendable, Hashable, CaseIterable {
 
     public var color: Color {
         switch self {
-        case .yellow: return Color(red: 0.710, green: 0.722, blue: 0.243)
-        case .blue: return Color(red: 0.306, green: 0.565, blue: 0.780)
-        case .green: return Color(red: 0.098, green: 0.529, blue: 0.267)
-        case .pink: return Color(red: 0.886, green: 0.369, blue: 0.639)
-        case .orange: return Color(red: 0.808, green: 0.549, blue: 0.290)
-        case .purple: return Color(red: 0.702, green: 0.400, blue: 1.0)
+            case .yellow: return Color(red: 0.710, green: 0.722, blue: 0.243)
+            case .blue: return Color(red: 0.306, green: 0.565, blue: 0.780)
+            case .green: return Color(red: 0.098, green: 0.529, blue: 0.267)
+            case .pink: return Color(red: 0.886, green: 0.369, blue: 0.639)
+            case .orange: return Color(red: 0.808, green: 0.549, blue: 0.290)
+            case .purple: return Color(red: 0.702, green: 0.400, blue: 1.0)
         }
     }
 
     public var hexColor: String {
         switch self {
-        case .yellow: return "#B5B83E"
-        case .blue: return "#4E90C7"
-        case .green: return "#198744"
-        case .pink: return "#E25EA3"
-        case .orange: return "#CE8C4A"
-        case .purple: return "#B366FF"
+            case .yellow: return "#B5B83E"
+            case .blue: return "#4E90C7"
+            case .green: return "#198744"
+            case .pink: return "#E25EA3"
+            case .orange: return "#CE8C4A"
+            case .purple: return "#B366FF"
         }
     }
 }

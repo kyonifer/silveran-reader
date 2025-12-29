@@ -143,9 +143,11 @@ struct MediaItemCardTopTabsButtonOverlay: View {
 
     private var connectionAlertMessage: String {
         if case .error(let message) = mediaViewModel.connectionStatus {
-            return "Unable to download: \(message). Please check your server credentials in Settings."
+            return
+                "Unable to download: \(message). Please check your server credentials in Settings."
         }
-        return "Cannot download media while disconnected from the server. Please check your connection and try again."
+        return
+            "Cannot download media while disconnected from the server. Please check your connection and try again."
     }
 
     var body: some View {
@@ -300,7 +302,8 @@ struct MediaItemCardTopTabsButtonOverlay: View {
                 windowID = "EbookPlayer"
         }
         let path = mediaViewModel.localMediaPath(for: item.id, category: category)
-        let variant: MediaViewModel.CoverVariant = item.hasAvailableAudiobook ? .audioSquare : .standard
+        let variant: MediaViewModel.CoverVariant =
+            item.hasAvailableAudiobook ? .audioSquare : .standard
         let cover = mediaViewModel.coverImage(for: item, variant: variant)
         let bookData = PlayerBookData(
             metadata: item,

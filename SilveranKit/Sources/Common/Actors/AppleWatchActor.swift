@@ -763,7 +763,8 @@ extension AppleWatchActor: WCSessionDelegate {
                 let sendableReply = SendableReplyHandler(replyHandler)
                 Task {
                     do {
-                        if let credentials = try await AuthenticationActor.shared.loadCredentials() {
+                        if let credentials = try await AuthenticationActor.shared.loadCredentials()
+                        {
                             sendableReply.reply([
                                 "url": credentials.url,
                                 "username": credentials.username,

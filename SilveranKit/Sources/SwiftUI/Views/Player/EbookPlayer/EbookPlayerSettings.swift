@@ -341,7 +341,9 @@ struct EbookPlayerSettings: View {
     }
 
     @ViewBuilder
-    private func iOSColorControl(label: String, hex: Binding<String?>, defaultHex: String?) -> some View {
+    private func iOSColorControl(label: String, hex: Binding<String?>, defaultHex: String?)
+        -> some View
+    {
         VStack(alignment: .leading, spacing: 4) {
             Text(label)
                 .font(.caption)
@@ -355,7 +357,11 @@ struct EbookPlayerSettings: View {
     }
 
     @ViewBuilder
-    private func iOSUserHighlightColorControl(label: String, hex: Binding<String>, defaultHex: String) -> some View {
+    private func iOSUserHighlightColorControl(
+        label: String,
+        hex: Binding<String>,
+        defaultHex: String
+    ) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(label)
                 .font(.caption)

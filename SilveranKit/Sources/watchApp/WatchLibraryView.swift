@@ -12,10 +12,12 @@ struct WatchLibraryView: View {
 
         var message: String {
             switch self {
-            case .success(let count):
-                return count > 0 ? "Progress synced for \(count) book\(count == 1 ? "" : "s")" : "Reading progress up to date"
-            case .failure(let count):
-                return "Failed to sync \(count) book\(count == 1 ? "" : "s")"
+                case .success(let count):
+                    return count > 0
+                        ? "Progress synced for \(count) book\(count == 1 ? "" : "s")"
+                        : "Reading progress up to date"
+                case .failure(let count):
+                    return "Failed to sync \(count) book\(count == 1 ? "" : "s")"
             }
         }
 
@@ -60,8 +62,11 @@ struct WatchLibraryView: View {
 
     private func syncBanner(_ result: SyncResult) -> some View {
         HStack(spacing: 6) {
-            Image(systemName: result.isSuccess ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                .font(.caption2)
+            Image(
+                systemName: result.isSuccess
+                    ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
+            )
+            .font(.caption2)
             Text(result.message)
                 .font(.caption2)
         }

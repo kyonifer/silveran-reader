@@ -208,10 +208,10 @@ public actor StorytellerActor {
             } catch let error as HTTPRequestError {
                 logStorytellerError("authenticate", error: error)
                 switch error {
-                case .unauthorized:
-                    await updateConnectionStatus(.error("Invalid credentials"))
-                default:
-                    await updateConnectionStatus(.error("Connection failed"))
+                    case .unauthorized:
+                        await updateConnectionStatus(.error("Invalid credentials"))
+                    default:
+                        await updateConnectionStatus(.error("Connection failed"))
                 }
                 return false
             } catch let error as URLError {

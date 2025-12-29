@@ -36,7 +36,9 @@ public actor BookmarkActor {
         await saveToDisk(bookId: highlight.bookId)
         await notifyObservers()
 
-        debugLog("[BookmarkActor] addHighlight: id=\(highlight.id), bookId=\(highlight.bookId), isBookmark=\(highlight.isBookmark)")
+        debugLog(
+            "[BookmarkActor] addHighlight: id=\(highlight.id), bookId=\(highlight.bookId), isBookmark=\(highlight.isBookmark)"
+        )
     }
 
     public func deleteHighlight(id: UUID, bookId: String) async {
@@ -65,7 +67,9 @@ public actor BookmarkActor {
             highlightsByBook[highlight.bookId] = highlights
             await saveToDisk(bookId: highlight.bookId)
             await notifyObservers()
-            debugLog("[BookmarkActor] updateHighlight: id=\(highlight.id), bookId=\(highlight.bookId)")
+            debugLog(
+                "[BookmarkActor] updateHighlight: id=\(highlight.id), bookId=\(highlight.bookId)"
+            )
         }
     }
 

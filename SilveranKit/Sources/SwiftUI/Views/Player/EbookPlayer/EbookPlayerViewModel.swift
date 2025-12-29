@@ -657,7 +657,11 @@ class EbookPlayerViewModel {
         await sendHighlightsToJS()
     }
 
-    func addHighlight(from selection: TextSelectionMessage, color: HighlightColor?, note: String? = nil) async {
+    func addHighlight(
+        from selection: TextSelectionMessage,
+        color: HighlightColor?,
+        note: String? = nil
+    ) async {
         guard let bookId = bookData?.metadata.uuid else { return }
 
         let locator = BookLocator(
@@ -760,7 +764,7 @@ class EbookPlayerViewModel {
         let coloredOnly = highlights.filter { !$0.isBookmark }
         let renderData = coloredOnly.compactMap { highlight -> HighlightRenderData? in
             guard let cfi = highlight.locator.locations?.partialCfi,
-                  let color = highlight.color
+                let color = highlight.color
             else { return nil }
 
             let sectionIndex = findSectionIndex(for: highlight.locator.href, in: bookStructure) ?? 0
@@ -788,7 +792,7 @@ class EbookPlayerViewModel {
 
     func handleHighlightTapped(_ highlightId: String) {
         guard let uuid = UUID(uuidString: highlightId),
-              highlights.first(where: { $0.id == uuid }) != nil
+            highlights.first(where: { $0.id == uuid }) != nil
         else {
             debugLog("[EbookPlayerViewModel] Tapped highlight not found: \(highlightId)")
             return
@@ -810,7 +814,9 @@ class EbookPlayerViewModel {
         }
 
         guard let position = try? await commsBridge?.sendJsGetFirstVisiblePosition() else {
-            debugLog("[EbookPlayerViewModel] Cannot add bookmark - failed to get visible position from JS")
+            debugLog(
+                "[EbookPlayerViewModel] Cannot add bookmark - failed to get visible position from JS"
+            )
             return
         }
 

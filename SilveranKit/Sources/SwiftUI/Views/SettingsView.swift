@@ -618,27 +618,45 @@ private struct MacReaderSettingsView: View {
                     Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 18) {
                         GridRow {
                             label("Highlight #1 (Yellow)")
-                            UserHighlightColorControl(hex: $reading.userHighlightColor1, defaultHex: "#B5B83E")
+                            UserHighlightColorControl(
+                                hex: $reading.userHighlightColor1,
+                                defaultHex: "#B5B83E"
+                            )
                         }
                         GridRow {
                             label("Highlight #2 (Blue)")
-                            UserHighlightColorControl(hex: $reading.userHighlightColor2, defaultHex: "#4E90C7")
+                            UserHighlightColorControl(
+                                hex: $reading.userHighlightColor2,
+                                defaultHex: "#4E90C7"
+                            )
                         }
                         GridRow {
                             label("Highlight #3 (Green)")
-                            UserHighlightColorControl(hex: $reading.userHighlightColor3, defaultHex: "#198744")
+                            UserHighlightColorControl(
+                                hex: $reading.userHighlightColor3,
+                                defaultHex: "#198744"
+                            )
                         }
                         GridRow {
                             label("Highlight #4 (Pink)")
-                            UserHighlightColorControl(hex: $reading.userHighlightColor4, defaultHex: "#E25EA3")
+                            UserHighlightColorControl(
+                                hex: $reading.userHighlightColor4,
+                                defaultHex: "#E25EA3"
+                            )
                         }
                         GridRow {
                             label("Highlight #5 (Orange)")
-                            UserHighlightColorControl(hex: $reading.userHighlightColor5, defaultHex: "#CE8C4A")
+                            UserHighlightColorControl(
+                                hex: $reading.userHighlightColor5,
+                                defaultHex: "#CE8C4A"
+                            )
                         }
                         GridRow {
                             label("Highlight #6 (Purple)")
-                            UserHighlightColorControl(hex: $reading.userHighlightColor6, defaultHex: "#B366FF")
+                            UserHighlightColorControl(
+                                hex: $reading.userHighlightColor6,
+                                defaultHex: "#B366FF"
+                            )
                         }
                     }
                 }
@@ -1082,8 +1100,8 @@ private struct UserHighlightColorControl: View {
                 .textFieldStyle(.roundedBorder)
                 .font(.system(.body, design: .monospaced))
                 #if os(iOS)
-                .textInputAutocapitalization(.characters)
-                .autocorrectionDisabled(true)
+            .textInputAutocapitalization(.characters)
+            .autocorrectionDisabled(true)
                 #endif
                 .frame(maxWidth: 100)
                 .onChange(of: hex) { _, newHex in
@@ -1149,7 +1167,10 @@ private struct AppearanceColorControl: View {
                         .font(.caption)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
-                        .background(hex.wrappedValue == nil ? Color.accentColor : Color.secondary.opacity(0.2))
+                        .background(
+                            hex.wrappedValue == nil
+                                ? Color.accentColor : Color.secondary.opacity(0.2)
+                        )
                         .foregroundStyle(hex.wrappedValue == nil ? .white : .primary)
                         .cornerRadius(4)
                 }
@@ -1185,8 +1206,8 @@ private struct AppearanceColorControl: View {
                 .textFieldStyle(.roundedBorder)
                 .font(.system(.body, design: .monospaced))
                 #if os(iOS)
-                .textInputAutocapitalization(.characters)
-                .autocorrectionDisabled(true)
+            .textInputAutocapitalization(.characters)
+            .autocorrectionDisabled(true)
                 #endif
                 .frame(maxWidth: 100)
                 .onChange(of: hex.wrappedValue) { _, newHex in
@@ -1229,7 +1250,10 @@ extension Color {
             let b = Int(round(converted.blueComponent * 255))
             return String(format: "#%02X%02X%02X", r, g, b)
         }
-        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        var r: CGFloat = 0
+        var g: CGFloat = 0
+        var b: CGFloat = 0
+        var a: CGFloat = 0
         nsColor.getRed(&r, green: &g, blue: &b, alpha: &a)
         return String(format: "#%02X%02X%02X", Int(r * 255), Int(g * 255), Int(b * 255))
     }

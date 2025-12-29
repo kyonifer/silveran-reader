@@ -277,7 +277,8 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
     }
 
     private func importTransferredBook(manifest: TransferManifest) async {
-        guard let tempURL = WatchStorageManager.shared.assembleChunksToTempFile(manifest: manifest) else {
+        guard let tempURL = WatchStorageManager.shared.assembleChunksToTempFile(manifest: manifest)
+        else {
             print("[WatchSessionManager] Failed to assemble chunks")
             return
         }
@@ -384,7 +385,10 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
         }
     }
 
-    private func handleLibraryMetadataReply(_ reply: [String: Any], continuation: CheckedContinuation<Bool, Never>) {
+    private func handleLibraryMetadataReply(
+        _ reply: [String: Any],
+        continuation: CheckedContinuation<Bool, Never>
+    ) {
         guard let metadataData = reply["metadata"] as? Data else {
             print("[WatchSessionManager] No metadata in phone reply")
             continuation.resume(returning: false)

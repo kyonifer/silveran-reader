@@ -27,8 +27,11 @@ public struct iOSLibraryView: View {
     }
 
     private var hasConnectionError: Bool {
-        mediaViewModel.lastNetworkOpSucceeded == false ||
-        { if case .error = mediaViewModel.connectionStatus { return true }; return false }()
+        mediaViewModel.lastNetworkOpSucceeded == false
+            || {
+                if case .error = mediaViewModel.connectionStatus { return true }
+                return false
+            }()
     }
 
     private var connectionErrorIcon: String {
@@ -134,9 +137,9 @@ public struct iOSLibraryView: View {
         }
         .safeAreaInset(edge: .top) {
             if CarPlayCoordinator.shared.isCarPlayConnected,
-               CarPlayCoordinator.shared.isPlaying,
-               !CarPlayCoordinator.shared.isPlayerViewActive,
-               let book = carPlayBook
+                CarPlayCoordinator.shared.isPlaying,
+                !CarPlayCoordinator.shared.isPlayerViewActive,
+                let book = carPlayBook
             {
                 CarPlayNowPlayingBanner(bookTitle: book.title) {
                     showCarPlayPlayer = true
@@ -145,18 +148,21 @@ public struct iOSLibraryView: View {
         }
         .fullScreenCover(isPresented: $showCarPlayPlayer) {
             if let book = carPlayBook,
-               let category = CarPlayCoordinator.shared.activeCategory,
-               let path = mediaViewModel.localMediaPath(for: book.id, category: category)
+                let category = CarPlayCoordinator.shared.activeCategory,
+                let path = mediaViewModel.localMediaPath(for: book.id, category: category)
             {
-                let variant: MediaViewModel.CoverVariant = book.hasAvailableAudiobook ? .audioSquare : .standard
+                let variant: MediaViewModel.CoverVariant =
+                    book.hasAvailableAudiobook ? .audioSquare : .standard
                 let cover = mediaViewModel.coverImage(for: book, variant: variant)
                 NavigationStack {
-                    playerView(for: PlayerBookData(
-                        metadata: book,
-                        localMediaPath: path,
-                        category: category,
-                        coverArt: cover
-                    ))
+                    playerView(
+                        for: PlayerBookData(
+                            metadata: book,
+                            localMediaPath: path,
+                            category: category,
+                            coverArt: cover
+                        )
+                    )
                     .toolbar {
                         ToolbarItem(placement: .topBarLeading) {
                             Button("Done") {
@@ -739,24 +745,26 @@ struct OfflineStatusSheet: View {
 
     private var icon: String {
         switch errorType {
-        case .networkOffline: return "wifi.slash"
-        case .authError: return "exclamationmark.triangle"
+            case .networkOffline: return "wifi.slash"
+            case .authError: return "exclamationmark.triangle"
         }
     }
 
     private var title: String {
         switch errorType {
-        case .networkOffline: return "Not Connected"
-        case .authError: return "Connection Error"
+            case .networkOffline: return "Not Connected"
+            case .authError: return "Connection Error"
         }
     }
 
     private var message: String {
         switch errorType {
-        case .networkOffline:
-            return "You are currently not connected to the server. Only downloaded books are available for reading."
-        case .authError(let details):
-            return "Unable to connect to the server: \(details). Please check your server credentials in Settings."
+            case .networkOffline:
+                return
+                    "You are currently not connected to the server. Only downloaded books are available for reading."
+            case .authError(let details):
+                return
+                    "Unable to connect to the server: \(details). Please check your server credentials in Settings."
         }
     }
 

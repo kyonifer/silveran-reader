@@ -79,7 +79,10 @@ public final class WatchViewModel {
             let storytellerBooks = await LocalMediaActor.shared.localStorytellerMetadata
             var booksWithFiles: [BookMetadata] = []
             for book in storytellerBooks {
-                let path = await LocalMediaActor.shared.mediaFilePath(for: book.uuid, category: .synced)
+                let path = await LocalMediaActor.shared.mediaFilePath(
+                    for: book.uuid,
+                    category: .synced
+                )
                 if path != nil {
                     booksWithFiles.append(book)
                 }

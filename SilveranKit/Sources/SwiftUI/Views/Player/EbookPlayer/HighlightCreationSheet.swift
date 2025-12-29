@@ -91,7 +91,11 @@ struct HighlightCreationSheet: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(
                     RoundedRectangle(cornerRadius: 8)
-                        .fill(isBookmarkOnly ? Color.secondary.opacity(0.1) : (selectedColor?.color ?? Color.yellow.opacity(0.4)))
+                        .fill(
+                            isBookmarkOnly
+                                ? Color.secondary.opacity(0.1)
+                                : (selectedColor?.color ?? Color.yellow.opacity(0.4))
+                        )
                 )
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -115,7 +119,10 @@ struct HighlightCreationSheet: View {
                         }
                         .overlay {
                             Circle()
-                                .strokeBorder(selectedColor == color ? Color.primary : Color.clear, lineWidth: 2)
+                                .strokeBorder(
+                                    selectedColor == color ? Color.primary : Color.clear,
+                                    lineWidth: 2
+                                )
                         }
                 }
                 .buttonStyle(.plain)

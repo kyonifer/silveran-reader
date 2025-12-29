@@ -78,7 +78,8 @@ public struct StorytellerServerSettingsView: View {
 
                     switch connectionStatus {
                         case .notTested:
-                            if hasSavedCredentials && mediaViewModel.lastNetworkOpSucceeded == true {
+                            if hasSavedCredentials && mediaViewModel.lastNetworkOpSucceeded == true
+                            {
                                 HStack {
                                     Image(systemName: "checkmark.circle.fill")
                                         .foregroundStyle(.green)
@@ -121,8 +122,10 @@ public struct StorytellerServerSettingsView: View {
                             Image(systemName: "exclamationmark.triangle.fill")
                                 .foregroundStyle(.orange)
                                 .font(.title2)
-                            Text("Invalid username or password. Please check your credentials and try again.")
-                                .font(.body)
+                            Text(
+                                "Invalid username or password. Please check your credentials and try again."
+                            )
+                            .font(.body)
                         }
                     }
                 } else {
@@ -159,13 +162,17 @@ public struct StorytellerServerSettingsView: View {
                             Image(systemName: "info.circle.fill")
                                 .foregroundStyle(.blue)
                             #if os(iOS)
-                            Text("If you previously denied local network access, you may need to enable it in Settings > Privacy & Security > Local Network.")
-                                .font(.body)
-                                .foregroundStyle(.secondary)
+                            Text(
+                                "If you previously denied local network access, you may need to enable it in Settings > Privacy & Security > Local Network."
+                            )
+                            .font(.body)
+                            .foregroundStyle(.secondary)
                             #else
-                            Text("If you previously denied local network access, you may need to enable it in System Settings > Privacy & Security > Local Network.")
-                                .font(.body)
-                                .foregroundStyle(.secondary)
+                            Text(
+                                "If you previously denied local network access, you may need to enable it in System Settings > Privacy & Security > Local Network."
+                            )
+                            .font(.body)
+                            .foregroundStyle(.secondary)
                             #endif
                         }
                     }

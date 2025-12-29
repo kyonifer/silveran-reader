@@ -74,13 +74,15 @@ class ReaderStyleManager {
         let backgroundColorRaw = settingsVM.backgroundColor
         let foregroundColorRaw = settingsVM.foregroundColor
 
-        let effectiveHighlightColor = (highlightColorRaw?.isEmpty == false ? highlightColorRaw : nil)
+        let effectiveHighlightColor =
+            (highlightColorRaw?.isEmpty == false ? highlightColorRaw : nil)
             ?? (isDarkMode ? "#333333" : "#CCCCCC")
-        let effectiveBackgroundColor = (backgroundColorRaw?.isEmpty == false ? backgroundColorRaw : nil)
+        let effectiveBackgroundColor =
+            (backgroundColorRaw?.isEmpty == false ? backgroundColorRaw : nil)
             ?? (isDarkMode ? kDefaultBackgroundColorDark : kDefaultBackgroundColorLight)
-        let effectiveForegroundColor = (foregroundColorRaw?.isEmpty == false ? foregroundColorRaw : nil)
+        let effectiveForegroundColor =
+            (foregroundColorRaw?.isEmpty == false ? foregroundColorRaw : nil)
             ?? (isDarkMode ? kDefaultForegroundColorDark : kDefaultForegroundColorLight)
-
 
         try? await bridge.sendJsUpdateStyles(
             fontSize: settingsVM.fontSize,

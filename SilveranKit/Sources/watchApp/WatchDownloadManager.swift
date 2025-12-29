@@ -36,7 +36,9 @@ public actor WatchDownloadManager {
 
         session.getAllTasks { tasks in
             for task in tasks {
-                debugLog("[WatchDownloadManager] Cancelling stale task: \(task.taskDescription ?? "unknown")")
+                debugLog(
+                    "[WatchDownloadManager] Cancelling stale task: \(task.taskDescription ?? "unknown")"
+                )
                 task.cancel()
             }
         }
@@ -82,12 +84,14 @@ public actor WatchDownloadManager {
             return
         }
 
-        let downloadURL = baseURL
+        let downloadURL =
+            baseURL
             .appendingPathComponent("books")
             .appendingPathComponent(book.uuid)
             .appendingPathComponent("files")
 
-        guard var components = URLComponents(url: downloadURL, resolvingAgainstBaseURL: false) else {
+        guard var components = URLComponents(url: downloadURL, resolvingAgainstBaseURL: false)
+        else {
             debugLog("[WatchDownloadManager] Failed to create URL components")
             return
         }
@@ -259,7 +263,9 @@ final class WatchDownloadDelegate: NSObject, URLSessionDownloadDelegate, @unchec
             progress = 0
         }
 
-        debugLog("[WatchDownload] \(bookId): \(totalBytesWritten)/\(totalBytesExpectedToWrite) = \(String(format: "%.1f", progress * 100))%")
+        debugLog(
+            "[WatchDownload] \(bookId): \(totalBytesWritten)/\(totalBytesExpectedToWrite) = \(String(format: "%.1f", progress * 100))%"
+        )
 
         Task {
             await WatchDownloadManager.shared.handleDownloadProgress(

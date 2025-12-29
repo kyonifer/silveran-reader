@@ -172,15 +172,21 @@ public struct EbookPlayerView: View {
             }
         }
         #endif
-        .sheet(item: Binding(
-            get: { viewModel.pendingSelection.map { PendingSelectionWrapper(selection: $0) } },
-            set: { _ in viewModel.cancelPendingSelection() }
-        )) { wrapper in
+        .sheet(
+            item: Binding(
+                get: { viewModel.pendingSelection.map { PendingSelectionWrapper(selection: $0) } },
+                set: { _ in viewModel.cancelPendingSelection() }
+            )
+        ) { wrapper in
             HighlightCreationSheet(
                 selectedText: wrapper.selection.text,
                 onSave: { color, note in
                     Task {
-                        await viewModel.addHighlight(from: wrapper.selection, color: color, note: note)
+                        await viewModel.addHighlight(
+                            from: wrapper.selection,
+                            color: color,
+                            note: note
+                        )
                     }
                 },
                 onCancel: { viewModel.cancelPendingSelection() }

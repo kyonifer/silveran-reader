@@ -75,12 +75,12 @@ public final class SettingsViewModel {
 
     public func hexColor(for color: HighlightColor) -> String {
         switch color {
-        case .yellow: return userHighlightColor1
-        case .blue: return userHighlightColor2
-        case .green: return userHighlightColor3
-        case .pink: return userHighlightColor4
-        case .orange: return userHighlightColor5
-        case .purple: return userHighlightColor6
+            case .yellow: return userHighlightColor1
+            case .blue: return userHighlightColor2
+            case .green: return userHighlightColor3
+            case .pink: return userHighlightColor4
+            case .orange: return userHighlightColor5
+            case .purple: return userHighlightColor6
         }
     }
 

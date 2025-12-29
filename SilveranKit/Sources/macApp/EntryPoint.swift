@@ -6,4 +6,3 @@ import SwiftUI
 public func macAppEntryPoint() {
     SilveranReaderApp.main()
 }
-

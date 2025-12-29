@@ -225,8 +225,9 @@ struct MediaGridInfoSidebar: View {
         legacyFormatter.timeZone = TimeZone(identifier: "UTC")
         legacyFormatter.locale = Locale(identifier: "en_US_POSIX")
 
-        guard let date = iso8601Formatter.date(from: isoString)
-            ?? legacyFormatter.date(from: isoString)
+        guard
+            let date = iso8601Formatter.date(from: isoString)
+                ?? legacyFormatter.date(from: isoString)
         else {
             return "Parse failed: \(isoString)"
         }

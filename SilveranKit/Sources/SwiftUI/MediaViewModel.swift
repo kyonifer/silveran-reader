@@ -619,7 +619,8 @@ public final class MediaViewModel {
                     || isCategoryDownloaded(.audio, for: item)
                     || isCategoryDownloaded(.synced, for: item)
             case .serverOnly:
-                let hasDownload = isCategoryDownloaded(.ebook, for: item)
+                let hasDownload =
+                    isCategoryDownloaded(.ebook, for: item)
                     || isCategoryDownloaded(.audio, for: item)
                     || isCategoryDownloaded(.synced, for: item)
                 return !hasDownload && !isLocalStandaloneBook(item.id)

@@ -122,7 +122,10 @@ public struct LibraryView: View {
                     get: { gridScrollPositions[identity] ?? nil },
                     set: { gridScrollPositions[identity] = $0 },
                 )
-                let locationFilter = MediaGridView.LocationFilterOption(rawValue: configuration.locationFilter.rawValue) ?? .all
+                let locationFilter =
+                    MediaGridView.LocationFilterOption(
+                        rawValue: configuration.locationFilter.rawValue
+                    ) ?? .all
                 MediaGridView(
                     title: configuration.title,
                     searchText: searchText,

@@ -163,13 +163,16 @@ struct HomeView: View {
                                     .foregroundStyle(.tertiary)
                                     .multilineTextAlignment(.center)
                                     .tint(.accentColor)
-                                    .environment(\.openURL, OpenURLAction { url in
-                                        if url.absoluteString == "openSettings" {
-                                            showSettings = true
-                                            return .handled
+                                    .environment(
+                                        \.openURL,
+                                        OpenURLAction { url in
+                                            if url.absoluteString == "openSettings" {
+                                                showSettings = true
+                                                return .handled
+                                            }
+                                            return .systemAction
                                         }
-                                        return .systemAction
-                                    })
+                                    )
                                     #else
                                     Text(
                                         "To add some media, use the Media Sources on the left to load either local files or a remote Storyteller server."

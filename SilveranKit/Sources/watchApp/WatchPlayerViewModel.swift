@@ -387,7 +387,9 @@ public final class WatchPlayerViewModel: NSObject {
         let href = locator.href
         let textId = locator.locations?.fragments?.first
 
-        debugLog("[WatchPlayerViewModel] Restoring position - href: \(href), fragment: \(textId ?? "nil")")
+        debugLog(
+            "[WatchPlayerViewModel] Restoring position - href: \(href), fragment: \(textId ?? "nil")"
+        )
 
         Task {
             if let textId = textId {

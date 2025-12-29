@@ -94,7 +94,11 @@ struct BookmarksPanel: View {
                                     .padding(.vertical, 1)
                                     .background(
                                         Capsule()
-                                            .fill(selectedTab == tab ? Color.accentColor : Color.secondary.opacity(0.3))
+                                            .fill(
+                                                selectedTab == tab
+                                                    ? Color.accentColor
+                                                    : Color.secondary.opacity(0.3)
+                                            )
                                     )
                                     .foregroundStyle(selectedTab == tab ? .white : .secondary)
                             }
@@ -117,10 +121,10 @@ struct BookmarksPanel: View {
     @ViewBuilder
     private var content: some View {
         switch selectedTab {
-        case .bookmarks:
-            bookmarksContent
-        case .highlights:
-            highlightsContent
+            case .bookmarks:
+                bookmarksContent
+            case .highlights:
+                highlightsContent
         }
     }
 
