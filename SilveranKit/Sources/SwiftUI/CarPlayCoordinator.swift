@@ -396,6 +396,11 @@ public final class CarPlayCoordinator {
     // MARK: - Progress Sync
 
     private func startPeriodicSync() async {
+        guard isCarPlayConnected else {
+            debugLog("[CarPlayCoordinator] Not starting periodic sync: CarPlay not connected")
+            return
+        }
+
         stopPeriodicSync()
 
         let syncInterval = await SettingsActor.shared.config.sync.progressSyncIntervalSeconds
@@ -415,8 +420,19 @@ public final class CarPlayCoordinator {
     }
 
     private func syncProgress(reason: SyncReason) async {
+        guard isCarPlayConnected else {
+            debugLog("[CarPlayCoordinator] Cannot sync: CarPlay not connected")
+            return
+        }
+
         guard let bookId = currentBookId else {
             debugLog("[CarPlayCoordinator] Cannot sync: no bookId")
+            return
+        }
+
+        // If phone player is active, let it handle syncing to avoid duplicates
+        if isPlayerViewActive {
+            debugLog("[CarPlayCoordinator] Skipping sync: phone player view is active, it will handle syncing")
             return
         }
 
@@ -514,6 +530,12 @@ public final class CarPlayCoordinator {
                 debugLog(
                     "[CarPlayCoordinator] Syncing SMIL progress: book=\(bookId), href=\(href), fragment=\(fragment ?? "none"), reason=\(reason)"
                 )
+        }
+
+        // Don't sync 0% positions - these are usually loading states that would reset progress
+        if let totalProg = locator.locations?.totalProgression, totalProg < 0.001 {
+            debugLog("[CarPlayCoordinator] Skipping sync: 0% position would reset progress")
+            return
         }
 
         let result = await ProgressSyncActor.shared.syncProgress(

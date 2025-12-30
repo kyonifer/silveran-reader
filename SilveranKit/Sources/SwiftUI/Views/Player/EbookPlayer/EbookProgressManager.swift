@@ -619,8 +619,8 @@ class EbookProgressManager {
         let timestampMs = lastActivity * 1000
         debugLog("[EPM] Sending timestamp: \(timestampMs) ms")
 
-        let isPlaying = mediaOverlayManager?.isPlaying ?? false
-        let sourceIdentifier = isPlaying ? "Readaloud Player" : "Ebook Player"
+        let hasMediaOverlay = mediaOverlayManager?.hasMediaOverlay ?? false
+        let sourceIdentifier = hasMediaOverlay ? "Readaloud Player" : "Ebook Player"
 
         let locationDescription: String
         if let chapterIdx = selectedChapterId,

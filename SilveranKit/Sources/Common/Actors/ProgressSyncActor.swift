@@ -307,11 +307,28 @@ public actor ProgressSyncActor {
     /// and removes pending queue items if server has confirmed a newer position.
     public func updateServerPositions(_ positions: [String: BookReadingPosition]) async {
         await ensureQueueLoaded()
+        await ensureHistoryLoaded()
         var updatedCount = 0
         var reconciledCount = 0
 
         for (bookId, incomingPosition) in positions {
             let incomingTimestamp = incomingPosition.timestamp ?? 0
+            guard incomingTimestamp > 0 else { continue }
+
+            // Skip if we already have this exact position (same timestamp)
+            if let existing = serverPositions[bookId], existing.timestamp == incomingTimestamp {
+                continue
+            }
+
+            // Skip if this matches a pending sync (likely echo of our own outgoing sync)
+            if let pending = pendingProgressQueue.first(where: { $0.bookId == bookId }),
+               pending.timestamp == incomingTimestamp {
+                debugLog("[PSA] updateServerPositions: skipping \(bookId), matches pending sync timestamp")
+                continue
+            }
+
+            let locatorSummary = incomingPosition.locator.map { buildLocatorSummary($0) } ?? "no locator"
+            let locationDesc = buildLocationDescription(from: incomingPosition.locator)
 
             // Check if we have a pending sync for this book
             if let pendingIndex = pendingProgressQueue.firstIndex(where: { $0.bookId == bookId }) {
@@ -323,9 +340,29 @@ public actor ProgressSyncActor {
                     serverPositions[bookId] = incomingPosition
                     reconciledCount += 1
                     updatedCount += 1
+
+                    await addHistoryEntry(
+                        bookId: bookId,
+                        timestamp: incomingTimestamp,
+                        sourceIdentifier: "Server",
+                        locationDescription: locationDesc,
+                        reason: .connectionRestored,
+                        result: .serverIncomingAccepted,
+                        locatorSummary: locatorSummary
+                    )
                 } else {
                     // Pending is newer, keep pending and don't overwrite serverPositions
                     debugLog("[PSA] updateServerPositions: pending newer for \(bookId), keeping pending (server: \(incomingTimestamp), pending: \(pending.timestamp))")
+
+                    await addHistoryEntry(
+                        bookId: bookId,
+                        timestamp: incomingTimestamp,
+                        sourceIdentifier: "Server",
+                        locationDescription: locationDesc,
+                        reason: .connectionRestored,
+                        result: .serverIncomingRejected,
+                        locatorSummary: "rejected: pending is newer (\(pending.timestamp) > \(incomingTimestamp))"
+                    )
                 }
             } else {
                 // No pending sync, check existing server position
@@ -334,13 +371,43 @@ public actor ProgressSyncActor {
                     if incomingTimestamp > existingTimestamp {
                         serverPositions[bookId] = incomingPosition
                         updatedCount += 1
+
+                        await addHistoryEntry(
+                            bookId: bookId,
+                            timestamp: incomingTimestamp,
+                            sourceIdentifier: "Server",
+                            locationDescription: locationDesc,
+                            reason: .connectionRestored,
+                            result: .serverIncomingAccepted,
+                            locatorSummary: locatorSummary
+                        )
                     } else {
                         debugLog("[PSA] updateServerPositions: existing newer for \(bookId), skipping (incoming: \(incomingTimestamp), existing: \(existingTimestamp))")
+
+                        await addHistoryEntry(
+                            bookId: bookId,
+                            timestamp: incomingTimestamp,
+                            sourceIdentifier: "Server",
+                            locationDescription: locationDesc,
+                            reason: .connectionRestored,
+                            result: .serverIncomingRejected,
+                            locatorSummary: "rejected: local is newer (\(existingTimestamp) >= \(incomingTimestamp))"
+                        )
                     }
                 } else {
                     // No existing position, just set it
                     serverPositions[bookId] = incomingPosition
                     updatedCount += 1
+
+                    await addHistoryEntry(
+                        bookId: bookId,
+                        timestamp: incomingTimestamp,
+                        sourceIdentifier: "Server",
+                        locationDescription: locationDesc,
+                        reason: .connectionRestored,
+                        result: .serverIncomingAccepted,
+                        locatorSummary: locatorSummary
+                    )
                 }
             }
         }
@@ -352,6 +419,15 @@ public actor ProgressSyncActor {
         debugLog(
             "[PSA] updateServerPositions: updated \(updatedCount), reconciled \(reconciledCount), total=\(serverPositions.count)"
         )
+    }
+
+    private func buildLocationDescription(from locator: BookLocator?) -> String {
+        guard let locator = locator else { return "" }
+        if let prog = locator.locations?.totalProgression {
+            let title = locator.title ?? "Unknown"
+            return "\(title), \(Int(prog * 100))%"
+        }
+        return locator.title ?? ""
     }
 
     /// Get reconciled progress for all books (pending queue takes precedence over server)

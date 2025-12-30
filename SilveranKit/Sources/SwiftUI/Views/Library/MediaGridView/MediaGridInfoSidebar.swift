@@ -16,6 +16,7 @@ struct MediaGridInfoSidebar: View {
 
     @Environment(MediaViewModel.self) private var mediaViewModel: MediaViewModel
     @State private var animatedProgress: Double = 0
+    @State private var showingSyncHistory = false
 
     init(
         item: BookMetadata,
@@ -106,10 +107,34 @@ struct MediaGridInfoSidebar: View {
             MediaGridDownloadSection(item: item)
             descriptionSection
             lastReadDateSection
+            syncHistoryButton
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 20)
         .padding(.bottom, 24)
+        .sheet(isPresented: $showingSyncHistory) {
+            SyncHistorySheet(bookId: item.uuid, bookTitle: item.title)
+        }
+    }
+
+    private var syncHistoryButton: some View {
+        Button {
+            showingSyncHistory = true
+        } label: {
+            HStack {
+                Image(systemName: "clock.arrow.circlepath")
+                Text("View Sync History")
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.vertical, 10)
+            .padding(.horizontal, 12)
+            .background(.quaternary.opacity(0.5))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
     }
 
     private var progressSection: some View {

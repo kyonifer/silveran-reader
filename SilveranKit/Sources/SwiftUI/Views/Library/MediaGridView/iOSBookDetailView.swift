@@ -5,6 +5,7 @@ struct iOSBookDetailView: View {
     let item: BookMetadata
     let mediaKind: MediaKind
     @Environment(MediaViewModel.self) private var mediaViewModel: MediaViewModel
+    @State private var showingSyncHistory = false
 
     private var currentItem: BookMetadata {
         mediaViewModel.library.bookMetaData.first { $0.uuid == item.uuid } ?? item
@@ -20,6 +21,7 @@ struct iOSBookDetailView: View {
                 MediaGridDownloadSection(item: item)
                 descriptionSection
                 debugInfoSection
+                syncHistoryButton
                 Spacer(minLength: 20)
             }
             .padding(.horizontal, 20)
@@ -27,6 +29,9 @@ struct iOSBookDetailView: View {
         }
         .navigationTitle("Book Details")
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showingSyncHistory) {
+            SyncHistorySheet(bookId: item.uuid, bookTitle: item.title)
+        }
     }
 
     private var coverSection: some View {
@@ -148,6 +153,26 @@ struct iOSBookDetailView: View {
     private func htmlToPlainText(_ html: String) -> String {
         html.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression, range: nil)
             .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var syncHistoryButton: some View {
+        Button {
+            showingSyncHistory = true
+        } label: {
+            HStack {
+                Image(systemName: "clock.arrow.circlepath")
+                Text("View Sync History")
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.vertical, 12)
+            .padding(.horizontal, 16)
+            .background(Color(.secondarySystemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+        }
+        .buttonStyle(.plain)
     }
 
     private func formatDate(_ isoString: String) -> String {

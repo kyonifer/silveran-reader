@@ -477,6 +477,8 @@ public struct SyncNotification: Sendable, Equatable {
 public struct SyncHistoryEntry: Codable, Sendable, Hashable {
     public let timestamp: Double
     public let humanTimestamp: String
+    public let arrivedAt: Double
+    public let humanArrivedAt: String
     public let sourceIdentifier: String
     public let locationDescription: String
     public let reason: SyncReason
@@ -488,6 +490,8 @@ public struct SyncHistoryEntry: Codable, Sendable, Hashable {
         case sentToServer
         case serverConfirmed
         case failed
+        case serverIncomingAccepted
+        case serverIncomingRejected
     }
 
     public init(
@@ -496,10 +500,14 @@ public struct SyncHistoryEntry: Codable, Sendable, Hashable {
         locationDescription: String,
         reason: SyncReason,
         result: SyncHistoryResult,
-        locatorSummary: String
+        locatorSummary: String,
+        arrivedAt: Double? = nil
     ) {
         self.timestamp = timestamp
         self.humanTimestamp = Self.formatTimestamp(timestamp)
+        let arrival = arrivedAt ?? Date().timeIntervalSince1970 * 1000
+        self.arrivedAt = arrival
+        self.humanArrivedAt = Self.formatTimestamp(arrival)
         self.sourceIdentifier = sourceIdentifier
         self.locationDescription = locationDescription
         self.reason = reason
