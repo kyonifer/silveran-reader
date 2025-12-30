@@ -315,15 +315,16 @@ public actor ProgressSyncActor {
             let incomingTimestamp = incomingPosition.timestamp ?? 0
             guard incomingTimestamp > 0 else { continue }
 
-            // Skip if we already have this exact position (same timestamp)
-            if let existing = serverPositions[bookId], existing.timestamp == incomingTimestamp {
-                continue
+            // Skip if we already have this position (within 1ms tolerance for server rounding)
+            if let existing = serverPositions[bookId], let existingTs = existing.timestamp {
+                if abs(existingTs - incomingTimestamp) < 1.0 {
+                    continue
+                }
             }
 
-            // Skip if this matches a pending sync (likely echo of our own outgoing sync)
+            // Skip if this matches a pending sync (within 1ms tolerance for server rounding)
             if let pending = pendingProgressQueue.first(where: { $0.bookId == bookId }),
-               pending.timestamp == incomingTimestamp {
-                debugLog("[PSA] updateServerPositions: skipping \(bookId), matches pending sync timestamp")
+               abs(pending.timestamp - incomingTimestamp) < 1.0 {
                 continue
             }
 
