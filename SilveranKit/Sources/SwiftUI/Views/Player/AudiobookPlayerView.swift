@@ -491,12 +491,16 @@ public struct AudiobookPlayerView: View {
         )
 
         let timestamp = Date().timeIntervalSince1970 * 1000
+        let chapterTitle = chapter?.title ?? "Chapter \(chapterIndex + 1)"
+        let locationDescription = "\(chapterTitle), \(Int(currentProgress * 100))%"
 
         let result = await ProgressSyncActor.shared.syncProgress(
             bookId: bookId,
             locator: locator,
             timestamp: timestamp,
-            reason: reason
+            reason: reason,
+            sourceIdentifier: "Audiobook Player",
+            locationDescription: locationDescription
         )
 
         switch result {

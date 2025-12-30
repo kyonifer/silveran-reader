@@ -113,76 +113,88 @@ public actor LocalMediaActor: GlobalActor {
     }
 
     public func updateBookProgress(bookId: String, locator: BookLocator, timestamp: Double) async {
-        debugLog("[LocalMediaActor] updateBookProgress: bookId=\(bookId)")
+        debugLog("[LocalMediaActor] updateBookProgress: bookId=\(bookId), timestamp=\(timestamp)")
 
         let updatedAtString = Date(timeIntervalSince1970: timestamp / 1000).ISO8601Format()
 
         if let index = localStorytellerMetadata.firstIndex(where: { $0.uuid == bookId }) {
-            var updatedMetadata = localStorytellerMetadata[index]
-            let newPosition = BookReadingPosition(
-                uuid: updatedMetadata.position?.uuid,
-                locator: locator,
-                timestamp: timestamp,
-                createdAt: updatedMetadata.position?.createdAt,
-                updatedAt: updatedAtString
-            )
-            updatedMetadata = BookMetadata(
-                uuid: updatedMetadata.uuid,
-                title: updatedMetadata.title,
-                subtitle: updatedMetadata.subtitle,
-                description: updatedMetadata.description,
-                language: updatedMetadata.language,
-                createdAt: updatedMetadata.createdAt,
-                updatedAt: updatedMetadata.updatedAt,
-                publicationDate: updatedMetadata.publicationDate,
-                authors: updatedMetadata.authors,
-                narrators: updatedMetadata.narrators,
-                creators: updatedMetadata.creators,
-                series: updatedMetadata.series,
-                tags: updatedMetadata.tags,
-                collections: updatedMetadata.collections,
-                ebook: updatedMetadata.ebook,
-                audiobook: updatedMetadata.audiobook,
-                readaloud: updatedMetadata.readaloud,
-                status: updatedMetadata.status,
-                position: newPosition
-            )
-            localStorytellerMetadata[index] = updatedMetadata
-            debugLog("[LocalMediaActor] updateBookProgress: updated storyteller metadata")
+            let existing = localStorytellerMetadata[index]
+            let existingTimestamp = existing.position?.timestamp ?? 0
+
+            if timestamp <= existingTimestamp {
+                debugLog("[LocalMediaActor] updateBookProgress: skipping storyteller update, existing is newer (incoming: \(timestamp), existing: \(existingTimestamp))")
+            } else {
+                let newPosition = BookReadingPosition(
+                    uuid: existing.position?.uuid,
+                    locator: locator,
+                    timestamp: timestamp,
+                    createdAt: existing.position?.createdAt,
+                    updatedAt: updatedAtString
+                )
+                let updatedMetadata = BookMetadata(
+                    uuid: existing.uuid,
+                    title: existing.title,
+                    subtitle: existing.subtitle,
+                    description: existing.description,
+                    language: existing.language,
+                    createdAt: existing.createdAt,
+                    updatedAt: existing.updatedAt,
+                    publicationDate: existing.publicationDate,
+                    authors: existing.authors,
+                    narrators: existing.narrators,
+                    creators: existing.creators,
+                    series: existing.series,
+                    tags: existing.tags,
+                    collections: existing.collections,
+                    ebook: existing.ebook,
+                    audiobook: existing.audiobook,
+                    readaloud: existing.readaloud,
+                    status: existing.status,
+                    position: newPosition
+                )
+                localStorytellerMetadata[index] = updatedMetadata
+                debugLog("[LocalMediaActor] updateBookProgress: updated storyteller metadata")
+            }
         }
 
         if let index = localStandaloneMetadata.firstIndex(where: { $0.uuid == bookId }) {
-            var updatedMetadata = localStandaloneMetadata[index]
-            let newPosition = BookReadingPosition(
-                uuid: updatedMetadata.position?.uuid,
-                locator: locator,
-                timestamp: timestamp,
-                createdAt: updatedMetadata.position?.createdAt,
-                updatedAt: updatedAtString
-            )
-            updatedMetadata = BookMetadata(
-                uuid: updatedMetadata.uuid,
-                title: updatedMetadata.title,
-                subtitle: updatedMetadata.subtitle,
-                description: updatedMetadata.description,
-                language: updatedMetadata.language,
-                createdAt: updatedMetadata.createdAt,
-                updatedAt: updatedMetadata.updatedAt,
-                publicationDate: updatedMetadata.publicationDate,
-                authors: updatedMetadata.authors,
-                narrators: updatedMetadata.narrators,
-                creators: updatedMetadata.creators,
-                series: updatedMetadata.series,
-                tags: updatedMetadata.tags,
-                collections: updatedMetadata.collections,
-                ebook: updatedMetadata.ebook,
-                audiobook: updatedMetadata.audiobook,
-                readaloud: updatedMetadata.readaloud,
-                status: updatedMetadata.status,
-                position: newPosition
-            )
-            localStandaloneMetadata[index] = updatedMetadata
-            debugLog("[LocalMediaActor] updateBookProgress: updated standalone metadata")
+            let existing = localStandaloneMetadata[index]
+            let existingTimestamp = existing.position?.timestamp ?? 0
+
+            if timestamp <= existingTimestamp {
+                debugLog("[LocalMediaActor] updateBookProgress: skipping standalone update, existing is newer (incoming: \(timestamp), existing: \(existingTimestamp))")
+            } else {
+                let newPosition = BookReadingPosition(
+                    uuid: existing.position?.uuid,
+                    locator: locator,
+                    timestamp: timestamp,
+                    createdAt: existing.position?.createdAt,
+                    updatedAt: updatedAtString
+                )
+                let updatedMetadata = BookMetadata(
+                    uuid: existing.uuid,
+                    title: existing.title,
+                    subtitle: existing.subtitle,
+                    description: existing.description,
+                    language: existing.language,
+                    createdAt: existing.createdAt,
+                    updatedAt: existing.updatedAt,
+                    publicationDate: existing.publicationDate,
+                    authors: existing.authors,
+                    narrators: existing.narrators,
+                    creators: existing.creators,
+                    series: existing.series,
+                    tags: existing.tags,
+                    collections: existing.collections,
+                    ebook: existing.ebook,
+                    audiobook: existing.audiobook,
+                    readaloud: existing.readaloud,
+                    status: existing.status,
+                    position: newPosition
+                )
+                localStandaloneMetadata[index] = updatedMetadata
+                debugLog("[LocalMediaActor] updateBookProgress: updated standalone metadata")
+            }
         }
     }
 

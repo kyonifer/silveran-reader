@@ -37,12 +37,17 @@ public struct BookProgress: Sendable {
 public actor ProgressSyncActor {
     public static let shared = ProgressSyncActor()
 
+    private static let maxHistoryEntriesPerBook = 20
+
     private var pendingProgressQueue: [PendingProgressSync] = []
     /// Latest known server position for each book. Updated when LMA loads metadata from server/disk,
     /// or when we successfully sync a position to the server.
     private var serverPositions: [String: BookReadingPosition] = [:]
     private var lastWakeTimestamp: TimeInterval = Date().timeIntervalSince1970
     private var queueLoaded = false
+    private var historyLoaded = false
+
+    private var syncHistory: [String: [SyncHistoryEntry]] = [:]
 
     private var observers: [UUID: @Sendable @MainActor () -> Void] = [:]
     private var syncNotificationCallback: (@Sendable @MainActor (Int, Int) -> Void)?
@@ -50,6 +55,7 @@ public actor ProgressSyncActor {
     public init() {
         Task {
             await loadQueueFromDisk()
+            await loadHistoryFromDisk()
         }
     }
 
@@ -58,16 +64,31 @@ public actor ProgressSyncActor {
         await loadQueueFromDisk()
     }
 
+    private func ensureHistoryLoaded() async {
+        guard !historyLoaded else { return }
+        await loadHistoryFromDisk()
+    }
+
     // MARK: - Primary API
 
+    /// Sync progress with full introspection data for debugging.
+    /// - Parameters:
+    ///   - bookId: The book's unique identifier
+    ///   - locator: The reading position
+    ///   - timestamp: Unix millisecond timestamp of the position
+    ///   - reason: Why this sync was triggered
+    ///   - sourceIdentifier: Human-readable source like "CarPlay/Audiobook", "Ebook Player"
+    ///   - locationDescription: Human-readable position like "Chapter 3, 22%"
     public func syncProgress(
         bookId: String,
         locator: BookLocator,
         timestamp: Double,
-        reason: SyncReason
+        reason: SyncReason,
+        sourceIdentifier: String = "Unknown",
+        locationDescription: String = ""
     ) async -> SyncResult {
         debugLog(
-            "[PSA] syncProgress: bookId=\(bookId), reason=\(reason.rawValue), timestamp=\(timestamp)"
+            "[PSA] syncProgress: bookId=\(bookId), reason=\(reason.rawValue), timestamp=\(timestamp), source=\(sourceIdentifier)"
         )
 
         if shouldDedupe(bookId: bookId, locator: locator, timestamp: timestamp) {
@@ -75,43 +96,30 @@ public actor ProgressSyncActor {
             return .success
         }
 
+        let locatorSummary = buildLocatorSummary(locator)
+
         let isLocalBook = await LocalMediaActor.shared.isLocalStandaloneBook(bookId)
         if isLocalBook {
             debugLog("[PSA] syncProgress: local-only book, updating state without server sync")
-            updateServerPosition(bookId: bookId, locator: locator, timestamp: timestamp)
+            updateServerPositionIfNewer(bookId: bookId, locator: locator, timestamp: timestamp)
             await updateLocalMetadataProgress(
                 bookId: bookId,
                 locator: locator,
                 timestamp: timestamp
             )
+            await addHistoryEntry(
+                bookId: bookId,
+                timestamp: timestamp,
+                sourceIdentifier: sourceIdentifier,
+                locationDescription: locationDescription,
+                reason: reason,
+                result: .persisted,
+                locatorSummary: locatorSummary
+            )
             return .success
         }
 
-        let storytellerStatus = await StorytellerActor.shared.connectionStatus
-        debugLog("[PSA] syncProgress: storytellerStatus=\(storytellerStatus)")
-
-        if storytellerStatus == .connected {
-            let result = await StorytellerActor.shared.sendProgressToServer(
-                bookId: bookId,
-                locator: locator,
-                timestamp: timestamp
-            )
-            if result == .success {
-                debugLog("[PSA] syncProgress: synced to server")
-                await removeFromQueue(bookId: bookId)
-                updateServerPosition(bookId: bookId, locator: locator, timestamp: timestamp)
-                await updateLocalMetadataProgress(
-                    bookId: bookId,
-                    locator: locator,
-                    timestamp: timestamp
-                )
-                await notifyObservers()
-                return .success
-            }
-            debugLog("[PSA] syncProgress: server sync failed, result=\(result)")
-        }
-
-        debugLog("[PSA] syncProgress: queueing for later sync")
+        // ALWAYS persist to queue first for durability
         await queueOfflineProgress(
             bookId: bookId,
             locator: locator,
@@ -123,7 +131,53 @@ public actor ProgressSyncActor {
             locator: locator,
             timestamp: timestamp
         )
+
+        await addHistoryEntry(
+            bookId: bookId,
+            timestamp: timestamp,
+            sourceIdentifier: sourceIdentifier,
+            locationDescription: locationDescription,
+            reason: reason,
+            result: .persisted,
+            locatorSummary: locatorSummary
+        )
+
+        // Now attempt server sync if connected
+        let storytellerStatus = await StorytellerActor.shared.connectionStatus
+        debugLog("[PSA] syncProgress: storytellerStatus=\(storytellerStatus)")
+
+        if storytellerStatus == .connected {
+            let result = await StorytellerActor.shared.sendProgressToServer(
+                bookId: bookId,
+                locator: locator,
+                timestamp: timestamp
+            )
+            if result == .success {
+                debugLog("[PSA] syncProgress: synced to server")
+                await markQueueItemSynced(bookId: bookId)
+                updateServerPositionIfNewer(bookId: bookId, locator: locator, timestamp: timestamp)
+                await updateHistoryResult(bookId: bookId, timestamp: timestamp, result: .sentToServer)
+                await notifyObservers()
+                return .success
+            }
+            debugLog("[PSA] syncProgress: server sync failed, result=\(result)")
+        }
+
+        debugLog("[PSA] syncProgress: queued for later sync")
+        await notifyObservers()
         return .queued
+    }
+
+    private func buildLocatorSummary(_ locator: BookLocator) -> String {
+        var parts: [String] = []
+        parts.append("href: \(locator.href)")
+        if let fragments = locator.locations?.fragments, !fragments.isEmpty {
+            parts.append("fragments: \(fragments.joined(separator: ", "))")
+        }
+        if let prog = locator.locations?.totalProgression {
+            parts.append("total: \(String(format: "%.1f%%", prog * 100))")
+        }
+        return parts.joined(separator: " | ")
     }
 
     // MARK: - Queue Management
@@ -169,7 +223,7 @@ public actor ProgressSyncActor {
                 )
                 if result == .success {
                     pending.syncedToStoryteller = true
-                    updateServerPosition(
+                    updateServerPositionIfNewer(
                         bookId: pending.bookId,
                         locator: pending.locator,
                         timestamp: pending.timestamp
@@ -248,13 +302,55 @@ public actor ProgressSyncActor {
 
     // MARK: - Progress Source of Truth
 
-    /// Called by LMA when metadata updates from server or disk
-    public func updateServerPositions(_ positions: [String: BookReadingPosition]) {
-        for (bookId, position) in positions {
-            serverPositions[bookId] = position
+    /// Called by LMA when metadata updates from server or disk.
+    /// Performs timestamp-based reconciliation: only updates if incoming is newer than local,
+    /// and removes pending queue items if server has confirmed a newer position.
+    public func updateServerPositions(_ positions: [String: BookReadingPosition]) async {
+        await ensureQueueLoaded()
+        var updatedCount = 0
+        var reconciledCount = 0
+
+        for (bookId, incomingPosition) in positions {
+            let incomingTimestamp = incomingPosition.timestamp ?? 0
+
+            // Check if we have a pending sync for this book
+            if let pendingIndex = pendingProgressQueue.firstIndex(where: { $0.bookId == bookId }) {
+                let pending = pendingProgressQueue[pendingIndex]
+                if incomingTimestamp > pending.timestamp {
+                    // Server has newer data, remove from pending queue
+                    debugLog("[PSA] updateServerPositions: server newer for \(bookId), removing pending (server: \(incomingTimestamp), pending: \(pending.timestamp))")
+                    pendingProgressQueue.remove(at: pendingIndex)
+                    serverPositions[bookId] = incomingPosition
+                    reconciledCount += 1
+                    updatedCount += 1
+                } else {
+                    // Pending is newer, keep pending and don't overwrite serverPositions
+                    debugLog("[PSA] updateServerPositions: pending newer for \(bookId), keeping pending (server: \(incomingTimestamp), pending: \(pending.timestamp))")
+                }
+            } else {
+                // No pending sync, check existing server position
+                if let existing = serverPositions[bookId] {
+                    let existingTimestamp = existing.timestamp ?? 0
+                    if incomingTimestamp > existingTimestamp {
+                        serverPositions[bookId] = incomingPosition
+                        updatedCount += 1
+                    } else {
+                        debugLog("[PSA] updateServerPositions: existing newer for \(bookId), skipping (incoming: \(incomingTimestamp), existing: \(existingTimestamp))")
+                    }
+                } else {
+                    // No existing position, just set it
+                    serverPositions[bookId] = incomingPosition
+                    updatedCount += 1
+                }
+            }
         }
+
+        if reconciledCount > 0 {
+            await saveQueueToDisk()
+        }
+
         debugLog(
-            "[PSA] updateServerPositions: updated \(positions.count) positions, total=\(serverPositions.count)"
+            "[PSA] updateServerPositions: updated \(updatedCount), reconciled \(reconciledCount), total=\(serverPositions.count)"
         )
     }
 
@@ -366,7 +462,14 @@ public actor ProgressSyncActor {
         return false
     }
 
-    private func updateServerPosition(bookId: String, locator: BookLocator, timestamp: Double) {
+    private func updateServerPositionIfNewer(bookId: String, locator: BookLocator, timestamp: Double) {
+        if let existing = serverPositions[bookId], let existingTimestamp = existing.timestamp {
+            if timestamp <= existingTimestamp {
+                debugLog("[PSA] updateServerPositionIfNewer: existing is newer, skipping (incoming: \(timestamp), existing: \(existingTimestamp))")
+                return
+            }
+        }
+
         let updatedAtString = Date(timeIntervalSince1970: timestamp / 1000).ISO8601Format()
         serverPositions[bookId] = BookReadingPosition(
             uuid: serverPositions[bookId]?.uuid,
@@ -375,7 +478,7 @@ public actor ProgressSyncActor {
             createdAt: serverPositions[bookId]?.createdAt,
             updatedAt: updatedAtString
         )
-        debugLog("[PSA] updateServerPosition: bookId=\(bookId), timestamp=\(timestamp)")
+        debugLog("[PSA] updateServerPositionIfNewer: bookId=\(bookId), timestamp=\(timestamp)")
     }
 
     private func queueOfflineProgress(
@@ -384,7 +487,15 @@ public actor ProgressSyncActor {
         timestamp: Double,
         syncedToStoryteller: Bool = false
     ) async {
-        pendingProgressQueue.removeAll { $0.bookId == bookId }
+        // Only replace if incoming is newer
+        if let existingIndex = pendingProgressQueue.firstIndex(where: { $0.bookId == bookId }) {
+            let existing = pendingProgressQueue[existingIndex]
+            if timestamp <= existing.timestamp {
+                debugLog("[PSA] queueOfflineProgress: existing pending is newer, skipping (incoming: \(timestamp), existing: \(existing.timestamp))")
+                return
+            }
+            pendingProgressQueue.remove(at: existingIndex)
+        }
 
         let pending = PendingProgressSync(
             bookId: bookId,
@@ -400,6 +511,14 @@ public actor ProgressSyncActor {
 
         await saveQueueToDisk()
         await notifyObservers()
+    }
+
+    private func markQueueItemSynced(bookId: String) async {
+        if let index = pendingProgressQueue.firstIndex(where: { $0.bookId == bookId }) {
+            pendingProgressQueue[index].syncedToStoryteller = true
+            debugLog("[PSA] markQueueItemSynced: bookId=\(bookId)")
+            await saveQueueToDisk()
+        }
     }
 
     private func removeFromQueue(bookId: String) async {
@@ -449,6 +568,104 @@ public actor ProgressSyncActor {
             debugLog("[PSA] saveQueueToDisk: saved \(pendingProgressQueue.count) items")
         } catch {
             debugLog("[PSA] saveQueueToDisk: failed - \(error)")
+        }
+    }
+
+    // MARK: - Sync History
+
+    private func addHistoryEntry(
+        bookId: String,
+        timestamp: Double,
+        sourceIdentifier: String,
+        locationDescription: String,
+        reason: SyncReason,
+        result: SyncHistoryEntry.SyncHistoryResult,
+        locatorSummary: String
+    ) async {
+        await ensureHistoryLoaded()
+
+        let entry = SyncHistoryEntry(
+            timestamp: timestamp,
+            sourceIdentifier: sourceIdentifier,
+            locationDescription: locationDescription,
+            reason: reason,
+            result: result,
+            locatorSummary: locatorSummary
+        )
+
+        var entries = syncHistory[bookId] ?? []
+        entries.append(entry)
+
+        // Keep only the most recent entries
+        if entries.count > Self.maxHistoryEntriesPerBook {
+            entries = Array(entries.suffix(Self.maxHistoryEntriesPerBook))
+        }
+
+        syncHistory[bookId] = entries
+        await saveHistoryToDisk()
+    }
+
+    private func updateHistoryResult(
+        bookId: String,
+        timestamp: Double,
+        result: SyncHistoryEntry.SyncHistoryResult
+    ) async {
+        await ensureHistoryLoaded()
+
+        guard var entries = syncHistory[bookId] else { return }
+
+        // Find the most recent entry with matching timestamp and update its result
+        if let index = entries.lastIndex(where: { $0.timestamp == timestamp }) {
+            let existing = entries[index]
+            entries[index] = SyncHistoryEntry(
+                timestamp: existing.timestamp,
+                sourceIdentifier: existing.sourceIdentifier,
+                locationDescription: existing.locationDescription,
+                reason: existing.reason,
+                result: result,
+                locatorSummary: existing.locatorSummary
+            )
+            syncHistory[bookId] = entries
+            await saveHistoryToDisk()
+        }
+    }
+
+    /// Get sync history for a specific book (for debugging UI)
+    public func getSyncHistory(for bookId: String) async -> [SyncHistoryEntry] {
+        await ensureHistoryLoaded()
+        return syncHistory[bookId] ?? []
+    }
+
+    /// Get all sync history (for debugging)
+    public func getAllSyncHistory() async -> [String: [SyncHistoryEntry]] {
+        await ensureHistoryLoaded()
+        return syncHistory
+    }
+
+    /// Clear sync history for a book
+    public func clearSyncHistory(for bookId: String) async {
+        syncHistory.removeValue(forKey: bookId)
+        await saveHistoryToDisk()
+    }
+
+    private func loadHistoryFromDisk() async {
+        guard !historyLoaded else { return }
+        do {
+            syncHistory = try await FilesystemActor.shared.loadSyncHistory()
+            debugLog("[PSA] loadHistoryFromDisk: loaded history for \(syncHistory.count) books")
+        } catch {
+            debugLog("[PSA] loadHistoryFromDisk: failed - \(error)")
+            syncHistory = [:]
+        }
+        historyLoaded = true
+    }
+
+    private func saveHistoryToDisk() async {
+        do {
+            try await FilesystemActor.shared.saveSyncHistory(syncHistory)
+            debugLog("[PSA] saveHistoryToDisk: saved history for \(syncHistory.count) books")
+        } catch {
+            debugLog("[PSA] saveHistoryToDisk: failed - \(error)")
         }
     }
 }

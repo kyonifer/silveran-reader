@@ -355,6 +355,15 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
     }
 
     private func isNewer(_ newBook: BookMetadata, than existingBook: BookMetadata) -> Bool {
+        // Prioritize position timestamp comparison for reading progress
+        let newPositionTimestamp = newBook.position?.timestamp ?? 0
+        let existingPositionTimestamp = existingBook.position?.timestamp ?? 0
+
+        if newPositionTimestamp != 0 || existingPositionTimestamp != 0 {
+            return newPositionTimestamp > existingPositionTimestamp
+        }
+
+        // Fallback to book metadata updatedAt for non-position data
         guard let newDateStr = newBook.updatedAt else { return false }
         guard let existingDateStr = existingBook.updatedAt else { return true }
         return newDateStr > existingDateStr

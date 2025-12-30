@@ -474,6 +474,48 @@ public struct SyncNotification: Sendable, Equatable {
     }
 }
 
+public struct SyncHistoryEntry: Codable, Sendable, Hashable {
+    public let timestamp: Double
+    public let humanTimestamp: String
+    public let sourceIdentifier: String
+    public let locationDescription: String
+    public let reason: SyncReason
+    public let result: SyncHistoryResult
+    public let locatorSummary: String
+
+    public enum SyncHistoryResult: String, Codable, Sendable, Hashable {
+        case persisted
+        case sentToServer
+        case serverConfirmed
+        case failed
+    }
+
+    public init(
+        timestamp: Double,
+        sourceIdentifier: String,
+        locationDescription: String,
+        reason: SyncReason,
+        result: SyncHistoryResult,
+        locatorSummary: String
+    ) {
+        self.timestamp = timestamp
+        self.humanTimestamp = Self.formatTimestamp(timestamp)
+        self.sourceIdentifier = sourceIdentifier
+        self.locationDescription = locationDescription
+        self.reason = reason
+        self.result = result
+        self.locatorSummary = locatorSummary
+    }
+
+    private static func formatTimestamp(_ timestamp: Double) -> String {
+        let date = Date(timeIntervalSince1970: timestamp / 1000)
+        let formatter = DateFormatter()
+        formatter.dateStyle = .short
+        formatter.timeStyle = .medium
+        return formatter.string(from: date)
+    }
+}
+
 public struct PlayerBookData: Codable, Hashable, Sendable {
     public let metadata: BookMetadata
     public let localMediaPath: URL?

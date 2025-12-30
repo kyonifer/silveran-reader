@@ -619,11 +619,28 @@ class EbookProgressManager {
         let timestampMs = lastActivity * 1000
         debugLog("[EPM] Sending timestamp: \(timestampMs) ms")
 
+        let isPlaying = mediaOverlayManager?.isPlaying ?? false
+        let sourceIdentifier = isPlaying ? "Readaloud Player" : "Ebook Player"
+
+        let locationDescription: String
+        if let chapterIdx = selectedChapterId,
+           chapterIdx < bookStructure.count {
+            let chapterName = bookStructure[chapterIdx].label ?? "Chapter \(chapterIdx + 1)"
+            let progressPercent = Int((bookFraction ?? 0) * 100)
+            locationDescription = "\(chapterName), \(progressPercent)%"
+        } else if let fraction = bookFraction {
+            locationDescription = "\(Int(fraction * 100))% of book"
+        } else {
+            locationDescription = ""
+        }
+
         let result = await ProgressSyncActor.shared.syncProgress(
             bookId: bookId,
             locator: finalLocator,
             timestamp: timestampMs,
-            reason: reason
+            reason: reason,
+            sourceIdentifier: sourceIdentifier,
+            locationDescription: locationDescription
         )
 
         debugLog("[EPM] Sync result: \(result)")

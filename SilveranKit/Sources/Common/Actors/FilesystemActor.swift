@@ -288,6 +288,48 @@ public actor FilesystemActor {
         try fm.moveItem(at: tempURL, to: queueURL)
     }
 
+    public func loadSyncHistory() throws -> [String: [SyncHistoryEntry]] {
+        let configDir = getConfigDirectory()
+        let historyURL = configDir.appendingPathComponent(
+            "sync_history.json",
+            isDirectory: false
+        )
+
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: historyURL.path) else {
+            return [:]
+        }
+
+        let decoder = JSONDecoder()
+        let data = try Data(contentsOf: historyURL)
+        return try decoder.decode([String: [SyncHistoryEntry]].self, from: data)
+    }
+
+    public func saveSyncHistory(_ history: [String: [SyncHistoryEntry]]) throws {
+        let configDir = getConfigDirectory()
+        try ensureDirectoryExists(at: configDir)
+
+        let historyURL = configDir.appendingPathComponent(
+            "sync_history.json",
+            isDirectory: false
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let data = try encoder.encode(history)
+
+        let tempURL = configDir.appendingPathComponent(
+            "sync_history.tmp",
+            isDirectory: false
+        )
+        try data.write(to: tempURL, options: .atomic)
+
+        let fm = FileManager.default
+        if fm.fileExists(atPath: historyURL.path) {
+            try fm.removeItem(at: historyURL)
+        }
+        try fm.moveItem(at: tempURL, to: historyURL)
+    }
+
     public func saveCoverImage(uuid: String, data: Data, variant: String) throws {
         let coversDir = applicationSupportBaseDirectory()
             .appendingPathComponent("Covers", isDirectory: true)

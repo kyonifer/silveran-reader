@@ -422,6 +422,8 @@ public final class CarPlayCoordinator {
 
         let locator: BookLocator
         let timestampMs = Date().timeIntervalSince1970 * 1000
+        let sourceIdentifier: String
+        let locationDescription: String
 
         switch activePlayer {
             case .audiobook:
@@ -455,6 +457,10 @@ public final class CarPlayCoordinator {
                     locations: locations,
                     text: nil
                 )
+
+                sourceIdentifier = "CarPlay/Audiobook"
+                let chapterTitle = chapter?.title ?? "Chapter \(chapterIndex + 1)"
+                locationDescription = "\(chapterTitle), \(Int(totalProgression * 100))%"
 
                 debugLog(
                     "[CarPlayCoordinator] Syncing audiobook progress: book=\(bookId), chapter=\(chapterIndex), progress=\(totalProgression), reason=\(reason)"
@@ -501,6 +507,10 @@ public final class CarPlayCoordinator {
                     text: nil
                 )
 
+                sourceIdentifier = "CarPlay/Readaloud"
+                let chapterLabel = state.chapterLabel ?? "Section \(state.currentSectionIndex + 1)"
+                locationDescription = "\(chapterLabel), \(Int(totalProgression * 100))%"
+
                 debugLog(
                     "[CarPlayCoordinator] Syncing SMIL progress: book=\(bookId), href=\(href), fragment=\(fragment ?? "none"), reason=\(reason)"
                 )
@@ -510,7 +520,9 @@ public final class CarPlayCoordinator {
             bookId: bookId,
             locator: locator,
             timestamp: timestampMs,
-            reason: reason
+            reason: reason,
+            sourceIdentifier: sourceIdentifier,
+            locationDescription: locationDescription
         )
 
         debugLog("[CarPlayCoordinator] Sync result: \(result)")
