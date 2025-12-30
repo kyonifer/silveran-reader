@@ -490,7 +490,7 @@ public struct AudiobookPlayerView: View {
             "[AudiobookPlayerView] Syncing progress (reason: \(reason.rawValue)) - href: \(audioHref), type: audio/mp4, t=\(String(format: "%.1f", timeOffset))s, chapterProg: \(String(format: "%.1f%%", chapterProgression * 100)), totalProg: \(String(format: "%.1f%%", currentProgress * 100))"
         )
 
-        let timestamp = Date().timeIntervalSince1970 * 1000
+        let timestamp = floor(Date().timeIntervalSince1970 * 1000)
         let chapterTitle = chapter?.title ?? "Chapter \(chapterIndex + 1)"
         let locationDescription = "\(chapterTitle), \(Int(currentProgress * 100))%"
 

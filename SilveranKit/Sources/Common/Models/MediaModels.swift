@@ -505,7 +505,7 @@ public struct SyncHistoryEntry: Codable, Sendable, Hashable {
     ) {
         self.timestamp = timestamp
         self.humanTimestamp = Self.formatTimestamp(timestamp)
-        let arrival = arrivedAt ?? Date().timeIntervalSince1970 * 1000
+        let arrival = arrivedAt ?? floor(Date().timeIntervalSince1970 * 1000)
         self.arrivedAt = arrival
         self.humanArrivedAt = Self.formatTimestamp(arrival)
         self.sourceIdentifier = sourceIdentifier

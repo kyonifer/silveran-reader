@@ -431,7 +431,7 @@ public final class WatchPlayerViewModel: NSObject {
 
         lastSyncTime = Date()
         let progression = bookDuration > 0 ? bookElapsed / bookDuration : 0
-        let timestamp = Date().timeIntervalSince1970 * 1000
+        let timestamp = floor(Date().timeIntervalSince1970 * 1000)
 
         guard currentSectionIndex < bookStructure.count else { return }
         let section = bookStructure[currentSectionIndex]

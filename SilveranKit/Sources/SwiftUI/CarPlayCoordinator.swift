@@ -437,7 +437,7 @@ public final class CarPlayCoordinator {
         }
 
         let locator: BookLocator
-        let timestampMs = Date().timeIntervalSince1970 * 1000
+        let timestampMs = floor(Date().timeIntervalSince1970 * 1000)
         let sourceIdentifier: String
         let locationDescription: String
 

@@ -1897,7 +1897,7 @@ public actor StorytellerActor {
 
         let body: [String: Any] = [
             "locator": encodeLocatorToDict(locator),
-            "timestamp": timestamp,
+            "timestamp": Int64(timestamp),
         ]
 
         do {

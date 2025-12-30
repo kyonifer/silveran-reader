@@ -546,7 +546,7 @@ class EbookProgressManager {
     //   - If audio is playing during sync check, activity is refreshed automatically
 
     private func recordActivity() {
-        lastActivityTimestamp = Date().timeIntervalSince1970
+        lastActivityTimestamp = floor(Date().timeIntervalSince1970 * 1000) / 1000
         let timestampMs = lastActivityTimestamp! * 1000
         debugLog("[EPM] Activity recorded at \(timestampMs) ms (unix epoch)")
     }
