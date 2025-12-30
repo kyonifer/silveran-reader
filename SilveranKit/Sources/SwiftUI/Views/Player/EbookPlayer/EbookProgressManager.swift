@@ -311,6 +311,8 @@ class EbookProgressManager {
             "[EPM] Received relocate event from JS: sectionIndex=\(message.sectionIndex?.description ?? "nil")"
         )
 
+        recordActivity()
+
         if isUserNavPending {
             debugLog("[EPM] User nav pending, ignoring relocate (will be handled when timer fires)")
         } else {
