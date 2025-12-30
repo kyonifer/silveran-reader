@@ -13,6 +13,8 @@ struct SyncHistorySheet: View {
     @State private var isLoading = true
     @State private var showServerUpdates = false
     @State private var showOnlyAcceptedUpdates = false
+    @State private var entryToRestore: SyncHistoryEntry?
+    @State private var showRestoreConfirmation = false
 
     private var filteredHistory: [SyncHistoryEntry] {
         if showServerUpdates {
@@ -192,7 +194,10 @@ struct SyncHistorySheet: View {
         } else {
             List {
                 ForEach(filteredHistory.reversed(), id: \.timestamp) { entry in
-                    SyncHistoryEntryRow(entry: entry)
+                    SyncHistoryEntryRow(entry: entry) {
+                        entryToRestore = entry
+                        showRestoreConfirmation = true
+                    }
                 }
             }
             #if os(iOS)
@@ -200,12 +205,34 @@ struct SyncHistorySheet: View {
             #else
             .listStyle(.inset)
             #endif
+            .alert("Restore Position?", isPresented: $showRestoreConfirmation) {
+                Button("Cancel", role: .cancel) {
+                    entryToRestore = nil
+                }
+                Button("Restore") {
+                    if let entry = entryToRestore, let locator = entry.locator {
+                        Task {
+                            let _ = await ProgressSyncActor.shared.restorePosition(
+                                bookId: bookId,
+                                locator: locator
+                            )
+                            await refresh()
+                        }
+                    }
+                    entryToRestore = nil
+                }
+            } message: {
+                if let entry = entryToRestore {
+                    Text("Restore position to \(entry.locationDescription)?")
+                }
+            }
         }
     }
 }
 
 struct SyncHistoryEntryRow: View {
     let entry: SyncHistoryEntry
+    var onRestore: (() -> Void)?
 
     private var showArrivedTime: Bool {
         abs(entry.arrivedAt - entry.timestamp) > 1000
@@ -225,6 +252,15 @@ struct SyncHistoryEntryRow: View {
                     }
                 }
                 Spacer()
+                if entry.locator != nil, let onRestore {
+                    Button {
+                        onRestore()
+                    } label: {
+                        Image(systemName: "arrow.uturn.backward.circle")
+                            .foregroundStyle(.blue)
+                    }
+                    .buttonStyle(.plain)
+                }
                 resultBadge
             }
 
@@ -307,6 +343,7 @@ struct SyncHistoryEntryRow: View {
         case .periodicDuringActivePlayback: return "Periodic (playing)"
         case .periodicWhileReading: return "Periodic (reading)"
         case .userClosedBook: return "Closed book"
+        case .userRestoredFromHistory: return "Restored"
         case .appBackgrounding: return "App backgrounded"
         case .appTerminating: return "App closing"
         case .connectionRestored: return "Reconnected"

@@ -114,7 +114,8 @@ public actor ProgressSyncActor {
                 locationDescription: locationDescription,
                 reason: reason,
                 result: .persisted,
-                locatorSummary: locatorSummary
+                locatorSummary: locatorSummary,
+                locator: locator
             )
             return .success
         }
@@ -139,7 +140,8 @@ public actor ProgressSyncActor {
             locationDescription: locationDescription,
             reason: reason,
             result: .persisted,
-            locatorSummary: locatorSummary
+            locatorSummary: locatorSummary,
+            locator: locator
         )
 
         // Now attempt server sync if connected
@@ -342,7 +344,8 @@ public actor ProgressSyncActor {
                         locationDescription: locationDesc,
                         reason: .connectionRestored,
                         result: .serverIncomingAccepted,
-                        locatorSummary: locatorSummary
+                        locatorSummary: locatorSummary,
+                        locator: incomingPosition.locator
                     )
                 } else {
                     // Pending is newer, keep pending and don't overwrite serverPositions
@@ -355,7 +358,8 @@ public actor ProgressSyncActor {
                         locationDescription: locationDesc,
                         reason: .connectionRestored,
                         result: .serverIncomingRejected,
-                        locatorSummary: "rejected: pending is newer (\(pending.timestamp) > \(incomingTimestamp))"
+                        locatorSummary: "rejected: pending is newer (\(pending.timestamp) > \(incomingTimestamp))",
+                        locator: incomingPosition.locator
                     )
                 }
             } else {
@@ -373,7 +377,8 @@ public actor ProgressSyncActor {
                             locationDescription: locationDesc,
                             reason: .connectionRestored,
                             result: .serverIncomingAccepted,
-                            locatorSummary: locatorSummary
+                            locatorSummary: locatorSummary,
+                            locator: incomingPosition.locator
                         )
                     } else {
                         debugLog("[PSA] updateServerPositions: existing newer for \(bookId), skipping (incoming: \(incomingTimestamp), existing: \(existingTimestamp))")
@@ -385,7 +390,8 @@ public actor ProgressSyncActor {
                             locationDescription: locationDesc,
                             reason: .connectionRestored,
                             result: .serverIncomingRejected,
-                            locatorSummary: "rejected: local is newer (\(existingTimestamp) >= \(incomingTimestamp))"
+                            locatorSummary: "rejected: local is newer (\(existingTimestamp) >= \(incomingTimestamp))",
+                            locator: incomingPosition.locator
                         )
                     }
                 } else {
@@ -400,7 +406,8 @@ public actor ProgressSyncActor {
                         locationDescription: locationDesc,
                         reason: .connectionRestored,
                         result: .serverIncomingAccepted,
-                        locatorSummary: locatorSummary
+                        locatorSummary: locatorSummary,
+                        locator: incomingPosition.locator
                     )
                 }
             }
@@ -417,11 +424,13 @@ public actor ProgressSyncActor {
 
     private func buildLocationDescription(from locator: BookLocator?) -> String {
         guard let locator = locator else { return "" }
-        if let prog = locator.locations?.totalProgression {
-            let title = locator.title ?? "Unknown"
-            return "\(title), \(Int(prog * 100))%"
+        if let title = locator.title {
+            if let prog = locator.locations?.totalProgression {
+                return "\(title), \(Int(prog * 100))%"
+            }
+            return title
         }
-        return locator.title ?? ""
+        return "Unknown Chapter"
     }
 
     /// Get reconciled progress for all books (pending queue takes precedence over server)
@@ -655,7 +664,8 @@ public actor ProgressSyncActor {
         locationDescription: String,
         reason: SyncReason,
         result: SyncHistoryEntry.SyncHistoryResult,
-        locatorSummary: String
+        locatorSummary: String,
+        locator: BookLocator? = nil
     ) async {
         await ensureHistoryLoaded()
 
@@ -665,7 +675,8 @@ public actor ProgressSyncActor {
             locationDescription: locationDescription,
             reason: reason,
             result: result,
-            locatorSummary: locatorSummary
+            locatorSummary: locatorSummary,
+            locator: locator
         )
 
         var entries = syncHistory[bookId] ?? []
@@ -698,7 +709,8 @@ public actor ProgressSyncActor {
                 locationDescription: existing.locationDescription,
                 reason: existing.reason,
                 result: result,
-                locatorSummary: existing.locatorSummary
+                locatorSummary: existing.locatorSummary,
+                locator: existing.locator
             )
             syncHistory[bookId] = entries
             await saveHistoryToDisk()
@@ -721,6 +733,20 @@ public actor ProgressSyncActor {
     public func clearSyncHistory(for bookId: String) async {
         syncHistory.removeValue(forKey: bookId)
         await saveHistoryToDisk()
+    }
+
+    /// Restore a position from history (user-initiated)
+    public func restorePosition(bookId: String, locator: BookLocator) async -> SyncResult {
+        let timestamp = floor(Date().timeIntervalSince1970 * 1000)
+        let locationDesc = buildLocationDescription(from: locator)
+        return await syncProgress(
+            bookId: bookId,
+            locator: locator,
+            timestamp: timestamp,
+            reason: .userRestoredFromHistory,
+            sourceIdentifier: "Restored from History",
+            locationDescription: locationDesc
+        )
     }
 
     private func loadHistoryFromDisk() async {

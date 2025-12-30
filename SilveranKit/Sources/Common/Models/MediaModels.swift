@@ -413,6 +413,7 @@ public enum SyncReason: String, Sendable, Codable {
 
     // User-initiated events (general)
     case userClosedBook
+    case userRestoredFromHistory
 
     // App lifecycle
     case appBackgrounding
@@ -474,6 +475,7 @@ public struct SyncHistoryEntry: Codable, Sendable, Hashable {
     public let reason: SyncReason
     public let result: SyncHistoryResult
     public let locatorSummary: String
+    public let locator: BookLocator?
 
     public enum SyncHistoryResult: String, Codable, Sendable, Hashable {
         case persisted
@@ -491,6 +493,7 @@ public struct SyncHistoryEntry: Codable, Sendable, Hashable {
         reason: SyncReason,
         result: SyncHistoryResult,
         locatorSummary: String,
+        locator: BookLocator? = nil,
         arrivedAt: Double? = nil
     ) {
         self.timestamp = timestamp
@@ -503,6 +506,7 @@ public struct SyncHistoryEntry: Codable, Sendable, Hashable {
         self.reason = reason
         self.result = result
         self.locatorSummary = locatorSummary
+        self.locator = locator
     }
 
     private static func formatTimestamp(_ timestamp: Double) -> String {
