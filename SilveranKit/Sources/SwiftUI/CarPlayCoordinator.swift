@@ -44,6 +44,7 @@ public final class CarPlayCoordinator {
     private var activePlayer: ActivePlayer?
     private var currentBookId: String?
     private var currentBookTitle: String?
+    private var currentAudiobookHref: String?
     private var isInitialized = false
     private var isPositionRestored = false
 
@@ -283,6 +284,7 @@ public final class CarPlayCoordinator {
         activePlayer = .audiobook
         currentBookId = metadata.uuid
         currentBookTitle = metadata.title
+        currentAudiobookHref = localPath.lastPathComponent
         wasPlaying = false
 
         audiobookObserverId = await AudiobookActor.shared.addStateObserver {
@@ -502,9 +504,10 @@ public final class CarPlayCoordinator {
                     : nil
 
                 let totalProgression = state.duration > 0 ? state.currentTime / state.duration : 0
+                let timeFragment = "t=\(state.currentTime)"
 
                 let locations = BookLocator.Locations(
-                    fragments: nil,
+                    fragments: [timeFragment],
                     progression: nil,
                     position: nil,
                     totalProgression: totalProgression,
@@ -514,7 +517,7 @@ public final class CarPlayCoordinator {
                 )
 
                 locator = BookLocator(
-                    href: chapter?.href ?? "chapter-\(chapterIndex)",
+                    href: currentAudiobookHref ?? "\(bookId).m4b",
                     type: "audio/mp4",
                     title: chapter?.title ?? "Chapter \(chapterIndex + 1)",
                     locations: locations,
