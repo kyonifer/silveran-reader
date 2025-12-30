@@ -249,7 +249,12 @@ public final class MediaViewModel {
                 guard self != nil else { return }
 
                 let config = await SettingsActor.shared.config
-                let refreshInterval = config.sync.metadataRefreshIntervalSeconds
+                // Use minimum of metadata and progress sync intervals, since incoming
+                // progress sync data comes from metadata fetches
+                let refreshInterval = min(
+                    config.sync.metadataRefreshIntervalSeconds,
+                    config.sync.progressSyncIntervalSeconds
+                )
 
                 if config.sync.isMetadataRefreshDisabled {
                     debugLog("[MediaViewModel] Metadata auto-refresh is disabled")
@@ -266,7 +271,7 @@ public final class MediaViewModel {
                 }
 
                 debugLog(
-                    "[MediaViewModel] Periodic metadata refresh (interval: \(Int(refreshInterval))s)"
+                    "[MediaViewModel] Periodic metadata refresh (interval: \(Int(refreshInterval))s, min of metadata/progress sync)"
                 )
 
                 let status = await StorytellerActor.shared.connectionStatus

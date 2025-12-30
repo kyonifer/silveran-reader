@@ -227,25 +227,9 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
         let coordinator = CarPlayCoordinator.shared
 
         Task { @MainActor in
-            // Check both SMIL and audiobook via coordinator (SMIL-only check misses audiobooks)
-            let isActuallyLoaded = coordinator.isBookCurrentlyLoaded(book.uuid)
-
-            if isActuallyLoaded {
-                debugLog(
-                    "[CarPlay] Book actually loaded in actor, navigating to NowPlaying: \(book.title)"
-                )
-
-                if !coordinator.isPlaying {
-                    // Check if PSA has a newer position (e.g., from restore or phone sync)
-                    await coordinator.refreshPositionIfNeeded(for: book.uuid)
-                    debugLog("[CarPlay] Book is paused, resuming playback")
-                    if coordinator.activeCategory == .audio {
-                        try? await AudiobookActor.shared.play()
-                    } else {
-                        try? await SMILPlayerActor.shared.play()
-                    }
-                }
-
+            // Only skip reload if actively playing this book - otherwise reload fresh
+            if coordinator.isBookCurrentlyPlaying(book.uuid) {
+                debugLog("[CarPlay] Book already playing, navigating to NowPlaying: \(book.title)")
                 let nowPlayingTemplate = CPNowPlayingTemplate.shared
                 self.interfaceController?.pushTemplate(nowPlayingTemplate, animated: true) {
                     success,
