@@ -45,6 +45,7 @@ public final class CarPlayCoordinator {
     private var currentBookId: String?
     private var currentBookTitle: String?
     private var isInitialized = false
+    private var isPositionRestored = false
 
     private init() {
         Task {
@@ -110,6 +111,7 @@ public final class CarPlayCoordinator {
                 debugLog("[CarPlayCoordinator] SMIL book unloaded")
                 self.currentBookId = nil
                 self.activePlayer = nil
+                self.isPositionRestored = false
                 self.stopPeriodicSync()
             }
 
@@ -299,12 +301,29 @@ public final class CarPlayCoordinator {
             await AudiobookActor.shared.setCoverImage(image)
         }
 
-        if let locator = metadata.position?.locator,
+        isPositionRestored = false
+
+        var locatorToUse: BookLocator? = nil
+        if let psaProgress = await ProgressSyncActor.shared.getBookProgress(for: metadata.uuid),
+            let psaLocator = psaProgress.locator
+        {
+            debugLog("[CarPlayCoordinator] Got audiobook position from PSA (source: \(psaProgress.source))")
+            locatorToUse = psaLocator
+        } else if let metadataLocator = metadata.position?.locator {
+            debugLog("[CarPlayCoordinator] Using fallback audiobook position from metadata")
+            locatorToUse = metadataLocator
+        }
+
+        if let locator = locatorToUse,
             let totalProg = locator.locations?.totalProgression, totalProg > 0
         {
             debugLog("[CarPlayCoordinator] Restoring audiobook position to \(totalProg * 100)%")
             await AudiobookActor.shared.seekToTotalProgressFraction(totalProg)
+        } else {
+            debugLog("[CarPlayCoordinator] No saved audiobook position, starting from beginning")
         }
+
+        isPositionRestored = true
 
         debugLog("[CarPlayCoordinator] M4B audiobook loaded, starting playback immediately")
         try await AudiobookActor.shared.play()
@@ -335,7 +354,20 @@ public final class CarPlayCoordinator {
             await SMILPlayerActor.shared.setCoverImage(image)
         }
 
-        if let locator = metadata.position?.locator {
+        isPositionRestored = false
+
+        var locatorToUse: BookLocator? = nil
+        if let psaProgress = await ProgressSyncActor.shared.getBookProgress(for: metadata.uuid),
+            let psaLocator = psaProgress.locator
+        {
+            debugLog("[CarPlayCoordinator] Got SMIL position from PSA (source: \(psaProgress.source))")
+            locatorToUse = psaLocator
+        } else if let metadataLocator = metadata.position?.locator {
+            debugLog("[CarPlayCoordinator] Using fallback SMIL position from metadata")
+            locatorToUse = metadataLocator
+        }
+
+        if let locator = locatorToUse {
             let bookStructure = await SMILPlayerActor.shared.getBookStructure()
             if let sectionIndex = findSectionIndex(for: locator.href, in: bookStructure),
                 let fragment = locator.locations?.fragments?.first
@@ -346,16 +378,22 @@ public final class CarPlayCoordinator {
                 )
                 if success {
                     debugLog(
-                        "[CarPlayCoordinator] Restored position to section \(sectionIndex), fragment: \(fragment)"
+                        "[CarPlayCoordinator] Restored SMIL position to section \(sectionIndex), fragment: \(fragment)"
                     )
                 }
             } else if let totalProg = locator.locations?.totalProgression, totalProg > 0 {
                 let success = await SMILPlayerActor.shared.seekToTotalProgression(totalProg)
                 debugLog(
-                    "[CarPlayCoordinator] Restored position using totalProgression \(totalProg): \(success ? "success" : "failed")"
+                    "[CarPlayCoordinator] Restored SMIL position using totalProgression \(totalProg): \(success ? "success" : "failed")"
                 )
+            } else {
+                debugLog("[CarPlayCoordinator] No usable SMIL position data, starting from beginning")
             }
+        } else {
+            debugLog("[CarPlayCoordinator] No saved SMIL position, starting from beginning")
         }
+
+        isPositionRestored = true
 
         debugLog("[CarPlayCoordinator] SMIL book loaded, starting playback immediately")
         try await SMILPlayerActor.shared.play()
@@ -433,6 +471,11 @@ public final class CarPlayCoordinator {
         // If phone player is active, let it handle syncing to avoid duplicates
         if isPlayerViewActive {
             debugLog("[CarPlayCoordinator] Skipping sync: phone player view is active, it will handle syncing")
+            return
+        }
+
+        guard isPositionRestored else {
+            debugLog("[CarPlayCoordinator] Skipping sync: position not yet restored")
             return
         }
 

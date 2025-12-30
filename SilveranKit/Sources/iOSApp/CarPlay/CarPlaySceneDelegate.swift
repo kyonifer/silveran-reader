@@ -28,6 +28,11 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
         Task { @MainActor in
             await setupAndShowRootTemplate()
         }
+
+        Task {
+            debugLog("[CarPlay] Triggering library sync on connect")
+            let _ = await StorytellerActor.shared.fetchLibraryInformation()
+        }
     }
 
     func templateApplicationScene(
