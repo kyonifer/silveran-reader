@@ -211,11 +211,9 @@ public actor ProgressSyncActor {
                 continue
             }
 
-            debugLog(
-                "[PSA] syncPendingQueue: syncing \(pending.bookId) (synced=\(pending.syncedToStoryteller))"
-            )
-
+            // Only send if not already sent - removal happens via echo detection in updateServerPositions
             if !pending.syncedToStoryteller {
+                debugLog("[PSA] syncPendingQueue: sending \(pending.bookId)")
                 let result = await StorytellerActor.shared.sendProgressToServer(
                     bookId: pending.bookId,
                     locator: pending.locator,
@@ -228,26 +226,17 @@ public actor ProgressSyncActor {
                         locator: pending.locator,
                         timestamp: pending.timestamp
                     )
-                    debugLog("[PSA] syncPendingQueue: \(pending.bookId) sync succeeded")
+                    await updateQueueItem(pending)
+                    syncedCount += 1
+                    debugLog("[PSA] syncPendingQueue: \(pending.bookId) sent successfully")
                 } else if result == .failure {
-                    pending.syncedToStoryteller = true
-                    debugLog(
-                        "[PSA] syncPendingQueue: \(pending.bookId) sync failed permanently"
-                    )
+                    debugLog("[PSA] syncPendingQueue: \(pending.bookId) failed permanently")
                     failedCount += 1
                 }
             }
-
-            if pending.isFullySynced {
-                debugLog("[PSA] syncPendingQueue: \(pending.bookId) fully synced, removing")
-                await removeFromQueue(bookId: pending.bookId)
-                syncedCount += 1
-            } else {
-                await updateQueueItem(pending)
-            }
         }
 
-        debugLog("[PSA] syncPendingQueue: complete - synced=\(syncedCount), failed=\(failedCount)")
+        debugLog("[PSA] syncPendingQueue: complete - sent=\(syncedCount), failed=\(failedCount)")
 
         if syncedCount > 0 || failedCount > 0 {
             await notifyObservers()
@@ -322,9 +311,13 @@ public actor ProgressSyncActor {
                 }
             }
 
-            // Skip if this matches a pending sync (within 1ms tolerance for server rounding)
-            if let pending = pendingProgressQueue.first(where: { $0.bookId == bookId }),
-               abs(pending.timestamp - incomingTimestamp) < 1.0 {
+            // Server confirmed our pending sync (within 1ms tolerance for server rounding)
+            // Safe to remove since LMA has already saved to disk before calling updateServerPositions
+            if let pendingIndex = pendingProgressQueue.firstIndex(where: { $0.bookId == bookId }),
+               abs(pendingProgressQueue[pendingIndex].timestamp - incomingTimestamp) < 1.0 {
+                pendingProgressQueue.remove(at: pendingIndex)
+                serverPositions[bookId] = incomingPosition
+                await saveQueueToDisk()
                 continue
             }
 
@@ -740,7 +733,6 @@ public actor ProgressSyncActor {
     private func saveHistoryToDisk() async {
         do {
             try await FilesystemActor.shared.saveSyncHistory(syncHistory)
-            debugLog("[PSA] saveHistoryToDisk: saved history for \(syncHistory.count) books")
         } catch {
             debugLog("[PSA] saveHistoryToDisk: failed - \(error)")
         }

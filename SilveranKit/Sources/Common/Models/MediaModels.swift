@@ -431,27 +431,17 @@ public struct PendingProgressSync: Codable, Sendable, Hashable {
     public let bookId: String
     public let locator: BookLocator
     public let timestamp: Double
-    public let queuedAt: Date
-    public var attemptCount: Int
     public var syncedToStoryteller: Bool
-
-    public var isFullySynced: Bool {
-        syncedToStoryteller
-    }
 
     public init(
         bookId: String,
         locator: BookLocator,
         timestamp: Double,
-        queuedAt: Date = Date(),
-        attemptCount: Int = 0,
         syncedToStoryteller: Bool = false
     ) {
         self.bookId = bookId
         self.locator = locator
         self.timestamp = timestamp
-        self.queuedAt = queuedAt
-        self.attemptCount = attemptCount
         self.syncedToStoryteller = syncedToStoryteller
     }
 }
