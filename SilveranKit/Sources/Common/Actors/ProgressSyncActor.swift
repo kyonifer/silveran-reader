@@ -522,10 +522,15 @@ public actor ProgressSyncActor {
             let lastLocator = serverPosition.locator
         else { return false }
 
-        if locator.href == lastLocator.href
-            && locator.locations?.fragments == lastLocator.locations?.fragments
-        {
-            debugLog("[PSA] shouldDedupe: same href+fragments")
+        let sameHref = locator.href == lastLocator.href
+        let sameFragments = locator.locations?.fragments == lastLocator.locations?.fragments
+
+        let newTotal = locator.locations?.totalProgression ?? 0
+        let lastTotal = lastLocator.locations?.totalProgression ?? 0
+        let sameTotalProgression = abs(newTotal - lastTotal) < 0.001
+
+        if sameHref && sameFragments && sameTotalProgression {
+            debugLog("[PSA] shouldDedupe: same href+fragments+totalProgression")
             return true
         }
 
