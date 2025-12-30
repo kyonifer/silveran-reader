@@ -474,9 +474,15 @@ public final class CarPlayCoordinator {
                     text: nil
                 )
 
-                sourceIdentifier = "CarPlay/Audiobook"
+                sourceIdentifier = "CarPlay · Audiobook"
                 let chapterTitle = chapter?.title ?? "Chapter \(chapterIndex + 1)"
-                locationDescription = "\(chapterTitle), \(Int(totalProgression * 100))%"
+                let chapterProgress: Double
+                if let ch = chapter, ch.duration > 0 {
+                    chapterProgress = (state.currentTime - ch.startTime) / ch.duration
+                } else {
+                    chapterProgress = 0
+                }
+                locationDescription = "\(chapterTitle), \(Int(chapterProgress * 100))%"
 
                 debugLog(
                     "[CarPlayCoordinator] Syncing audiobook progress: book=\(bookId), chapter=\(chapterIndex), progress=\(totalProgression), reason=\(reason)"
@@ -523,9 +529,12 @@ public final class CarPlayCoordinator {
                     text: nil
                 )
 
-                sourceIdentifier = "CarPlay/Readaloud"
+                sourceIdentifier = "CarPlay · Readaloud"
                 let chapterLabel = state.chapterLabel ?? "Section \(state.currentSectionIndex + 1)"
-                locationDescription = "\(chapterLabel), \(Int(totalProgression * 100))%"
+                let sectionProgress = section.mediaOverlay.count > 0
+                    ? Double(state.currentEntryIndex) / Double(section.mediaOverlay.count)
+                    : 0
+                locationDescription = "\(chapterLabel), \(Int(sectionProgress * 100))%"
 
                 debugLog(
                     "[CarPlayCoordinator] Syncing SMIL progress: book=\(bookId), href=\(href), fragment=\(fragment ?? "none"), reason=\(reason)"

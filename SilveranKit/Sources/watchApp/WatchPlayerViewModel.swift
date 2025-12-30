@@ -455,7 +455,7 @@ public final class WatchPlayerViewModel: NSObject {
             text: nil
         )
 
-        let locationDescription = "\(chapterTitle), \(Int(progression * 100))%"
+        let locationDescription = "\(chapterTitle), \(Int(chapterProgress * 100))%"
 
         Task {
             let _ = await ProgressSyncActor.shared.syncProgress(

@@ -626,8 +626,7 @@ class EbookProgressManager {
         if let chapterIdx = selectedChapterId,
            chapterIdx < bookStructure.count {
             let chapterName = bookStructure[chapterIdx].label ?? "Chapter \(chapterIdx + 1)"
-            let progressPercent = Int((bookFraction ?? 0) * 100)
-            locationDescription = "\(chapterName), \(progressPercent)%"
+            locationDescription = "\(chapterName), \(Int(chapterSeekBarValue * 100))%"
         } else if let fraction = bookFraction {
             locationDescription = "\(Int(fraction * 100))% of book"
         } else {
