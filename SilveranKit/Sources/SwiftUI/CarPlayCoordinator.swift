@@ -165,6 +165,10 @@ public final class CarPlayCoordinator {
         for book in allMetadata {
             let downloaded = await LocalMediaActor.shared.downloadedCategories(for: book.uuid)
             if downloaded.contains(category) {
+                // If requesting audiobooks, skip books that also have readaloud (prefer readaloud)
+                if category == .audio && downloaded.contains(.synced) {
+                    continue
+                }
                 result.append(book)
             }
         }
