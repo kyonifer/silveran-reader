@@ -112,6 +112,7 @@ public final class CarPlayCoordinator {
                 debugLog("[CarPlayCoordinator] SMIL book unloaded")
                 self.currentBookId = nil
                 self.activePlayer = nil
+                self.currentAudiobookHref = nil
                 self.isPositionRestored = false
                 self.stopPeriodicSync()
             }
@@ -340,6 +341,7 @@ public final class CarPlayCoordinator {
         activePlayer = .smil
         currentBookId = metadata.uuid
         currentBookTitle = metadata.title
+        currentAudiobookHref = nil
         wasPlaying = false
 
         _ = try await FilesystemActor.shared.extractEpubIfNeeded(
@@ -492,7 +494,7 @@ public final class CarPlayCoordinator {
 
         switch activePlayer {
             case .audiobook:
-                guard let state = currentAudiobookState else {
+                guard let state = await AudiobookActor.shared.getCurrentState() else {
                     debugLog("[CarPlayCoordinator] Cannot sync audiobook: no playback state")
                     return
                 }
@@ -504,7 +506,8 @@ public final class CarPlayCoordinator {
                     : nil
 
                 let totalProgression = state.duration > 0 ? state.currentTime / state.duration : 0
-                let timeFragment = "t=\(state.currentTime)"
+                let roundedTime = (state.currentTime * 100).rounded() / 100
+                let timeFragment = "t=\(roundedTime)"
 
                 let locations = BookLocator.Locations(
                     fragments: [timeFragment],
