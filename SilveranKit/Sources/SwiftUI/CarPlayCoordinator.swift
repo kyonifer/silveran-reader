@@ -439,6 +439,56 @@ public final class CarPlayCoordinator {
         currentBookId == bookId && isPlaying
     }
 
+    /// Check PSA for updated position and seek if different from current position.
+    /// Call this when re-selecting an already-loaded book to pick up restored positions.
+    public func refreshPositionIfNeeded(for bookId: String) async {
+        guard bookId == currentBookId else { return }
+
+        guard let psaProgress = await ProgressSyncActor.shared.getBookProgress(for: bookId),
+              let psaLocator = psaProgress.locator,
+              let psaTotalProg = psaLocator.locations?.totalProgression
+        else {
+            debugLog("[CarPlayCoordinator] No PSA position to refresh")
+            return
+        }
+
+        switch activePlayer {
+        case .audiobook:
+            guard let state = await AudiobookActor.shared.getCurrentState() else { return }
+            let psaTimeSeconds = psaTotalProg * state.duration
+            let timeDifference = abs(psaTimeSeconds - state.currentTime)
+
+            if timeDifference > 1.0 {
+                debugLog("[CarPlayCoordinator] Refreshing audiobook position: current=\(state.currentTime)s, PSA=\(psaTimeSeconds)s (diff=\(timeDifference)s)")
+                await AudiobookActor.shared.seekToTotalProgressFraction(psaTotalProg)
+            }
+
+        case .smil:
+            guard let state = currentPlaybackState else { return }
+            let psaTimeSeconds = psaTotalProg * state.bookTotal
+            let timeDifference = abs(psaTimeSeconds - state.bookElapsed)
+
+            if timeDifference > 1.0 {
+                debugLog("[CarPlayCoordinator] Refreshing SMIL position: current=\(state.bookElapsed)s, PSA=\(psaTimeSeconds)s (diff=\(timeDifference)s)")
+
+                if let fragment = psaLocator.locations?.fragments?.first {
+                    let bookStructure = await SMILPlayerActor.shared.getBookStructure()
+                    if let sectionIndex = findSectionIndex(for: psaLocator.href, in: bookStructure) {
+                        let _ = await SMILPlayerActor.shared.seekToFragment(
+                            sectionIndex: sectionIndex,
+                            textId: fragment
+                        )
+                        return
+                    }
+                }
+                let _ = await SMILPlayerActor.shared.seekToTotalProgression(psaTotalProg)
+            }
+
+        case .none:
+            break
+        }
+    }
+
     // MARK: - Progress Sync
 
     private func startPeriodicSync() async {

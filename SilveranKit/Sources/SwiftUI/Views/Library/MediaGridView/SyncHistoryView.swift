@@ -214,7 +214,8 @@ struct SyncHistorySheet: View {
                         Task {
                             let _ = await ProgressSyncActor.shared.restorePosition(
                                 bookId: bookId,
-                                locator: locator
+                                locator: locator,
+                                locationDescription: entry.locationDescription
                             )
                             await refresh()
                         }
@@ -257,6 +258,7 @@ struct SyncHistoryEntryRow: View {
                         onRestore()
                     } label: {
                         Image(systemName: "arrow.uturn.backward.circle")
+                            .font(.title)
                             .foregroundStyle(.blue)
                     }
                     .buttonStyle(.plain)

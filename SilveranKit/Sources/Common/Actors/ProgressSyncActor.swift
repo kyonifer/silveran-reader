@@ -736,16 +736,15 @@ public actor ProgressSyncActor {
     }
 
     /// Restore a position from history (user-initiated)
-    public func restorePosition(bookId: String, locator: BookLocator) async -> SyncResult {
+    public func restorePosition(bookId: String, locator: BookLocator, locationDescription: String) async -> SyncResult {
         let timestamp = floor(Date().timeIntervalSince1970 * 1000)
-        let locationDesc = buildLocationDescription(from: locator)
         return await syncProgress(
             bookId: bookId,
             locator: locator,
             timestamp: timestamp,
             reason: .userRestoredFromHistory,
             sourceIdentifier: "Restored from History",
-            locationDescription: locationDesc
+            locationDescription: locationDescription
         )
     }
 
