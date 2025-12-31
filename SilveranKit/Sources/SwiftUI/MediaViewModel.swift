@@ -16,6 +16,7 @@ public final class MediaViewModel {
     var libraryVersion: Int = 0
     var isReady: Bool = false
     var connectionStatus: ConnectionStatus = .disconnected
+    var availableStatuses: [BookStatus] = []
     var lastNetworkOpSucceeded: Bool? = nil
     var cachedConfig: SilveranGlobalConfig = SilveranGlobalConfig()
     var pendingSyncsByBook: [String: PendingProgressSync] = [:]
@@ -175,11 +176,16 @@ public final class MediaViewModel {
                         guard let self else { return }
                         let status = await StorytellerActor.shared.connectionStatus
                         let networkOp = await StorytellerActor.shared.lastNetworkOpSucceeded
+                        let wasConnected = self.connectionStatus == .connected
                         self.connectionStatus = status
                         self.lastNetworkOpSucceeded = networkOp
                         debugLog(
                             "[MediaViewModel] StorytellerActor notify: connectionStatus=\(status), lastNetworkOpSucceeded=\(String(describing: networkOp))"
                         )
+                        if !wasConnected && status == .connected && self.availableStatuses.isEmpty {
+                            let statuses = await StorytellerActor.shared.getAvailableStatuses()
+                            self.availableStatuses = statuses
+                        }
                     }
                 }
             }

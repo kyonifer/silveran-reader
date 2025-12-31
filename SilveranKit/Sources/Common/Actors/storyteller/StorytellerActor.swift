@@ -28,6 +28,7 @@ public actor StorytellerActor {
     private var apiBaseURL: URL?
     private var accessToken: AccessToken?
     private(set) public var libraryMetadata: [BookMetadata] = []
+    private var cachedStatuses: [BookStatus] = []
     public private(set) var connectionStatus: ConnectionStatus = .disconnected
 
     public var isConfigured: Bool {
@@ -1102,7 +1103,7 @@ public actor StorytellerActor {
 
     /// Retrieves available reading statuses from `/api/v2/statuses`.
     /// Server implementation: `storyteller/web/src/app/api/v2/statuses/route.ts`.
-    func fetchStatuses() async -> [BookStatus]? {
+    private func fetchStatuses() async -> [BookStatus]? {
         guard let (baseURL, token) = await ensureAuthentication() else { return nil }
         let statusesURL = baseURL.appendingPathComponent("statuses")
 
@@ -1131,19 +1132,42 @@ public actor StorytellerActor {
                 return nil
             }
 
-            return try decoder.decode([BookStatus].self, from: response.data)
+            let statuses = try decoder.decode([BookStatus].self, from: response.data)
+            cachedStatuses = statuses
+            return statuses
         } catch {
             logStorytellerError("fetchStatuses", error: error)
             return nil
         }
     }
 
+    /// Returns available statuses for UI display. Uses cached values if available, otherwise fetches from server.
+    public func getAvailableStatuses() async -> [BookStatus] {
+        if !cachedStatuses.isEmpty {
+            return cachedStatuses
+        }
+        return await fetchStatuses() ?? []
+    }
+
     /// Updates the status for a set of books using `/api/v2/books/status`.
     /// Server implementation: `storyteller/web/src/app/api/v2/books/status/route.ts` (PUT handler).
-    /// TODO: UNTESTED
-    public func updateStatus(forBooks bookIds: [String], to statusUUID: String) async -> Bool {
+    public func updateStatus(forBooks bookIds: [String], toStatusNamed statusName: String) async -> Bool {
         guard !bookIds.isEmpty else {
             debugLog("[StorytellerActor] updateStatus requires at least one book id.")
+            return false
+        }
+
+        if cachedStatuses.isEmpty {
+            _ = await fetchStatuses()
+        }
+
+        guard let status = cachedStatuses.first(where: { $0.name == statusName }) else {
+            debugLog("[StorytellerActor] updateStatus error: status '\(statusName)' not found in cached statuses")
+            return false
+        }
+
+        guard let statusUUID = status.uuid else {
+            debugLog("[StorytellerActor] updateStatus error: status '\(statusName)' has no UUID")
             return false
         }
 

@@ -4,7 +4,7 @@ struct BookStatusSection: View {
     let item: BookMetadata
     @Environment(MediaViewModel.self) private var mediaViewModel: MediaViewModel
 
-    @State private var selectedStatusUUID: String?
+    @State private var selectedStatusName: String?
     @State private var isUpdating = false
     @State private var showOfflineError = false
 
@@ -12,15 +12,8 @@ struct BookStatusSection: View {
         mediaViewModel.library.bookMetaData.first { $0.uuid == item.uuid } ?? item
     }
 
-    private var availableStatuses: [BookStatus] {
-        var unique: [String: BookStatus] = [:]
-        for book in mediaViewModel.library.bookMetaData {
-            guard let status = book.status, let uuid = status.uuid else { continue }
-            if unique[uuid] == nil {
-                unique[uuid] = status
-            }
-        }
-        return unique.values.sorted {
+    private var sortedStatuses: [BookStatus] {
+        mediaViewModel.availableStatuses.sorted {
             $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
         }
     }
@@ -41,10 +34,10 @@ struct BookStatusSection: View {
             statusPicker
         }
         .onAppear {
-            selectedStatusUUID = currentItem.status?.uuid
+            selectedStatusName = currentItem.status?.name
         }
-        .onChange(of: currentItem.status?.uuid) { _, newValue in
-            selectedStatusUUID = newValue
+        .onChange(of: currentItem.status?.name) { _, newValue in
+            selectedStatusName = newValue
         }
         .alert("Cannot Change Status", isPresented: $showOfflineError) {
             Button("OK", role: .cancel) {}
@@ -55,30 +48,30 @@ struct BookStatusSection: View {
 
     @ViewBuilder
     private var statusPicker: some View {
-        if availableStatuses.isEmpty {
+        if sortedStatuses.isEmpty {
             Text(currentItem.status?.name ?? "Unknown")
                 .font(.body)
                 .foregroundStyle(.secondary)
         } else {
-            Picker("", selection: $selectedStatusUUID) {
-                ForEach(availableStatuses, id: \.uuid) { status in
-                    Text(status.name).tag(status.uuid)
+            Picker("", selection: $selectedStatusName) {
+                ForEach(sortedStatuses, id: \.name) { status in
+                    Text(status.name).tag(Optional(status.name))
                 }
             }
             .pickerStyle(.menu)
             .labelsHidden()
             .disabled(isUpdating)
-            .onChange(of: selectedStatusUUID) { oldValue, newValue in
+            .onChange(of: selectedStatusName) { oldValue, newValue in
                 guard let newValue, newValue != oldValue, oldValue != nil else { return }
                 Task { await updateStatus(to: newValue) }
             }
         }
     }
 
-    private func updateStatus(to statusUUID: String) async {
+    private func updateStatus(to statusName: String) async {
         guard mediaViewModel.connectionStatus == .connected else {
             showOfflineError = true
-            selectedStatusUUID = currentItem.status?.uuid
+            selectedStatusName = currentItem.status?.name
             return
         }
 
@@ -87,18 +80,18 @@ struct BookStatusSection: View {
 
         let success = await StorytellerActor.shared.updateStatus(
             forBooks: [item.uuid],
-            to: statusUUID
+            toStatusNamed: statusName
         )
 
         if success {
-            if let newStatus = availableStatuses.first(where: { $0.uuid == statusUUID }) {
+            if let newStatus = mediaViewModel.availableStatuses.first(where: { $0.name == statusName }) {
                 await LocalMediaActor.shared.updateBookStatus(
                     bookId: item.uuid,
                     status: newStatus
                 )
             }
         } else {
-            selectedStatusUUID = currentItem.status?.uuid
+            selectedStatusName = currentItem.status?.name
         }
     }
 }
