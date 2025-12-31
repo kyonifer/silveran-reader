@@ -597,21 +597,16 @@ public struct BookMetadata: Codable, Sendable, Identifiable, Hashable {
     }
 
     public var hasAvailableEbook: Bool {
-        guard let ebook else { return false }
-        guard ebook.filepath.isEmpty == false else { return false }
-        return !ebook.isMissing
+        ebook != nil
     }
 
     public var hasAvailableAudiobook: Bool {
-        guard let audiobook else { return false }
-        guard audiobook.filepath.isEmpty == false else { return false }
-        return !audiobook.isMissing
+        audiobook != nil
     }
 
     public var hasAvailableReadaloud: Bool {
         guard let readaloud else { return false }
-        guard let filepath = readaloud.filepath, filepath.isEmpty == false else { return false }
-        return !readaloud.isMissing
+        return readaloud.status?.uppercased() == "ALIGNED"
     }
 
     public var hasAnyAudiobookAsset: Bool {
