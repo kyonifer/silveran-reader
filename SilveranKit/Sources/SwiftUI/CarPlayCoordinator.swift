@@ -236,17 +236,25 @@ public final class CarPlayCoordinator {
     public func selectChapter(sectionIndex: Int) {
         debugLog("[CarPlayCoordinator] selectChapter: sectionIndex=\(sectionIndex)")
         Task {
+            let wasPlaying = isPlaying
+
             switch activePlayer {
                 case .audiobook:
                     guard sectionIndex < cachedAudiobookChapters.count else { return }
                     let chapter = cachedAudiobookChapters[sectionIndex]
                     await AudiobookActor.shared.seekToChapter(href: chapter.href)
+                    if wasPlaying {
+                        try? await AudiobookActor.shared.play()
+                    }
                 case .smil, .none:
                     do {
                         try await SMILPlayerActor.shared.seekToEntry(
                             sectionIndex: sectionIndex,
                             entryIndex: 0
                         )
+                        if wasPlaying {
+                            try? await SMILPlayerActor.shared.play()
+                        }
                     } catch {
                         debugLog("[CarPlayCoordinator] Failed to seek to chapter: \(error)")
                     }
