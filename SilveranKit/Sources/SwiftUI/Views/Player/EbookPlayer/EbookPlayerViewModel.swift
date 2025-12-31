@@ -289,16 +289,24 @@ class EbookPlayerViewModel {
     private func loadBookIntoActor(epubPath: URL) async {
         let currentBookId = bookData?.metadata.uuid ?? "unknown"
         let loadedBookId = await SMILPlayerActor.shared.getLoadedBookId()
+        let currentState = await SMILPlayerActor.shared.getCurrentState()
+        let isPlaying = currentState?.isPlaying ?? false
 
-        if loadedBookId == currentBookId {
+        if loadedBookId == currentBookId && isPlaying {
             debugLog(
-                "[EbookPlayerViewModel] Book already loaded in SMILPlayerActor, joining existing session"
+                "[EbookPlayerViewModel] Book already loaded and playing in SMILPlayerActor, joining existing session"
             )
             isJoiningExistingSession = true
             let nativeStructure = await SMILPlayerActor.shared.getBookStructure()
             self.bookStructure = nativeStructure
             debugLog("[EbookPlayerViewModel] Joined session with \(nativeStructure.count) sections")
             return
+        }
+
+        if loadedBookId == currentBookId {
+            debugLog(
+                "[EbookPlayerViewModel] Book loaded but paused, reloading fresh from PSA"
+            )
         }
 
         await AudiobookActor.shared.cleanup()
