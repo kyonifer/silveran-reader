@@ -61,7 +61,8 @@ struct DraggableAudioCard<FullContent: View>: View {
                     case .expanded: expandedHeight
                 }
 
-            let currentHeight = isDragging
+            let currentHeight =
+                isDragging
                 ? max(0, min(expandedHeight, targetHeight - dragOffset))
                 : targetHeight
 

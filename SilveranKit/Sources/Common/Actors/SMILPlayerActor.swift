@@ -607,9 +607,13 @@ public actor SMILPlayerActor {
 
         if let player = player {
             let duration = player.currentItem?.duration.seconds ?? 0
-            debugLog("[SMILPlayerActor] setCurrentEntry: BEFORE seek - currentTime=\(player.currentTime().seconds), duration=\(duration), target=\(beginTime)")
+            debugLog(
+                "[SMILPlayerActor] setCurrentEntry: BEFORE seek - currentTime=\(player.currentTime().seconds), duration=\(duration), target=\(beginTime)"
+            )
             await player.seek(to: CMTime(seconds: beginTime, preferredTimescale: 1000))
-            debugLog("[SMILPlayerActor] setCurrentEntry: AFTER seek - currentTime=\(player.currentTime().seconds)")
+            debugLog(
+                "[SMILPlayerActor] setCurrentEntry: AFTER seek - currentTime=\(player.currentTime().seconds)"
+            )
 
             if wasRecentlyPlaying {
                 lastPausedWhilePlayingTime = nil
@@ -734,7 +738,9 @@ public actor SMILPlayerActor {
         let tolerance = 0.02
         let playerIsPlaying = player.rate > 0
 
-        debugLog("[SMILPlayerActor] timerFired: currentTime=\(currentTime), duration=\(duration), entryEnd=\(currentEntryEndTime), isPlaying=\(playerIsPlaying)")
+        debugLog(
+            "[SMILPlayerActor] timerFired: currentTime=\(currentTime), duration=\(duration), entryEnd=\(currentEntryEndTime), isPlaying=\(playerIsPlaying)"
+        )
 
         let reachedEntryEnd = currentTime >= currentEntryEndTime - tolerance
         let reachedFileEnd = duration > 0 && currentTime >= duration - tolerance
@@ -799,7 +805,9 @@ public actor SMILPlayerActor {
                 currentAudioFile = nextEntry.audioFile
                 await loadAudioFile(nextEntry.audioFile)
                 if let player = player {
-                    await player.seek(to: CMTime(seconds: nextEntry.begin, preferredTimescale: 1000))
+                    await player.seek(
+                        to: CMTime(seconds: nextEntry.begin, preferredTimescale: 1000)
+                    )
                     if isPlaying {
                         player.rate = Float(playbackRate)
                     }
@@ -827,7 +835,9 @@ public actor SMILPlayerActor {
 
                 await loadAudioFile(nextEntry.audioFile)
                 if let player = player {
-                    await player.seek(to: CMTime(seconds: nextEntry.begin, preferredTimescale: 1000))
+                    await player.seek(
+                        to: CMTime(seconds: nextEntry.begin, preferredTimescale: 1000)
+                    )
                     if isPlaying {
                         player.rate = Float(playbackRate)
                     }

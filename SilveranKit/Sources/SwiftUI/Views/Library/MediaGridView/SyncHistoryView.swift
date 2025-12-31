@@ -1,4 +1,5 @@
 import SwiftUI
+
 #if os(iOS)
 import UIKit
 #else
@@ -187,9 +188,11 @@ struct SyncHistorySheet: View {
             ContentUnavailableView(
                 "No Sync History",
                 systemImage: "clock.arrow.circlepath",
-                description: Text(history.isEmpty
-                    ? "No sync events have been recorded for this book yet."
-                    : "No outgoing syncs. Enable 'Show server updates' to see incoming syncs.")
+                description: Text(
+                    history.isEmpty
+                        ? "No sync events have been recorded for this book yet."
+                        : "No outgoing syncs. Enable 'Show server updates' to see incoming syncs."
+                )
             )
         } else {
             List {
@@ -302,18 +305,18 @@ struct SyncHistoryEntryRow: View {
 
     private var resultInfo: (Color, String) {
         switch entry.result {
-        case .persisted:
-            return (.orange, "Queued")
-        case .sentToServer:
-            return (.blue, "Sent")
-        case .serverConfirmed:
-            return (.green, "Confirmed")
-        case .failed:
-            return (.red, "Failed")
-        case .serverIncomingAccepted:
-            return (.green, "Incoming")
-        case .serverIncomingRejected:
-            return (.purple, "Rejected")
+            case .persisted:
+                return (.orange, "Queued")
+            case .sentToServer:
+                return (.blue, "Sent")
+            case .serverConfirmed:
+                return (.green, "Confirmed")
+            case .failed:
+                return (.red, "Failed")
+            case .serverIncomingAccepted:
+                return (.green, "Incoming")
+            case .serverIncomingRejected:
+                return (.purple, "Rejected")
         }
     }
 
@@ -335,23 +338,23 @@ struct SyncHistoryEntryRow: View {
 
     private func formatReason(_ reason: SyncReason) -> String {
         switch reason {
-        case .userFlippedPage: return "Page flip"
-        case .userSelectedChapter: return "Chapter select"
-        case .userDraggedSeekBar: return "Seek"
-        case .userPausedPlayback: return "Paused"
-        case .userStartedPlayback: return "Started"
-        case .userSkippedForward: return "Skip forward"
-        case .userSkippedBackward: return "Skip back"
-        case .periodicDuringActivePlayback: return "Periodic (playing)"
-        case .periodicWhileReading: return "Periodic (reading)"
-        case .userClosedBook: return "Closed book"
-        case .userRestoredFromHistory: return "Restored"
-        case .appBackgrounding: return "App backgrounded"
-        case .appTerminating: return "App closing"
-        case .connectionRestored: return "Reconnected"
-        case .watchReconnected: return "Watch reconnected"
-        case .initialLoad: return "Initial load"
-        case .appWokeFromSleep: return "Wake from sleep"
+            case .userFlippedPage: return "Page flip"
+            case .userSelectedChapter: return "Chapter select"
+            case .userDraggedSeekBar: return "Seek"
+            case .userPausedPlayback: return "Paused"
+            case .userStartedPlayback: return "Started"
+            case .userSkippedForward: return "Skip forward"
+            case .userSkippedBackward: return "Skip back"
+            case .periodicDuringActivePlayback: return "Periodic (playing)"
+            case .periodicWhileReading: return "Periodic (reading)"
+            case .userClosedBook: return "Closed book"
+            case .userRestoredFromHistory: return "Restored"
+            case .appBackgrounding: return "App backgrounded"
+            case .appTerminating: return "App closing"
+            case .connectionRestored: return "Reconnected"
+            case .watchReconnected: return "Watch reconnected"
+            case .initialLoad: return "Initial load"
+            case .appWokeFromSleep: return "Wake from sleep"
         }
     }
 }

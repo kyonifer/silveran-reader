@@ -626,7 +626,8 @@ class EbookProgressManager {
 
         let locationDescription: String
         if let chapterIdx = selectedChapterId,
-           chapterIdx < bookStructure.count {
+            chapterIdx < bookStructure.count
+        {
             let chapterName = bookStructure[chapterIdx].label ?? "Chapter \(chapterIdx + 1)"
             locationDescription = "\(chapterName), \(Int(chapterSeekBarValue * 100))%"
         } else if let fraction = bookFraction {

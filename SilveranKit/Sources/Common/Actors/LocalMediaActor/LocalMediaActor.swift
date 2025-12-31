@@ -122,7 +122,9 @@ public actor LocalMediaActor: GlobalActor {
             let existingTimestamp = existing.position?.timestamp ?? 0
 
             if timestamp <= existingTimestamp {
-                debugLog("[LocalMediaActor] updateBookProgress: skipping storyteller update, existing is newer (incoming: \(timestamp), existing: \(existingTimestamp))")
+                debugLog(
+                    "[LocalMediaActor] updateBookProgress: skipping storyteller update, existing is newer (incoming: \(timestamp), existing: \(existingTimestamp))"
+                )
             } else {
                 let newPosition = BookReadingPosition(
                     uuid: existing.position?.uuid,
@@ -162,7 +164,9 @@ public actor LocalMediaActor: GlobalActor {
             let existingTimestamp = existing.position?.timestamp ?? 0
 
             if timestamp <= existingTimestamp {
-                debugLog("[LocalMediaActor] updateBookProgress: skipping standalone update, existing is newer (incoming: \(timestamp), existing: \(existingTimestamp))")
+                debugLog(
+                    "[LocalMediaActor] updateBookProgress: skipping standalone update, existing is newer (incoming: \(timestamp), existing: \(existingTimestamp))"
+                )
             } else {
                 let newPosition = BookReadingPosition(
                     uuid: existing.position?.uuid,

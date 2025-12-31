@@ -322,7 +322,9 @@ public final class CarPlayCoordinator {
         if let psaProgress = await ProgressSyncActor.shared.getBookProgress(for: metadata.uuid),
             let psaLocator = psaProgress.locator
         {
-            debugLog("[CarPlayCoordinator] Got audiobook position from PSA (source: \(psaProgress.source))")
+            debugLog(
+                "[CarPlayCoordinator] Got audiobook position from PSA (source: \(psaProgress.source))"
+            )
             locatorToUse = psaLocator
         } else if let metadataLocator = metadata.position?.locator {
             debugLog("[CarPlayCoordinator] Using fallback audiobook position from metadata")
@@ -376,7 +378,9 @@ public final class CarPlayCoordinator {
         if let psaProgress = await ProgressSyncActor.shared.getBookProgress(for: metadata.uuid),
             let psaLocator = psaProgress.locator
         {
-            debugLog("[CarPlayCoordinator] Got SMIL position from PSA (source: \(psaProgress.source))")
+            debugLog(
+                "[CarPlayCoordinator] Got SMIL position from PSA (source: \(psaProgress.source))"
+            )
             locatorToUse = psaLocator
         } else if let metadataLocator = metadata.position?.locator {
             debugLog("[CarPlayCoordinator] Using fallback SMIL position from metadata")
@@ -403,7 +407,9 @@ public final class CarPlayCoordinator {
                     "[CarPlayCoordinator] Restored SMIL position using totalProgression \(totalProg): \(success ? "success" : "failed")"
                 )
             } else {
-                debugLog("[CarPlayCoordinator] No usable SMIL position data, starting from beginning")
+                debugLog(
+                    "[CarPlayCoordinator] No usable SMIL position data, starting from beginning"
+                )
             }
         } else {
             debugLog("[CarPlayCoordinator] No saved SMIL position, starting from beginning")
@@ -486,7 +492,9 @@ public final class CarPlayCoordinator {
 
         // If phone player is active, let it handle syncing to avoid duplicates
         if isPlayerViewActive {
-            debugLog("[CarPlayCoordinator] Skipping sync: phone player view is active, it will handle syncing")
+            debugLog(
+                "[CarPlayCoordinator] Skipping sync: phone player view is active, it will handle syncing"
+            )
             return
         }
 
@@ -592,7 +600,8 @@ public final class CarPlayCoordinator {
 
                 sourceIdentifier = "CarPlay · Readaloud"
                 let chapterLabel = state.chapterLabel ?? "Section \(state.currentSectionIndex + 1)"
-                let sectionProgress = section.mediaOverlay.count > 0
+                let sectionProgress =
+                    section.mediaOverlay.count > 0
                     ? Double(state.currentEntryIndex) / Double(section.mediaOverlay.count)
                     : 0
                 locationDescription = "\(chapterLabel), \(Int(sectionProgress * 100))%"

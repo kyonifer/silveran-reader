@@ -780,7 +780,9 @@ public actor FilesystemActor {
         )
     }
 
-    public func extractAudioToFile(from epubPath: URL, audioPath: String, destination: URL) async throws {
+    public func extractAudioToFile(from epubPath: URL, audioPath: String, destination: URL)
+        async throws
+    {
         let archive: Archive
         do {
             archive = try Archive(url: epubPath, accessMode: .read)
