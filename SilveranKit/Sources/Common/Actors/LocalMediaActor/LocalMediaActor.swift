@@ -198,6 +198,12 @@ public actor LocalMediaActor: GlobalActor {
                 )
                 localStandaloneMetadata[index] = updatedMetadata
                 debugLog("[LocalMediaActor] updateBookProgress: updated standalone metadata")
+                do {
+                    try await filesystem.saveLocalLibraryMetadata(localStandaloneMetadata)
+                    debugLog("[LocalMediaActor] updateBookProgress: saved standalone metadata to disk")
+                } catch {
+                    debugLog("[LocalMediaActor] updateBookProgress: failed to save standalone metadata: \(error)")
+                }
             }
         }
     }
@@ -252,8 +258,80 @@ public actor LocalMediaActor: GlobalActor {
         localStorytellerBookPaths = storytellerPaths
 
         let localScanResult = try await localLibrary.scanLocalMedia(filesystem: filesystem)
-        localStandaloneMetadata = localScanResult.metadata
-        localStandaloneBookPaths = localScanResult.paths
+
+        // Load saved local library metadata to preserve UUIDs and positions
+        let savedLocalMetadata = (try? await filesystem.loadLocalLibraryMetadata()) ?? []
+
+        // Build lookup by filename for matching scanned books to saved metadata
+        var savedByFilename: [String: BookMetadata] = [:]
+        for saved in savedLocalMetadata {
+            if let filepath = saved.ebook?.filepath {
+                savedByFilename[filepath] = saved
+            }
+            if let filepath = saved.audiobook?.filepath {
+                savedByFilename[filepath] = saved
+            }
+            if let filepath = saved.readaloud?.filepath {
+                savedByFilename[filepath] = saved
+            }
+        }
+
+        // Merge scan results with saved metadata to preserve UUIDs and positions
+        var mergedMetadata: [BookMetadata] = []
+        var mergedPaths: [String: MediaPaths] = [:]
+
+        for scanned in localScanResult.metadata {
+            let scannedFilepath = scanned.ebook?.filepath ?? scanned.audiobook?.filepath ?? scanned.readaloud?.filepath
+
+            if let filepath = scannedFilepath, let saved = savedByFilename[filepath] {
+                // Found match - preserve UUID and position from saved metadata
+                let merged = BookMetadata(
+                    uuid: saved.uuid,
+                    title: scanned.title,
+                    subtitle: scanned.subtitle,
+                    description: scanned.description,
+                    language: scanned.language,
+                    createdAt: saved.createdAt,
+                    updatedAt: saved.updatedAt,
+                    publicationDate: scanned.publicationDate,
+                    authors: scanned.authors,
+                    narrators: scanned.narrators,
+                    creators: scanned.creators,
+                    series: scanned.series,
+                    tags: scanned.tags,
+                    collections: scanned.collections,
+                    ebook: scanned.ebook.map { asset in
+                        BookAsset(uuid: saved.uuid, filepath: asset.filepath, missing: asset.missing, createdAt: asset.createdAt, updatedAt: asset.updatedAt)
+                    },
+                    audiobook: scanned.audiobook.map { asset in
+                        BookAsset(uuid: saved.uuid, filepath: asset.filepath, missing: asset.missing, createdAt: asset.createdAt, updatedAt: asset.updatedAt)
+                    },
+                    readaloud: scanned.readaloud.map { asset in
+                        BookReadaloud(uuid: saved.uuid, filepath: asset.filepath, missing: asset.missing, status: asset.status, currentStage: asset.currentStage, stageProgress: asset.stageProgress, queuePosition: asset.queuePosition, restartPending: asset.restartPending, createdAt: asset.createdAt, updatedAt: asset.updatedAt)
+                    },
+                    status: saved.status,
+                    position: saved.position
+                )
+                mergedMetadata.append(merged)
+
+                // Map paths from scanned UUID to preserved UUID
+                if let scannedPaths = localScanResult.paths[scanned.uuid] {
+                    mergedPaths[saved.uuid] = scannedPaths
+                }
+
+                debugLog("[LocalMediaActor] Matched local book '\(scanned.title)' to saved UUID \(saved.uuid)")
+            } else {
+                // New book - use scanned metadata as-is
+                mergedMetadata.append(scanned)
+                if let scannedPaths = localScanResult.paths[scanned.uuid] {
+                    mergedPaths[scanned.uuid] = scannedPaths
+                }
+                debugLog("[LocalMediaActor] New local book '\(scanned.title)' with UUID \(scanned.uuid)")
+            }
+        }
+
+        localStandaloneMetadata = mergedMetadata
+        localStandaloneBookPaths = mergedPaths
 
         var allPositions: [String: BookReadingPosition] = [:]
         for book in storytellerMetadata {
