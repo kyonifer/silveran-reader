@@ -35,6 +35,7 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
         public var wordSpacing: Double
         public var letterSpacing: Double
         public var highlightColor: String?
+        public var highlightThickness: Double
         public var backgroundColor: String?
         public var foregroundColor: String?
         public var customCSS: String?
@@ -56,6 +57,7 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
             wordSpacing: Double = 0,
             letterSpacing: Double = 0,
             highlightColor: String? = nil,
+            highlightThickness: Double = 1.0,
             backgroundColor: String? = nil,
             foregroundColor: String? = nil,
             customCSS: String? = nil,
@@ -80,6 +82,7 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
             self.wordSpacing = wordSpacing
             self.letterSpacing = letterSpacing
             self.highlightColor = highlightColor
+            self.highlightThickness = highlightThickness
             self.backgroundColor = backgroundColor
             self.foregroundColor = foregroundColor
             self.singleColumnMode = singleColumnMode ?? true
@@ -233,6 +236,7 @@ public actor SettingsActor {
         wordSpacing: Double? = nil,
         letterSpacing: Double? = nil,
         highlightColor: String?? = nil,
+        highlightThickness: Double? = nil,
         backgroundColor: String?? = nil,
         foregroundColor: String?? = nil,
         customCSS: String?? = nil,
@@ -272,6 +276,7 @@ public actor SettingsActor {
         if let wordSpacing { updated.reading.wordSpacing = wordSpacing }
         if let letterSpacing { updated.reading.letterSpacing = letterSpacing }
         if let highlightColor { updated.reading.highlightColor = highlightColor }
+        if let highlightThickness { updated.reading.highlightThickness = highlightThickness }
         if let backgroundColor { updated.reading.backgroundColor = backgroundColor }
         if let foregroundColor { updated.reading.foregroundColor = foregroundColor }
         if let customCSS { updated.reading.customCSS = customCSS }

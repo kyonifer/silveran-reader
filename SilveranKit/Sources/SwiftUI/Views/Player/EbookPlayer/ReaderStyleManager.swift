@@ -68,6 +68,7 @@ class ReaderStyleManager {
             _ = settingsVM.wordSpacing
             _ = settingsVM.letterSpacing
             _ = settingsVM.highlightColor
+            _ = settingsVM.highlightThickness
             _ = settingsVM.backgroundColor
             _ = settingsVM.foregroundColor
             _ = settingsVM.customCSS
@@ -131,6 +132,7 @@ class ReaderStyleManager {
             wordSpacing: settingsVM.wordSpacing,
             letterSpacing: settingsVM.letterSpacing,
             highlightColor: effectiveHighlightColor,
+            highlightThickness: settingsVM.highlightThickness,
             backgroundColor: effectiveBackgroundColor,
             foregroundColor: effectiveForegroundColor,
             customCSS: effectiveCustomCSS.isEmpty ? nil : effectiveCustomCSS,

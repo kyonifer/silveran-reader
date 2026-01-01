@@ -16,6 +16,7 @@ public final class SettingsViewModel {
     public var wordSpacing: Double = 0
     public var letterSpacing: Double = 0
     public var highlightColor: String? = nil
+    public var highlightThickness: Double = 1.0
     public var backgroundColor: String? = nil
     public var foregroundColor: String? = nil
     public var customCSS: String? = nil
@@ -114,6 +115,7 @@ public final class SettingsViewModel {
         wordSpacing = config.reading.wordSpacing
         letterSpacing = config.reading.letterSpacing
         highlightColor = config.reading.highlightColor
+        highlightThickness = config.reading.highlightThickness
         backgroundColor = config.reading.backgroundColor
         foregroundColor = config.reading.foregroundColor
         customCSS = config.reading.customCSS
@@ -184,6 +186,7 @@ public final class SettingsViewModel {
             wordSpacing: wordSpacing,
             letterSpacing: letterSpacing,
             highlightColor: .some(highlightColor),
+            highlightThickness: highlightThickness,
             backgroundColor: .some(backgroundColor),
             foregroundColor: .some(foregroundColor),
             customCSS: .some(customCSS),

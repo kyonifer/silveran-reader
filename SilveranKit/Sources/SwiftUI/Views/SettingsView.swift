@@ -161,6 +161,7 @@ public struct SettingsView: View {
                     wordSpacing: newValue.reading.wordSpacing,
                     letterSpacing: newValue.reading.letterSpacing,
                     highlightColor: .some(newValue.reading.highlightColor),
+                    highlightThickness: newValue.reading.highlightThickness,
                     backgroundColor: .some(newValue.reading.backgroundColor),
                     foregroundColor: .some(newValue.reading.foregroundColor),
                     customCSS: .some(newValue.reading.customCSS),
@@ -537,6 +538,16 @@ private struct MacReaderSettingsView: View {
                             }
                         }
                     }
+                }
+
+                GridRow {
+                    label("Readaloud Highlight Height")
+                    MacSliderControl(
+                        value: $reading.highlightThickness,
+                        range: 0.6...4.0,
+                        step: 0.05,
+                        formatter: { String(format: "%.2fx", $0) }
+                    )
                 }
 
                 GridRow {

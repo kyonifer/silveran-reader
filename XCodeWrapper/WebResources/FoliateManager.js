@@ -1,4 +1,5 @@
 import "./foliate-js/view.js";
+import { Overlayer } from "./foliate-js/overlayer.js";
 import { debugLog } from "./DebugConfig.js";
 import BookmarkManager from "./BookmarkManager.js";
 
@@ -14,6 +15,7 @@ const getCSS = ({
   wordSpacing = 0,
   letterSpacing = 0,
   highlightColor = "#333333",
+  highlightThickness = 1.0,
   backgroundColor = null,
   foregroundColor = null,
   customCSS = null,
@@ -101,7 +103,7 @@ const getCSS = ({
     }
     .${activeClass},
     .${activeClass} * {
-        background-color: ${highlightColor} !important;
+        background-color: transparent !important;
         color: inherit !important;
     }
     ${customCSS || ""}
@@ -129,13 +131,16 @@ class FoliateManager {
   #wordSpacing = 0;
   #letterSpacing = 0;
   #highlightColor = "#333333";
+  #highlightThickness = 1.0;
   #backgroundColor = null;
   #foregroundColor = null;
   #customCSS = null;
+  #readaloudOverlayers = new Map();
   #singleColumnMode = false;
   #enableMarginClickNavigation = true;
   #lastRelocateRange = null;
   #highlightedElement = null;
+  #highlightedSectionIndex = null;
   #resizeHandler = null;
   #pendingHighlight = null;
   #bookmarkManager = (() => {
@@ -565,6 +570,9 @@ class FoliateManager {
     if (styles.highlightColor !== undefined && styles.highlightColor !== null) {
       this.#highlightColor = styles.highlightColor;
     }
+    if (styles.highlightThickness !== undefined && styles.highlightThickness !== null) {
+      this.#highlightThickness = styles.highlightThickness;
+    }
     if ("backgroundColor" in styles) {
       this.#backgroundColor = styles.backgroundColor;
     }
@@ -582,6 +590,7 @@ class FoliateManager {
     }
 
     this.#applyStylesToRenderer();
+    this.#refreshReadaloudHighlight();
   }
 
   #applyStylesToRenderer() {
@@ -792,6 +801,72 @@ class FoliateManager {
 
   // MARK: - Highlight methods (Swift controls audio directly)
 
+  #getReadaloudOverlayer(sectionIndex, doc) {
+    const existingOverlayer = this.#readaloudOverlayers.get(sectionIndex);
+    if (existingOverlayer && doc.contains(existingOverlayer.element)) {
+      return existingOverlayer;
+    }
+
+    const overlayer = new Overlayer();
+    const container = doc.body || doc.documentElement;
+    overlayer.element.style.overflow = "visible";
+    overlayer.element.style.zIndex = "10000";
+    overlayer.element.style.setProperty("--overlayer-highlight-opacity", "0.9");
+    overlayer.element.style.setProperty("--overlayer-highlight-blend-mode", "screen");
+    container.appendChild(overlayer.element);
+    this.#readaloudOverlayers.set(sectionIndex, overlayer);
+    return overlayer;
+  }
+
+  #drawReadaloudHighlight(rects, options = {}) {
+    const { color, thickness = 1 } = options;
+    const scale = (Number.isFinite(thickness) && thickness > 0) ? thickness : 1;
+    const adjustedRects = Array.from(rects)
+      .filter(rect => rect.width > 0 && rect.height > 0)
+      .map(rect => {
+        const extra = (scale - 1) * rect.height;
+        return {
+          left: rect.left,
+          top: rect.top - (extra / 2),
+          width: rect.width,
+          height: Math.max(1, rect.height + extra),
+        };
+      });
+
+    return Overlayer.highlight(adjustedRects, { color });
+  }
+
+  #renderReadaloudHighlight(sectionIndex, el, doc) {
+    const range = doc.createRange();
+    range.selectNodeContents(el);
+
+    const overlayer = this.#getReadaloudOverlayer(sectionIndex, doc);
+    overlayer.add(
+      "readaloud",
+      range,
+      (rects, options) => this.#drawReadaloudHighlight(rects, options),
+      {
+        color: this.#highlightColor,
+        thickness: this.#highlightThickness,
+      },
+    );
+  }
+
+  #clearReadaloudHighlight() {
+    for (const overlayer of this.#readaloudOverlayers.values()) {
+      overlayer.remove("readaloud");
+    }
+    this.#highlightedSectionIndex = null;
+  }
+
+  #refreshReadaloudHighlight() {
+    const activeEl = this.#highlightedElement?.deref?.();
+    if (!activeEl || this.#highlightedSectionIndex == null) return;
+    const doc = activeEl.ownerDocument;
+    if (!doc) return;
+    this.#renderReadaloudHighlight(this.#highlightedSectionIndex, activeEl, doc);
+  }
+
   highlightFragment(sectionIndex, textId, seekToLocation = false) {
     debugLog("FoliateManager", `highlightFragment(sectionIndex: ${sectionIndex}, textId: ${textId}, seekToLocation: ${seekToLocation})`);
 
@@ -851,6 +926,8 @@ class FoliateManager {
     const activeClass = this.#view?.book?.media?.activeClass || "epub-media-overlay-active";
     el.classList.add(activeClass);
     this.#highlightedElement = new WeakRef(el);
+    this.#highlightedSectionIndex = sectionIndex;
+    this.#renderReadaloudHighlight(sectionIndex, el, doc);
 
     const playbackActiveClass = this.#view?.book?.media?.playbackActiveClass;
     if (playbackActiveClass) {
@@ -884,6 +961,7 @@ class FoliateManager {
       }
     }
     this.#highlightedElement = null;
+    this.#clearReadaloudHighlight();
   }
 
   // MARK: - Search methods

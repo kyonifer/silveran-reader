@@ -191,6 +191,14 @@ struct EbookPlayerSettings: View {
                 }
             }
 
+            labeledSlider(
+                label: "Readaloud Highlight Height",
+                value: $settingsVM.highlightThickness,
+                range: 0.6...4.0,
+                step: 0.05,
+                formatter: { String(format: "%.2fx", $0) }
+            )
+
             Toggle("Single Column", isOn: $settingsVM.singleColumnMode)
                 .onChange(of: settingsVM.singleColumnMode) { _, _ in
                     settingsVM.save()
@@ -391,6 +399,7 @@ struct EbookPlayerSettings: View {
         settingsVM.wordSpacing = 0
         settingsVM.letterSpacing = 0
         settingsVM.highlightColor = nil
+        settingsVM.highlightThickness = 1.0
         settingsVM.backgroundColor = nil
         settingsVM.foregroundColor = nil
         settingsVM.enableMarginClickNavigation = true
