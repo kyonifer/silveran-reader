@@ -69,6 +69,7 @@ class ReaderStyleManager {
             _ = settingsVM.letterSpacing
             _ = settingsVM.highlightColor
             _ = settingsVM.highlightThickness
+            _ = settingsVM.readaloudHighlightUnderline
             _ = settingsVM.backgroundColor
             _ = settingsVM.foregroundColor
             _ = settingsVM.customCSS
@@ -133,6 +134,7 @@ class ReaderStyleManager {
             letterSpacing: settingsVM.letterSpacing,
             highlightColor: effectiveHighlightColor,
             highlightThickness: settingsVM.highlightThickness,
+            readaloudHighlightUnderline: settingsVM.readaloudHighlightUnderline,
             backgroundColor: effectiveBackgroundColor,
             foregroundColor: effectiveForegroundColor,
             customCSS: effectiveCustomCSS.isEmpty ? nil : effectiveCustomCSS,

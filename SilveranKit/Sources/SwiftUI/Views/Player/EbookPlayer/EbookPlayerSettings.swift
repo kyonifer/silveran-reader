@@ -199,6 +199,11 @@ struct EbookPlayerSettings: View {
                 formatter: { String(format: "%.2fx", $0) }
             )
 
+            Toggle("Readaloud Highlight Underline", isOn: $settingsVM.readaloudHighlightUnderline)
+                .onChange(of: settingsVM.readaloudHighlightUnderline) { _, _ in
+                    settingsVM.save()
+                }
+
             Toggle("Single Column", isOn: $settingsVM.singleColumnMode)
                 .onChange(of: settingsVM.singleColumnMode) { _, _ in
                     settingsVM.save()
@@ -260,7 +265,7 @@ struct EbookPlayerSettings: View {
                 .foregroundStyle(.primary)
 
             iOSColorControl(
-                label: "Read Aloud Highlight",
+                label: "Readaloud Highlight",
                 hex: $settingsVM.highlightColor,
                 defaultHex: defaultHighlightColor
             )
@@ -400,6 +405,7 @@ struct EbookPlayerSettings: View {
         settingsVM.letterSpacing = 0
         settingsVM.highlightColor = nil
         settingsVM.highlightThickness = 1.0
+        settingsVM.readaloudHighlightUnderline = false
         settingsVM.backgroundColor = nil
         settingsVM.foregroundColor = nil
         settingsVM.enableMarginClickNavigation = true

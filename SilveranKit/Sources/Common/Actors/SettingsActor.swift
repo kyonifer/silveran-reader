@@ -36,6 +36,7 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
         public var letterSpacing: Double
         public var highlightColor: String?
         public var highlightThickness: Double
+        public var readaloudHighlightUnderline: Bool
         public var backgroundColor: String?
         public var foregroundColor: String?
         public var customCSS: String?
@@ -58,6 +59,7 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
             letterSpacing: Double = 0,
             highlightColor: String? = nil,
             highlightThickness: Double = 1.0,
+            readaloudHighlightUnderline: Bool = false,
             backgroundColor: String? = nil,
             foregroundColor: String? = nil,
             customCSS: String? = nil,
@@ -83,6 +85,7 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
             self.letterSpacing = letterSpacing
             self.highlightColor = highlightColor
             self.highlightThickness = highlightThickness
+            self.readaloudHighlightUnderline = readaloudHighlightUnderline
             self.backgroundColor = backgroundColor
             self.foregroundColor = foregroundColor
             self.singleColumnMode = singleColumnMode ?? true
@@ -237,6 +240,7 @@ public actor SettingsActor {
         letterSpacing: Double? = nil,
         highlightColor: String?? = nil,
         highlightThickness: Double? = nil,
+        readaloudHighlightUnderline: Bool? = nil,
         backgroundColor: String?? = nil,
         foregroundColor: String?? = nil,
         customCSS: String?? = nil,
@@ -277,6 +281,9 @@ public actor SettingsActor {
         if let letterSpacing { updated.reading.letterSpacing = letterSpacing }
         if let highlightColor { updated.reading.highlightColor = highlightColor }
         if let highlightThickness { updated.reading.highlightThickness = highlightThickness }
+        if let readaloudHighlightUnderline {
+            updated.reading.readaloudHighlightUnderline = readaloudHighlightUnderline
+        }
         if let backgroundColor { updated.reading.backgroundColor = backgroundColor }
         if let foregroundColor { updated.reading.foregroundColor = foregroundColor }
         if let customCSS { updated.reading.customCSS = customCSS }

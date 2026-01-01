@@ -303,6 +303,7 @@ class WebViewCommsBridge {
         letterSpacing: Double,
         highlightColor: String,
         highlightThickness: Double,
+        readaloudHighlightUnderline: Bool,
         backgroundColor: String?,
         foregroundColor: String?,
         customCSS: String?,
@@ -324,6 +325,7 @@ class WebViewCommsBridge {
             "letterSpacing": letterSpacing,
             "highlightColor": highlightColor,
             "highlightThickness": highlightThickness,
+            "readaloudHighlightUnderline": readaloudHighlightUnderline,
             "singleColumnMode": singleColumnMode,
             "enableMarginClickNavigation": enableMarginClickNavigation,
         ]

@@ -136,6 +136,7 @@ class FoliateManager {
   #foregroundColor = null;
   #customCSS = null;
   #readaloudOverlayers = new Map();
+  #readaloudHighlightUnderline = false;
   #singleColumnMode = false;
   #enableMarginClickNavigation = true;
   #lastRelocateRange = null;
@@ -573,6 +574,9 @@ class FoliateManager {
     if (styles.highlightThickness !== undefined && styles.highlightThickness !== null) {
       this.#highlightThickness = styles.highlightThickness;
     }
+    if (styles.readaloudHighlightUnderline !== undefined && styles.readaloudHighlightUnderline !== null) {
+      this.#readaloudHighlightUnderline = styles.readaloudHighlightUnderline;
+    }
     if ("backgroundColor" in styles) {
       this.#backgroundColor = styles.backgroundColor;
     }
@@ -819,19 +823,29 @@ class FoliateManager {
   }
 
   #drawReadaloudHighlight(rects, options = {}) {
-    const { color, thickness = 1 } = options;
+    const { color, thickness = 1, underline = false, writingMode } = options;
     const scale = (Number.isFinite(thickness) && thickness > 0) ? thickness : 1;
-    const adjustedRects = Array.from(rects)
-      .filter(rect => rect.width > 0 && rect.height > 0)
-      .map(rect => {
-        const extra = (scale - 1) * rect.height;
-        return {
-          left: rect.left,
-          top: rect.top - (extra / 2),
-          width: rect.width,
-          height: Math.max(1, rect.height + extra),
-        };
-      });
+    const rectList = Array.from(rects).filter(rect => rect.width > 0 && rect.height > 0);
+    if (!rectList.length) {
+      return Overlayer.highlight([], { color });
+    }
+
+    if (underline) {
+      const avgHeight = rectList.reduce((sum, rect) => sum + rect.height, 0) / rectList.length;
+      const baseWidth = Math.max(1, avgHeight * 0.08);
+      const width = baseWidth * scale;
+      return Overlayer.underline(rectList, { color, width, writingMode });
+    }
+
+    const adjustedRects = rectList.map(rect => {
+      const extra = (scale - 1) * rect.height;
+      return {
+        left: rect.left,
+        top: rect.top - (extra / 2),
+        width: rect.width,
+        height: Math.max(1, rect.height + extra),
+      };
+    });
 
     return Overlayer.highlight(adjustedRects, { color });
   }
@@ -841,6 +855,7 @@ class FoliateManager {
     range.selectNodeContents(el);
 
     const overlayer = this.#getReadaloudOverlayer(sectionIndex, doc);
+    const writingMode = doc.defaultView?.getComputedStyle(doc.body)?.writingMode;
     overlayer.add(
       "readaloud",
       range,
@@ -848,6 +863,8 @@ class FoliateManager {
       {
         color: this.#highlightColor,
         thickness: this.#highlightThickness,
+        underline: this.#readaloudHighlightUnderline,
+        writingMode,
       },
     );
   }

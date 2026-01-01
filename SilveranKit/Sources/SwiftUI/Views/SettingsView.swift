@@ -162,6 +162,7 @@ public struct SettingsView: View {
                     letterSpacing: newValue.reading.letterSpacing,
                     highlightColor: .some(newValue.reading.highlightColor),
                     highlightThickness: newValue.reading.highlightThickness,
+                    readaloudHighlightUnderline: newValue.reading.readaloudHighlightUnderline,
                     backgroundColor: .some(newValue.reading.backgroundColor),
                     foregroundColor: .some(newValue.reading.foregroundColor),
                     customCSS: .some(newValue.reading.customCSS),
@@ -551,6 +552,13 @@ private struct MacReaderSettingsView: View {
                 }
 
                 GridRow {
+                    label("Readaloud Highlight Underline")
+                    Toggle("", isOn: $reading.readaloudHighlightUnderline)
+                        .labelsHidden()
+                        .frame(width: 200, alignment: .leading)
+                }
+
+                GridRow {
                     label("Margin (Left/Right)")
                     MacSliderControl(
                         value: $reading.marginLeftRight,
@@ -625,7 +633,7 @@ private struct MacReaderSettingsView: View {
                 HStack(alignment: .top, spacing: 48) {
                     Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 18) {
                         GridRow {
-                            label("Read Aloud Highlight")
+                            label("Readaloud Highlight")
                             AppearanceColorControl(
                                 hex: $reading.highlightColor,
                                 isRequired: false,
