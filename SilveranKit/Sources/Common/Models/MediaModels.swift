@@ -478,12 +478,21 @@ public struct SyncHistoryEntry: Codable, Sendable, Hashable {
     public let locator: BookLocator?
 
     public enum SyncHistoryResult: String, Codable, Sendable, Hashable {
+        // Local update lifecycle (mutable - tracks progress through sync)
+        case queued                  // Added to pending queue
+        case sent                    // Server accepted our sync request
+        case completed               // Position dequeued (server confirmed or has newer)
+        case rejectedAsOlder         // Local position older than server/queue
+
+        // Server update statuses (immutable once recorded)
+        case serverIncomingAccepted  // Server position accepted (newer than local)
+        case serverIncomingRejected  // Server position rejected (older than local)
+
+        // Legacy (for backward compat with old history files)
         case persisted
         case sentToServer
         case serverConfirmed
         case failed
-        case serverIncomingAccepted
-        case serverIncomingRejected
     }
 
     public init(

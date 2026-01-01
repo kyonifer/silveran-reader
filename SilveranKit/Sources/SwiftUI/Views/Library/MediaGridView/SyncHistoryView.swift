@@ -196,7 +196,7 @@ struct SyncHistorySheet: View {
             )
         } else {
             List {
-                ForEach(filteredHistory.reversed(), id: \.timestamp) { entry in
+                ForEach(filteredHistory.reversed(), id: \.arrivedAt) { entry in
                     SyncHistoryEntryRow(entry: entry) {
                         entryToRestore = entry
                         showRestoreConfirmation = true
@@ -278,7 +278,7 @@ struct SyncHistoryEntryRow: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                Label(formatReason(entry.reason), systemImage: "arrow.triangle.2.circlepath")
+                Label(formatReason(entry.reason), systemImage: reasonIcon(entry.reason))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -305,6 +305,23 @@ struct SyncHistoryEntryRow: View {
 
     private var resultInfo: (Color, String) {
         switch entry.result {
+            // New lifecycle statuses
+            case .queued:
+                return (.orange, "Queued")
+            case .sent:
+                return (.blue, "Sent")
+            case .completed:
+                return (.green, "Completed")
+            case .rejectedAsOlder:
+                return (.red, "Rejected")
+
+            // Server update statuses
+            case .serverIncomingAccepted:
+                return (.green, "Accepted")
+            case .serverIncomingRejected:
+                return (.purple, "Ignored")
+
+            // Legacy statuses
             case .persisted:
                 return (.orange, "Queued")
             case .sentToServer:
@@ -313,10 +330,6 @@ struct SyncHistoryEntryRow: View {
                 return (.green, "Confirmed")
             case .failed:
                 return (.red, "Failed")
-            case .serverIncomingAccepted:
-                return (.green, "Incoming")
-            case .serverIncomingRejected:
-                return (.purple, "Rejected")
         }
     }
 
@@ -333,6 +346,16 @@ struct SyncHistoryEntryRow: View {
             return "speaker.wave.2.fill"
         } else {
             return "book.fill"
+        }
+    }
+
+    private func reasonIcon(_ reason: SyncReason) -> String {
+        switch reason {
+            case .userPausedPlayback: return "pause.fill"
+            case .userStartedPlayback: return "play.fill"
+            case .userSkippedForward: return "forward.fill"
+            case .userSkippedBackward: return "backward.fill"
+            default: return "arrow.triangle.2.circlepath"
         }
     }
 
