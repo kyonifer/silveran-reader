@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 #if os(macOS)
 import AppKit
@@ -463,10 +464,15 @@ private struct MacReaderSettingsView: View {
     @Binding var reading: SilveranGlobalConfig.Reading
     @Binding var playback: SilveranGlobalConfig.Playback
     private let labelWidth: CGFloat = 150
-    @State private var fontPanelResponder: MacFontPanelResponder? = nil
+    @State private var customFamilies: [CustomFontFamily] = []
+    @State private var showFontManager = false
 
     private func isCustomFont(_ fontFamily: String) -> Bool {
         !["System Default", "serif", "sans-serif", "monospace"].contains(fontFamily)
+    }
+
+    private var builtInFonts: [String] {
+        ["System Default", "serif", "sans-serif", "monospace"]
     }
 
     var body: some View {
@@ -495,18 +501,41 @@ private struct MacReaderSettingsView: View {
                             Text("Serif").tag("serif")
                             Text("Sans-Serif").tag("sans-serif")
                             Text("Monospace").tag("monospace")
-                            if isCustomFont(reading.fontFamily) {
+
+                            if !customFamilies.isEmpty {
+                                Divider()
+                                ForEach(customFamilies) { family in
+                                    Text(family.name).tag(family.name)
+                                }
+                            }
+
+                            if isCustomFont(reading.fontFamily) && !customFamilies.contains(where: { $0.name == reading.fontFamily }) {
+                                Divider()
                                 Text(reading.fontFamily).tag(reading.fontFamily)
                             }
                         }
                         .labelsHidden()
                         .frame(width: 180)
 
-                        Button("Custom...") {
-                            selectCustomFont()
+                        Button("Import...") {
+                            importFont()
                         }
                         .buttonStyle(.plain)
                         .foregroundStyle(.blue)
+
+                        if !customFamilies.isEmpty {
+                            Button("Manage...") {
+                                showFontManager = true
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.blue)
+                            .popover(isPresented: $showFontManager) {
+                                CustomFontManagerView(
+                                    customFamilies: $customFamilies,
+                                    selectedFont: $reading.fontFamily
+                                )
+                            }
+                        }
                     }
                 }
 
@@ -676,6 +705,9 @@ private struct MacReaderSettingsView: View {
                 }
             }
         }
+        .task {
+            await loadCustomFonts()
+        }
     }
 
     private func label(_ text: String) -> some View {
@@ -684,39 +716,118 @@ private struct MacReaderSettingsView: View {
             .foregroundStyle(.secondary)
     }
 
-    @MainActor
-    private func selectCustomFont() {
-        if fontPanelResponder == nil {
-            fontPanelResponder = MacFontPanelResponder()
+    private func loadCustomFonts() async {
+        await CustomFontsActor.shared.refreshFonts()
+        customFamilies = await CustomFontsActor.shared.availableFamilies
+    }
+
+    private func importFont() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.allowedContentTypes = [.font]
+
+        if panel.runModal() == .OK {
+            Task {
+                for url in panel.urls {
+                    try? await CustomFontsActor.shared.importFont(from: url)
+                }
+                await loadCustomFonts()
+            }
         }
-
-        guard let responder = fontPanelResponder else { return }
-
-        responder.onFontChanged = { fontName in
-            reading.fontFamily = fontName
-        }
-
-        let fontManager = NSFontManager.shared
-        fontManager.target = responder
-        fontManager.action = #selector(MacFontPanelResponder.changeFont(_:))
-
-        let fontPanel = NSFontPanel.shared
-        let currentFont =
-            NSFont(name: reading.fontFamily, size: reading.fontSize)
-            ?? NSFont.systemFont(ofSize: reading.fontSize)
-        fontPanel.setPanelFont(currentFont, isMultiple: false)
-        fontPanel.orderFront(nil)
     }
 }
 
-@MainActor
-private class MacFontPanelResponder: NSObject {
-    var onFontChanged: ((String) -> Void)?
+private struct CustomFontManagerView: View {
+    @Binding var customFamilies: [CustomFontFamily]
+    @Binding var selectedFont: String
 
-    @objc func changeFont(_ sender: Any?) {
-        guard let fontManager = sender as? NSFontManager else { return }
-        let selectedFont = fontManager.convert(NSFont.systemFont(ofSize: 16))
-        onFontChanged?(selectedFont.fontName)
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Custom Fonts")
+                .font(.headline)
+
+            if customFamilies.isEmpty {
+                Text("No custom fonts imported")
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(customFamilies) { family in
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text(family.name)
+                                .fontWeight(.medium)
+                            Text("(\(family.variants.count) variant\(family.variants.count == 1 ? "" : "s"))")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Button {
+                                deleteFamily(family)
+                            } label: {
+                                Image(systemName: "trash")
+                                    .foregroundStyle(.red)
+                            }
+                            .buttonStyle(.plain)
+                            .help("Delete all variants of \(family.name)")
+                        }
+
+                        ForEach(family.variants) { variant in
+                            HStack {
+                                Text(variant.styleDescription)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .padding(.leading, 16)
+                                Spacer()
+                                Button {
+                                    deleteVariant(variant, from: family)
+                                } label: {
+                                    Image(systemName: "xmark.circle")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .buttonStyle(.plain)
+                                .help("Delete \(variant.styleDescription)")
+                            }
+                        }
+                    }
+
+                    if family.id != customFamilies.last?.id {
+                        Divider()
+                    }
+                }
+            }
+        }
+        .padding()
+        .frame(minWidth: 300)
+    }
+
+    private func deleteFamily(_ family: CustomFontFamily) {
+        Task {
+            if selectedFont == family.name {
+                selectedFont = "System Default"
+            }
+            try? await CustomFontsActor.shared.deleteFamily(family)
+            await MainActor.run {
+                customFamilies.removeAll { $0.id == family.id }
+            }
+        }
+    }
+
+    private func deleteVariant(_ variant: CustomFontVariant, from family: CustomFontFamily) {
+        Task {
+            try? await CustomFontsActor.shared.deleteVariant(variant)
+            await MainActor.run {
+                if let familyIndex = customFamilies.firstIndex(where: { $0.id == family.id }) {
+                    customFamilies[familyIndex].variants.removeAll { $0.id == variant.id }
+                    if customFamilies[familyIndex].variants.isEmpty {
+                        if selectedFont == family.name {
+                            selectedFont = "System Default"
+                        }
+                        customFamilies.remove(at: familyIndex)
+                    }
+                }
+            }
+        }
     }
 }
 

@@ -8,11 +8,43 @@ class ReaderStyleManager {
     private var settingsVM: SettingsViewModel
     private var colorScheme: ColorScheme = .light
     private var styleUpdateTask: Task<Void, Never>?
+    private var fontFaceCSS: String = ""
+    @ObservationIgnored private var fontObserverID: UUID?
 
     init(settingsVM: SettingsViewModel, bridge: WebViewCommsBridge) {
         self.settingsVM = settingsVM
         self.bridge = bridge
         setupSettingsObserver()
+        Task {
+            await refreshFontFaceCSS()
+            await registerFontObserver()
+        }
+    }
+
+    func cleanup() {
+        if let id = fontObserverID {
+            let capturedId = id
+            fontObserverID = nil
+            Task {
+                await CustomFontsActor.shared.removeObserver(id: capturedId)
+            }
+        }
+    }
+
+    private func registerFontObserver() async {
+        fontObserverID = await CustomFontsActor.shared.addObserver { @MainActor [weak self] in
+            guard let self else { return }
+            Task { @MainActor in
+                self.fontFaceCSS = await CustomFontsActor.shared.fontFaceCSS
+                await self.sendStyleUpdate()
+            }
+        }
+    }
+
+    func refreshFontFaceCSS() async {
+        await CustomFontsActor.shared.refreshFonts()
+        fontFaceCSS = await CustomFontsActor.shared.fontFaceCSS
+        await sendStyleUpdate()
     }
 
     func updateBridge(_ bridge: WebViewCommsBridge) {
@@ -84,6 +116,11 @@ class ReaderStyleManager {
             (foregroundColorRaw?.isEmpty == false ? foregroundColorRaw : nil)
             ?? (isDarkMode ? kDefaultForegroundColorDark : kDefaultForegroundColorLight)
 
+        var effectiveCustomCSS = fontFaceCSS
+        if let userCSS = settingsVM.customCSS, !userCSS.isEmpty {
+            effectiveCustomCSS += "\n" + userCSS
+        }
+
         try? await bridge.sendJsUpdateStyles(
             fontSize: settingsVM.fontSize,
             fontFamily: settingsVM.fontFamily,
@@ -96,7 +133,7 @@ class ReaderStyleManager {
             highlightColor: effectiveHighlightColor,
             backgroundColor: effectiveBackgroundColor,
             foregroundColor: effectiveForegroundColor,
-            customCSS: settingsVM.customCSS,
+            customCSS: effectiveCustomCSS.isEmpty ? nil : effectiveCustomCSS,
             singleColumnMode: settingsVM.singleColumnMode,
             enableMarginClickNavigation: settingsVM.enableMarginClickNavigation
         )

@@ -1,8 +1,5 @@
 import SwiftUI
-
-#if os(macOS)
-import AppKit
-#endif
+import UniformTypeIdentifiers
 
 struct EbookPlayerSettings: View {
     @Bindable var settingsVM: SettingsViewModel
@@ -15,10 +12,8 @@ struct EbookPlayerSettings: View {
 
     @State private var fontSizeInput: String = "20"
     #if os(iOS)
-    @State private var showFontPicker = false
-    #endif
-    #if os(macOS)
-    @State private var fontPanelResponder: FontPanelResponder? = nil
+    @State private var customFamilies: [CustomFontFamily] = []
+    @State private var showFontManager = false
     #endif
 
     private var defaultHighlightColor: String {
@@ -69,33 +64,6 @@ struct EbookPlayerSettings: View {
                             }
                         }
                 }
-            }
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Font")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Picker("Font", selection: $settingsVM.fontFamily) {
-                    Text("System Default").tag("System Default")
-                    Text("Serif").tag("serif")
-                    Text("Sans-Serif").tag("sans-serif")
-                    Text("Monospace").tag("monospace")
-                    if isCustomFont(settingsVM.fontFamily) {
-                        Text(settingsVM.fontFamily).tag(settingsVM.fontFamily)
-                    }
-                }
-                .labelsHidden()
-                .pickerStyle(.menu)
-                .onChange(of: settingsVM.fontFamily) { _, _ in
-                    settingsVM.save()
-                }
-
-                Button("Choose Custom Font...") {
-                    selectCustomFont()
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.blue)
-                .font(.caption)
             }
 
             Divider()
@@ -190,7 +158,15 @@ struct EbookPlayerSettings: View {
                     Text("Serif").tag("serif")
                     Text("Sans-Serif").tag("sans-serif")
                     Text("Monospace").tag("monospace")
-                    if isCustomFont(settingsVM.fontFamily) {
+
+                    if !customFamilies.isEmpty {
+                        Divider()
+                        ForEach(customFamilies) { family in
+                            Text(family.name).tag(family.name)
+                        }
+                    }
+
+                    if isCustomFont(settingsVM.fontFamily) && !customFamilies.contains(where: { $0.name == settingsVM.fontFamily }) {
                         Text(settingsVM.fontFamily).tag(settingsVM.fontFamily)
                     }
                 }
@@ -200,18 +176,18 @@ struct EbookPlayerSettings: View {
                     settingsVM.save()
                 }
 
-                Button("Choose Custom Font...") {
-                    showFontPicker = true
+                Button("Manage Fonts...") {
+                    showFontManager = true
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.blue)
                 .font(.caption)
-                .sheet(isPresented: $showFontPicker) {
-                    FontPickerView { fontDescriptor in
-                        let fontName = fontDescriptor.postscriptName
-                        settingsVM.fontFamily = fontName
-                        settingsVM.save()
-                    }
+                .sheet(isPresented: $showFontManager) {
+                    IOSFontManagerView(
+                        customFamilies: $customFamilies,
+                        selectedFont: $settingsVM.fontFamily,
+                        onSave: { settingsVM.save() }
+                    )
                 }
             }
 
@@ -337,7 +313,15 @@ struct EbookPlayerSettings: View {
         }
         .onAppear {
             fontSizeInput = String(Int(settingsVM.fontSize))
+            Task {
+                await loadCustomFonts()
+            }
         }
+    }
+
+    private func loadCustomFonts() async {
+        await CustomFontsActor.shared.refreshFonts()
+        customFamilies = await CustomFontsActor.shared.availableFamilies
     }
 
     @ViewBuilder
@@ -431,78 +415,143 @@ struct EbookPlayerSettings: View {
     private func isCustomFont(_ fontFamily: String) -> Bool {
         !["System Default", "serif", "sans-serif", "monospace"].contains(fontFamily)
     }
-
-    #if os(macOS)
-    @MainActor
-    private func selectCustomFont() {
-        if fontPanelResponder == nil {
-            fontPanelResponder = FontPanelResponder()
-        }
-
-        guard let responder = fontPanelResponder else { return }
-
-        responder.onFontChanged = { fontName in
-            settingsVM.fontFamily = fontName
-            settingsVM.save()
-        }
-
-        let fontManager = NSFontManager.shared
-        fontManager.target = responder
-        fontManager.action = #selector(FontPanelResponder.changeFont(_:))
-
-        let fontPanel = NSFontPanel.shared
-        let currentFont =
-            NSFont(name: settingsVM.fontFamily, size: settingsVM.fontSize)
-            ?? NSFont.systemFont(ofSize: settingsVM.fontSize)
-        fontPanel.setPanelFont(currentFont, isMultiple: false)
-        fontPanel.orderFront(nil)
-    }
-    #endif
 }
-
-#if os(macOS)
-@MainActor
-private class FontPanelResponder: NSObject {
-    var onFontChanged: ((String) -> Void)?
-
-    @objc func changeFont(_ sender: Any?) {
-        guard let fontManager = sender as? NSFontManager else { return }
-        let selectedFont = fontManager.convert(NSFont.systemFont(ofSize: 16))
-        onFontChanged?(selectedFont.fontName)
-    }
-}
-#endif
 
 #if os(iOS)
-import UIKit
+private struct IOSFontManagerView: View {
+    @Binding var customFamilies: [CustomFontFamily]
+    @Binding var selectedFont: String
+    let onSave: () -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var showFontImporter = false
 
-struct FontPickerView: UIViewControllerRepresentable {
-    let onFontPicked: (UIFontDescriptor) -> Void
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    Button {
+                        showFontImporter = true
+                    } label: {
+                        Label("Import Font", systemImage: "plus.circle")
+                    }
+                    .fileImporter(
+                        isPresented: $showFontImporter,
+                        allowedContentTypes: [
+                            UTType(filenameExtension: "ttf") ?? .data,
+                            UTType(filenameExtension: "otf") ?? .data,
+                            UTType.font
+                        ],
+                        allowsMultipleSelection: true
+                    ) { result in
+                        Task {
+                            switch result {
+                            case .success(let urls):
+                                for url in urls {
+                                    try? await CustomFontsActor.shared.importFont(from: url)
+                                }
+                                await refreshFonts()
+                            case .failure:
+                                break
+                            }
+                        }
+                    }
+                }
 
-    func makeUIViewController(context: Context) -> UIFontPickerViewController {
-        let config = UIFontPickerViewController.Configuration()
-        config.includeFaces = true
-        let picker = UIFontPickerViewController(configuration: config)
-        picker.delegate = context.coordinator
-        return picker
-    }
-
-    func updateUIViewController(_ uiViewController: UIFontPickerViewController, context: Context) {}
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(onFontPicked: onFontPicked)
-    }
-
-    class Coordinator: NSObject, UIFontPickerViewControllerDelegate {
-        let onFontPicked: (UIFontDescriptor) -> Void
-
-        init(onFontPicked: @escaping (UIFontDescriptor) -> Void) {
-            self.onFontPicked = onFontPicked
+                Section("Custom Fonts") {
+                    if customFamilies.isEmpty {
+                        Text("No custom fonts imported")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(customFamilies) { family in
+                            DisclosureGroup {
+                                ForEach(family.variants) { variant in
+                                    HStack {
+                                        Text(variant.styleDescription)
+                                            .font(.subheadline)
+                                            .foregroundStyle(.secondary)
+                                        Spacer()
+                                    }
+                                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                        Button(role: .destructive) {
+                                            deleteVariant(variant, from: family)
+                                        } label: {
+                                            Label("Delete", systemImage: "trash")
+                                        }
+                                    }
+                                }
+                            } label: {
+                                HStack {
+                                    VStack(alignment: .leading) {
+                                        Text(family.name)
+                                        Text("\(family.variants.count) variant\(family.variants.count == 1 ? "" : "s")")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                    if selectedFont == family.name {
+                                        Image(systemName: "checkmark")
+                                            .foregroundStyle(.blue)
+                                    }
+                                }
+                            }
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                Button(role: .destructive) {
+                                    deleteFamily(family)
+                                } label: {
+                                    Label("Delete All", systemImage: "trash")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Manage Fonts")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
+            }
         }
+        .task {
+            await refreshFonts()
+        }
+    }
 
-        func fontPickerViewControllerDidPickFont(_ viewController: UIFontPickerViewController) {
-            if let descriptor = viewController.selectedFontDescriptor {
-                onFontPicked(descriptor)
+    private func refreshFonts() async {
+        await CustomFontsActor.shared.refreshFonts()
+        customFamilies = await CustomFontsActor.shared.availableFamilies
+    }
+
+    private func deleteFamily(_ family: CustomFontFamily) {
+        Task {
+            if selectedFont == family.name {
+                selectedFont = "System Default"
+                onSave()
+            }
+            try? await CustomFontsActor.shared.deleteFamily(family)
+            await MainActor.run {
+                customFamilies.removeAll { $0.id == family.id }
+            }
+        }
+    }
+
+    private func deleteVariant(_ variant: CustomFontVariant, from family: CustomFontFamily) {
+        Task {
+            try? await CustomFontsActor.shared.deleteVariant(variant)
+            await MainActor.run {
+                if let familyIndex = customFamilies.firstIndex(where: { $0.id == family.id }) {
+                    customFamilies[familyIndex].variants.removeAll { $0.id == variant.id }
+                    if customFamilies[familyIndex].variants.isEmpty {
+                        if selectedFont == family.name {
+                            selectedFont = "System Default"
+                            onSave()
+                        }
+                        customFamilies.remove(at: familyIndex)
+                    }
+                }
             }
         }
     }

@@ -516,7 +516,14 @@ class FoliateManager {
   }
 
   updateStyles(jsonString) {
-    debugLog("FoliateManager", "updateStyles() - jsonString:", jsonString);
+    // Don't log full jsonString - customCSS contains huge base64 font data
+    try {
+      const parsed = JSON.parse(jsonString);
+      const { customCSS, ...rest } = parsed;
+      debugLog("FoliateManager", "updateStyles()", rest, customCSS ? `[customCSS: ${customCSS.length} chars]` : "");
+    } catch {
+      debugLog("FoliateManager", "updateStyles() - parse failed");
+    }
 
     if (!this.#view) {
       console.warn("[FM2] updateStyles() called but view not initialized");
