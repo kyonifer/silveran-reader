@@ -148,10 +148,21 @@ class EbookProgressManager {
         let section = bookStructure[sectionIndex]
         guard let lastEntry = section.mediaOverlay.last else { return nil }
 
-        let sectionDuration = lastEntry.cumSumAtEnd
+        // Calculate the cumulative sum at the START of this section
+        var sectionStartCumSum: Double = 0
+        for prevIdx in (0..<sectionIndex).reversed() {
+            if let prevLastEntry = bookStructure[prevIdx].mediaOverlay.last {
+                sectionStartCumSum = prevLastEntry.cumSumAtEnd
+                break
+            }
+        }
+
+        // Calculate actual section duration (not book-level cumSum)
+        let sectionDuration = lastEntry.cumSumAtEnd - sectionStartCumSum
         guard sectionDuration > 0 else { return nil }
 
-        let targetSeconds = fraction * sectionDuration
+        // Calculate target time in book-level cumSum
+        let targetSeconds = sectionStartCumSum + (fraction * sectionDuration)
 
         for entry in section.mediaOverlay {
             if entry.cumSumAtEnd >= targetSeconds {
