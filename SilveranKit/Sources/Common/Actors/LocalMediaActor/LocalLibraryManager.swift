@@ -166,7 +166,7 @@ public final class LocalLibraryManager: Sendable {
                 uuid: bookUUID,
                 filepath: epubURL.lastPathComponent,
                 missing: 0,
-                status: "complete",
+                status: "aligned",
                 currentStage: nil,
                 stageProgress: nil,
                 queuePosition: nil,

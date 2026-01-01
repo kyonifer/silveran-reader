@@ -573,9 +573,19 @@ public actor LocalMediaActor: GlobalActor {
                 category: category
             )
 
+            // Use the correct category based on actual content type
+            let effectiveCategory: LocalMediaCategory
+            if metadata.hasAvailableReadaloud {
+                effectiveCategory = .synced
+            } else if metadata.hasAvailableAudiobook {
+                effectiveCategory = .audio
+            } else {
+                effectiveCategory = category
+            }
+
             let destinationDirectory = await filesystem.getMediaDirectory(
                 domain: domain,
-                category: category,
+                category: effectiveCategory,
                 bookName: metadata.title,
                 uuidIdentifier: metadata.uuid
             )

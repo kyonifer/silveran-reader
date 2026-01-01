@@ -331,8 +331,9 @@ public final class MediaViewModel {
     }
 
     private func syncPathCache() async {
-        let paths = await LocalMediaActor.shared.localStorytellerBookPaths
-        cachedBookPaths = paths
+        let storytellerPaths = await LocalMediaActor.shared.localStorytellerBookPaths
+        let standalonePaths = await LocalMediaActor.shared.localStandaloneBookPaths
+        cachedBookPaths = storytellerPaths.merging(standalonePaths) { _, new in new }
     }
 
     private func applyLibraryMetadata(_ metadata: [BookMetadata]) {
