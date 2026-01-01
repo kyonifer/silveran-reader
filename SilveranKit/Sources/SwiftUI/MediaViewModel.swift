@@ -325,6 +325,8 @@ public final class MediaViewModel {
                     await self?.refreshMetadata(source: "ProgressSyncActor.observer")
                 }
             }
+
+            await self.refreshMetadata(source: "init")
         }
     }
 
