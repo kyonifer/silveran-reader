@@ -78,6 +78,9 @@ class EbookProgressManager {
     /// Timestamp of last successful sync to server
     private var lastSyncedTimestamp: TimeInterval? = nil
 
+    /// Recent user navigation reason (for deferred sync when not playing audio)
+    private var recentUserNavReason: SyncReason? = nil
+
     /// Timer for periodic progress syncs to server
     private var syncTimer: Timer? = nil
     private var bookId: String? = nil
@@ -366,6 +369,7 @@ class EbookProgressManager {
     /// User pressed left arrow or swiped right (previous page)
     func handleUserNavLeft() {
         recordUserNavAction()
+        recentUserNavReason = .userFlippedPage
         Task { @MainActor in
             do {
                 try await commsBridge?.sendJsGoLeftCommand()
@@ -378,6 +382,7 @@ class EbookProgressManager {
     /// User pressed right arrow or swiped left (next page)
     func handleUserNavRight() {
         recordUserNavAction()
+        recentUserNavReason = .userFlippedPage
         Task { @MainActor in
             do {
                 try await commsBridge?.sendJsGoRightCommand()
@@ -390,6 +395,7 @@ class EbookProgressManager {
     /// User performed touch swipe on webview (JS already handled navigation)
     func handleUserNavSwipeDetected() {
         recordUserNavAction()
+        recentUserNavReason = .userFlippedPage
     }
 
     /// User clicked on a chapter in sidebar to navigate
@@ -409,6 +415,7 @@ class EbookProgressManager {
         debugLog("[EPM] User selected chapter \(newId): \(chapter.label ?? "nil")")
 
         recordActivity()
+        recentUserNavReason = .userSelectedChapter
         selectedChapterId = newId
 
         Task { @MainActor in
@@ -444,6 +451,7 @@ class EbookProgressManager {
         }
 
         recordUserNavAction()
+        recentUserNavReason = .userDraggedSeekBar
 
         Task { @MainActor in
             do {
@@ -562,9 +570,13 @@ class EbookProgressManager {
             Task { @MainActor in
                 guard let self else { return }
                 let isPlaying = self.mediaOverlayManager?.isPlaying ?? false
-                let reason: SyncReason =
-                    isPlaying ? .periodicDuringActivePlayback : .periodicWhileReading
-                await self.syncProgressToServer(reason: reason)
+
+                if isPlaying {
+                    await self.syncProgressToServer(reason: .periodicDuringActivePlayback)
+                } else if let navReason = self.recentUserNavReason {
+                    self.recentUserNavReason = nil
+                    await self.syncProgressToServer(reason: navReason)
+                }
             }
         }
     }
