@@ -857,7 +857,7 @@ public actor SMILPlayerActor {
 
         let section = bookStructure[currentSectionIndex]
         for (index, entry) in section.mediaOverlay.enumerated() {
-            if time >= entry.begin && time < entry.end {
+            if entry.audioFile == currentAudioFile && time >= entry.begin && time < entry.end {
                 if index != currentEntryIndex {
                     currentEntryIndex = index
                     currentEntryBeginTime = entry.begin
@@ -866,6 +866,10 @@ public actor SMILPlayerActor {
                 return
             }
         }
+
+        debugLog(
+            "[SMILPlayerActor] reconcileEntryFromTime: no matching entry for time \(time) in audioFile \(currentAudioFile)"
+        )
     }
 
     // MARK: - Private: State Building

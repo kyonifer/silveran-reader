@@ -34,6 +34,8 @@ class MediaOverlayManager {
     private var lastObservedFragment: String = ""
 
     var isPlaying: Bool = false
+    var isInBackground: Bool = false
+    var backgroundAudioPlayed: Bool = false
 
     /// Timer for delayed page flips during fractional sentence playback
     /// (i.e. when a sentence is half on this page and half on the next)
@@ -200,6 +202,9 @@ class MediaOverlayManager {
         lastObservedFragment = state.currentFragment
 
         isPlaying = state.isPlaying
+        if isInBackground && state.isPlaying {
+            backgroundAudioPlayed = true
+        }
         chapterElapsedSeconds = state.chapterElapsed
         chapterTotalSeconds = state.chapterTotal
         bookElapsedSeconds = state.bookElapsed

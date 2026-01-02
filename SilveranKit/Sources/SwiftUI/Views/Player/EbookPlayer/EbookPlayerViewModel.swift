@@ -417,16 +417,30 @@ class EbookPlayerViewModel {
             case .active:
                 Task { @MainActor in
                     await progressManager?.handleResume()
-                    await SMILPlayerActor.shared.reconcilePositionFromPlayer()
-                    if let syncData = await SMILPlayerActor.shared.getBackgroundSyncData() {
-                        debugLog(
-                            "[EbookPlayerViewModel] Resuming from background - syncing view to audio position"
-                        )
-                        await progressManager?.handleBackgroundSyncHandoff(syncData)
+
+                    mediaOverlayManager?.isInBackground = false
+                    let audioPlayedWhileBackgrounded =
+                        mediaOverlayManager?.backgroundAudioPlayed ?? false
+                    if audioPlayedWhileBackgrounded {
+                        await SMILPlayerActor.shared.reconcilePositionFromPlayer()
+                        if let syncData = await SMILPlayerActor.shared.getBackgroundSyncData() {
+                            debugLog(
+                                "[EbookPlayerViewModel] Resuming from background - syncing view to audio position"
+                            )
+                            await progressManager?.handleBackgroundSyncHandoff(syncData)
+                        }
                     }
+                    mediaOverlayManager?.backgroundAudioPlayed = false
                 }
             case .background:
                 debugLog("[EbookPlayerViewModel] Entering background - audio continues natively")
+                Task { @MainActor in
+                    mediaOverlayManager?.isInBackground = true
+                    let wasPlaying = await SMILPlayerActor.shared.getCurrentState()?.isPlaying ?? false
+                    if wasPlaying {
+                        mediaOverlayManager?.backgroundAudioPlayed = true
+                    }
+                }
             case .inactive:
                 break
             @unknown default:
