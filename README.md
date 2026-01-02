@@ -2,6 +2,10 @@
 
 A book reading app for ebooks, audiobooks, and readaloud books, with tight [Storyteller](https://gitlab.com/storyteller-platform/storyteller) integration.
 
+## TestFlight
+
+[Join the beta on TestFlight](https://testflight.apple.com/join/9Cvs89nz)
+
 ## Implemented Features
 
 - Support for ebooks, audiobooks, and readaloud books
@@ -59,3 +63,7 @@ Currently the macOS Reader app is the priority (with iOS a close second). Howeve
 # Building From Source
 
 See [the contributing documentation](CONTRIBUTING.md) for more information. This project is highly experimental currently, so no pre-built executables are available. This is expected to change once things are more complete.
+
+# Privacy Policy
+
+Silveran Reader does not collect any data whatsoever. All your reading data stays on your device (or syncs to your own self-hosted Storyteller server if you choose to configure one).
