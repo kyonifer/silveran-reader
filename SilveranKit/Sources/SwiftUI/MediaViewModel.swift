@@ -517,13 +517,15 @@ public final class MediaViewModel {
             [:]
 
         for book in allBooks {
-            if let collectionsList = book.collections, let firstCollection = collectionsList.first {
-                let key = firstCollection.uuid ?? firstCollection.name
-                if var existing = collectionMap[key] {
-                    existing.books.append(book)
-                    collectionMap[key] = existing
-                } else {
-                    collectionMap[key] = (collection: firstCollection, books: [book])
+            if let collectionsList = book.collections {
+                for collection in collectionsList {
+                    let key = collection.uuid ?? collection.name
+                    if var existing = collectionMap[key] {
+                        existing.books.append(book)
+                        collectionMap[key] = existing
+                    } else {
+                        collectionMap[key] = (collection: collection, books: [book])
+                    }
                 }
             }
         }
