@@ -191,19 +191,6 @@ struct EbookPlayerSettings: View {
                 }
             }
 
-            labeledSlider(
-                label: "Readaloud Highlight Height",
-                value: $settingsVM.highlightThickness,
-                range: 0.6...4.0,
-                step: 0.05,
-                formatter: { String(format: "%.2fx", $0) }
-            )
-
-            Toggle("Readaloud Highlight Underline", isOn: $settingsVM.readaloudHighlightUnderline)
-                .onChange(of: settingsVM.readaloudHighlightUnderline) { _, _ in
-                    settingsVM.save()
-                }
-
             Toggle("Single Column", isOn: $settingsVM.singleColumnMode)
                 .onChange(of: settingsVM.singleColumnMode) { _, _ in
                     settingsVM.save()
@@ -260,15 +247,69 @@ struct EbookPlayerSettings: View {
 
             Divider()
 
-            Text("Appearance")
+            Text("Highlights & Colors")
                 .font(.headline)
                 .foregroundStyle(.primary)
+
+            Menu {
+                Button("Light Theme (Background Highlight)") {
+                    settingsVM.backgroundColor = kDefaultBackgroundColorLight
+                    settingsVM.foregroundColor = kDefaultForegroundColorLight
+                    settingsVM.highlightColor = "#CCCCCC"
+                    settingsVM.readaloudHighlightMode = "background"
+                    settingsVM.save()
+                }
+                Button("Dark Theme (Background Highlight)") {
+                    settingsVM.backgroundColor = kDefaultBackgroundColorDark
+                    settingsVM.foregroundColor = kDefaultForegroundColorDark
+                    settingsVM.highlightColor = "#333333"
+                    settingsVM.readaloudHighlightMode = "background"
+                    settingsVM.save()
+                }
+                Divider()
+                Button("Light Theme (Text Highlight)") {
+                    settingsVM.backgroundColor = kDefaultBackgroundColorLight
+                    settingsVM.foregroundColor = kDefaultForegroundColorLight
+                    settingsVM.highlightColor = "#254DF4"
+                    settingsVM.readaloudHighlightMode = "text"
+                    settingsVM.save()
+                }
+                Button("Dark Theme (Text Highlight)") {
+                    settingsVM.backgroundColor = kDefaultBackgroundColorDark
+                    settingsVM.foregroundColor = kDefaultForegroundColorDark
+                    settingsVM.highlightColor = "#65A8EE"
+                    settingsVM.readaloudHighlightMode = "text"
+                    settingsVM.save()
+                }
+            } label: {
+                Label("Reset Colors to Theme...", systemImage: "paintpalette")
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Readaloud Style")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Picker("Readaloud Style", selection: $settingsVM.readaloudHighlightMode) {
+                    Text("Background").tag("background")
+                    Text("Text").tag("text")
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .onChange(of: settingsVM.readaloudHighlightMode) { _, _ in
+                    settingsVM.save()
+                }
+            }
 
             iOSColorControl(
                 label: "Readaloud Highlight",
                 hex: $settingsVM.highlightColor,
                 defaultHex: defaultHighlightColor
             )
+
+            Toggle("Readaloud Highlight Underline", isOn: $settingsVM.readaloudHighlightUnderline)
+                .onChange(of: settingsVM.readaloudHighlightUnderline) { _, _ in
+                    settingsVM.save()
+                }
 
             iOSColorControl(
                 label: "Background Color",
@@ -282,11 +323,28 @@ struct EbookPlayerSettings: View {
                 defaultHex: nil
             )
 
+            labeledSlider(
+                label: "Highlight Height",
+                value: $settingsVM.highlightThickness,
+                range: 0.6...4.0,
+                step: 0.05,
+                formatter: { String(format: "%.2fx", $0) }
+            )
+
             Divider()
 
             Text("Highlight Colors")
                 .font(.headline)
                 .foregroundStyle(.primary)
+
+            Picker("Highlight Style", selection: $settingsVM.userHighlightMode) {
+                Text("Background").tag("background")
+                Text("Text").tag("text")
+            }
+            .pickerStyle(.segmented)
+            .onChange(of: settingsVM.userHighlightMode) { _, _ in
+                settingsVM.save()
+            }
 
             iOSUserHighlightColorControl(
                 label: "Highlight #1 (Yellow)",
@@ -406,6 +464,8 @@ struct EbookPlayerSettings: View {
         settingsVM.highlightColor = nil
         settingsVM.highlightThickness = 1.0
         settingsVM.readaloudHighlightUnderline = false
+        settingsVM.userHighlightMode = "background"
+        settingsVM.readaloudHighlightMode = "background"
         settingsVM.backgroundColor = nil
         settingsVM.foregroundColor = nil
         settingsVM.enableMarginClickNavigation = true

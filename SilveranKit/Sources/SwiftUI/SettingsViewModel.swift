@@ -56,6 +56,8 @@ public final class SettingsViewModel {
     public var userHighlightColor4: String = "#E25EA3"
     public var userHighlightColor5: String = "#CE8C4A"
     public var userHighlightColor6: String = "#B366FF"
+    public var userHighlightMode: String = "background"
+    public var readaloudHighlightMode: String = "background"
 
     public var isLoaded: Bool = false
 
@@ -152,6 +154,8 @@ public final class SettingsViewModel {
         userHighlightColor4 = config.reading.userHighlightColor4
         userHighlightColor5 = config.reading.userHighlightColor5
         userHighlightColor6 = config.reading.userHighlightColor6
+        userHighlightMode = config.reading.userHighlightMode
+        readaloudHighlightMode = config.reading.readaloudHighlightMode
 
         isLoaded = true
     }
@@ -210,7 +214,9 @@ public final class SettingsViewModel {
             alwaysShowMiniPlayer: alwaysShowMiniPlayerValue,
             progressSyncIntervalSeconds: progressSyncIntervalSeconds,
             metadataRefreshIntervalSeconds: metadataRefreshIntervalSeconds,
-            showAudioIndicator: showAudioIndicator
+            showAudioIndicator: showAudioIndicator,
+            userHighlightMode: userHighlightMode,
+            readaloudHighlightMode: readaloudHighlightMode
         )
     }
 

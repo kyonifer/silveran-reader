@@ -48,6 +48,8 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
         public var userHighlightColor4: String
         public var userHighlightColor5: String
         public var userHighlightColor6: String
+        public var userHighlightMode: String
+        public var readaloudHighlightMode: String
 
         public init(
             fontSize: Double = 24,
@@ -70,7 +72,9 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
             userHighlightColor3: String = "#198744",
             userHighlightColor4: String = "#E25EA3",
             userHighlightColor5: String = "#CE8C4A",
-            userHighlightColor6: String = "#B366FF"
+            userHighlightColor6: String = "#B366FF",
+            userHighlightMode: String = "background",
+            readaloudHighlightMode: String = "background"
         ) {
             self.fontSize = fontSize
             self.fontFamily = fontFamily
@@ -97,6 +101,8 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
             self.userHighlightColor4 = userHighlightColor4
             self.userHighlightColor5 = userHighlightColor5
             self.userHighlightColor6 = userHighlightColor6
+            self.userHighlightMode = userHighlightMode
+            self.readaloudHighlightMode = readaloudHighlightMode
         }
     }
 
@@ -268,7 +274,9 @@ public actor SettingsActor {
         userHighlightColor3: String? = nil,
         userHighlightColor4: String? = nil,
         userHighlightColor5: String? = nil,
-        userHighlightColor6: String? = nil
+        userHighlightColor6: String? = nil,
+        userHighlightMode: String? = nil,
+        readaloudHighlightMode: String? = nil
     ) throws {
         var updated = config
 
@@ -345,6 +353,12 @@ public actor SettingsActor {
         }
         if let userHighlightColor6 {
             updated.reading.userHighlightColor6 = userHighlightColor6
+        }
+        if let userHighlightMode {
+            updated.reading.userHighlightMode = userHighlightMode
+        }
+        if let readaloudHighlightMode {
+            updated.reading.readaloudHighlightMode = readaloudHighlightMode
         }
 
         #if os(iOS)

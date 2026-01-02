@@ -1,4 +1,5 @@
 import { Overlayer } from "./foliate-js/overlayer.js";
+import { SpanHighlighter } from "./SpanHighlighter.js";
 import { debugLog } from "./DebugConfig.js";
 
 console.log("[BookmarkManager] Module loaded");
@@ -7,9 +8,61 @@ class BookmarkManager {
   #view = null;
   #userHighlights = new Map();
   #overlayers = new Map();
+  #spanHighlighters = new Map();
+  #highlightMode = "background";
+  #highlightThickness = 1.0;
+  #renderedSpanState = new Map();
 
   setView(view) {
     this.#view = view;
+  }
+
+  setHighlightMode(mode) {
+    if (this.#highlightMode === mode) return;
+    debugLog("BookmarkManager", "setHighlightMode:", mode);
+    this.#highlightMode = mode;
+    this.#renderedSpanState.clear();
+    this.redrawAllOverlayers();
+  }
+
+  setHighlightThickness(thickness) {
+    if (this.#highlightThickness === thickness) return;
+    debugLog("BookmarkManager", "setHighlightThickness:", thickness);
+    this.#highlightThickness = thickness;
+    this.redrawAllOverlayers();
+  }
+
+  #drawHighlight(rects, options = {}) {
+    const { color } = options;
+    const scale = this.#highlightThickness;
+    const rectList = Array.from(rects).filter(rect => rect.width > 0 && rect.height > 0);
+    if (!rectList.length) {
+      return Overlayer.highlight([], { color });
+    }
+
+    const adjustedRects = rectList.map(rect => {
+      const extra = (scale - 1) * rect.height;
+      return {
+        left: rect.left,
+        top: rect.top - (extra / 2),
+        width: rect.width,
+        height: Math.max(1, rect.height + extra),
+      };
+    });
+
+    return Overlayer.highlight(adjustedRects, { color });
+  }
+
+  #applyOverlayerStyle(overlayer) {
+    if (this.#highlightMode === "text") {
+      overlayer.element.style.opacity = '0';
+      overlayer.element.style.zIndex = '0';
+    } else {
+      overlayer.element.style.opacity = '1';
+      overlayer.element.style.zIndex = '0';
+      overlayer.element.style.setProperty('--overlayer-highlight-opacity', '1');
+      overlayer.element.style.setProperty('--overlayer-highlight-blend-mode', 'normal');
+    }
   }
 
   #isTouchDevice() {
@@ -29,14 +82,21 @@ class BookmarkManager {
       this.#overlayers.delete(sectionIndex);
     }
 
+    const existingSpanHighlighter = this.#spanHighlighters.get(sectionIndex);
+    if (existingSpanHighlighter) {
+      existingSpanHighlighter.removeAll();
+      this.#spanHighlighters.delete(sectionIndex);
+    }
+
     const overlayer = new Overlayer();
     const container = doc.body || doc.documentElement;
     overlayer.element.style.overflow = 'visible';
-    overlayer.element.style.zIndex = '9999';
-    overlayer.element.style.setProperty('--overlayer-highlight-opacity', '0.9');
-    overlayer.element.style.setProperty('--overlayer-highlight-blend-mode', 'screen');
+    this.#applyOverlayerStyle(overlayer);
     container.appendChild(overlayer.element);
     this.#overlayers.set(sectionIndex, overlayer);
+
+    const spanHighlighter = new SpanHighlighter();
+    this.#spanHighlighters.set(sectionIndex, spanHighlighter);
 
     this.#renderHighlightsForSection(sectionIndex, doc);
 
@@ -183,16 +243,22 @@ class BookmarkManager {
     return 0;
   }
 
-  #renderHighlightsForSection(sectionIndex, doc) {
+  #renderHighlightsForSection(sectionIndex, doc, forceSpanUpdate = false) {
     const overlayer = this.#overlayers.get(sectionIndex);
+    const spanHighlighter = this.#spanHighlighters.get(sectionIndex);
     if (!overlayer) return;
 
     for (const [id] of this.#userHighlights) {
       overlayer.remove(id);
     }
 
+    this.#applyOverlayerStyle(overlayer);
+
+    const sectionHighlightIds = [];
     for (const [id, highlight] of this.#userHighlights) {
       if (highlight.sectionIndex !== sectionIndex) continue;
+
+      sectionHighlightIds.push(id);
 
       try {
         const range = this.#createRangeFromCFI(highlight.cfi, sectionIndex, doc);
@@ -201,13 +267,37 @@ class BookmarkManager {
           continue;
         }
 
-        overlayer.add(id, range, Overlayer.highlight, {
+        overlayer.add(id, range, (rects, options) => this.#drawHighlight(rects, options), {
           color: highlight.color,
         });
-        debugLog("BookmarkManager", `Rendered highlight ${id} with color ${highlight.color}`);
       } catch (error) {
         debugLog("BookmarkManager", `Failed to render highlight ${id}:`, error);
       }
+    }
+
+    const currentSpanState = this.#highlightMode === "text"
+      ? `text:${sectionHighlightIds.join(",")}`
+      : "background";
+    const previousSpanState = this.#renderedSpanState.get(sectionIndex);
+
+    if (forceSpanUpdate || currentSpanState !== previousSpanState) {
+      spanHighlighter?.removeAll();
+
+      if (this.#highlightMode === "text" && spanHighlighter) {
+        for (const [id, highlight] of this.#userHighlights) {
+          if (highlight.sectionIndex !== sectionIndex) continue;
+          try {
+            const range = this.#createRangeFromCFI(highlight.cfi, sectionIndex, doc);
+            if (range) {
+              spanHighlighter.add(id, range.cloneRange(), highlight.color);
+            }
+          } catch (error) {
+            debugLog("BookmarkManager", `Failed to add span highlight ${id}:`, error);
+          }
+        }
+      }
+
+      this.#renderedSpanState.set(sectionIndex, currentSpanState);
     }
   }
 
@@ -257,7 +347,7 @@ class BookmarkManager {
         this.#overlayers.delete(content.index);
         this.setupSection(content.index, content.doc);
       } else {
-        existingOverlayer.redraw();
+        this.#renderHighlightsForSection(content.index, content.doc);
       }
     }
   }
@@ -274,6 +364,7 @@ class BookmarkManager {
     }
 
     this.#userHighlights.clear();
+    this.#renderedSpanState.clear();
 
     for (const hl of highlights) {
       this.#userHighlights.set(hl.id, {
@@ -302,7 +393,12 @@ class BookmarkManager {
       }
     }
 
+    for (const spanHighlighter of this.#spanHighlighters.values()) {
+      spanHighlighter.removeAll();
+    }
+
     this.#userHighlights.clear();
+    this.#renderedSpanState.clear();
   }
 
   removeHighlight(id) {
@@ -312,10 +408,16 @@ class BookmarkManager {
     if (!highlight) return;
 
     this.#userHighlights.delete(id);
+    this.#renderedSpanState.delete(highlight.sectionIndex);
 
     const overlayer = this.#overlayers.get(highlight.sectionIndex);
     if (overlayer) {
       overlayer.remove(id);
+    }
+
+    const spanHighlighter = this.#spanHighlighters.get(highlight.sectionIndex);
+    if (spanHighlighter) {
+      spanHighlighter.remove(id);
     }
   }
 

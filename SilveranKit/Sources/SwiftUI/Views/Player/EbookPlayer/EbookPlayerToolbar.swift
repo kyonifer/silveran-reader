@@ -1,6 +1,22 @@
 import SwiftUI
 
 #if os(macOS)
+private struct OpenSettingsButton: View {
+    @Environment(\.openSettings) private var openSettings
+
+    var body: some View {
+        Button {
+            SettingsTabRequest.shared.requestReaderSettings()
+            openSettings()
+        } label: {
+            Label("Customize Reader", systemImage: "textformat.size")
+                .labelStyle(.iconOnly)
+        }
+        .help("Reader Settings")
+        .keyboardShortcut(",", modifiers: [.command, .shift])
+    }
+}
+
 struct EbookPlayerToolbar: ToolbarContent {
     @Bindable var viewModel: EbookPlayerViewModel
 
@@ -93,21 +109,7 @@ struct EbookPlayerToolbar: ToolbarContent {
             }
         }
         ToolbarItem(id: "customize-toggle") {
-            Button {
-                withAnimation(.easeInOut) { viewModel.showCustomizePopover.toggle() }
-            } label: {
-                Label("Customize Reader", systemImage: "textformat.size")
-                    .labelStyle(.iconOnly)
-            }
-            .help("Customize Reader")
-            .popover(isPresented: $viewModel.showCustomizePopover) {
-                EbookPlayerSettings(
-                    settingsVM: viewModel.settingsVM,
-                    onDismiss: { viewModel.showCustomizePopover = false }
-                )
-                .padding()
-                .frame(width: 280)
-            }
+            OpenSettingsButton()
         }
         ToolbarItem(id: "keybindings-help") {
             Button {

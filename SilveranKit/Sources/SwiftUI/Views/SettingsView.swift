@@ -185,7 +185,9 @@ public struct SettingsView: View {
                     userHighlightColor3: newValue.reading.userHighlightColor3,
                     userHighlightColor4: newValue.reading.userHighlightColor4,
                     userHighlightColor5: newValue.reading.userHighlightColor5,
-                    userHighlightColor6: newValue.reading.userHighlightColor6
+                    userHighlightColor6: newValue.reading.userHighlightColor6,
+                    userHighlightMode: newValue.reading.userHighlightMode,
+                    readaloudHighlightMode: newValue.reading.readaloudHighlightMode
                 )
             } catch {
                 await MainActor.run {
@@ -227,6 +229,15 @@ extension SettingsView {
             Divider()
 
             HStack {
+                if selectedTab == .readerSettings {
+                    Button {
+                        resetReaderSettings()
+                    } label: {
+                        Label("Reset Reader Settings", systemImage: "arrow.counterclockwise")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
                 Spacer()
                 Button {
                     showResetConfirmation = true
@@ -238,7 +249,28 @@ extension SettingsView {
             }
             .padding(12)
         }
-        .frame(width: 820, height: 580)
+        .frame(width: 880, height: 600)
+    }
+
+    private func resetReaderSettings() {
+        config.reading.fontSize = 24
+        config.reading.fontFamily = "System Default"
+        config.reading.lineSpacing = 1.4
+        config.reading.marginLeftRight = 5
+        config.reading.marginTopBottom = 8
+        config.reading.wordSpacing = 0
+        config.reading.letterSpacing = 0
+        config.reading.highlightColor = nil
+        config.reading.highlightThickness = 1.0
+        config.reading.readaloudHighlightUnderline = false
+        config.reading.userHighlightMode = "background"
+        config.reading.readaloudHighlightMode = "background"
+        config.reading.backgroundColor = nil
+        config.reading.foregroundColor = nil
+        config.reading.enableMarginClickNavigation = true
+        config.reading.singleColumnMode = false
+        config.reading.customCSS = nil
+        config.playback.defaultPlaybackSpeed = 1.0
     }
 }
 #else
@@ -340,7 +372,8 @@ private struct MacSettingsContainer<Content: View>: View {
             VStack(alignment: .leading, spacing: 24) {
                 content
             }
-            .padding(24)
+            .padding(.horizontal, 36)
+            .padding(.vertical, 24)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .scrollIndicators(.hidden)
@@ -542,23 +575,6 @@ private struct MacReaderSettingsView: View {
                 }
 
                 GridRow {
-                    label("Readaloud Highlight Height")
-                    MacSliderControl(
-                        value: $reading.highlightThickness,
-                        range: 0.6...4.0,
-                        step: 0.05,
-                        formatter: { String(format: "%.2fx", $0) }
-                    )
-                }
-
-                GridRow {
-                    label("Readaloud Highlight Underline")
-                    Toggle("", isOn: $reading.readaloudHighlightUnderline)
-                        .labelsHidden()
-                        .frame(width: 200, alignment: .leading)
-                }
-
-                GridRow {
                     label("Margin (Left/Right)")
                     MacSliderControl(
                         value: $reading.marginLeftRight,
@@ -627,11 +643,22 @@ private struct MacReaderSettingsView: View {
                 .padding(.vertical, 8)
 
             VStack(alignment: .leading, spacing: 18) {
-                Text("Appearance")
+                Text("Highlights & Colors")
                     .font(.headline)
 
                 HStack(alignment: .top, spacing: 48) {
                     Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 18) {
+                        GridRow {
+                            label("Readaloud Highlight Style")
+                            Picker("", selection: $reading.readaloudHighlightMode) {
+                                Text("Background").tag("background")
+                                Text("Text").tag("text")
+                            }
+                            .pickerStyle(.segmented)
+                            .frame(width: 200)
+                            .labelsHidden()
+                        }
+
                         GridRow {
                             label("Readaloud Highlight")
                             AppearanceColorControl(
@@ -640,6 +667,13 @@ private struct MacReaderSettingsView: View {
                                 defaultLightColor: "#CCCCCC",
                                 defaultDarkColor: "#333333"
                             )
+                        }
+
+                        GridRow {
+                            label("Readaloud Underline")
+                            Toggle("", isOn: $reading.readaloudHighlightUnderline)
+                                .labelsHidden()
+                                .frame(width: 200, alignment: .leading)
                         }
 
                         GridRow {
@@ -661,9 +695,67 @@ private struct MacReaderSettingsView: View {
                                 defaultDarkColor: kDefaultForegroundColorDark
                             )
                         }
+
+                        GridRow {
+                            label("Highlight Height")
+                            HStack(spacing: 8) {
+                                Slider(value: $reading.highlightThickness, in: 0.6...4.0)
+                                    .frame(width: 120)
+                                Text(String(format: "%.1fx", reading.highlightThickness))
+                                    .font(.caption.monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 35, alignment: .trailing)
+                            }
+                        }
+
+                        GridRow {
+                            Text("")
+                                .frame(width: labelWidth)
+                            Menu {
+                                Button("Light Theme (Background Highlight)") {
+                                    reading.backgroundColor = kDefaultBackgroundColorLight
+                                    reading.foregroundColor = kDefaultForegroundColorLight
+                                    reading.highlightColor = "#CCCCCC"
+                                    reading.readaloudHighlightMode = "background"
+                                }
+                                Button("Dark Theme (Background Highlight)") {
+                                    reading.backgroundColor = kDefaultBackgroundColorDark
+                                    reading.foregroundColor = kDefaultForegroundColorDark
+                                    reading.highlightColor = "#333333"
+                                    reading.readaloudHighlightMode = "background"
+                                }
+                                Divider()
+                                Button("Light Theme (Text Highlight)") {
+                                    reading.backgroundColor = kDefaultBackgroundColorLight
+                                    reading.foregroundColor = kDefaultForegroundColorLight
+                                    reading.highlightColor = "#254DF4"
+                                    reading.readaloudHighlightMode = "text"
+                                }
+                                Button("Dark Theme (Text Highlight)") {
+                                    reading.backgroundColor = kDefaultBackgroundColorDark
+                                    reading.foregroundColor = kDefaultForegroundColorDark
+                                    reading.highlightColor = "#65A8EE"
+                                    reading.readaloudHighlightMode = "text"
+                                }
+                            } label: {
+                                Label("Reset Colors to Theme...", systemImage: "paintpalette")
+                            }
+                            .menuStyle(.borderlessButton)
+                            .fixedSize()
+                        }
                     }
 
                     Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 18) {
+                        GridRow {
+                            label("Highlight Style")
+                            Picker("", selection: $reading.userHighlightMode) {
+                                Text("Background").tag("background")
+                                Text("Text").tag("text")
+                            }
+                            .pickerStyle(.segmented)
+                            .frame(width: 200)
+                            .labelsHidden()
+                        }
                         GridRow {
                             label("Highlight #1 (Yellow)")
                             UserHighlightColorControl(

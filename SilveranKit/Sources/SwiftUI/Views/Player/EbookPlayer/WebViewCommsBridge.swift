@@ -308,7 +308,9 @@ class WebViewCommsBridge {
         foregroundColor: String?,
         customCSS: String?,
         singleColumnMode: Bool,
-        enableMarginClickNavigation: Bool
+        enableMarginClickNavigation: Bool,
+        userHighlightMode: String,
+        readaloudHighlightMode: String
     ) async throws {
         guard let webView = webView else {
             throw WebViewCommsBridgeError.webViewNotAvailable
@@ -328,6 +330,8 @@ class WebViewCommsBridge {
             "readaloudHighlightUnderline": readaloudHighlightUnderline,
             "singleColumnMode": singleColumnMode,
             "enableMarginClickNavigation": enableMarginClickNavigation,
+            "userHighlightMode": userHighlightMode,
+            "readaloudHighlightMode": readaloudHighlightMode,
         ]
 
         styles["backgroundColor"] = backgroundColor ?? NSNull()

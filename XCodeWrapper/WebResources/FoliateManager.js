@@ -1,5 +1,6 @@
 import "./foliate-js/view.js";
 import { Overlayer } from "./foliate-js/overlayer.js";
+import { SpanHighlighter } from "./SpanHighlighter.js";
 import { debugLog } from "./DebugConfig.js";
 import BookmarkManager from "./BookmarkManager.js";
 
@@ -106,6 +107,11 @@ const getCSS = ({
         background-color: transparent !important;
         color: inherit !important;
     }
+    /* Highlight z-index layering: text floats above SVG overlay */
+    p, span, em, strong, i, b, a, div, li, h1, h2, h3, h4, h5, h6, blockquote, dd, dt, pre, code, td, th, caption, label, figcaption {
+        position: relative !important;
+        z-index: 1 !important;
+    }
     ${customCSS || ""}
 `;
 };
@@ -137,6 +143,10 @@ class FoliateManager {
   #customCSS = null;
   #readaloudOverlayers = new Map();
   #readaloudHighlightUnderline = false;
+  #readaloudHighlightMode = "background";
+  #readaloudSpanHighlighter = new SpanHighlighter();
+  #lastSpanHighlightedElement = null;
+  #lastSpanHighlightedColor = null;
   #singleColumnMode = false;
   #enableMarginClickNavigation = true;
   #lastRelocateRange = null;
@@ -570,12 +580,18 @@ class FoliateManager {
     }
     if (styles.highlightColor !== undefined && styles.highlightColor !== null) {
       this.#highlightColor = styles.highlightColor;
+      this.#refreshReadaloudHighlight();
     }
     if (styles.highlightThickness !== undefined && styles.highlightThickness !== null) {
       this.#highlightThickness = styles.highlightThickness;
+      this.#bookmarkManager.setHighlightThickness(styles.highlightThickness);
     }
     if (styles.readaloudHighlightUnderline !== undefined && styles.readaloudHighlightUnderline !== null) {
       this.#readaloudHighlightUnderline = styles.readaloudHighlightUnderline;
+    }
+    if (styles.readaloudHighlightMode !== undefined && styles.readaloudHighlightMode !== null) {
+      this.#readaloudHighlightMode = styles.readaloudHighlightMode;
+      this.#refreshReadaloudHighlight();
     }
     if ("backgroundColor" in styles) {
       this.#backgroundColor = styles.backgroundColor;
@@ -591,6 +607,9 @@ class FoliateManager {
     }
     if (styles.enableMarginClickNavigation !== undefined && styles.enableMarginClickNavigation !== null) {
       this.#enableMarginClickNavigation = styles.enableMarginClickNavigation;
+    }
+    if (styles.userHighlightMode !== undefined && styles.userHighlightMode !== null) {
+      this.#bookmarkManager.setHighlightMode(styles.userHighlightMode);
     }
 
     this.#applyStylesToRenderer();
@@ -814,9 +833,6 @@ class FoliateManager {
     const overlayer = new Overlayer();
     const container = doc.body || doc.documentElement;
     overlayer.element.style.overflow = "visible";
-    overlayer.element.style.zIndex = "10000";
-    overlayer.element.style.setProperty("--overlayer-highlight-opacity", "0.9");
-    overlayer.element.style.setProperty("--overlayer-highlight-blend-mode", "screen");
     container.appendChild(overlayer.element);
     this.#readaloudOverlayers.set(sectionIndex, overlayer);
     return overlayer;
@@ -856,23 +872,59 @@ class FoliateManager {
 
     const overlayer = this.#getReadaloudOverlayer(sectionIndex, doc);
     const writingMode = doc.defaultView?.getComputedStyle(doc.body)?.writingMode;
-    overlayer.add(
-      "readaloud",
-      range,
-      (rects, options) => this.#drawReadaloudHighlight(rects, options),
-      {
-        color: this.#highlightColor,
-        thickness: this.#highlightThickness,
-        underline: this.#readaloudHighlightUnderline,
-        writingMode,
-      },
-    );
+
+    const elementChanged = this.#lastSpanHighlightedElement !== el;
+    const colorChanged = this.#lastSpanHighlightedColor !== this.#highlightColor;
+
+    if (this.#readaloudHighlightMode === "text") {
+      overlayer.element.style.opacity = "0";
+      overlayer.element.style.zIndex = "0";
+      overlayer.add(
+        "readaloud",
+        range,
+        (rects, options) => this.#drawReadaloudHighlight(rects, options),
+        {
+          color: this.#highlightColor,
+          thickness: this.#highlightThickness,
+          underline: this.#readaloudHighlightUnderline,
+          writingMode,
+        },
+      );
+      if (elementChanged || colorChanged) {
+        this.#readaloudSpanHighlighter.remove("readaloud");
+        this.#readaloudSpanHighlighter.add("readaloud", range.cloneRange(), this.#highlightColor);
+        this.#lastSpanHighlightedElement = el;
+        this.#lastSpanHighlightedColor = this.#highlightColor;
+      }
+    } else {
+      if (this.#lastSpanHighlightedElement) {
+        this.#readaloudSpanHighlighter.remove("readaloud");
+        this.#lastSpanHighlightedElement = null;
+      }
+      overlayer.element.style.opacity = "1";
+      overlayer.element.style.zIndex = "0";
+      overlayer.element.style.setProperty("--overlayer-highlight-opacity", "1");
+      overlayer.element.style.setProperty("--overlayer-highlight-blend-mode", "normal");
+      overlayer.add(
+        "readaloud",
+        range,
+        (rects, options) => this.#drawReadaloudHighlight(rects, options),
+        {
+          color: this.#highlightColor,
+          thickness: this.#highlightThickness,
+          underline: this.#readaloudHighlightUnderline,
+          writingMode,
+        },
+      );
+    }
   }
 
   #clearReadaloudHighlight() {
     for (const overlayer of this.#readaloudOverlayers.values()) {
       overlayer.remove("readaloud");
     }
+    this.#readaloudSpanHighlighter.remove("readaloud");
+    this.#lastSpanHighlightedElement = null;
     this.#highlightedSectionIndex = null;
   }
 

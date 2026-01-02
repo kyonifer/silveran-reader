@@ -75,6 +75,8 @@ class ReaderStyleManager {
             _ = settingsVM.customCSS
             _ = settingsVM.singleColumnMode
             _ = settingsVM.enableMarginClickNavigation
+            _ = settingsVM.userHighlightMode
+            _ = settingsVM.readaloudHighlightMode
         } onChange: {
             Task { @MainActor in
                 self.scheduleStyleUpdate()
@@ -139,7 +141,9 @@ class ReaderStyleManager {
             foregroundColor: effectiveForegroundColor,
             customCSS: effectiveCustomCSS.isEmpty ? nil : effectiveCustomCSS,
             singleColumnMode: settingsVM.singleColumnMode,
-            enableMarginClickNavigation: settingsVM.enableMarginClickNavigation
+            enableMarginClickNavigation: settingsVM.enableMarginClickNavigation,
+            userHighlightMode: settingsVM.userHighlightMode,
+            readaloudHighlightMode: settingsVM.readaloudHighlightMode
         )
     }
 }
