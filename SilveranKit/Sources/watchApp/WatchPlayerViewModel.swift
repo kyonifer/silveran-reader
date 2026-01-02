@@ -118,6 +118,14 @@ public final class WatchPlayerViewModel: NSObject {
     // MARK: - Book Loading
 
     func loadBook(_ book: BookMetadata) async {
+        let loadedBookId = await SMILPlayerActor.shared.getLoadedBookId()
+        if loadedBookId == book.uuid {
+            if let state = await SMILPlayerActor.shared.getCurrentState(), state.isPlaying {
+                debugLog("[WatchPlayerViewModel] Book already playing, skipping reload")
+                return
+            }
+        }
+
         loadSavedVolume()
         bookTitle = book.title
         currentBookId = book.uuid
@@ -156,7 +164,7 @@ public final class WatchPlayerViewModel: NSObject {
                 updateChapterDuration()
             }
 
-            restorePositionFromMetadata(book)
+            restorePosition(book)
             isLoadingPosition = false
             await loadCurrentSectionHTML()
         } catch {
@@ -377,21 +385,33 @@ public final class WatchPlayerViewModel: NSObject {
 
     // MARK: - Position Restore
 
-    private func restorePositionFromMetadata(_ book: BookMetadata) {
-        guard let position = book.position, let locator = position.locator else {
-            debugLog("[WatchPlayerViewModel] No saved position for \(book.uuid)")
-            hasRestoredPosition = true
-            return
-        }
-
-        let href = locator.href
-        let textId = locator.locations?.fragments?.first
-
-        debugLog(
-            "[WatchPlayerViewModel] Restoring position - href: \(href), fragment: \(textId ?? "nil")"
-        )
-
+    private func restorePosition(_ book: BookMetadata) {
         Task {
+            var locatorToUse: BookLocator? = nil
+
+            if let psaProgress = await ProgressSyncActor.shared.getBookProgress(for: book.uuid),
+                let psaLocator = psaProgress.locator
+            {
+                debugLog("[WatchPlayerViewModel] Got position from PSA (source: \(psaProgress.source))")
+                locatorToUse = psaLocator
+            } else if let position = book.position, let locator = position.locator {
+                debugLog("[WatchPlayerViewModel] Using position from metadata")
+                locatorToUse = locator
+            }
+
+            guard let locator = locatorToUse else {
+                debugLog("[WatchPlayerViewModel] No saved position for \(book.uuid)")
+                hasRestoredPosition = true
+                return
+            }
+
+            let href = locator.href
+            let textId = locator.locations?.fragments?.first
+
+            debugLog(
+                "[WatchPlayerViewModel] Restoring position - href: \(href), fragment: \(textId ?? "nil")"
+            )
+
             if let textId = textId {
                 if let sectionIndex = bookStructure.firstIndex(where: { section in
                     section.mediaOverlay.contains { $0.textHref == href }
