@@ -49,6 +49,10 @@ public final class SettingsViewModel {
     public var metadataRefreshIntervalSeconds: Double = 300
 
     public var showAudioIndicator: Bool = false
+    #if os(iOS)
+    public var tabBarSlot1: String = "books"
+    public var tabBarSlot2: String = "series"
+    #endif
 
     public var userHighlightColor1: String = "#B5B83E"
     public var userHighlightColor2: String = "#4E90C7"
@@ -147,6 +151,10 @@ public final class SettingsViewModel {
         metadataRefreshIntervalSeconds = config.sync.metadataRefreshIntervalSeconds
 
         showAudioIndicator = config.library.showAudioIndicator
+        #if os(iOS)
+        tabBarSlot1 = config.library.tabBarSlot1
+        tabBarSlot2 = config.library.tabBarSlot2
+        #endif
 
         userHighlightColor1 = config.reading.userHighlightColor1
         userHighlightColor2 = config.reading.userHighlightColor2
@@ -216,13 +224,19 @@ public final class SettingsViewModel {
             metadataRefreshIntervalSeconds: metadataRefreshIntervalSeconds,
             showAudioIndicator: showAudioIndicator,
             userHighlightMode: userHighlightMode,
-            readaloudHighlightMode: readaloudHighlightMode
+            readaloudHighlightMode: readaloudHighlightMode,
+            tabBarSlot1: tabBarSlot1Value,
+            tabBarSlot2: tabBarSlot2Value
         )
     }
 
     #if os(iOS)
     private var alwaysShowMiniPlayerValue: Bool { alwaysShowMiniPlayer }
+    private var tabBarSlot1Value: String { tabBarSlot1 }
+    private var tabBarSlot2Value: String { tabBarSlot2 }
     #else
     private var alwaysShowMiniPlayerValue: Bool { false }
+    private var tabBarSlot1Value: String { "books" }
+    private var tabBarSlot2Value: String { "series" }
     #endif
 }

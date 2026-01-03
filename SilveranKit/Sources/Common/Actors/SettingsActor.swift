@@ -189,11 +189,17 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
 
     public struct Library: Codable, Equatable, Sendable {
         public var showAudioIndicator: Bool
+        public var tabBarSlot1: String
+        public var tabBarSlot2: String
 
         public init(
-            showAudioIndicator: Bool = true
+            showAudioIndicator: Bool = true,
+            tabBarSlot1: String = "books",
+            tabBarSlot2: String = "series"
         ) {
             self.showAudioIndicator = showAudioIndicator
+            self.tabBarSlot1 = tabBarSlot1
+            self.tabBarSlot2 = tabBarSlot2
         }
     }
 }
@@ -276,7 +282,9 @@ public actor SettingsActor {
         userHighlightColor5: String? = nil,
         userHighlightColor6: String? = nil,
         userHighlightMode: String? = nil,
-        readaloudHighlightMode: String? = nil
+        readaloudHighlightMode: String? = nil,
+        tabBarSlot1: String? = nil,
+        tabBarSlot2: String? = nil
     ) throws {
         var updated = config
 
@@ -335,6 +343,12 @@ public actor SettingsActor {
         }
         if let showAudioIndicator {
             updated.library.showAudioIndicator = showAudioIndicator
+        }
+        if let tabBarSlot1 {
+            updated.library.tabBarSlot1 = tabBarSlot1
+        }
+        if let tabBarSlot2 {
+            updated.library.tabBarSlot2 = tabBarSlot2
         }
         if let userHighlightColor1 {
             updated.reading.userHighlightColor1 = userHighlightColor1

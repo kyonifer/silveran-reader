@@ -1,6 +1,36 @@
 #if os(iOS)
 import SwiftUI
 
+public enum ConfigurableTab: String, CaseIterable, Identifiable {
+    case books
+    case series
+    case authors
+    case collections
+    case downloaded
+
+    public var id: String { rawValue }
+
+    public var label: String {
+        switch self {
+            case .books: "Books"
+            case .series: "Series"
+            case .authors: "Authors"
+            case .collections: "Collections"
+            case .downloaded: "Downloaded"
+        }
+    }
+
+    public var iconName: String {
+        switch self {
+            case .books: "books.vertical.fill"
+            case .series: "square.stack.fill"
+            case .authors: "person.2.fill"
+            case .collections: "rectangle.stack"
+            case .downloaded: "arrow.down.circle.fill"
+        }
+    }
+}
+
 public struct iOSLibraryView: View {
     @State private var searchText: String = ""
     @State private var selectedTab: Tab = .home
@@ -9,7 +39,9 @@ public struct iOSLibraryView: View {
     @State private var sections: [SidebarSectionDescription] = LibrarySidebarDefaults.getSections()
     @State private var selectedItem: SidebarItemDescription? = nil
     @State private var moreNavigationPath = NavigationPath()
+    @State private var collectionsNavigationPath = NavigationPath()
     @State private var showCarPlayPlayer: Bool = false
+    @State private var settingsViewModel = SettingsViewModel()
     @Environment(MediaViewModel.self) private var mediaViewModel: MediaViewModel
 
     public init() {}
@@ -41,28 +73,36 @@ public struct iOSLibraryView: View {
         return "wifi.slash"
     }
 
-    enum Tab: String, CaseIterable {
+    enum Tab: Hashable {
         case home
-        case books
-        case series
+        case slot1
+        case slot2
         case more
+    }
 
-        var label: String {
-            switch self {
-                case .home: "Home"
-                case .books: "Books"
-                case .series: "Series"
-                case .more: "More"
-            }
+    private var slot1Tab: ConfigurableTab {
+        ConfigurableTab(rawValue: settingsViewModel.tabBarSlot1) ?? .books
+    }
+
+    private var slot2Tab: ConfigurableTab {
+        ConfigurableTab(rawValue: settingsViewModel.tabBarSlot2) ?? .series
+    }
+
+    private func tabLabel(for tab: Tab) -> String {
+        switch tab {
+            case .home: "Home"
+            case .slot1: slot1Tab.label
+            case .slot2: slot2Tab.label
+            case .more: "More"
         }
+    }
 
-        var iconName: String {
-            switch self {
-                case .home: "house.fill"
-                case .books: "books.vertical.fill"
-                case .series: "square.stack.fill"
-                case .more: "ellipsis.circle.fill"
-            }
+    private func tabIcon(for tab: Tab) -> String {
+        switch tab {
+            case .home: "house.fill"
+            case .slot1: slot1Tab.iconName
+            case .slot2: slot2Tab.iconName
+            case .more: "ellipsis.circle.fill"
         }
     }
 
@@ -70,28 +110,29 @@ public struct iOSLibraryView: View {
         TabView(selection: $selectedTab) {
             homeTab
                 .tabItem {
-                    Label(Tab.home.label, systemImage: Tab.home.iconName)
+                    Label(tabLabel(for: .home), systemImage: tabIcon(for: .home))
                 }
                 .tag(Tab.home)
 
-            booksTab
+            configurableTabView(for: slot1Tab)
                 .tabItem {
-                    Label(Tab.books.label, systemImage: Tab.books.iconName)
+                    Label(tabLabel(for: .slot1), systemImage: tabIcon(for: .slot1))
                 }
-                .tag(Tab.books)
+                .tag(Tab.slot1)
 
-            seriesTab
+            configurableTabView(for: slot2Tab)
                 .tabItem {
-                    Label(Tab.series.label, systemImage: Tab.series.iconName)
+                    Label(tabLabel(for: .slot2), systemImage: tabIcon(for: .slot2))
                 }
-                .tag(Tab.series)
+                .tag(Tab.slot2)
 
             moreTab
                 .tabItem {
-                    Label(Tab.more.label, systemImage: Tab.more.iconName)
+                    Label(tabLabel(for: .more), systemImage: tabIcon(for: .more))
                 }
                 .tag(Tab.more)
         }
+        .id("\(settingsViewModel.tabBarSlot1)-\(settingsViewModel.tabBarSlot2)")
         .onChange(of: selectedTab) { _, _ in
             searchText = ""
         }
@@ -185,63 +226,36 @@ public struct iOSLibraryView: View {
         )
     }
 
-    private var booksTab: some View {
-        NavigationStack {
-            MediaGridView(
-                title: "All Books",
-                searchText: searchText,
-                mediaKind: .ebook,
-                tagFilter: nil,
-                seriesFilter: nil,
-                statusFilter: nil,
-                defaultSort: "titleAZ",
-                preferredTileWidth: 110,
-                minimumTileWidth: 90,
-                columnBreakpoints: [
-                    MediaGridView.ColumnBreakpoint(columns: 3, minWidth: 0)
-                ],
-                initialNarrationFilterOption: .both
-            )
-            .navigationTitle("Books")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    HStack(spacing: 12) {
-                        if hasConnectionError {
-                            Button {
-                                showOfflineSheet = true
-                            } label: {
-                                Image(systemName: connectionErrorIcon)
-                                    .foregroundStyle(.red)
-                            }
-                        }
-                        Button {
-                            showSettings = true
-                        } label: {
-                            Label("Settings", systemImage: "gearshape")
-                        }
-                    }
-                }
-            }
-            .searchable(
-                text: $searchText,
-                placement: .navigationBarDrawer(displayMode: .always),
-                prompt: "Search"
-            )
-            .navigationDestination(for: BookMetadata.self) { item in
-                iOSBookDetailView(item: item, mediaKind: .ebook)
-                    .iOSLibraryToolbar(
-                        showSettings: $showSettings,
-                        showOfflineSheet: $showOfflineSheet
-                    )
-            }
-            .navigationDestination(for: PlayerBookData.self) { bookData in
-                playerView(for: bookData)
-            }
+    @ViewBuilder
+    private func configurableTabView(for tab: ConfigurableTab) -> some View {
+        switch tab {
+            case .books:
+                booksTabContent
+            case .series:
+                seriesTabContent
+            case .authors:
+                authorsTabContent
+            case .collections:
+                collectionsTabContent
+            case .downloaded:
+                downloadedTabContent
         }
     }
 
-    private var seriesTab: some View {
+    private var booksTabContent: some View {
+        NavigationStack {
+            BooksContentView(searchText: searchText)
+                .iOSLibraryToolbar(showSettings: $showSettings, showOfflineSheet: $showOfflineSheet)
+                .searchable(
+                    text: $searchText,
+                    placement: .navigationBarDrawer(displayMode: .always),
+                    prompt: "Search"
+                )
+                .libraryNavigationDestinations(showSettings: $showSettings, showOfflineSheet: $showOfflineSheet)
+        }
+    }
+
+    private var seriesTabContent: some View {
         SeriesView(
             mediaKind: .ebook,
             searchText: $searchText,
@@ -252,13 +266,56 @@ public struct iOSLibraryView: View {
         )
     }
 
+    private var authorsTabContent: some View {
+        NavigationStack {
+            AuthorsListView(searchText: $searchText)
+                .iOSLibraryToolbar(showSettings: $showSettings, showOfflineSheet: $showOfflineSheet)
+                .searchable(
+                    text: $searchText,
+                    placement: .navigationBarDrawer(displayMode: .always),
+                    prompt: "Search"
+                )
+                .libraryNavigationDestinations(showSettings: $showSettings, showOfflineSheet: $showOfflineSheet)
+        }
+    }
+
+    private var collectionsTabContent: some View {
+        NavigationStack(path: $collectionsNavigationPath) {
+            CollectionsListView(
+                searchText: $searchText,
+                navigationPath: $collectionsNavigationPath
+            )
+            .iOSLibraryToolbar(showSettings: $showSettings, showOfflineSheet: $showOfflineSheet)
+            .searchable(
+                text: $searchText,
+                placement: .navigationBarDrawer(displayMode: .always),
+                prompt: "Search"
+            )
+            .libraryNavigationDestinations(showSettings: $showSettings, showOfflineSheet: $showOfflineSheet)
+        }
+    }
+
+    private var downloadedTabContent: some View {
+        NavigationStack {
+            DownloadedContentView(searchText: searchText)
+                .iOSLibraryToolbar(showSettings: $showSettings, showOfflineSheet: $showOfflineSheet)
+                .searchable(
+                    text: $searchText,
+                    placement: .navigationBarDrawer(displayMode: .always),
+                    prompt: "Search"
+                )
+                .libraryNavigationDestinations(showSettings: $showSettings, showOfflineSheet: $showOfflineSheet)
+        }
+    }
+
     private var moreTab: some View {
         NavigationStack(path: $moreNavigationPath) {
             MoreMenuView(
                 searchText: $searchText,
                 showSettings: $showSettings,
                 showOfflineSheet: $showOfflineSheet,
-                navigationPath: $moreNavigationPath
+                navigationPath: $moreNavigationPath,
+                excludedTabs: [slot1Tab, slot2Tab]
             )
         }
     }
@@ -281,10 +338,13 @@ struct MoreMenuView: View {
     @Binding var showSettings: Bool
     @Binding var showOfflineSheet: Bool
     @Binding var navigationPath: NavigationPath
+    var excludedTabs: [ConfigurableTab] = []
     @Environment(MediaViewModel.self) private var mediaViewModel
     @State private var isWatchPaired = false
 
     enum MoreDestination: Hashable {
+        case books
+        case series
         case authors
         case collections
         case downloaded
@@ -305,17 +365,37 @@ struct MoreMenuView: View {
         return "wifi.slash"
     }
 
+    private func isExcluded(_ tab: ConfigurableTab) -> Bool {
+        excludedTabs.contains(tab)
+    }
+
     var body: some View {
         List {
             Section {
-                NavigationLink(value: MoreDestination.authors) {
-                    Label("Authors", systemImage: "person.2.fill")
+                if !isExcluded(.books) {
+                    NavigationLink(value: MoreDestination.books) {
+                        Label("Books", systemImage: "books.vertical.fill")
+                    }
                 }
-                NavigationLink(value: MoreDestination.collections) {
-                    Label("Custom Collections", systemImage: "rectangle.stack")
+                if !isExcluded(.series) {
+                    NavigationLink(value: MoreDestination.series) {
+                        Label("Series", systemImage: "square.stack.fill")
+                    }
                 }
-                NavigationLink(value: MoreDestination.downloaded) {
-                    Label("Downloaded", systemImage: "arrow.down.circle.fill")
+                if !isExcluded(.authors) {
+                    NavigationLink(value: MoreDestination.authors) {
+                        Label("Authors", systemImage: "person.2.fill")
+                    }
+                }
+                if !isExcluded(.collections) {
+                    NavigationLink(value: MoreDestination.collections) {
+                        Label("Collections", systemImage: "rectangle.stack")
+                    }
+                }
+                if !isExcluded(.downloaded) {
+                    NavigationLink(value: MoreDestination.downloaded) {
+                        Label("Downloaded", systemImage: "arrow.down.circle.fill")
+                    }
                 }
                 NavigationLink(value: MoreDestination.addLocalFile) {
                     Label("Manage Local Files", systemImage: "folder.badge.plus")
@@ -353,120 +433,91 @@ struct MoreMenuView: View {
         }
         .navigationDestination(for: MoreDestination.self) { destination in
             switch destination {
+                case .books:
+                    BooksContentView(searchText: searchText)
+                        .iOSLibraryToolbar(showSettings: $showSettings, showOfflineSheet: $showOfflineSheet)
+                case .series:
+                    SeriesContentView(searchText: $searchText)
+                        .iOSLibraryToolbar(showSettings: $showSettings, showOfflineSheet: $showOfflineSheet)
                 case .authors:
                     AuthorsListView(searchText: $searchText)
-                        .iOSLibraryToolbar(
-                            showSettings: $showSettings,
-                            showOfflineSheet: $showOfflineSheet
-                        )
+                        .iOSLibraryToolbar(showSettings: $showSettings, showOfflineSheet: $showOfflineSheet)
                 case .collections:
-                    CollectionsListView(
-                        searchText: $searchText,
-                        navigationPath: $navigationPath
-                    )
-                    .iOSLibraryToolbar(
-                        showSettings: $showSettings,
-                        showOfflineSheet: $showOfflineSheet
-                    )
+                    CollectionsListView(searchText: $searchText, navigationPath: $navigationPath)
+                        .iOSLibraryToolbar(showSettings: $showSettings, showOfflineSheet: $showOfflineSheet)
                 case .downloaded:
-                    MediaGridView(
-                        title: "Downloaded",
-                        searchText: searchText,
-                        mediaKind: .ebook,
-                        tagFilter: nil,
-                        seriesFilter: nil,
-                        statusFilter: nil,
-                        defaultSort: "titleAZ",
-                        preferredTileWidth: 110,
-                        minimumTileWidth: 90,
-                        columnBreakpoints: [
-                            MediaGridView.ColumnBreakpoint(columns: 3, minWidth: 0)
-                        ],
-                        initialNarrationFilterOption: .both,
-                        initialLocationFilter: .downloaded
-                    )
-                    .navigationTitle("Downloaded")
-                    .navigationBarTitleDisplayMode(.inline)
-                    .iOSLibraryToolbar(
-                        showSettings: $showSettings,
-                        showOfflineSheet: $showOfflineSheet
-                    )
+                    DownloadedContentView(searchText: searchText)
+                        .iOSLibraryToolbar(showSettings: $showSettings, showOfflineSheet: $showOfflineSheet)
                 case .addLocalFile:
                     ImportLocalFileView()
                         .navigationTitle("Manage Local Files")
                         .navigationBarTitleDisplayMode(.inline)
-                        .iOSLibraryToolbar(
-                            showSettings: $showSettings,
-                            showOfflineSheet: $showOfflineSheet
-                        )
+                        .iOSLibraryToolbar(showSettings: $showSettings, showOfflineSheet: $showOfflineSheet)
                 case .appleWatch:
                     WatchTransferView()
-                        .iOSLibraryToolbar(
-                            showSettings: $showSettings,
-                            showOfflineSheet: $showOfflineSheet
-                        )
+                        .iOSLibraryToolbar(showSettings: $showSettings, showOfflineSheet: $showOfflineSheet)
             }
         }
-        .navigationDestination(for: String.self) { authorName in
-            MediaGridView(
-                title: authorName,
-                searchText: "",
-                mediaKind: .ebook,
-                tagFilter: nil,
-                seriesFilter: nil,
-                authorFilter: authorName,
-                statusFilter: nil,
-                defaultSort: "title",
-                preferredTileWidth: 110,
-                minimumTileWidth: 90,
-                columnBreakpoints: [
-                    MediaGridView.ColumnBreakpoint(columns: 3, minWidth: 0)
-                ],
-                initialNarrationFilterOption: .both
-            )
-            .navigationTitle(authorName)
-            .iOSLibraryToolbar(showSettings: $showSettings, showOfflineSheet: $showOfflineSheet)
-        }
-        .navigationDestination(for: CollectionNavIdentifier.self) { collection in
-            MediaGridView(
-                title: collection.name,
-                searchText: "",
-                mediaKind: .ebook,
-                tagFilter: nil,
-                seriesFilter: nil,
-                collectionFilter: collection.id,
-                statusFilter: nil,
-                defaultSort: "titleAZ",
-                preferredTileWidth: 110,
-                minimumTileWidth: 90,
-                columnBreakpoints: [
-                    MediaGridView.ColumnBreakpoint(columns: 3, minWidth: 0)
-                ],
-                initialNarrationFilterOption: .both
-            )
-            .navigationTitle(collection.name)
-            .iOSLibraryToolbar(showSettings: $showSettings, showOfflineSheet: $showOfflineSheet)
-        }
-        .navigationDestination(for: BookMetadata.self) { item in
-            iOSBookDetailView(item: item, mediaKind: .ebook)
-                .iOSLibraryToolbar(showSettings: $showSettings, showOfflineSheet: $showOfflineSheet)
-        }
-        .navigationDestination(for: PlayerBookData.self) { bookData in
-            switch bookData.category {
-                case .audio:
-                    AudiobookPlayerView(bookData: bookData)
-                        .navigationBarTitleDisplayMode(.inline)
-                case .ebook, .synced:
-                    EbookPlayerView(bookData: bookData)
-                        .navigationBarTitleDisplayMode(.inline)
-            }
-        }
+        .libraryNavigationDestinations(showSettings: $showSettings, showOfflineSheet: $showOfflineSheet)
     }
 }
 
 struct CollectionNavIdentifier: Hashable {
     let id: String
     let name: String
+}
+
+struct SeriesNavIdentifier: Hashable {
+    let name: String
+}
+
+struct BooksContentView: View {
+    let searchText: String
+
+    var body: some View {
+        MediaGridView(
+            title: "All Books",
+            searchText: searchText,
+            mediaKind: .ebook,
+            tagFilter: nil,
+            seriesFilter: nil,
+            statusFilter: nil,
+            defaultSort: "titleAZ",
+            preferredTileWidth: 110,
+            minimumTileWidth: 90,
+            columnBreakpoints: [
+                MediaGridView.ColumnBreakpoint(columns: 3, minWidth: 0)
+            ],
+            initialNarrationFilterOption: .both
+        )
+        .navigationTitle("Books")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+struct DownloadedContentView: View {
+    let searchText: String
+
+    var body: some View {
+        MediaGridView(
+            title: "Downloaded",
+            searchText: searchText,
+            mediaKind: .ebook,
+            tagFilter: nil,
+            seriesFilter: nil,
+            statusFilter: nil,
+            defaultSort: "titleAZ",
+            preferredTileWidth: 110,
+            minimumTileWidth: 90,
+            columnBreakpoints: [
+                MediaGridView.ColumnBreakpoint(columns: 3, minWidth: 0)
+            ],
+            initialNarrationFilterOption: .both,
+            initialLocationFilter: .downloaded
+        )
+        .navigationTitle("Downloaded")
+        .navigationBarTitleDisplayMode(.inline)
+    }
 }
 
 struct CollectionsListView: View {
@@ -718,6 +769,127 @@ struct AuthorsListView: View {
     }
 }
 
+struct SeriesContentView: View {
+    @Binding var searchText: String
+    @Environment(MediaViewModel.self) private var mediaViewModel
+    @State private var settingsViewModel = SettingsViewModel()
+
+    private let horizontalPadding: CGFloat = 24
+    private let sectionSpacing: CGFloat = 32
+
+    var body: some View {
+        GeometryReader { geometry in
+            let contentWidth = geometry.size.width
+            ScrollView {
+                VStack(alignment: .leading, spacing: sectionSpacing) {
+                    seriesContent(contentWidth: contentWidth)
+                }
+                .padding(.horizontal, horizontalPadding)
+                .padding(.top, 24)
+                .padding(.bottom, 40)
+            }
+        }
+        .navigationTitle("Series")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    @ViewBuilder
+    private func seriesContent(contentWidth: CGFloat) -> some View {
+        let seriesGroups = mediaViewModel.booksBySeries(for: .ebook)
+        let filteredGroups = filterSeries(seriesGroups)
+
+        if filteredGroups.isEmpty {
+            emptyStateView
+        } else {
+            ForEach(Array(filteredGroups.enumerated()), id: \.offset) { _, group in
+                seriesSection(
+                    series: group.series,
+                    books: group.books,
+                    contentWidth: contentWidth
+                )
+            }
+        }
+    }
+
+    private var emptyStateView: some View {
+        VStack(spacing: 12) {
+            Text("No series found")
+                .font(.title)
+                .foregroundStyle(.secondary)
+            Text(
+                "Books with series information will appear here."
+            )
+            .font(.body)
+            .foregroundStyle(.tertiary)
+            .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: 500)
+        .frame(maxWidth: .infinity, alignment: .center)
+        .padding(.top, 60)
+    }
+
+    private func filterSeries(
+        _ groups: [(series: BookSeries?, books: [BookMetadata])]
+    ) -> [(series: BookSeries?, books: [BookMetadata])] {
+        guard !searchText.isEmpty else { return groups }
+        let searchLower = searchText.lowercased()
+        return groups.compactMap { group in
+            let seriesNameMatches =
+                group.series?.name.lowercased().contains(searchLower) ?? false
+            if seriesNameMatches {
+                return (series: group.series, books: group.books)
+            }
+            let filteredBooks = group.books.filter { book in
+                book.title.lowercased().contains(searchLower)
+                    || book.authors?.contains(where: {
+                        $0.name?.lowercased().contains(searchLower) ?? false
+                    }) ?? false
+            }
+            guard !filteredBooks.isEmpty else { return nil }
+            return (series: group.series, books: filteredBooks)
+        }
+    }
+
+    @ViewBuilder
+    private func seriesSection(
+        series: BookSeries?,
+        books: [BookMetadata],
+        contentWidth: CGFloat
+    ) -> some View {
+        let seriesName = series?.name ?? "Unknown Series"
+        let stackWidth = max(contentWidth - (horizontalPadding * 2), 100)
+
+        VStack(alignment: .center, spacing: 12) {
+            SeriesStackView(
+                books: books,
+                mediaKind: .ebook,
+                availableWidth: stackWidth,
+                showAudioIndicator: settingsViewModel.showAudioIndicator,
+                onSelect: { _ in },
+                onInfo: { _ in }
+            )
+            .frame(maxWidth: stackWidth, alignment: .center)
+
+            VStack(alignment: .center, spacing: 6) {
+                NavigationLink(value: SeriesNavIdentifier(name: seriesName)) {
+                    Text(seriesName)
+                        .font(.system(size: 20, weight: .regular))
+                        .foregroundStyle(.primary)
+                }
+                .buttonStyle(.plain)
+                .frame(maxWidth: .infinity, alignment: .center)
+
+                Text("\(books.count) book\(books.count == 1 ? "" : "s")")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+            }
+            .padding(.top, 8)
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
+
 struct OfflineStatusSheet: View {
     enum ErrorType: Equatable {
         case networkOffline
@@ -937,6 +1109,94 @@ struct CarPlayNowPlayingBanner: View {
             .background(Color.accentColor)
         }
         .buttonStyle(.plain)
+    }
+}
+
+struct LibraryNavigationDestinations: ViewModifier {
+    @Binding var showSettings: Bool
+    @Binding var showOfflineSheet: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .navigationDestination(for: BookMetadata.self) { item in
+                iOSBookDetailView(item: item, mediaKind: .ebook)
+                    .iOSLibraryToolbar(showSettings: $showSettings, showOfflineSheet: $showOfflineSheet)
+            }
+            .navigationDestination(for: PlayerBookData.self) { bookData in
+                switch bookData.category {
+                    case .audio:
+                        AudiobookPlayerView(bookData: bookData)
+                            .navigationBarTitleDisplayMode(.inline)
+                    case .ebook, .synced:
+                        EbookPlayerView(bookData: bookData)
+                            .navigationBarTitleDisplayMode(.inline)
+                }
+            }
+            .navigationDestination(for: String.self) { authorName in
+                MediaGridView(
+                    title: authorName,
+                    searchText: "",
+                    mediaKind: .ebook,
+                    tagFilter: nil,
+                    seriesFilter: nil,
+                    authorFilter: authorName,
+                    statusFilter: nil,
+                    defaultSort: "title",
+                    preferredTileWidth: 110,
+                    minimumTileWidth: 90,
+                    columnBreakpoints: [
+                        MediaGridView.ColumnBreakpoint(columns: 3, minWidth: 0)
+                    ],
+                    initialNarrationFilterOption: .both
+                )
+                .navigationTitle(authorName)
+                .iOSLibraryToolbar(showSettings: $showSettings, showOfflineSheet: $showOfflineSheet)
+            }
+            .navigationDestination(for: SeriesNavIdentifier.self) { series in
+                MediaGridView(
+                    title: series.name,
+                    searchText: "",
+                    mediaKind: .ebook,
+                    tagFilter: nil,
+                    seriesFilter: series.name,
+                    statusFilter: nil,
+                    defaultSort: "titleAZ",
+                    preferredTileWidth: 110,
+                    minimumTileWidth: 90,
+                    columnBreakpoints: [
+                        MediaGridView.ColumnBreakpoint(columns: 3, minWidth: 0)
+                    ],
+                    initialNarrationFilterOption: .both
+                )
+                .navigationTitle(series.name)
+                .iOSLibraryToolbar(showSettings: $showSettings, showOfflineSheet: $showOfflineSheet)
+            }
+            .navigationDestination(for: CollectionNavIdentifier.self) { collection in
+                MediaGridView(
+                    title: collection.name,
+                    searchText: "",
+                    mediaKind: .ebook,
+                    tagFilter: nil,
+                    seriesFilter: nil,
+                    collectionFilter: collection.id,
+                    statusFilter: nil,
+                    defaultSort: "titleAZ",
+                    preferredTileWidth: 110,
+                    minimumTileWidth: 90,
+                    columnBreakpoints: [
+                        MediaGridView.ColumnBreakpoint(columns: 3, minWidth: 0)
+                    ],
+                    initialNarrationFilterOption: .both
+                )
+                .navigationTitle(collection.name)
+                .iOSLibraryToolbar(showSettings: $showSettings, showOfflineSheet: $showOfflineSheet)
+            }
+    }
+}
+
+extension View {
+    func libraryNavigationDestinations(showSettings: Binding<Bool>, showOfflineSheet: Binding<Bool>) -> some View {
+        modifier(LibraryNavigationDestinations(showSettings: showSettings, showOfflineSheet: showOfflineSheet))
     }
 }
 #endif

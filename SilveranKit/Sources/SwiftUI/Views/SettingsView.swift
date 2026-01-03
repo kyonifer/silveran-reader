@@ -187,7 +187,9 @@ public struct SettingsView: View {
                     userHighlightColor5: newValue.reading.userHighlightColor5,
                     userHighlightColor6: newValue.reading.userHighlightColor6,
                     userHighlightMode: newValue.reading.userHighlightMode,
-                    readaloudHighlightMode: newValue.reading.readaloudHighlightMode
+                    readaloudHighlightMode: newValue.reading.readaloudHighlightMode,
+                    tabBarSlot1: newValue.library.tabBarSlot1,
+                    tabBarSlot2: newValue.library.tabBarSlot2
                 )
             } catch {
                 await MainActor.run {
@@ -280,6 +282,19 @@ extension SettingsView {
             Form {
                 Section("General") {
                     GeneralSettingsFields(sync: $config.sync)
+                }
+
+                Section("Tab Bar") {
+                    Picker("First Tab", selection: $config.library.tabBarSlot1) {
+                        ForEach(ConfigurableTab.allCases) { tab in
+                            Text(tab.label).tag(tab.rawValue)
+                        }
+                    }
+                    Picker("Second Tab", selection: $config.library.tabBarSlot2) {
+                        ForEach(ConfigurableTab.allCases) { tab in
+                            Text(tab.label).tag(tab.rawValue)
+                        }
+                    }
                 }
 
                 Section("Server Configuration") {
