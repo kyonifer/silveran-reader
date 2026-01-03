@@ -180,6 +180,7 @@ public struct SettingsView: View {
                     alwaysShowMiniPlayer: newValue.readingBar.alwaysShowMiniPlayer,
                     progressSyncIntervalSeconds: newValue.sync.progressSyncIntervalSeconds,
                     metadataRefreshIntervalSeconds: newValue.sync.metadataRefreshIntervalSeconds,
+                    autoSyncToNewerServerPosition: newValue.sync.autoSyncToNewerServerPosition,
                     userHighlightColor1: newValue.reading.userHighlightColor1,
                     userHighlightColor2: newValue.reading.userHighlightColor2,
                     userHighlightColor3: newValue.reading.userHighlightColor3,
@@ -471,6 +472,15 @@ private struct MacGeneralSettingsView: View {
                         }
                     }
                 }
+
+                Divider()
+                    .padding(.vertical, 8)
+
+                Toggle(
+                    "Auto-sync to newer server position",
+                    isOn: $sync.autoSyncToNewerServerPosition
+                )
+                .help("Automatically navigate to a newer reading position synced from another device")
             }
 
         }
@@ -1238,6 +1248,11 @@ private struct GeneralSettingsFields: View {
                 .pickerStyle(.menu)
             }
         }
+
+        Toggle(
+            "Auto-sync to newer server position",
+            isOn: $sync.autoSyncToNewerServerPosition
+        )
     }
 
     private func formatInterval(_ seconds: Double) -> String {

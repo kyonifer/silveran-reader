@@ -82,6 +82,26 @@ class EbookPlayerViewModel {
     var highlights: [Highlight] = []
     var pendingSelection: TextSelectionMessage? = nil
 
+    var showServerPositionDialog = false
+    var pendingServerPosition: IncomingServerPosition? = nil
+    private var incomingPositionObserverId: UUID? = nil
+
+    var serverPositionDescription: String {
+        guard let position = pendingServerPosition else {
+            return "Another device has synced a more recent reading position."
+        }
+        let locator = position.locator
+        var details: [String] = []
+        if let title = locator.title {
+            details.append(title)
+        }
+        if let prog = locator.locations?.totalProgression {
+            details.append("\(Int(prog * 100))%")
+        }
+        let locationStr = details.isEmpty ? "" : " (\(details.joined(separator: ", ")))"
+        return "Another device has synced a more recent reading position\(locationStr). Would you like to go to that location?"
+    }
+
     var bookmarks: [Highlight] {
         highlights.filter { $0.isBookmark }.sorted { $0.createdAt > $1.createdAt }
     }
@@ -283,7 +303,48 @@ class EbookPlayerViewModel {
             } else {
                 debugLog("[EbookPlayerViewModel] No local ebook file found")
             }
+
+            registerIncomingPositionObserver(bookId: data.metadata.uuid)
         }
+    }
+
+    private func registerIncomingPositionObserver(bookId: String) {
+        Task {
+            incomingPositionObserverId = await ProgressSyncActor.shared.addIncomingPositionObserver(
+                for: bookId
+            ) { [weak self] position in
+                guard let self else { return }
+
+                if self.settingsVM.autoSyncToNewerServerPosition {
+                    Task {
+                        await self.navigateToServerPosition(position.locator)
+                    }
+                } else {
+                    self.pendingServerPosition = position
+                    self.showServerPositionDialog = true
+                }
+            }
+            debugLog("[EbookPlayerViewModel] Registered incoming position observer for \(bookId)")
+        }
+    }
+
+    func navigateToServerPosition(_ locator: BookLocator) async {
+        debugLog("[EbookPlayerViewModel] Navigating to server position: \(locator.href)")
+        progressManager?.handleServerPositionUpdate(locator)
+    }
+
+    func acceptServerPosition() {
+        guard let position = pendingServerPosition else { return }
+        Task {
+            await navigateToServerPosition(position.locator)
+        }
+        pendingServerPosition = nil
+        showServerPositionDialog = false
+    }
+
+    func declineServerPosition() {
+        pendingServerPosition = nil
+        showServerPositionDialog = false
     }
 
     private func loadBookIntoActor(epubPath: URL) async {
@@ -404,6 +465,13 @@ class EbookPlayerViewModel {
     func handleOnDisappear() {
         debugLog("[EbookPlayerViewModel] View disappearing")
         debugLog("[EbookPlayerViewModel] Window closing")
+
+        if let id = incomingPositionObserverId {
+            Task {
+                await ProgressSyncActor.shared.removeIncomingPositionObserver(id: id)
+            }
+            incomingPositionObserverId = nil
+        }
 
         Task { @MainActor in
             await mediaOverlayManager?.cleanup()

@@ -47,6 +47,7 @@ public final class SettingsViewModel {
 
     public var progressSyncIntervalSeconds: Double = kDefaultProgressSyncIntervalSeconds
     public var metadataRefreshIntervalSeconds: Double = kDefaultMetadataRefreshIntervalSeconds
+    public var autoSyncToNewerServerPosition: Bool = kDefaultAutoSyncToNewerServerPosition
 
     public var showAudioIndicator: Bool = kDefaultShowAudioIndicator
     #if os(iOS)
@@ -149,6 +150,7 @@ public final class SettingsViewModel {
 
         progressSyncIntervalSeconds = config.sync.progressSyncIntervalSeconds
         metadataRefreshIntervalSeconds = config.sync.metadataRefreshIntervalSeconds
+        autoSyncToNewerServerPosition = config.sync.autoSyncToNewerServerPosition
 
         showAudioIndicator = config.library.showAudioIndicator
         #if os(iOS)
@@ -222,6 +224,7 @@ public final class SettingsViewModel {
             alwaysShowMiniPlayer: alwaysShowMiniPlayerValue,
             progressSyncIntervalSeconds: progressSyncIntervalSeconds,
             metadataRefreshIntervalSeconds: metadataRefreshIntervalSeconds,
+            autoSyncToNewerServerPosition: autoSyncToNewerServerPosition,
             showAudioIndicator: showAudioIndicator,
             userHighlightMode: userHighlightMode,
             readaloudHighlightMode: readaloudHighlightMode,

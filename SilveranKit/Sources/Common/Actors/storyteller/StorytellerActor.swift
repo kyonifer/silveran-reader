@@ -1966,6 +1966,20 @@ public actor StorytellerActor {
         return locator
     }
 
+    public func fetchBookProgress(bookId: String) async -> BookReadingPosition? {
+        debugLog("[StorytellerActor] fetchBookProgress: bookId=\(bookId)")
+
+        guard let metadata = await fetchBookDetails(for: bookId) else {
+            debugLog("[StorytellerActor] fetchBookProgress: failed to fetch metadata")
+            return nil
+        }
+
+        debugLog(
+            "[StorytellerActor] fetchBookProgress: returning position with timestamp=\(metadata.position?.timestamp ?? 0)"
+        )
+        return metadata.position
+    }
+
     // TODO: Remaining API wrappers
     // - `/api/v2/books/events` (storyteller/web/src/app/api/v2/books/events/route.ts) – real-time catalogue updates.
     // - `/api/v2/books` POST/DELETE (storyteller/web/src/app/api/v2/books/route.ts) – server-side ingest utilities.

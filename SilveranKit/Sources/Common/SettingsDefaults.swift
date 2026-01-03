@@ -51,6 +51,7 @@ public let kDefaultAlwaysShowMiniPlayer = false
 public let kDefaultProgressSyncIntervalSeconds: Double = 30
 public let kDefaultMetadataRefreshIntervalSeconds: Double = 300
 public let kDefaultIsManuallyOffline = false
+public let kDefaultAutoSyncToNewerServerPosition = false
 
 // MARK: - Library Settings
 

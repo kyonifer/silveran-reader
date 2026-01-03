@@ -159,6 +159,8 @@ public final class MediaViewModel {
                     }
                 }
 
+                await ProgressSyncActor.shared.startPolling()
+
                 let initialStatus = await StorytellerActor.shared.connectionStatus
                 debugLog(
                     "[MediaViewModel] init: Setting initial connectionStatus to \(initialStatus)"

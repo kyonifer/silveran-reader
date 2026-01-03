@@ -1,5 +1,17 @@
 import Foundation
 
+public struct IncomingServerPosition: Sendable {
+    public let bookId: String
+    public let locator: BookLocator
+    public let timestamp: Double
+
+    public init(bookId: String, locator: BookLocator, timestamp: Double) {
+        self.bookId = bookId
+        self.locator = locator
+        self.timestamp = timestamp
+    }
+}
+
 public struct BookProgress: Sendable {
     public let bookId: String
     public let locator: BookLocator?
@@ -59,6 +71,9 @@ public actor ProgressSyncActor {
 
     private var observers: [UUID: @Sendable @MainActor () -> Void] = [:]
     private var syncNotificationCallback: (@Sendable @MainActor (Int, Int) -> Void)?
+
+    private var incomingPositionObservers: [UUID: (bookId: String, callback: @Sendable @MainActor (IncomingServerPosition) -> Void)] = [:]
+    private var pollingTask: Task<Void, Never>? = nil
 
     public init() {
         Task {
@@ -395,6 +410,14 @@ public actor ProgressSyncActor {
                         locatorSummary: locatorSummary,
                         locator: incomingPosition.locator
                     )
+
+                    if let locator = incomingPosition.locator {
+                        await notifyIncomingPositionObservers(
+                            bookId: bookId,
+                            locator: locator,
+                            timestamp: incomingTimestamp
+                        )
+                    }
                 } else {
                     debugLog(
                         "[PSA] updateServerPositions: pending newer for \(bookId), keeping pending (server: \(incomingTimestamp), pending: \(pending.timestamp))"
@@ -429,6 +452,14 @@ public actor ProgressSyncActor {
                             locatorSummary: locatorSummary,
                             locator: incomingPosition.locator
                         )
+
+                        if let locator = incomingPosition.locator {
+                            await notifyIncomingPositionObservers(
+                                bookId: bookId,
+                                locator: locator,
+                                timestamp: incomingTimestamp
+                            )
+                        }
                     }
                 } else {
                     serverPositions[bookId] = incomingPosition
@@ -546,6 +577,66 @@ public actor ProgressSyncActor {
         _ callback: @escaping @Sendable @MainActor (Int, Int) -> Void
     ) {
         syncNotificationCallback = callback
+    }
+
+    // MARK: - Incoming Position Observers
+
+    @discardableResult
+    public func addIncomingPositionObserver(
+        for bookId: String,
+        _ callback: @escaping @Sendable @MainActor (IncomingServerPosition) -> Void
+    ) -> UUID {
+        let id = UUID()
+        incomingPositionObservers[id] = (bookId: bookId, callback: callback)
+        debugLog("[PSA] addIncomingPositionObserver: id=\(id), bookId=\(bookId), total=\(incomingPositionObservers.count)")
+        return id
+    }
+
+    public func removeIncomingPositionObserver(id: UUID) {
+        incomingPositionObservers.removeValue(forKey: id)
+        debugLog("[PSA] removeIncomingPositionObserver: id=\(id), total=\(incomingPositionObservers.count)")
+    }
+
+    public func startPolling() {
+        guard pollingTask == nil else { return }
+        debugLog("[PSA] startPolling: starting continuous polling task")
+        pollingTask = Task {
+            while !Task.isCancelled {
+                await pollServerPositions()
+                try? await Task.sleep(for: .seconds(3))
+            }
+            pollingTask = nil
+            debugLog("[PSA] polling task ended")
+        }
+    }
+
+    public func stopPolling() {
+        debugLog("[PSA] stopPolling: stopping polling task")
+        pollingTask?.cancel()
+        pollingTask = nil
+    }
+
+    private func pollServerPositions() async {
+        let downloadedBookIds = await LocalMediaActor.shared.localStorytellerBookPaths.keys
+        guard !downloadedBookIds.isEmpty else { return }
+
+        for bookId in downloadedBookIds {
+            if let position = await StorytellerActor.shared.fetchBookProgress(bookId: bookId) {
+                await updateServerPositions([bookId: position])
+            }
+        }
+    }
+
+    private func notifyIncomingPositionObservers(
+        bookId: String,
+        locator: BookLocator,
+        timestamp: Double
+    ) async {
+        let position = IncomingServerPosition(bookId: bookId, locator: locator, timestamp: timestamp)
+        for (_, observer) in incomingPositionObservers where observer.bookId == bookId {
+            await observer.callback(position)
+        }
+        debugLog("[PSA] notifyIncomingPositionObservers: notified observers for bookId=\(bookId)")
     }
 
     // MARK: - Private Helpers

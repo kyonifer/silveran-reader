@@ -208,15 +208,18 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
         public var progressSyncIntervalSeconds: Double
         public var metadataRefreshIntervalSeconds: Double
         public var isManuallyOffline: Bool
+        public var autoSyncToNewerServerPosition: Bool
 
         public init(
             progressSyncIntervalSeconds: Double = kDefaultProgressSyncIntervalSeconds,
             metadataRefreshIntervalSeconds: Double = kDefaultMetadataRefreshIntervalSeconds,
-            isManuallyOffline: Bool = kDefaultIsManuallyOffline
+            isManuallyOffline: Bool = kDefaultIsManuallyOffline,
+            autoSyncToNewerServerPosition: Bool = kDefaultAutoSyncToNewerServerPosition
         ) {
             self.progressSyncIntervalSeconds = progressSyncIntervalSeconds
             self.metadataRefreshIntervalSeconds = metadataRefreshIntervalSeconds
             self.isManuallyOffline = isManuallyOffline
+            self.autoSyncToNewerServerPosition = autoSyncToNewerServerPosition
         }
 
         public var isProgressSyncDisabled: Bool {
@@ -326,6 +329,7 @@ public actor SettingsActor {
         progressSyncIntervalSeconds: Double? = nil,
         metadataRefreshIntervalSeconds: Double? = nil,
         isManuallyOffline: Bool? = nil,
+        autoSyncToNewerServerPosition: Bool? = nil,
         showAudioIndicator: Bool? = nil,
         userHighlightColor1: String? = nil,
         userHighlightColor2: String? = nil,
@@ -392,6 +396,9 @@ public actor SettingsActor {
         }
         if let isManuallyOffline {
             updated.sync.isManuallyOffline = isManuallyOffline
+        }
+        if let autoSyncToNewerServerPosition {
+            updated.sync.autoSyncToNewerServerPosition = autoSyncToNewerServerPosition
         }
         if let showAudioIndicator {
             updated.library.showAudioIndicator = showAudioIndicator

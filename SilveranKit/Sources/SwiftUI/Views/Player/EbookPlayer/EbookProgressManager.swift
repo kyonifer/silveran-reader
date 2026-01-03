@@ -317,6 +317,62 @@ class EbookProgressManager {
         }
     }
 
+    func handleServerPositionUpdate(_ locator: BookLocator) {
+        guard let bridge = commsBridge else {
+            debugLog("[EPM] Bridge not available for server position update")
+            return
+        }
+
+        debugLog("[EPM] Navigating to server position: \(locator.href)")
+
+        Task { @MainActor in
+            do {
+                let hasSMIL = mediaOverlayManager?.hasMediaOverlay == true
+
+                if let fragment = locator.locations?.fragments?.first, hasSMIL {
+                    debugLog("[EPM] Using fragment navigation: \(locator.href)#\(fragment)")
+                    try await bridge.sendJsGoToLocatorCommand(locator: locator)
+
+                    if let mom = mediaOverlayManager,
+                        let sectionIndex = findSectionIndex(for: locator.href, in: bookStructure)
+                    {
+                        await mom.handleSeekEvent(sectionIndex: sectionIndex, anchor: fragment)
+                    }
+                } else if let progression = locator.locations?.progression,
+                    let sectionIndex = findSectionIndex(for: locator.href, in: bookStructure)
+                {
+                    debugLog("[EPM] Using section progression: section=\(sectionIndex), prog=\(progression)")
+                    try await bridge.sendJsGoToFractionInSectionCommand(
+                        sectionIndex: sectionIndex,
+                        fraction: progression
+                    )
+
+                    if hasSMIL,
+                        let mom = mediaOverlayManager,
+                        let anchor = findSmilEntryBySectionFraction(sectionIndex, fraction: progression)
+                    {
+                        await mom.handleSeekEvent(sectionIndex: sectionIndex, anchor: anchor)
+                    }
+                } else if let totalProg = locator.locations?.totalProgression, totalProg > 0 {
+                    debugLog("[EPM] Using book fraction: \(totalProg)")
+                    try await bridge.sendJsGoToBookFractionCommand(fraction: totalProg)
+
+                    if hasSMIL,
+                        let mom = mediaOverlayManager,
+                        let (smilSection, anchor) = await findSmilEntryByBookFraction(totalProg)
+                    {
+                        await mom.handleSeekEvent(sectionIndex: smilSection, anchor: anchor)
+                    }
+                } else {
+                    debugLog("[EPM] Using href fallback: \(locator.href)")
+                    try await bridge.sendJsGoToHrefCommand(href: locator.href)
+                }
+            } catch {
+                debugLog("[EPM] Failed to navigate to server position: \(error)")
+            }
+        }
+    }
+
     // MARK: - Chapter Navigation
 
     /// JS sent relocate (position or chapter changed during playback)

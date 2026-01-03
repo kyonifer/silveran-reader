@@ -192,6 +192,19 @@ public struct EbookPlayerView: View {
                 onCancel: { viewModel.cancelPendingSelection() }
             )
         }
+        .alert(
+            "Server Has Newer Position",
+            isPresented: $viewModel.showServerPositionDialog
+        ) {
+            Button("Go to New Position") {
+                viewModel.acceptServerPosition()
+            }
+            Button("Stay Here", role: .cancel) {
+                viewModel.declineServerPosition()
+            }
+        } message: {
+            Text(viewModel.serverPositionDescription)
+        }
     }
 
     private var readerLayout: some View {
