@@ -5,6 +5,8 @@ public enum ConfigurableTab: String, CaseIterable, Identifiable {
     case books
     case series
     case authors
+    case narrators
+    case tags
     case collections
     case downloaded
 
@@ -15,6 +17,8 @@ public enum ConfigurableTab: String, CaseIterable, Identifiable {
             case .books: "Books"
             case .series: "Series"
             case .authors: "Authors"
+            case .narrators: "Narrators"
+            case .tags: "Tags"
             case .collections: "Collections"
             case .downloaded: "Downloaded"
         }
@@ -25,6 +29,8 @@ public enum ConfigurableTab: String, CaseIterable, Identifiable {
             case .books: "books.vertical.fill"
             case .series: "square.stack.fill"
             case .authors: "person.2.fill"
+            case .narrators: "mic.fill"
+            case .tags: "tag.fill"
             case .collections: "rectangle.stack"
             case .downloaded: "arrow.down.circle.fill"
         }
@@ -235,6 +241,10 @@ public struct iOSLibraryView: View {
                 seriesTabContent
             case .authors:
                 authorsTabContent
+            case .narrators:
+                narratorsTabContent
+            case .tags:
+                tagsTabContent
             case .collections:
                 collectionsTabContent
             case .downloaded:
@@ -267,16 +277,36 @@ public struct iOSLibraryView: View {
     }
 
     private var authorsTabContent: some View {
-        NavigationStack {
-            AuthorsListView(searchText: $searchText)
-                .iOSLibraryToolbar(showSettings: $showSettings, showOfflineSheet: $showOfflineSheet)
-                .searchable(
-                    text: $searchText,
-                    placement: .navigationBarDrawer(displayMode: .always),
-                    prompt: "Search"
-                )
-                .libraryNavigationDestinations(showSettings: $showSettings, showOfflineSheet: $showOfflineSheet)
-        }
+        AuthorView(
+            mediaKind: .ebook,
+            searchText: $searchText,
+            sidebarSections: $sections,
+            selectedSidebarItem: $selectedItem,
+            showSettings: $showSettings,
+            showOfflineSheet: $showOfflineSheet
+        )
+    }
+
+    private var narratorsTabContent: some View {
+        NarratorView(
+            mediaKind: .ebook,
+            searchText: $searchText,
+            sidebarSections: $sections,
+            selectedSidebarItem: $selectedItem,
+            showSettings: $showSettings,
+            showOfflineSheet: $showOfflineSheet
+        )
+    }
+
+    private var tagsTabContent: some View {
+        TagView(
+            mediaKind: .ebook,
+            searchText: $searchText,
+            sidebarSections: $sections,
+            selectedSidebarItem: $selectedItem,
+            showSettings: $showSettings,
+            showOfflineSheet: $showOfflineSheet
+        )
     }
 
     private var collectionsTabContent: some View {
@@ -346,6 +376,8 @@ struct MoreMenuView: View {
         case books
         case series
         case authors
+        case narrators
+        case tags
         case collections
         case downloaded
         case addLocalFile
@@ -385,6 +417,16 @@ struct MoreMenuView: View {
                 if !isExcluded(.authors) {
                     NavigationLink(value: MoreDestination.authors) {
                         Label("Authors", systemImage: "person.2.fill")
+                    }
+                }
+                if !isExcluded(.narrators) {
+                    NavigationLink(value: MoreDestination.narrators) {
+                        Label("Narrators", systemImage: "mic.fill")
+                    }
+                }
+                if !isExcluded(.tags) {
+                    NavigationLink(value: MoreDestination.tags) {
+                        Label("Tags", systemImage: "tag.fill")
                     }
                 }
                 if !isExcluded(.collections) {
@@ -436,18 +478,59 @@ struct MoreMenuView: View {
                 case .books:
                     BooksContentView(searchText: searchText)
                         .iOSLibraryToolbar(showSettings: $showSettings, showOfflineSheet: $showOfflineSheet)
+                        .searchable(
+                            text: $searchText,
+                            placement: .navigationBarDrawer(displayMode: .always),
+                            prompt: "Search"
+                        )
                 case .series:
                     SeriesContentView(searchText: $searchText)
                         .iOSLibraryToolbar(showSettings: $showSettings, showOfflineSheet: $showOfflineSheet)
+                        .searchable(
+                            text: $searchText,
+                            placement: .navigationBarDrawer(displayMode: .always),
+                            prompt: "Search"
+                        )
                 case .authors:
-                    AuthorsListView(searchText: $searchText)
+                    AuthorsRowListView(searchText: $searchText)
                         .iOSLibraryToolbar(showSettings: $showSettings, showOfflineSheet: $showOfflineSheet)
+                        .searchable(
+                            text: $searchText,
+                            placement: .navigationBarDrawer(displayMode: .always),
+                            prompt: "Search"
+                        )
+                case .narrators:
+                    NarratorsListView(searchText: $searchText)
+                        .iOSLibraryToolbar(showSettings: $showSettings, showOfflineSheet: $showOfflineSheet)
+                        .searchable(
+                            text: $searchText,
+                            placement: .navigationBarDrawer(displayMode: .always),
+                            prompt: "Search"
+                        )
+                case .tags:
+                    TagsListView(searchText: $searchText)
+                        .iOSLibraryToolbar(showSettings: $showSettings, showOfflineSheet: $showOfflineSheet)
+                        .searchable(
+                            text: $searchText,
+                            placement: .navigationBarDrawer(displayMode: .always),
+                            prompt: "Search"
+                        )
                 case .collections:
                     CollectionsListView(searchText: $searchText, navigationPath: $navigationPath)
                         .iOSLibraryToolbar(showSettings: $showSettings, showOfflineSheet: $showOfflineSheet)
+                        .searchable(
+                            text: $searchText,
+                            placement: .navigationBarDrawer(displayMode: .always),
+                            prompt: "Search"
+                        )
                 case .downloaded:
                     DownloadedContentView(searchText: searchText)
                         .iOSLibraryToolbar(showSettings: $showSettings, showOfflineSheet: $showOfflineSheet)
+                        .searchable(
+                            text: $searchText,
+                            placement: .navigationBarDrawer(displayMode: .always),
+                            prompt: "Search"
+                        )
                 case .addLocalFile:
                     ImportLocalFileView()
                         .navigationTitle("Manage Local Files")
@@ -656,78 +739,21 @@ struct CollectionsListView: View {
     }
 }
 
-struct AuthorsListView: View {
+struct AuthorsRowListView: View {
     @Binding var searchText: String
     @Environment(MediaViewModel.self) private var mediaViewModel
 
-    private let tileWidth: CGFloat = 150
-    private let horizontalPadding: CGFloat = 16
-
-    var body: some View {
-        GeometryReader { geometry in
-            let contentWidth = geometry.size.width
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    authorContent(contentWidth: contentWidth)
-                }
-                .padding(.horizontal, horizontalPadding)
-                .padding(.top, 16)
-                .padding(.bottom, 40)
-            }
-        }
-        .navigationTitle("Authors")
-        .navigationBarTitleDisplayMode(.inline)
+    private var authorGroups: [(author: BookCreator?, books: [BookMetadata])] {
+        mediaViewModel.booksByAuthor(for: .ebook)
     }
 
-    @ViewBuilder
-    private func authorContent(contentWidth: CGFloat) -> some View {
-        let authorGroups = mediaViewModel.booksByAuthor(for: .ebook)
-        let filteredGroups = filterAuthors(authorGroups)
-        let columns = calculateColumns(contentWidth: contentWidth)
-
-        if filteredGroups.isEmpty {
-            emptyStateView
-        } else {
-            LazyVGrid(columns: columns, spacing: 24) {
-                ForEach(Array(filteredGroups.enumerated()), id: \.offset) { _, group in
-                    authorCard(author: group.author, books: group.books)
-                }
-            }
-        }
-    }
-
-    private var emptyStateView: some View {
-        VStack(spacing: 12) {
-            Text("No authors found")
-                .font(.title)
-                .foregroundStyle(.secondary)
-            Text(
-                "Books with author information will appear here. Add media via Settings or the More tab."
-            )
-            .font(.body)
-            .foregroundStyle(.tertiary)
-            .multilineTextAlignment(.center)
-        }
-        .frame(maxWidth: 500)
-        .frame(maxWidth: .infinity, alignment: .center)
-        .padding(.top, 60)
-    }
-
-    private func calculateColumns(contentWidth: CGFloat) -> [GridItem] {
-        let availableWidth = contentWidth - (horizontalPadding * 2)
-        let columnCount = max(1, Int(availableWidth / tileWidth))
-        return Array(repeating: GridItem(.flexible(), spacing: 16), count: columnCount)
-    }
-
-    private func filterAuthors(_ groups: [(author: BookCreator?, books: [BookMetadata])]) -> [(
-        author: BookCreator?, books: [BookMetadata]
-    )] {
-        guard !searchText.isEmpty else { return groups }
+    private var filteredGroups: [(author: BookCreator?, books: [BookMetadata])] {
+        guard !searchText.isEmpty else { return authorGroups }
         let searchLower = searchText.lowercased()
-        return groups.compactMap { group in
-            let authorNameMatches = group.author?.name?.lowercased().contains(searchLower) ?? false
-            if authorNameMatches {
-                return (author: group.author, books: group.books)
+        return authorGroups.compactMap { group in
+            let authorMatches = group.author?.name?.lowercased().contains(searchLower) ?? false
+            if authorMatches {
+                return group
             }
             let filteredBooks = group.books.filter { book in
                 book.title.lowercased().contains(searchLower)
@@ -737,35 +763,29 @@ struct AuthorsListView: View {
         }
     }
 
-    @ViewBuilder
-    private func authorCard(author: BookCreator?, books: [BookMetadata]) -> some View {
-        VStack(spacing: 12) {
-            NavigationLink(value: author?.name ?? "Unknown Author") {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(Color.secondary.opacity(0.2))
-                        .frame(width: tileWidth, height: tileWidth)
+    var body: some View {
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                ForEach(filteredGroups, id: \.author?.name) { group in
+                    let authorName = group.author?.name ?? "Unknown Author"
+                    NavigationLink(value: authorName) {
+                        AuthorRowContent(
+                            authorName: authorName,
+                            bookCount: group.books.count,
+                            isSelected: false
+                        )
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
 
-                    Image(systemName: "person.fill")
-                        .font(.system(size: 60))
-                        .foregroundStyle(.secondary.opacity(0.5))
+                    Divider()
+                        .padding(.leading, 48)
                 }
             }
-            .buttonStyle(.plain)
-
-            VStack(alignment: .center, spacing: 6) {
-                Text(author?.name ?? "Unknown Author")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundStyle(.primary)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.center)
-
-                Text("\(books.count) book\(books.count == 1 ? "" : "s")")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .frame(width: tileWidth)
+            .padding(.top, 8)
         }
+        .navigationTitle("Authors")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 
@@ -1191,7 +1211,155 @@ struct LibraryNavigationDestinations: ViewModifier {
                 .navigationTitle(collection.name)
                 .iOSLibraryToolbar(showSettings: $showSettings, showOfflineSheet: $showOfflineSheet)
             }
+            .navigationDestination(for: NarratorNavIdentifier.self) { narrator in
+                MediaGridView(
+                    title: narrator.name,
+                    searchText: "",
+                    mediaKind: .ebook,
+                    tagFilter: nil,
+                    seriesFilter: nil,
+                    authorFilter: nil,
+                    narratorFilter: narrator.name,
+                    statusFilter: nil,
+                    defaultSort: "titleAZ",
+                    preferredTileWidth: 110,
+                    minimumTileWidth: 90,
+                    columnBreakpoints: [
+                        MediaGridView.ColumnBreakpoint(columns: 3, minWidth: 0)
+                    ],
+                    initialNarrationFilterOption: .both
+                )
+                .navigationTitle(narrator.name)
+                .iOSLibraryToolbar(showSettings: $showSettings, showOfflineSheet: $showOfflineSheet)
+            }
+            .navigationDestination(for: TagNavIdentifier.self) { tag in
+                MediaGridView(
+                    title: tag.name.capitalized,
+                    searchText: "",
+                    mediaKind: .ebook,
+                    tagFilter: tag.name,
+                    seriesFilter: nil,
+                    authorFilter: nil,
+                    statusFilter: nil,
+                    defaultSort: "titleAZ",
+                    preferredTileWidth: 110,
+                    minimumTileWidth: 90,
+                    columnBreakpoints: [
+                        MediaGridView.ColumnBreakpoint(columns: 3, minWidth: 0)
+                    ],
+                    initialNarrationFilterOption: .both
+                )
+                .navigationTitle(tag.name.capitalized)
+                .iOSLibraryToolbar(showSettings: $showSettings, showOfflineSheet: $showOfflineSheet)
+            }
     }
+}
+
+struct NarratorsListView: View {
+    @Binding var searchText: String
+    @Environment(MediaViewModel.self) private var mediaViewModel
+
+    private var narratorGroups: [(narrator: BookCreator?, books: [BookMetadata])] {
+        mediaViewModel.booksByNarrator(for: .ebook)
+    }
+
+    private var filteredGroups: [(narrator: BookCreator?, books: [BookMetadata])] {
+        guard !searchText.isEmpty else { return narratorGroups }
+        let searchLower = searchText.lowercased()
+        return narratorGroups.compactMap { group in
+            let narratorMatches = group.narrator?.name?.lowercased().contains(searchLower) ?? false
+            if narratorMatches {
+                return group
+            }
+            let filteredBooks = group.books.filter { book in
+                book.title.lowercased().contains(searchLower)
+            }
+            guard !filteredBooks.isEmpty else { return nil }
+            return (narrator: group.narrator, books: filteredBooks)
+        }
+    }
+
+    var body: some View {
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                ForEach(filteredGroups, id: \.narrator?.name) { group in
+                    let narratorName = group.narrator?.name ?? "Unknown Narrator"
+                    NavigationLink(value: NarratorNavIdentifier(name: narratorName)) {
+                        NarratorRowContent(
+                            narratorName: narratorName,
+                            bookCount: group.books.count,
+                            isSelected: false
+                        )
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+
+                    Divider()
+                        .padding(.leading, 48)
+                }
+            }
+            .padding(.top, 8)
+        }
+        .navigationTitle("Narrators")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+struct NarratorNavIdentifier: Hashable {
+    let name: String
+}
+
+struct TagsListView: View {
+    @Binding var searchText: String
+    @Environment(MediaViewModel.self) private var mediaViewModel
+
+    private var tagGroups: [(tag: String, books: [BookMetadata])] {
+        mediaViewModel.booksByTag(for: .ebook)
+    }
+
+    private var filteredGroups: [(tag: String, books: [BookMetadata])] {
+        guard !searchText.isEmpty else { return tagGroups }
+        let searchLower = searchText.lowercased()
+        return tagGroups.compactMap { group in
+            let tagMatches = group.tag.lowercased().contains(searchLower)
+            if tagMatches {
+                return group
+            }
+            let filteredBooks = group.books.filter { book in
+                book.title.lowercased().contains(searchLower)
+            }
+            guard !filteredBooks.isEmpty else { return nil }
+            return (tag: group.tag, books: filteredBooks)
+        }
+    }
+
+    var body: some View {
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                ForEach(filteredGroups, id: \.tag) { group in
+                    NavigationLink(value: TagNavIdentifier(name: group.tag)) {
+                        TagRowContent(
+                            tagName: group.tag,
+                            bookCount: group.books.count,
+                            isSelected: false
+                        )
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+
+                    Divider()
+                        .padding(.leading, 48)
+                }
+            }
+            .padding(.top, 8)
+        }
+        .navigationTitle("Tags")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+struct TagNavIdentifier: Hashable {
+    let name: String
 }
 
 extension View {

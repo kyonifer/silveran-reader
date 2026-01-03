@@ -548,6 +548,80 @@ public final class MediaViewModel {
         return result
     }
 
+    func booksByNarrator(for kind: MediaKind) -> [(narrator: BookCreator?, books: [BookMetadata])] {
+        let allBooks = library.bookMetaData
+
+        var narratorMap: [String: (narrator: BookCreator?, books: [BookMetadata])] = [:]
+
+        for book in allBooks {
+            if let narratorsList = book.narrators, let firstNarrator = narratorsList.first {
+                let key = firstNarrator.uuid ?? firstNarrator.name ?? "__unknown__"
+                if var existing = narratorMap[key] {
+                    existing.books.append(book)
+                    narratorMap[key] = existing
+                } else {
+                    narratorMap[key] = (narrator: firstNarrator, books: [book])
+                }
+            } else {
+                if var existing = narratorMap["__no_narrator__"] {
+                    existing.books.append(book)
+                    narratorMap["__no_narrator__"] = existing
+                } else {
+                    narratorMap["__no_narrator__"] = (narrator: nil, books: [book])
+                }
+            }
+        }
+
+        for key in narratorMap.keys {
+            narratorMap[key]?.books.sort { a, b in
+                a.title.localizedCaseInsensitiveCompare(b.title) == .orderedAscending
+            }
+        }
+
+        var result = Array(narratorMap.values)
+        result.sort { a, b in
+            guard let narratorA = a.narrator, let narratorB = b.narrator else {
+                return a.narrator != nil
+            }
+            let nameA = narratorA.name ?? ""
+            let nameB = narratorB.name ?? ""
+            return nameA.localizedCaseInsensitiveCompare(nameB) == .orderedAscending
+        }
+
+        return result
+    }
+
+    func booksByTag(for kind: MediaKind) -> [(tag: String, books: [BookMetadata])] {
+        let allBooks = library.bookMetaData
+
+        var tagMap: [String: [BookMetadata]] = [:]
+
+        for book in allBooks {
+            for tagName in book.tagNames {
+                let key = tagName.lowercased()
+                if var existing = tagMap[key] {
+                    existing.append(book)
+                    tagMap[key] = existing
+                } else {
+                    tagMap[key] = [book]
+                }
+            }
+        }
+
+        for key in tagMap.keys {
+            tagMap[key]?.sort { a, b in
+                a.title.localizedCaseInsensitiveCompare(b.title) == .orderedAscending
+            }
+        }
+
+        var result: [(tag: String, books: [BookMetadata])] = tagMap.map { (tag: $0.key, books: $0.value) }
+        result.sort { a, b in
+            a.tag.localizedCaseInsensitiveCompare(b.tag) == .orderedAscending
+        }
+
+        return result
+    }
+
     enum StatusSortOrder {
         case recentPositionUpdate
         case recentlyAdded
@@ -592,6 +666,14 @@ public final class MediaViewModel {
             case .authorView:
                 return library.bookMetaData.filter { book in
                     book.authors?.isEmpty == false
+                }.count
+            case .narratorView:
+                return library.bookMetaData.filter { book in
+                    book.narrators?.isEmpty == false
+                }.count
+            case .tagView:
+                return library.bookMetaData.filter { book in
+                    book.tags?.isEmpty == false
                 }.count
             case .collectionsView:
                 return library.bookMetaData.filter { book in

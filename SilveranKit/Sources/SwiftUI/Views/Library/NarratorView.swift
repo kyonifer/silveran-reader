@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct AuthorView: View {
+struct NarratorView: View {
     let mediaKind: MediaKind
     #if os(iOS)
     @Binding var searchText: String
@@ -16,11 +16,8 @@ struct AuthorView: View {
     @Environment(MediaViewModel.self) private var mediaViewModel
 
     #if os(macOS)
-    @State private var selectedAuthor: String? = nil
-    @State private var activeInfoItem: BookMetadata? = nil
-    @State private var isSidebarVisible: Bool = false
-    private let authorListWidth: CGFloat = 220
-    private let infoSidebarWidth: CGFloat = 340
+    @State private var selectedNarrator: String? = nil
+    private let narratorListWidth: CGFloat = 220
     #endif
 
     #if os(iOS)
@@ -38,69 +35,58 @@ struct AuthorView: View {
     }
     #endif
 
-    private var authorGroups: [(author: BookCreator?, books: [BookMetadata])] {
-        mediaViewModel.booksByAuthor(for: mediaKind)
+    private var narratorGroups: [(narrator: BookCreator?, books: [BookMetadata])] {
+        mediaViewModel.booksByNarrator(for: mediaKind)
     }
 
-    private var filteredAuthorGroups: [(author: BookCreator?, books: [BookMetadata])] {
-        filterAuthors(authorGroups)
+    private var filteredNarratorGroups: [(narrator: BookCreator?, books: [BookMetadata])] {
+        filterNarrators(narratorGroups)
     }
 
     var body: some View {
         #if os(macOS)
         macOSSplitView
-            .onKeyPress(.escape) {
-                if isSidebarVisible {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        isSidebarVisible = false
-                    }
-                    return .handled
-                }
-                return .ignored
-            }
         #else
-        iOSAuthorList
+        iOSNarratorList
         #endif
     }
 
-    private func filterAuthors(_ groups: [(author: BookCreator?, books: [BookMetadata])]) -> [(
-        author: BookCreator?, books: [BookMetadata]
+    private func filterNarrators(_ groups: [(narrator: BookCreator?, books: [BookMetadata])]) -> [(
+        narrator: BookCreator?, books: [BookMetadata]
     )] {
         guard !searchText.isEmpty else { return groups }
 
         let searchLower = searchText.lowercased()
         return groups.compactMap { group in
-            let authorNameMatches = group.author?.name?.lowercased().contains(searchLower) ?? false
+            let narratorNameMatches = group.narrator?.name?.lowercased().contains(searchLower) ?? false
 
             let filteredBooks = group.books.filter { book in
                 book.title.lowercased().contains(searchLower)
-                    || book.authors?.contains(where: {
+                    || book.narrators?.contains(where: {
                         $0.name?.lowercased().contains(searchLower) ?? false
                     }) ?? false
-                    || book.series?.contains(where: { $0.name.lowercased().contains(searchLower) })
-                        ?? false
             }
 
-            if authorNameMatches {
-                return (author: group.author, books: group.books)
+            if narratorNameMatches {
+                return (narrator: group.narrator, books: group.books)
             }
 
             guard !filteredBooks.isEmpty else { return nil }
-            return (author: group.author, books: filteredBooks)
+            return (narrator: group.narrator, books: filteredBooks)
         }
     }
 }
 
-// MARK: - Shared Author Row
+// MARK: - Shared Narrator Row
 
-struct AuthorRowContent: View {
-    let authorName: String
+struct NarratorRowContent: View {
+    let narratorName: String
     let bookCount: Int
     let isSelected: Bool
 
     var body: some View {
         HStack {
-            Image(systemName: "person.fill")
+            Image(systemName: "mic.fill")
                 #if os(iOS)
                 .font(.body)
                 #else
@@ -109,7 +95,7 @@ struct AuthorRowContent: View {
                 .foregroundStyle(.secondary)
                 .frame(width: 28)
 
-            Text(authorName)
+            Text(narratorName)
                 #if os(iOS)
                 .font(.body)
                 #else
@@ -149,17 +135,17 @@ struct AuthorRowContent: View {
 // MARK: - iOS Implementation
 
 #if os(iOS)
-extension AuthorView {
+extension NarratorView {
     @ViewBuilder
-    fileprivate var iOSAuthorList: some View {
+    fileprivate var iOSNarratorList: some View {
         NavigationStack {
             ScrollView {
                 LazyVStack(spacing: 0) {
-                    ForEach(filteredAuthorGroups, id: \.author?.name) { group in
-                        let authorName = group.author?.name ?? "Unknown Author"
-                        NavigationLink(value: authorName) {
-                            AuthorRowContent(
-                                authorName: authorName,
+                    ForEach(filteredNarratorGroups, id: \.narrator?.name) { group in
+                        let narratorName = group.narrator?.name ?? "Unknown Narrator"
+                        NavigationLink(value: narratorName) {
+                            NarratorRowContent(
+                                narratorName: narratorName,
                                 bookCount: group.books.count,
                                 isSelected: false
                             )
@@ -173,7 +159,7 @@ extension AuthorView {
                 }
                 .padding(.top, 8)
             }
-            .navigationTitle("Authors")
+            .navigationTitle("Narrators")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -201,8 +187,8 @@ extension AuthorView {
                 placement: .navigationBarDrawer(displayMode: .always),
                 prompt: "Search"
             )
-            .navigationDestination(for: String.self) { authorName in
-                iOSAuthorBooksView(authorName: authorName)
+            .navigationDestination(for: String.self) { narratorName in
+                iOSNarratorBooksView(narratorName: narratorName)
             }
             .navigationDestination(for: BookMetadata.self) { item in
                 iOSBookDetailView(item: item, mediaKind: mediaKind)
@@ -214,14 +200,15 @@ extension AuthorView {
     }
 
     @ViewBuilder
-    private func iOSAuthorBooksView(authorName: String) -> some View {
+    private func iOSNarratorBooksView(narratorName: String) -> some View {
         MediaGridView(
-            title: authorName,
+            title: narratorName,
             searchText: "",
             mediaKind: mediaKind,
             tagFilter: nil,
             seriesFilter: nil,
-            authorFilter: authorName,
+            authorFilter: nil,
+            narratorFilter: narratorName,
             statusFilter: nil,
             defaultSort: "title",
             preferredTileWidth: 110,
@@ -232,7 +219,7 @@ extension AuthorView {
             initialNarrationFilterOption: .both,
             scrollPosition: nil
         )
-        .navigationTitle(authorName)
+        .navigationTitle(narratorName)
         .navigationBarTitleDisplayMode(.inline)
     }
 
@@ -253,11 +240,11 @@ extension AuthorView {
 // MARK: - macOS Implementation
 
 #if os(macOS)
-extension AuthorView {
+extension NarratorView {
     @ViewBuilder
     fileprivate var macOSSplitView: some View {
         HStack(spacing: 0) {
-            macOSAuthorListSidebar
+            macOSNarratorListSidebar
 
             Divider()
 
@@ -266,9 +253,9 @@ extension AuthorView {
     }
 
     @ViewBuilder
-    private var macOSAuthorListSidebar: some View {
+    private var macOSNarratorListSidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("Authors")
+            Text("Narrators")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 16)
@@ -277,15 +264,15 @@ extension AuthorView {
 
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 2) {
-                    ForEach(filteredAuthorGroups, id: \.author?.name) { group in
-                        let authorName = group.author?.name ?? "Unknown Author"
+                    ForEach(filteredNarratorGroups, id: \.narrator?.name) { group in
+                        let narratorName = group.narrator?.name ?? "Unknown Narrator"
                         Button {
-                            selectedAuthor = authorName
+                            selectedNarrator = narratorName
                         } label: {
-                            AuthorRowContent(
-                                authorName: authorName,
+                            NarratorRowContent(
+                                narratorName: narratorName,
                                 bookCount: group.books.count,
-                                isSelected: selectedAuthor == authorName
+                                isSelected: selectedNarrator == narratorName
                             )
                             .contentShape(Rectangle())
                         }
@@ -296,20 +283,21 @@ extension AuthorView {
                 .padding(.bottom, 16)
             }
         }
-        .frame(width: authorListWidth)
+        .frame(width: narratorListWidth)
         .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
     }
 
     @ViewBuilder
     private var macOSBooksContentArea: some View {
-        if let authorName = selectedAuthor {
+        if let narratorName = selectedNarrator {
             MediaGridView(
-                title: authorName,
+                title: narratorName,
                 searchText: searchText,
                 mediaKind: mediaKind,
                 tagFilter: nil,
                 seriesFilter: nil,
-                authorFilter: authorName,
+                authorFilter: nil,
+                narratorFilter: narratorName,
                 statusFilter: nil,
                 defaultSort: "title",
                 preferredTileWidth: 120,
@@ -317,11 +305,11 @@ extension AuthorView {
                 initialNarrationFilterOption: .both,
                 scrollPosition: nil
             )
-            .id(authorName)
+            .id(narratorName)
         } else {
             VStack {
                 Spacer()
-                Text("Select an author")
+                Text("Select a narrator")
                     .font(.title2)
                     .foregroundStyle(.secondary)
                 Spacer()

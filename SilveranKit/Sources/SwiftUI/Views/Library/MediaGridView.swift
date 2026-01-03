@@ -40,6 +40,7 @@ struct MediaGridView: View {
     let seriesFilter: String?
     let collectionFilter: String?
     let authorFilter: String?
+    let narratorFilter: String?
     let statusFilter: String?
     let defaultSort: String?
     let preferredTileWidth: CGFloat
@@ -67,6 +68,7 @@ struct MediaGridView: View {
     @State private var selectedSeries: String? = nil
     @State private var selectedCollection: String? = nil
     @State private var selectedAuthor: String? = nil
+    @State private var selectedNarrator: String? = nil
     @State private var selectedStatus: String? = nil
     @State private var selectedLocation: LocationFilterOption = .all
     @State private var shouldEnsureActiveItemVisible: Bool = false
@@ -95,6 +97,7 @@ struct MediaGridView: View {
         seriesFilter: String? = nil,
         collectionFilter: String? = nil,
         authorFilter: String? = nil,
+        narratorFilter: String? = nil,
         statusFilter: String? = nil,
         defaultSort: String? = nil,
         preferredTileWidth: CGFloat = 250,
@@ -114,6 +117,7 @@ struct MediaGridView: View {
         self.seriesFilter = seriesFilter
         self.collectionFilter = collectionFilter
         self.authorFilter = authorFilter
+        self.narratorFilter = narratorFilter
         self.statusFilter = statusFilter
         self.defaultSort = defaultSort
         self.preferredTileWidth = preferredTileWidth
@@ -139,6 +143,7 @@ struct MediaGridView: View {
         _selectedSeries = State(initialValue: seriesFilter)
         _selectedCollection = State(initialValue: collectionFilter)
         _selectedAuthor = State(initialValue: authorFilter)
+        _selectedNarrator = State(initialValue: narratorFilter)
         _selectedStatus = State(initialValue: statusFilter)
         _selectedLocation = State(initialValue: initialLocationFilter)
 
@@ -317,6 +322,7 @@ struct MediaGridView: View {
                     selectedTag: $selectedTag,
                     selectedSeries: $selectedSeries,
                     selectedAuthor: $selectedAuthor,
+                    selectedNarrator: $selectedNarrator,
                     selectedStatus: $selectedStatus,
                     selectedLocation: $selectedLocation,
                     showAudioIndicator: Binding(
@@ -330,6 +336,7 @@ struct MediaGridView: View {
                     availableTags: availableTags,
                     availableSeries: availableSeries,
                     availableAuthors: availableAuthors,
+                    availableNarrators: availableNarrators,
                     availableStatuses: availableStatuses,
                     filtersSummaryText: filtersSummaryText
                 )
@@ -390,6 +397,9 @@ struct MediaGridView: View {
             reconcileSelectionAfterFiltering()
         }
         .onChange(of: selectedLocation) { _, _ in
+            reconcileSelectionAfterFiltering()
+        }
+        .onChange(of: selectedNarrator) { _, _ in
             reconcileSelectionAfterFiltering()
         }
         .onChange(of: selectedSortOption) { _, _ in
@@ -522,7 +532,8 @@ struct MediaGridView: View {
         let seriesFiltered = tagFiltered.filter { matchesSelectedSeries($0) }
         let collectionFiltered = seriesFiltered.filter { matchesSelectedCollection($0) }
         let authorFiltered = collectionFiltered.filter { matchesSelectedAuthor($0) }
-        let statusFiltered = authorFiltered.filter { matchesSelectedStatus($0) }
+        let narratorFiltered = authorFiltered.filter { matchesSelectedNarrator($0) }
+        let statusFiltered = narratorFiltered.filter { matchesSelectedStatus($0) }
         let locationFiltered = statusFiltered.filter { matchesSelectedLocation($0) }
         let searchFiltered = locationFiltered.filter { matchesSearchText($0) }
         let sorted =
@@ -615,6 +626,19 @@ struct MediaGridView: View {
         guard let author = selectedAuthor else { return true }
         let normalized = author.lowercased()
         return item.authors?.contains(where: { $0.name?.lowercased() == normalized }) ?? false
+    }
+
+    private func matchesSelectedNarrator(_ item: BookMetadata) -> Bool {
+        guard let narrator = selectedNarrator else { return true }
+        if narrator == "Unknown Narrator" {
+            guard let narrators = item.narrators, !narrators.isEmpty else { return true }
+            return narrators.allSatisfy { narrator in
+                guard let name = narrator.name?.trimmingCharacters(in: .whitespacesAndNewlines) else { return true }
+                return name.isEmpty
+            }
+        }
+        let normalized = narrator.lowercased()
+        return item.narrators?.contains(where: { $0.name?.lowercased() == normalized }) ?? false
     }
 
     private func matchesSelectedStatus(_ item: BookMetadata) -> Bool {
@@ -737,6 +761,33 @@ struct MediaGridView: View {
             .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
     }
 
+    private var availableNarrators: [String] {
+        var unique: [String: String] = [:]
+        var hasUnknown = false
+        for item in catalogItemsForFilters {
+            if let narrators = item.narrators, !narrators.isEmpty {
+                for narrator in narrators {
+                    if let name = narrator.name?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
+                        let key = name.lowercased()
+                        if unique[key] == nil {
+                            unique[key] = name
+                        }
+                    } else {
+                        hasUnknown = true
+                    }
+                }
+            } else {
+                hasUnknown = true
+            }
+        }
+        var result = unique.values
+            .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+        if hasUnknown {
+            result.append("Unknown Narrator")
+        }
+        return result
+    }
+
     private var filtersSummaryText: String {
         var parts: [String] = [selectedFormatFilter.shortLabel]
         if let status = selectedStatus {
@@ -750,6 +801,9 @@ struct MediaGridView: View {
         }
         if let author = selectedAuthor {
             parts.append(author)
+        }
+        if let narrator = selectedNarrator {
+            parts.append(narrator)
         }
         if selectedLocation != .all {
             parts.append(selectedLocation.shortLabel)

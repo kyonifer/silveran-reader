@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct AuthorView: View {
+struct TagView: View {
     let mediaKind: MediaKind
     #if os(iOS)
     @Binding var searchText: String
@@ -16,11 +16,8 @@ struct AuthorView: View {
     @Environment(MediaViewModel.self) private var mediaViewModel
 
     #if os(macOS)
-    @State private var selectedAuthor: String? = nil
-    @State private var activeInfoItem: BookMetadata? = nil
-    @State private var isSidebarVisible: Bool = false
-    private let authorListWidth: CGFloat = 220
-    private let infoSidebarWidth: CGFloat = 340
+    @State private var selectedTag: String? = nil
+    private let tagListWidth: CGFloat = 220
     #endif
 
     #if os(iOS)
@@ -38,69 +35,56 @@ struct AuthorView: View {
     }
     #endif
 
-    private var authorGroups: [(author: BookCreator?, books: [BookMetadata])] {
-        mediaViewModel.booksByAuthor(for: mediaKind)
+    private var tagGroups: [(tag: String, books: [BookMetadata])] {
+        mediaViewModel.booksByTag(for: mediaKind)
     }
 
-    private var filteredAuthorGroups: [(author: BookCreator?, books: [BookMetadata])] {
-        filterAuthors(authorGroups)
+    private var filteredTagGroups: [(tag: String, books: [BookMetadata])] {
+        filterTags(tagGroups)
     }
 
     var body: some View {
         #if os(macOS)
         macOSSplitView
-            .onKeyPress(.escape) {
-                if isSidebarVisible {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        isSidebarVisible = false
-                    }
-                    return .handled
-                }
-                return .ignored
-            }
         #else
-        iOSAuthorList
+        iOSTagList
         #endif
     }
 
-    private func filterAuthors(_ groups: [(author: BookCreator?, books: [BookMetadata])]) -> [(
-        author: BookCreator?, books: [BookMetadata]
+    private func filterTags(_ groups: [(tag: String, books: [BookMetadata])]) -> [(
+        tag: String, books: [BookMetadata]
     )] {
         guard !searchText.isEmpty else { return groups }
 
         let searchLower = searchText.lowercased()
         return groups.compactMap { group in
-            let authorNameMatches = group.author?.name?.lowercased().contains(searchLower) ?? false
+            let tagMatches = group.tag.lowercased().contains(searchLower)
 
             let filteredBooks = group.books.filter { book in
                 book.title.lowercased().contains(searchLower)
-                    || book.authors?.contains(where: {
-                        $0.name?.lowercased().contains(searchLower) ?? false
-                    }) ?? false
-                    || book.series?.contains(where: { $0.name.lowercased().contains(searchLower) })
-                        ?? false
+                    || book.tagNames.contains(where: { $0.lowercased().contains(searchLower) })
             }
 
-            if authorNameMatches {
-                return (author: group.author, books: group.books)
+            if tagMatches {
+                return (tag: group.tag, books: group.books)
             }
 
             guard !filteredBooks.isEmpty else { return nil }
-            return (author: group.author, books: filteredBooks)
+            return (tag: group.tag, books: filteredBooks)
         }
     }
 }
 
-// MARK: - Shared Author Row
+// MARK: - Shared Tag Row
 
-struct AuthorRowContent: View {
-    let authorName: String
+struct TagRowContent: View {
+    let tagName: String
     let bookCount: Int
     let isSelected: Bool
 
     var body: some View {
         HStack {
-            Image(systemName: "person.fill")
+            Image(systemName: "tag.fill")
                 #if os(iOS)
                 .font(.body)
                 #else
@@ -109,7 +93,7 @@ struct AuthorRowContent: View {
                 .foregroundStyle(.secondary)
                 .frame(width: 28)
 
-            Text(authorName)
+            Text(tagName.capitalized)
                 #if os(iOS)
                 .font(.body)
                 #else
@@ -149,17 +133,16 @@ struct AuthorRowContent: View {
 // MARK: - iOS Implementation
 
 #if os(iOS)
-extension AuthorView {
+extension TagView {
     @ViewBuilder
-    fileprivate var iOSAuthorList: some View {
+    fileprivate var iOSTagList: some View {
         NavigationStack {
             ScrollView {
                 LazyVStack(spacing: 0) {
-                    ForEach(filteredAuthorGroups, id: \.author?.name) { group in
-                        let authorName = group.author?.name ?? "Unknown Author"
-                        NavigationLink(value: authorName) {
-                            AuthorRowContent(
-                                authorName: authorName,
+                    ForEach(filteredTagGroups, id: \.tag) { group in
+                        NavigationLink(value: group.tag) {
+                            TagRowContent(
+                                tagName: group.tag,
                                 bookCount: group.books.count,
                                 isSelected: false
                             )
@@ -173,7 +156,7 @@ extension AuthorView {
                 }
                 .padding(.top, 8)
             }
-            .navigationTitle("Authors")
+            .navigationTitle("Tags")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -201,8 +184,8 @@ extension AuthorView {
                 placement: .navigationBarDrawer(displayMode: .always),
                 prompt: "Search"
             )
-            .navigationDestination(for: String.self) { authorName in
-                iOSAuthorBooksView(authorName: authorName)
+            .navigationDestination(for: String.self) { tagName in
+                iOSTagBooksView(tagName: tagName)
             }
             .navigationDestination(for: BookMetadata.self) { item in
                 iOSBookDetailView(item: item, mediaKind: mediaKind)
@@ -214,14 +197,14 @@ extension AuthorView {
     }
 
     @ViewBuilder
-    private func iOSAuthorBooksView(authorName: String) -> some View {
+    private func iOSTagBooksView(tagName: String) -> some View {
         MediaGridView(
-            title: authorName,
+            title: tagName.capitalized,
             searchText: "",
             mediaKind: mediaKind,
-            tagFilter: nil,
+            tagFilter: tagName,
             seriesFilter: nil,
-            authorFilter: authorName,
+            authorFilter: nil,
             statusFilter: nil,
             defaultSort: "title",
             preferredTileWidth: 110,
@@ -232,7 +215,7 @@ extension AuthorView {
             initialNarrationFilterOption: .both,
             scrollPosition: nil
         )
-        .navigationTitle(authorName)
+        .navigationTitle(tagName.capitalized)
         .navigationBarTitleDisplayMode(.inline)
     }
 
@@ -253,11 +236,11 @@ extension AuthorView {
 // MARK: - macOS Implementation
 
 #if os(macOS)
-extension AuthorView {
+extension TagView {
     @ViewBuilder
     fileprivate var macOSSplitView: some View {
         HStack(spacing: 0) {
-            macOSAuthorListSidebar
+            macOSTagListSidebar
 
             Divider()
 
@@ -266,9 +249,9 @@ extension AuthorView {
     }
 
     @ViewBuilder
-    private var macOSAuthorListSidebar: some View {
+    private var macOSTagListSidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("Authors")
+            Text("Tags")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 16)
@@ -277,15 +260,14 @@ extension AuthorView {
 
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 2) {
-                    ForEach(filteredAuthorGroups, id: \.author?.name) { group in
-                        let authorName = group.author?.name ?? "Unknown Author"
+                    ForEach(filteredTagGroups, id: \.tag) { group in
                         Button {
-                            selectedAuthor = authorName
+                            selectedTag = group.tag
                         } label: {
-                            AuthorRowContent(
-                                authorName: authorName,
+                            TagRowContent(
+                                tagName: group.tag,
                                 bookCount: group.books.count,
-                                isSelected: selectedAuthor == authorName
+                                isSelected: selectedTag == group.tag
                             )
                             .contentShape(Rectangle())
                         }
@@ -296,20 +278,20 @@ extension AuthorView {
                 .padding(.bottom, 16)
             }
         }
-        .frame(width: authorListWidth)
+        .frame(width: tagListWidth)
         .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
     }
 
     @ViewBuilder
     private var macOSBooksContentArea: some View {
-        if let authorName = selectedAuthor {
+        if let tagName = selectedTag {
             MediaGridView(
-                title: authorName,
+                title: tagName.capitalized,
                 searchText: searchText,
                 mediaKind: mediaKind,
-                tagFilter: nil,
+                tagFilter: tagName,
                 seriesFilter: nil,
-                authorFilter: authorName,
+                authorFilter: nil,
                 statusFilter: nil,
                 defaultSort: "title",
                 preferredTileWidth: 120,
@@ -317,11 +299,11 @@ extension AuthorView {
                 initialNarrationFilterOption: .both,
                 scrollPosition: nil
             )
-            .id(authorName)
+            .id(tagName)
         } else {
             VStack {
                 Spacer()
-                Text("Select an author")
+                Text("Select a tag")
                     .font(.title2)
                     .foregroundStyle(.secondary)
                 Spacer()

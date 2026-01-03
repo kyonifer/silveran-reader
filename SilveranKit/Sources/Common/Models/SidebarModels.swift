@@ -22,6 +22,8 @@ public enum SidebarContentKind: Hashable, Sendable {
     case mediaGrid(MediaGridConfiguration)
     case seriesView(MediaKind)
     case authorView(MediaKind)
+    case narratorView(MediaKind)
+    case tagView(MediaKind)
     case collectionsView(MediaKind)
     case placeholder(title: String)
     case importLocalFile
@@ -119,6 +121,18 @@ public enum LibrarySidebarDefaults {
                         systemImage: "person.2",
                         badge: -1,
                         content: .authorView(.ebook),
+                    ),
+                    SidebarItemDescription(
+                        name: "Books by Narrator",
+                        systemImage: "mic",
+                        badge: -1,
+                        content: .narratorView(.ebook),
+                    ),
+                    SidebarItemDescription(
+                        name: "Books by Tag",
+                        systemImage: "tag",
+                        badge: -1,
+                        content: .tagView(.ebook),
                     ),
                 ],
             ),

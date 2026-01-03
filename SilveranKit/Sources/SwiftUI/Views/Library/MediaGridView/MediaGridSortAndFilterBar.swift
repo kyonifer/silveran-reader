@@ -6,6 +6,7 @@ struct MediaGridSortAndFilterBar: View {
     @Binding var selectedTag: String?
     @Binding var selectedSeries: String?
     @Binding var selectedAuthor: String?
+    @Binding var selectedNarrator: String?
     @Binding var selectedStatus: String?
     @Binding var selectedLocation: MediaGridView.LocationFilterOption
     @Binding var showAudioIndicator: Bool
@@ -13,6 +14,7 @@ struct MediaGridSortAndFilterBar: View {
     let availableTags: [String]
     let availableSeries: [String]
     let availableAuthors: [String]
+    let availableNarrators: [String]
     let availableStatuses: [String]
     let filtersSummaryText: String
 
@@ -120,8 +122,9 @@ struct MediaGridSortAndFilterBar: View {
         let tags = availableTags
         let series = availableSeries
         let authors = availableAuthors
+        let narrators = availableNarrators
 
-        if !tags.isEmpty || !series.isEmpty || !authors.isEmpty {
+        if !tags.isEmpty || !series.isEmpty || !authors.isEmpty || !narrators.isEmpty {
             Divider()
             Section("Other") {
                 if !tags.isEmpty {
@@ -189,6 +192,29 @@ struct MediaGridSortAndFilterBar: View {
                         Label("Select Author", systemImage: "person.2")
                     }
                 }
+
+                if !narrators.isEmpty {
+                    Menu {
+                        Button {
+                            selectedNarrator = nil
+                        } label: {
+                            menuRowLabel(text: "All Narrators", isSelected: selectedNarrator == nil)
+                        }
+
+                        ForEach(narrators, id: \.self) { narratorName in
+                            Button {
+                                selectedNarrator = narratorName
+                            } label: {
+                                menuRowLabel(
+                                    text: narratorName,
+                                    isSelected: selectedNarrator == narratorName
+                                )
+                            }
+                        }
+                    } label: {
+                        Label("Select Narrator", systemImage: "mic")
+                    }
+                }
             }
         }
     }
@@ -235,6 +261,7 @@ struct MediaGridSortAndFilterBar: View {
             || selectedTag != nil
             || selectedSeries != nil
             || selectedAuthor != nil
+            || selectedNarrator != nil
             || selectedStatus != nil
             || selectedLocation != .all
     }
@@ -244,6 +271,7 @@ struct MediaGridSortAndFilterBar: View {
         selectedTag = nil
         selectedSeries = nil
         selectedAuthor = nil
+        selectedNarrator = nil
         selectedStatus = nil
         selectedLocation = .all
     }

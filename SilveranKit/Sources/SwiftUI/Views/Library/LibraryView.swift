@@ -177,6 +177,42 @@ public struct LibraryView: View {
                     showSettings: $showSettings
                 )
                 #endif
+            case .narratorView(let mediaKind):
+                #if os(iOS)
+                NarratorView(
+                    mediaKind: mediaKind,
+                    searchText: $searchText,
+                    sidebarSections: sections,
+                    selectedSidebarItem: selectedItem,
+                    showSettings: $showSettings
+                )
+                #else
+                NarratorView(
+                    mediaKind: mediaKind,
+                    searchText: searchText,
+                    sidebarSections: sections,
+                    selectedSidebarItem: selectedItem,
+                    showSettings: $showSettings
+                )
+                #endif
+            case .tagView(let mediaKind):
+                #if os(iOS)
+                TagView(
+                    mediaKind: mediaKind,
+                    searchText: $searchText,
+                    sidebarSections: sections,
+                    selectedSidebarItem: selectedItem,
+                    showSettings: $showSettings
+                )
+                #else
+                TagView(
+                    mediaKind: mediaKind,
+                    searchText: searchText,
+                    sidebarSections: sections,
+                    selectedSidebarItem: selectedItem,
+                    showSettings: $showSettings
+                )
+                #endif
             case .collectionsView(let mediaKind):
                 #if os(iOS)
                 CollectionsView(
