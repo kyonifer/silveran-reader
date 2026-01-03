@@ -22,12 +22,12 @@ public enum HighlightColor: String, Codable, Sendable, Hashable, CaseIterable {
 
     public var hexColor: String {
         switch self {
-            case .yellow: return "#B5B83E"
-            case .blue: return "#4E90C7"
-            case .green: return "#198744"
-            case .pink: return "#E25EA3"
-            case .orange: return "#CE8C4A"
-            case .purple: return "#B366FF"
+            case .yellow: return kDefaultUserHighlightColor1
+            case .blue: return kDefaultUserHighlightColor2
+            case .green: return kDefaultUserHighlightColor3
+            case .pink: return kDefaultUserHighlightColor4
+            case .orange: return kDefaultUserHighlightColor5
+            case .purple: return kDefaultUserHighlightColor6
         }
     }
 }

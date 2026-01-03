@@ -255,24 +255,24 @@ extension SettingsView {
     }
 
     private func resetReaderSettings() {
-        config.reading.fontSize = 24
-        config.reading.fontFamily = "System Default"
-        config.reading.lineSpacing = 1.4
-        config.reading.marginLeftRight = 5
-        config.reading.marginTopBottom = 8
-        config.reading.wordSpacing = 0
-        config.reading.letterSpacing = 0
+        config.reading.fontSize = kDefaultFontSize
+        config.reading.fontFamily = kDefaultFontFamily
+        config.reading.lineSpacing = kDefaultLineSpacing
+        config.reading.marginLeftRight = kDefaultMarginLeftRightMac
+        config.reading.marginTopBottom = kDefaultMarginTopBottom
+        config.reading.wordSpacing = kDefaultWordSpacing
+        config.reading.letterSpacing = kDefaultLetterSpacing
         config.reading.highlightColor = nil
-        config.reading.highlightThickness = 1.0
-        config.reading.readaloudHighlightUnderline = false
-        config.reading.userHighlightMode = "background"
-        config.reading.readaloudHighlightMode = "background"
+        config.reading.highlightThickness = kDefaultHighlightThickness
+        config.reading.readaloudHighlightUnderline = kDefaultReadaloudHighlightUnderline
+        config.reading.userHighlightMode = kDefaultUserHighlightMode
+        config.reading.readaloudHighlightMode = kDefaultReadaloudHighlightMode
         config.reading.backgroundColor = nil
         config.reading.foregroundColor = nil
-        config.reading.enableMarginClickNavigation = true
+        config.reading.enableMarginClickNavigation = kDefaultEnableMarginClickNavigation
         config.reading.singleColumnMode = false
         config.reading.customCSS = nil
-        config.playback.defaultPlaybackSpeed = 1.0
+        config.playback.defaultPlaybackSpeed = kDefaultPlaybackSpeed
     }
 }
 #else
@@ -775,42 +775,42 @@ private struct MacReaderSettingsView: View {
                             label("Highlight #1 (Yellow)")
                             UserHighlightColorControl(
                                 hex: $reading.userHighlightColor1,
-                                defaultHex: "#B5B83E"
+                                defaultHex: kDefaultUserHighlightColor1
                             )
                         }
                         GridRow {
                             label("Highlight #2 (Blue)")
                             UserHighlightColorControl(
                                 hex: $reading.userHighlightColor2,
-                                defaultHex: "#4E90C7"
+                                defaultHex: kDefaultUserHighlightColor2
                             )
                         }
                         GridRow {
                             label("Highlight #3 (Green)")
                             UserHighlightColorControl(
                                 hex: $reading.userHighlightColor3,
-                                defaultHex: "#198744"
+                                defaultHex: kDefaultUserHighlightColor3
                             )
                         }
                         GridRow {
                             label("Highlight #4 (Pink)")
                             UserHighlightColorControl(
                                 hex: $reading.userHighlightColor4,
-                                defaultHex: "#E25EA3"
+                                defaultHex: kDefaultUserHighlightColor4
                             )
                         }
                         GridRow {
                             label("Highlight #5 (Orange)")
                             UserHighlightColorControl(
                                 hex: $reading.userHighlightColor5,
-                                defaultHex: "#CE8C4A"
+                                defaultHex: kDefaultUserHighlightColor5
                             )
                         }
                         GridRow {
                             label("Highlight #6 (Purple)")
                             UserHighlightColorControl(
                                 hex: $reading.userHighlightColor6,
-                                defaultHex: "#B366FF"
+                                defaultHex: kDefaultUserHighlightColor6
                             )
                         }
                     }

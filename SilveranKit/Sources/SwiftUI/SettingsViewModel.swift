@@ -4,64 +4,64 @@ import Observation
 @MainActor
 @Observable
 public final class SettingsViewModel {
-    public var fontSize: Double = 24
-    public var fontFamily: String = "System Default"
-    public var lineSpacing: Double = 1.4
+    public var fontSize: Double = kDefaultFontSize
+    public var fontFamily: String = kDefaultFontFamily
+    public var lineSpacing: Double = kDefaultLineSpacing
     #if os(iOS)
-    public var marginLeftRight: Double = 2
+    public var marginLeftRight: Double = kDefaultMarginLeftRightIOS
     #else
-    public var marginLeftRight: Double = 5
+    public var marginLeftRight: Double = kDefaultMarginLeftRightMac
     #endif
-    public var marginTopBottom: Double = 8
-    public var wordSpacing: Double = 0
-    public var letterSpacing: Double = 0
+    public var marginTopBottom: Double = kDefaultMarginTopBottom
+    public var wordSpacing: Double = kDefaultWordSpacing
+    public var letterSpacing: Double = kDefaultLetterSpacing
     public var highlightColor: String? = nil
-    public var highlightThickness: Double = 1.0
-    public var readaloudHighlightUnderline: Bool = false
+    public var highlightThickness: Double = kDefaultHighlightThickness
+    public var readaloudHighlightUnderline: Bool = kDefaultReadaloudHighlightUnderline
     public var backgroundColor: String? = nil
     public var foregroundColor: String? = nil
     public var customCSS: String? = nil
-    public var enableMarginClickNavigation: Bool = true
-    public var singleColumnMode: Bool = true
+    public var enableMarginClickNavigation: Bool = kDefaultEnableMarginClickNavigation
+    public var singleColumnMode: Bool = kDefaultSingleColumnMode
 
-    public var defaultPlaybackSpeed: Double = 1.0
-    public var defaultVolume: Double = 1.0
-    public var statsExpanded: Bool = false
-    public var lockViewToAudio: Bool = true
+    public var defaultPlaybackSpeed: Double = kDefaultPlaybackSpeed
+    public var defaultVolume: Double = kDefaultVolume
+    public var statsExpanded: Bool = kDefaultStatsExpanded
+    public var lockViewToAudio: Bool = kDefaultLockViewToAudio
 
-    public var enableReadingBar: Bool = true
+    public var enableReadingBar: Bool = kDefaultReadingBarEnabled
     #if os(iOS)
-    public var showPlayerControls: Bool = true
+    public var showPlayerControls: Bool = kDefaultShowPlayerControlsIOS
     #else
-    public var showPlayerControls: Bool = false
+    public var showPlayerControls: Bool = kDefaultShowPlayerControlsMac
     #endif
-    public var showProgressBar: Bool = false
-    public var showProgress: Bool = true
-    public var showTimeRemainingInBook: Bool = true
-    public var showTimeRemainingInChapter: Bool = true
-    public var showPageNumber: Bool = true
-    public var overlayTransparency: Double = 0.8
+    public var showProgressBar: Bool = kDefaultShowProgressBar
+    public var showProgress: Bool = kDefaultShowProgress
+    public var showTimeRemainingInBook: Bool = kDefaultShowTimeRemainingInBook
+    public var showTimeRemainingInChapter: Bool = kDefaultShowTimeRemainingInChapter
+    public var showPageNumber: Bool = kDefaultShowPageNumber
+    public var overlayTransparency: Double = kDefaultOverlayTransparency
     #if os(iOS)
-    public var alwaysShowMiniPlayer: Bool = false
+    public var alwaysShowMiniPlayer: Bool = kDefaultAlwaysShowMiniPlayer
     #endif
 
-    public var progressSyncIntervalSeconds: Double = 30
-    public var metadataRefreshIntervalSeconds: Double = 300
+    public var progressSyncIntervalSeconds: Double = kDefaultProgressSyncIntervalSeconds
+    public var metadataRefreshIntervalSeconds: Double = kDefaultMetadataRefreshIntervalSeconds
 
-    public var showAudioIndicator: Bool = false
+    public var showAudioIndicator: Bool = kDefaultShowAudioIndicator
     #if os(iOS)
-    public var tabBarSlot1: String = "books"
-    public var tabBarSlot2: String = "series"
+    public var tabBarSlot1: String = kDefaultTabBarSlot1
+    public var tabBarSlot2: String = kDefaultTabBarSlot2
     #endif
 
-    public var userHighlightColor1: String = "#B5B83E"
-    public var userHighlightColor2: String = "#4E90C7"
-    public var userHighlightColor3: String = "#198744"
-    public var userHighlightColor4: String = "#E25EA3"
-    public var userHighlightColor5: String = "#CE8C4A"
-    public var userHighlightColor6: String = "#B366FF"
-    public var userHighlightMode: String = "background"
-    public var readaloudHighlightMode: String = "background"
+    public var userHighlightColor1: String = kDefaultUserHighlightColor1
+    public var userHighlightColor2: String = kDefaultUserHighlightColor2
+    public var userHighlightColor3: String = kDefaultUserHighlightColor3
+    public var userHighlightColor4: String = kDefaultUserHighlightColor4
+    public var userHighlightColor5: String = kDefaultUserHighlightColor5
+    public var userHighlightColor6: String = kDefaultUserHighlightColor6
+    public var userHighlightMode: String = kDefaultUserHighlightMode
+    public var readaloudHighlightMode: String = kDefaultReadaloudHighlightMode
 
     public var isLoaded: Bool = false
 
@@ -235,8 +235,8 @@ public final class SettingsViewModel {
     private var tabBarSlot1Value: String { tabBarSlot1 }
     private var tabBarSlot2Value: String { tabBarSlot2 }
     #else
-    private var alwaysShowMiniPlayerValue: Bool { false }
-    private var tabBarSlot1Value: String { "books" }
-    private var tabBarSlot2Value: String { "series" }
+    private var alwaysShowMiniPlayerValue: Bool { kDefaultAlwaysShowMiniPlayer }
+    private var tabBarSlot1Value: String { kDefaultTabBarSlot1 }
+    private var tabBarSlot2Value: String { kDefaultTabBarSlot2 }
     #endif
 }

@@ -349,37 +349,37 @@ struct EbookPlayerSettings: View {
             iOSUserHighlightColorControl(
                 label: "Highlight #1 (Yellow)",
                 hex: $settingsVM.userHighlightColor1,
-                defaultHex: "#B5B83E"
+                defaultHex: kDefaultUserHighlightColor1
             )
 
             iOSUserHighlightColorControl(
                 label: "Highlight #2 (Blue)",
                 hex: $settingsVM.userHighlightColor2,
-                defaultHex: "#4E90C7"
+                defaultHex: kDefaultUserHighlightColor2
             )
 
             iOSUserHighlightColorControl(
                 label: "Highlight #3 (Green)",
                 hex: $settingsVM.userHighlightColor3,
-                defaultHex: "#198744"
+                defaultHex: kDefaultUserHighlightColor3
             )
 
             iOSUserHighlightColorControl(
                 label: "Highlight #4 (Pink)",
                 hex: $settingsVM.userHighlightColor4,
-                defaultHex: "#E25EA3"
+                defaultHex: kDefaultUserHighlightColor4
             )
 
             iOSUserHighlightColorControl(
                 label: "Highlight #5 (Orange)",
                 hex: $settingsVM.userHighlightColor5,
-                defaultHex: "#CE8C4A"
+                defaultHex: kDefaultUserHighlightColor5
             )
 
             iOSUserHighlightColorControl(
                 label: "Highlight #6 (Purple)",
                 hex: $settingsVM.userHighlightColor6,
-                defaultHex: "#B366FF"
+                defaultHex: kDefaultUserHighlightColor6
             )
         }
         .onAppear {
@@ -450,39 +450,39 @@ struct EbookPlayerSettings: View {
     }
 
     private func resetToDefaults() {
-        settingsVM.fontSize = 24
-        settingsVM.fontFamily = "System Default"
-        settingsVM.lineSpacing = 1.4
+        settingsVM.fontSize = kDefaultFontSize
+        settingsVM.fontFamily = kDefaultFontFamily
+        settingsVM.lineSpacing = kDefaultLineSpacing
         #if os(iOS)
-        settingsVM.marginLeftRight = 2
+        settingsVM.marginLeftRight = kDefaultMarginLeftRightIOS
         #else
-        settingsVM.marginLeftRight = 5
+        settingsVM.marginLeftRight = kDefaultMarginLeftRightMac
         #endif
-        settingsVM.marginTopBottom = 8
-        settingsVM.wordSpacing = 0
-        settingsVM.letterSpacing = 0
+        settingsVM.marginTopBottom = kDefaultMarginTopBottom
+        settingsVM.wordSpacing = kDefaultWordSpacing
+        settingsVM.letterSpacing = kDefaultLetterSpacing
         settingsVM.highlightColor = nil
-        settingsVM.highlightThickness = 1.0
-        settingsVM.readaloudHighlightUnderline = false
-        settingsVM.userHighlightMode = "background"
-        settingsVM.readaloudHighlightMode = "background"
+        settingsVM.highlightThickness = kDefaultHighlightThickness
+        settingsVM.readaloudHighlightUnderline = kDefaultReadaloudHighlightUnderline
+        settingsVM.userHighlightMode = kDefaultUserHighlightMode
+        settingsVM.readaloudHighlightMode = kDefaultReadaloudHighlightMode
         settingsVM.backgroundColor = nil
         settingsVM.foregroundColor = nil
-        settingsVM.enableMarginClickNavigation = true
-        settingsVM.enableReadingBar = true
-        settingsVM.showProgressBar = false
-        settingsVM.showProgress = true
-        settingsVM.showTimeRemainingInBook = true
-        settingsVM.showTimeRemainingInChapter = true
-        settingsVM.showPageNumber = true
-        settingsVM.overlayTransparency = 0.8
-        settingsVM.singleColumnMode = true
+        settingsVM.enableMarginClickNavigation = kDefaultEnableMarginClickNavigation
+        settingsVM.enableReadingBar = kDefaultReadingBarEnabled
+        settingsVM.showProgressBar = kDefaultShowProgressBar
+        settingsVM.showProgress = kDefaultShowProgress
+        settingsVM.showTimeRemainingInBook = kDefaultShowTimeRemainingInBook
+        settingsVM.showTimeRemainingInChapter = kDefaultShowTimeRemainingInChapter
+        settingsVM.showPageNumber = kDefaultShowPageNumber
+        settingsVM.overlayTransparency = kDefaultOverlayTransparency
+        settingsVM.singleColumnMode = kDefaultSingleColumnMode
         #if os(iOS)
-        settingsVM.showPlayerControls = true
+        settingsVM.showPlayerControls = kDefaultShowPlayerControlsIOS
         #else
-        settingsVM.showPlayerControls = false
+        settingsVM.showPlayerControls = kDefaultShowPlayerControlsMac
         #endif
-        settingsVM.lockViewToAudio = true
+        settingsVM.lockViewToAudio = kDefaultLockViewToAudio
 
         settingsVM.save()
     }

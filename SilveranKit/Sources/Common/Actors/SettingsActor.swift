@@ -52,37 +52,37 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
         public var readaloudHighlightMode: String
 
         public init(
-            fontSize: Double = 24,
-            fontFamily: String = "System Default",
-            lineSpacing: Double = 1.4,
+            fontSize: Double = kDefaultFontSize,
+            fontFamily: String = kDefaultFontFamily,
+            lineSpacing: Double = kDefaultLineSpacing,
             marginLeftRight: Double? = nil,
-            marginTopBottom: Double = 8,
-            wordSpacing: Double = 0,
-            letterSpacing: Double = 0,
+            marginTopBottom: Double = kDefaultMarginTopBottom,
+            wordSpacing: Double = kDefaultWordSpacing,
+            letterSpacing: Double = kDefaultLetterSpacing,
             highlightColor: String? = nil,
-            highlightThickness: Double = 1.0,
-            readaloudHighlightUnderline: Bool = false,
+            highlightThickness: Double = kDefaultHighlightThickness,
+            readaloudHighlightUnderline: Bool = kDefaultReadaloudHighlightUnderline,
             backgroundColor: String? = nil,
             foregroundColor: String? = nil,
             customCSS: String? = nil,
-            enableMarginClickNavigation: Bool = true,
+            enableMarginClickNavigation: Bool = kDefaultEnableMarginClickNavigation,
             singleColumnMode: Bool? = nil,
-            userHighlightColor1: String = "#B5B83E",
-            userHighlightColor2: String = "#4E90C7",
-            userHighlightColor3: String = "#198744",
-            userHighlightColor4: String = "#E25EA3",
-            userHighlightColor5: String = "#CE8C4A",
-            userHighlightColor6: String = "#B366FF",
-            userHighlightMode: String = "background",
-            readaloudHighlightMode: String = "background"
+            userHighlightColor1: String = kDefaultUserHighlightColor1,
+            userHighlightColor2: String = kDefaultUserHighlightColor2,
+            userHighlightColor3: String = kDefaultUserHighlightColor3,
+            userHighlightColor4: String = kDefaultUserHighlightColor4,
+            userHighlightColor5: String = kDefaultUserHighlightColor5,
+            userHighlightColor6: String = kDefaultUserHighlightColor6,
+            userHighlightMode: String = kDefaultUserHighlightMode,
+            readaloudHighlightMode: String = kDefaultReadaloudHighlightMode
         ) {
             self.fontSize = fontSize
             self.fontFamily = fontFamily
             self.lineSpacing = lineSpacing
             #if os(iOS)
-            self.marginLeftRight = marginLeftRight ?? 2
+            self.marginLeftRight = marginLeftRight ?? kDefaultMarginLeftRightIOS
             #else
-            self.marginLeftRight = marginLeftRight ?? 5
+            self.marginLeftRight = marginLeftRight ?? kDefaultMarginLeftRightMac
             #endif
             self.marginTopBottom = marginTopBottom
             self.wordSpacing = wordSpacing
@@ -92,7 +92,7 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
             self.readaloudHighlightUnderline = readaloudHighlightUnderline
             self.backgroundColor = backgroundColor
             self.foregroundColor = foregroundColor
-            self.singleColumnMode = singleColumnMode ?? true
+            self.singleColumnMode = singleColumnMode ?? kDefaultSingleColumnMode
             self.customCSS = customCSS
             self.enableMarginClickNavigation = enableMarginClickNavigation
             self.userHighlightColor1 = userHighlightColor1
@@ -104,6 +104,47 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
             self.userHighlightMode = userHighlightMode
             self.readaloudHighlightMode = readaloudHighlightMode
         }
+
+        public init(from decoder: Decoder) throws {
+            let container = try? decoder.container(keyedBy: CodingKeys.self)
+            fontSize = (try? container?.decode(Double.self, forKey: .fontSize)) ?? kDefaultFontSize
+            fontFamily = (try? container?.decode(String.self, forKey: .fontFamily)) ?? kDefaultFontFamily
+            lineSpacing = (try? container?.decode(Double.self, forKey: .lineSpacing)) ?? kDefaultLineSpacing
+            #if os(iOS)
+            marginLeftRight = (try? container?.decode(Double.self, forKey: .marginLeftRight)) ?? kDefaultMarginLeftRightIOS
+            #else
+            marginLeftRight = (try? container?.decode(Double.self, forKey: .marginLeftRight)) ?? kDefaultMarginLeftRightMac
+            #endif
+            marginTopBottom = (try? container?.decode(Double.self, forKey: .marginTopBottom)) ?? kDefaultMarginTopBottom
+            wordSpacing = (try? container?.decode(Double.self, forKey: .wordSpacing)) ?? kDefaultWordSpacing
+            letterSpacing = (try? container?.decode(Double.self, forKey: .letterSpacing)) ?? kDefaultLetterSpacing
+            highlightColor = try? container?.decode(String.self, forKey: .highlightColor)
+            highlightThickness = (try? container?.decode(Double.self, forKey: .highlightThickness)) ?? kDefaultHighlightThickness
+            readaloudHighlightUnderline = (try? container?.decode(Bool.self, forKey: .readaloudHighlightUnderline)) ?? kDefaultReadaloudHighlightUnderline
+            backgroundColor = try? container?.decode(String.self, forKey: .backgroundColor)
+            foregroundColor = try? container?.decode(String.self, forKey: .foregroundColor)
+            customCSS = try? container?.decode(String.self, forKey: .customCSS)
+            enableMarginClickNavigation = (try? container?.decode(Bool.self, forKey: .enableMarginClickNavigation)) ?? kDefaultEnableMarginClickNavigation
+            singleColumnMode = (try? container?.decode(Bool.self, forKey: .singleColumnMode)) ?? kDefaultSingleColumnMode
+            userHighlightColor1 = (try? container?.decode(String.self, forKey: .userHighlightColor1)) ?? kDefaultUserHighlightColor1
+            userHighlightColor2 = (try? container?.decode(String.self, forKey: .userHighlightColor2)) ?? kDefaultUserHighlightColor2
+            userHighlightColor3 = (try? container?.decode(String.self, forKey: .userHighlightColor3)) ?? kDefaultUserHighlightColor3
+            userHighlightColor4 = (try? container?.decode(String.self, forKey: .userHighlightColor4)) ?? kDefaultUserHighlightColor4
+            userHighlightColor5 = (try? container?.decode(String.self, forKey: .userHighlightColor5)) ?? kDefaultUserHighlightColor5
+            userHighlightColor6 = (try? container?.decode(String.self, forKey: .userHighlightColor6)) ?? kDefaultUserHighlightColor6
+            userHighlightMode = (try? container?.decode(String.self, forKey: .userHighlightMode)) ?? kDefaultUserHighlightMode
+            readaloudHighlightMode = (try? container?.decode(String.self, forKey: .readaloudHighlightMode)) ?? kDefaultReadaloudHighlightMode
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case fontSize, fontFamily, lineSpacing, marginLeftRight, marginTopBottom
+            case wordSpacing, letterSpacing, highlightColor, highlightThickness
+            case readaloudHighlightUnderline, backgroundColor, foregroundColor
+            case customCSS, enableMarginClickNavigation, singleColumnMode
+            case userHighlightColor1, userHighlightColor2, userHighlightColor3
+            case userHighlightColor4, userHighlightColor5, userHighlightColor6
+            case userHighlightMode, readaloudHighlightMode
+        }
     }
 
     public struct Playback: Codable, Equatable, Sendable {
@@ -113,10 +154,10 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
         public var lockViewToAudio: Bool
 
         public init(
-            defaultPlaybackSpeed: Double = 1.0,
-            defaultVolume: Double = 1.0,
-            statsExpanded: Bool = false,
-            lockViewToAudio: Bool = true
+            defaultPlaybackSpeed: Double = kDefaultPlaybackSpeed,
+            defaultVolume: Double = kDefaultVolume,
+            statsExpanded: Bool = kDefaultStatsExpanded,
+            lockViewToAudio: Bool = kDefaultLockViewToAudio
         ) {
             self.defaultPlaybackSpeed = defaultPlaybackSpeed
             self.defaultVolume = defaultVolume
@@ -137,21 +178,21 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
         public var alwaysShowMiniPlayer: Bool
 
         public init(
-            enabled: Bool = true,
+            enabled: Bool = kDefaultReadingBarEnabled,
             showPlayerControls: Bool? = nil,
-            showProgressBar: Bool = false,
-            showProgress: Bool = true,
-            showTimeRemainingInBook: Bool = true,
-            showTimeRemainingInChapter: Bool = true,
-            showPageNumber: Bool = true,
-            overlayTransparency: Double = 0.8,
-            alwaysShowMiniPlayer: Bool = false
+            showProgressBar: Bool = kDefaultShowProgressBar,
+            showProgress: Bool = kDefaultShowProgress,
+            showTimeRemainingInBook: Bool = kDefaultShowTimeRemainingInBook,
+            showTimeRemainingInChapter: Bool = kDefaultShowTimeRemainingInChapter,
+            showPageNumber: Bool = kDefaultShowPageNumber,
+            overlayTransparency: Double = kDefaultOverlayTransparency,
+            alwaysShowMiniPlayer: Bool = kDefaultAlwaysShowMiniPlayer
         ) {
             self.enabled = enabled
             #if os(iOS)
-            self.showPlayerControls = showPlayerControls ?? true
+            self.showPlayerControls = showPlayerControls ?? kDefaultShowPlayerControlsIOS
             #else
-            self.showPlayerControls = showPlayerControls ?? false
+            self.showPlayerControls = showPlayerControls ?? kDefaultShowPlayerControlsMac
             #endif
             self.showProgressBar = showProgressBar
             self.showProgress = showProgress
@@ -169,9 +210,9 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
         public var isManuallyOffline: Bool
 
         public init(
-            progressSyncIntervalSeconds: Double = 30,
-            metadataRefreshIntervalSeconds: Double = 300,
-            isManuallyOffline: Bool = false
+            progressSyncIntervalSeconds: Double = kDefaultProgressSyncIntervalSeconds,
+            metadataRefreshIntervalSeconds: Double = kDefaultMetadataRefreshIntervalSeconds,
+            isManuallyOffline: Bool = kDefaultIsManuallyOffline
         ) {
             self.progressSyncIntervalSeconds = progressSyncIntervalSeconds
             self.metadataRefreshIntervalSeconds = metadataRefreshIntervalSeconds
@@ -193,13 +234,24 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
         public var tabBarSlot2: String
 
         public init(
-            showAudioIndicator: Bool = true,
-            tabBarSlot1: String = "books",
-            tabBarSlot2: String = "series"
+            showAudioIndicator: Bool = kDefaultShowAudioIndicator,
+            tabBarSlot1: String = kDefaultTabBarSlot1,
+            tabBarSlot2: String = kDefaultTabBarSlot2
         ) {
             self.showAudioIndicator = showAudioIndicator
             self.tabBarSlot1 = tabBarSlot1
             self.tabBarSlot2 = tabBarSlot2
+        }
+
+        public init(from decoder: Decoder) throws {
+            let container = try? decoder.container(keyedBy: CodingKeys.self)
+            showAudioIndicator = (try? container?.decode(Bool.self, forKey: .showAudioIndicator)) ?? kDefaultShowAudioIndicator
+            tabBarSlot1 = (try? container?.decode(String.self, forKey: .tabBarSlot1)) ?? kDefaultTabBarSlot1
+            tabBarSlot2 = (try? container?.decode(String.self, forKey: .tabBarSlot2)) ?? kDefaultTabBarSlot2
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case showAudioIndicator, tabBarSlot1, tabBarSlot2
         }
     }
 }
