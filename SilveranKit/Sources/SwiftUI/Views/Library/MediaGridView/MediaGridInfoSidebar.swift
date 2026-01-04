@@ -80,11 +80,56 @@ struct MediaGridInfoSidebar: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .textSelection(.enabled)
                 }
-                Text(item.authors?.first?.name ?? "")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .textSelection(.enabled)
+                if let authors = item.authors, let first = authors.first?.name {
+                    HStack(spacing: 4) {
+                        Text(first)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .textSelection(.enabled)
+                        if authors.count > 1 {
+                            Menu {
+                                ForEach(authors, id: \.name) { author in
+                                    if let name = author.name {
+                                        Text(name)
+                                    }
+                                }
+                            } label: {
+                                Image(systemName: "ellipsis")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(.tertiary)
+                                    .frame(width: 24, height: 20)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+                if let narrators = item.narrators, let first = narrators.first?.name {
+                    HStack(spacing: 4) {
+                        Text("Narrated by \(first)")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .textSelection(.enabled)
+                        if narrators.count > 1 {
+                            Menu {
+                                ForEach(narrators, id: \.name) { narrator in
+                                    if let name = narrator.name {
+                                        Text(name)
+                                    }
+                                }
+                            } label: {
+                                Image(systemName: "ellipsis")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(.tertiary)
+                                    .frame(width: 24, height: 20)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
             }
             Spacer(minLength: 8)
             Button(action: onClose) {

@@ -101,31 +101,63 @@ struct iOSBookDetailView: View {
     @ViewBuilder
     private func leftInfoColumn(width: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            if let author = item.authors?.first?.name {
+            if let authors = item.authors, let first = authors.first?.name {
                 HStack(alignment: .top, spacing: 0) {
                     Text("Written by")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .frame(width: labelWidth, alignment: .leading)
-                    Text(author)
+                    Text(first)
                         .font(.subheadline)
                         .fontWeight(.medium)
                         .foregroundStyle(.primary)
                         .textSelection(.enabled)
+                    if authors.count > 1 {
+                        Menu {
+                            ForEach(authors, id: \.name) { author in
+                                if let name = author.name {
+                                    Text(name)
+                                }
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis")
+                                .font(.system(size: 12))
+                                .foregroundStyle(.tertiary)
+                                .frame(width: 32, height: 24)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
             }
 
-            if let narrator = item.narrators?.first?.name {
+            if let narrators = item.narrators, let first = narrators.first?.name {
                 HStack(alignment: .top, spacing: 0) {
                     Text("Narrated by")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .frame(width: labelWidth, alignment: .leading)
-                    Text(narrator)
+                    Text(first)
                         .font(.subheadline)
                         .fontWeight(.medium)
                         .foregroundStyle(.primary)
                         .textSelection(.enabled)
+                    if narrators.count > 1 {
+                        Menu {
+                            ForEach(narrators, id: \.name) { narrator in
+                                if let name = narrator.name {
+                                    Text(name)
+                                }
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis")
+                                .font(.system(size: 12))
+                                .foregroundStyle(.tertiary)
+                                .frame(width: 32, height: 24)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
             }
 
