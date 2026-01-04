@@ -29,6 +29,7 @@ struct SilveranWatchApp: App {
                 )
                 if success {
                     debugLog("[WatchApp] Storyteller connected successfully")
+                    await ProgressSyncActor.shared.startPolling()
                     await syncOnLaunch()
                 } else {
                     debugLog("[WatchApp] Storyteller connection failed")
