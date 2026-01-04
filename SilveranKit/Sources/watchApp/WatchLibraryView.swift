@@ -156,8 +156,11 @@ private struct LibraryBookRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 4) {
-                Image(systemName: "waveform")
-                    .font(.caption2)
+                Image("readalong")
+                    .renderingMode(.template)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 12, height: 12)
                     .foregroundStyle(.secondary)
                 Text(book.title)
                     .font(.headline)

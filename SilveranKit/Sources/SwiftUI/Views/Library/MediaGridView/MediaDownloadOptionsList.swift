@@ -89,7 +89,10 @@ struct MediaDownloadOptionRow: View {
                                 .aspectRatio(contentMode: .fit)
                                 .frame(width: 24, height: 24)
                         case .readaloud:
-                            Image(systemName: "waveform")
+                            Image("readalong")
+                                .renderingMode(.template)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
                     }
                 }
                 .frame(width: 20, height: 20)
@@ -145,7 +148,11 @@ struct MediaDownloadOptionRow: View {
                                     .aspectRatio(contentMode: .fit)
                                     .frame(width: 18, height: 18)
                             case .readaloud:
-                                Image(systemName: "waveform")
+                                Image("readalong")
+                                    .renderingMode(.template)
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fit)
+                                    .frame(width: 18, height: 18)
                         }
                     }
                     .font(.system(size: 16))
@@ -233,7 +240,11 @@ struct MediaDownloadOptionRow: View {
                                         .aspectRatio(contentMode: .fit)
                                         .frame(width: 18, height: 18)
                                 case .readaloud:
-                                    Image(systemName: "waveform")
+                                    Image("readalong")
+                                        .renderingMode(.template)
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fit)
+                                        .frame(width: 18, height: 18)
                             }
                         }
                         .font(.system(size: 16))

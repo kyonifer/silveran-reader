@@ -219,8 +219,7 @@ struct TransferItemRow: View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
-                    Image(systemName: categoryIcon)
-                        .font(.caption)
+                    categoryIconView
                         .foregroundStyle(.secondary)
                     Text(item.bookTitle)
                         .font(.headline)
@@ -265,14 +264,21 @@ struct TransferItemRow: View {
         .padding(.vertical, 4)
     }
 
-    private var categoryIcon: String {
+    @ViewBuilder
+    private var categoryIconView: some View {
         switch item.category {
             case .ebook:
-                return "book.closed"
+                Image(systemName: "book.closed")
+                    .font(.caption)
             case .synced:
-                return "waveform"
+                Image("readalong")
+                    .renderingMode(.template)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 12, height: 12)
             case .audio:
-                return "headphones"
+                Image(systemName: "headphones")
+                    .font(.caption)
         }
     }
 
@@ -313,8 +319,7 @@ struct WatchBookRow: View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
-                    Image(systemName: categoryIcon)
-                        .font(.caption)
+                    categoryIconView
                         .foregroundStyle(.secondary)
                     Text(book.title)
                         .font(.headline)
@@ -344,14 +349,21 @@ struct WatchBookRow: View {
         }
     }
 
-    private var categoryIcon: String {
+    @ViewBuilder
+    private var categoryIconView: some View {
         switch book.category {
             case .ebook:
-                return "book.closed"
+                Image(systemName: "book.closed")
+                    .font(.caption)
             case .synced:
-                return "waveform"
+                Image("readalong")
+                    .renderingMode(.template)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 12, height: 12)
             case .audio:
-                return "headphones"
+                Image(systemName: "headphones")
+                    .font(.caption)
         }
     }
 
@@ -505,10 +517,19 @@ struct BookSearchRow: View {
                     Button {
                         onSelect(.synced)
                     } label: {
-                        Label(
-                            syncedOnWatch ? "On Watch" : "Readaloud",
-                            systemImage: syncedOnWatch ? "checkmark" : "waveform"
-                        )
+                        Label {
+                            Text(syncedOnWatch ? "On Watch" : "Readaloud")
+                        } icon: {
+                            if syncedOnWatch {
+                                Image(systemName: "checkmark")
+                            } else {
+                                Image("readalong")
+                                    .renderingMode(.template)
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fit)
+                                    .frame(width: 12, height: 12)
+                            }
+                        }
                         .font(.caption)
                     }
                     .buttonStyle(.bordered)

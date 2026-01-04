@@ -494,19 +494,28 @@ private struct CompactMediaButton: View {
         } else {
             ZStack {
                 Color(.secondarySystemBackground)
-                Image(systemName: mediaTypeIcon)
-                    .font(.system(size: 14))
+                mediaTypeIconView
                     .foregroundStyle(.tertiary)
             }
             .frame(width: 32, height: 32)
         }
     }
 
-    private var mediaTypeIcon: String {
+    @ViewBuilder
+    private var mediaTypeIconView: some View {
         switch option.category {
-        case .ebook: return "book.fill"
-        case .audio: return "headphones"
-        case .synced: return "waveform"
+        case .ebook:
+            Image(systemName: "book.fill")
+                .font(.system(size: 14))
+        case .audio:
+            Image(systemName: "headphones")
+                .font(.system(size: 14))
+        case .synced:
+            Image("readalong")
+                .renderingMode(.template)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 16, height: 16)
         }
     }
 

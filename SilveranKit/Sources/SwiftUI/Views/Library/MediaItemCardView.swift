@@ -356,16 +356,11 @@ struct ReadaloudIcon: View {
     let size: CGFloat
 
     var body: some View {
-        VStack(spacing: -size * 0.3) {
-            Image(systemName: "waveform")
-                .font(.system(size: size * 0.5, weight: .bold))
-            Image("readalong")
-                .renderingMode(.template)
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .frame(width: size)
-        }
-        .offset(y: size * 0.2)
+        Image("readalong")
+            .renderingMode(.template)
+            .resizable()
+            .aspectRatio(contentMode: .fit)
+            .frame(width: size)
     }
 }
 
@@ -388,8 +383,11 @@ struct AudioIndicatorBadge: View {
                 Circle()
                     .fill(Color.black.opacity(0.7))
                 if item.hasAvailableReadaloud {
-                    Image(systemName: "waveform")
-                        .font(.system(size: 11, weight: .semibold))
+                    Image("readalong")
+                        .renderingMode(.template)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 12, height: 12)
                         .foregroundStyle(.gray)
                 } else {
                     Image(systemName: "headphones")

@@ -97,7 +97,7 @@ enum MediaGridViewUtilities {
                     category: .synced,
                     title: "Readaloud",
                     openTitle: "Read Readaloud",
-                    iconName: "waveform",
+                    iconName: "readalong",
                     iconType: .readaloud
                 )
             )
