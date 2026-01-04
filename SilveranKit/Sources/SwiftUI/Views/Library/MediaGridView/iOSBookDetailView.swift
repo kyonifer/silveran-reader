@@ -7,7 +7,7 @@ struct iOSBookDetailView: View {
     @Environment(MediaViewModel.self) private var mediaViewModel: MediaViewModel
     @State private var showingSyncHistory = false
     @State private var currentChapter: String?
-    @State private var forceCompactButtons = false
+    @AppStorage("iOSBookDetailForceCompactButtons") private var forceCompactButtons = false
 
     private var currentItem: BookMetadata {
         mediaViewModel.library.bookMetaData.first { $0.uuid == item.uuid } ?? item
