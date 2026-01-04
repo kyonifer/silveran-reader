@@ -60,3 +60,4 @@ public let kDefaultTabBarSlot1 = "books"
 public let kDefaultTabBarSlot2 = "series"
 public let kDefaultTapToPlayPreferredPlayer = false
 public let kDefaultPreferAudioOverEbook = false
+public let kDefaultShowTabsOnHover = false

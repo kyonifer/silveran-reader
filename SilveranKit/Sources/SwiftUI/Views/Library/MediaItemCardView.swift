@@ -205,7 +205,7 @@ struct MediaItemCardView: View {
                     item: item,
                     coverWidth: metrics.coverWidth,
                     isSelected: isSelected,
-                    alwaysShow: false
+                    isHoveringCard: isHoveringCard
                 )
                 .environment(mediaViewModel)
                 #endif

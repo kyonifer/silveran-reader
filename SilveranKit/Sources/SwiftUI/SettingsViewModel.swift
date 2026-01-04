@@ -56,6 +56,9 @@ public final class SettingsViewModel {
     public var tapToPlayPreferredPlayer: Bool = kDefaultTapToPlayPreferredPlayer
     public var preferAudioOverEbook: Bool = kDefaultPreferAudioOverEbook
     #endif
+    #if os(macOS)
+    public var showTabsOnHover: Bool = kDefaultShowTabsOnHover
+    #endif
 
     public var userHighlightColor1: String = kDefaultUserHighlightColor1
     public var userHighlightColor2: String = kDefaultUserHighlightColor2
@@ -161,6 +164,9 @@ public final class SettingsViewModel {
         tapToPlayPreferredPlayer = config.library.tapToPlayPreferredPlayer
         preferAudioOverEbook = config.library.preferAudioOverEbook
         #endif
+        #if os(macOS)
+        showTabsOnHover = config.library.showTabsOnHover
+        #endif
 
         userHighlightColor1 = config.reading.userHighlightColor1
         userHighlightColor2 = config.reading.userHighlightColor2
@@ -232,6 +238,7 @@ public final class SettingsViewModel {
             showAudioIndicator: showAudioIndicator,
             tapToPlayPreferredPlayer: tapToPlayPreferredPlayerValue,
             preferAudioOverEbook: preferAudioOverEbookValue,
+            showTabsOnHover: showTabsOnHoverValue,
             userHighlightMode: userHighlightMode,
             readaloudHighlightMode: readaloudHighlightMode,
             tabBarSlot1: tabBarSlot1Value,
@@ -245,11 +252,13 @@ public final class SettingsViewModel {
     private var tabBarSlot2Value: String { tabBarSlot2 }
     private var tapToPlayPreferredPlayerValue: Bool { tapToPlayPreferredPlayer }
     private var preferAudioOverEbookValue: Bool { preferAudioOverEbook }
+    private var showTabsOnHoverValue: Bool { kDefaultShowTabsOnHover }
     #else
     private var alwaysShowMiniPlayerValue: Bool { kDefaultAlwaysShowMiniPlayer }
     private var tabBarSlot1Value: String { kDefaultTabBarSlot1 }
     private var tabBarSlot2Value: String { kDefaultTabBarSlot2 }
     private var tapToPlayPreferredPlayerValue: Bool { kDefaultTapToPlayPreferredPlayer }
     private var preferAudioOverEbookValue: Bool { kDefaultPreferAudioOverEbook }
+    private var showTabsOnHoverValue: Bool { showTabsOnHover }
     #endif
 }

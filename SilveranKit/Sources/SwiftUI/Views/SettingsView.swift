@@ -184,6 +184,7 @@ public struct SettingsView: View {
                     showAudioIndicator: newValue.library.showAudioIndicator,
                     tapToPlayPreferredPlayer: newValue.library.tapToPlayPreferredPlayer,
                     preferAudioOverEbook: newValue.library.preferAudioOverEbook,
+                    showTabsOnHover: newValue.library.showTabsOnHover,
                     userHighlightColor1: newValue.reading.userHighlightColor1,
                     userHighlightColor2: newValue.reading.userHighlightColor2,
                     userHighlightColor3: newValue.reading.userHighlightColor3,
@@ -213,7 +214,7 @@ extension SettingsView {
     fileprivate var macOSContent: some View {
         VStack(spacing: 0) {
             TabView(selection: $selectedTab) {
-                MacGeneralSettingsView(sync: $config.sync)
+                MacGeneralSettingsView(sync: $config.sync, library: $config.library)
                     .tabItem {
                         Label("General", systemImage: "gear")
                     }
@@ -419,6 +420,7 @@ private struct MacSettingsContainer<Content: View>: View {
 
 private struct MacGeneralSettingsView: View {
     @Binding var sync: SilveranGlobalConfig.Sync
+    @Binding var library: SilveranGlobalConfig.Library
     @State private var showClearConfirmation = false
     private let labelWidth: CGFloat = 180
 
@@ -502,6 +504,20 @@ private struct MacGeneralSettingsView: View {
                     isOn: $sync.autoSyncToNewerServerPosition
                 )
                 .help("Automatically navigate to a newer reading position synced from another device")
+            }
+
+            Divider()
+                .padding(.vertical, 8)
+
+            VStack(alignment: .leading, spacing: 18) {
+                Text("Library")
+                    .font(.headline)
+
+                Toggle(
+                    "Show media tabs on hover",
+                    isOn: $library.showTabsOnHover
+                )
+                .help("Show the ebook/audiobook/readaloud tabs when hovering over a book cover instead of requiring a click")
             }
 
         }

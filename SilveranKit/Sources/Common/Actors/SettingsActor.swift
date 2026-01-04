@@ -237,19 +237,22 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
         public var tabBarSlot2: String
         public var tapToPlayPreferredPlayer: Bool
         public var preferAudioOverEbook: Bool
+        public var showTabsOnHover: Bool
 
         public init(
             showAudioIndicator: Bool = kDefaultShowAudioIndicator,
             tabBarSlot1: String = kDefaultTabBarSlot1,
             tabBarSlot2: String = kDefaultTabBarSlot2,
             tapToPlayPreferredPlayer: Bool = kDefaultTapToPlayPreferredPlayer,
-            preferAudioOverEbook: Bool = kDefaultPreferAudioOverEbook
+            preferAudioOverEbook: Bool = kDefaultPreferAudioOverEbook,
+            showTabsOnHover: Bool = kDefaultShowTabsOnHover
         ) {
             self.showAudioIndicator = showAudioIndicator
             self.tabBarSlot1 = tabBarSlot1
             self.tabBarSlot2 = tabBarSlot2
             self.tapToPlayPreferredPlayer = tapToPlayPreferredPlayer
             self.preferAudioOverEbook = preferAudioOverEbook
+            self.showTabsOnHover = showTabsOnHover
         }
 
         public init(from decoder: Decoder) throws {
@@ -259,10 +262,11 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
             tabBarSlot2 = (try? container?.decode(String.self, forKey: .tabBarSlot2)) ?? kDefaultTabBarSlot2
             tapToPlayPreferredPlayer = (try? container?.decode(Bool.self, forKey: .tapToPlayPreferredPlayer)) ?? kDefaultTapToPlayPreferredPlayer
             preferAudioOverEbook = (try? container?.decode(Bool.self, forKey: .preferAudioOverEbook)) ?? kDefaultPreferAudioOverEbook
+            showTabsOnHover = (try? container?.decode(Bool.self, forKey: .showTabsOnHover)) ?? kDefaultShowTabsOnHover
         }
 
         private enum CodingKeys: String, CodingKey {
-            case showAudioIndicator, tabBarSlot1, tabBarSlot2, tapToPlayPreferredPlayer, preferAudioOverEbook
+            case showAudioIndicator, tabBarSlot1, tabBarSlot2, tapToPlayPreferredPlayer, preferAudioOverEbook, showTabsOnHover
         }
     }
 }
@@ -341,6 +345,7 @@ public actor SettingsActor {
         showAudioIndicator: Bool? = nil,
         tapToPlayPreferredPlayer: Bool? = nil,
         preferAudioOverEbook: Bool? = nil,
+        showTabsOnHover: Bool? = nil,
         userHighlightColor1: String? = nil,
         userHighlightColor2: String? = nil,
         userHighlightColor3: String? = nil,
@@ -418,6 +423,9 @@ public actor SettingsActor {
         }
         if let preferAudioOverEbook {
             updated.library.preferAudioOverEbook = preferAudioOverEbook
+        }
+        if let showTabsOnHover {
+            updated.library.showTabsOnHover = showTabsOnHover
         }
         if let tabBarSlot1 {
             updated.library.tabBarSlot1 = tabBarSlot1
