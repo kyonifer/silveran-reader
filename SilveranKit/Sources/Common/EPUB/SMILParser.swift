@@ -142,6 +142,7 @@ public enum SMILParser {
         let href: String
         let mediaType: String?
         let mediaOverlay: String?
+        let properties: String?
     }
 
     struct SpineItem {
@@ -170,12 +171,54 @@ public enum SMILParser {
 
         if let ncxItem = ncxItem {
             let ncxPath = resolvePath(ncxItem.href, relativeTo: opfDir)
+            debugLog("[SMILParser] Found NCX at: \(ncxPath)")
             if let ncxData = try? extractFile(from: archive, path: ncxPath) {
-                return parseNCXLabels(ncxData)
+                let labels = parseNCXLabels(ncxData)
+                debugLog("[SMILParser] NCX parsed: \(labels.count) labels")
+                if !labels.isEmpty {
+                    return labels
+                }
+            } else {
+                debugLog("[SMILParser] Failed to extract NCX file")
             }
+        } else {
+            debugLog("[SMILParser] No NCX file in manifest")
         }
 
+        let navItem = manifest.values.first { item in
+            guard let props = item.properties else { return false }
+            let tokens = props.split { $0.isWhitespace }.map { String($0) }
+            return tokens.contains("nav")
+        }
+
+        if let navItem = navItem {
+            let navPath = resolvePath(navItem.href, relativeTo: opfDir)
+            let navDir = (navPath as NSString).deletingLastPathComponent
+            debugLog("[SMILParser] Found EPUB3 nav at: \(navPath)")
+            if let navData = try? extractFile(from: archive, path: navPath) {
+                let labels = parseNavLabels(navData, navDir: navDir)
+                debugLog("[SMILParser] Nav parsed: \(labels.count) labels")
+                if labels.isEmpty {
+                    debugLog("[SMILParser] Nav file contained no TOC entries")
+                }
+                return labels
+            } else {
+                debugLog("[SMILParser] Failed to extract nav file")
+            }
+        } else {
+            debugLog("[SMILParser] No EPUB3 nav document in manifest")
+        }
+
+        debugLog("[SMILParser] No TOC labels found (no NCX or nav)")
         return [:]
+    }
+
+    private static func parseNavLabels(_ data: Data, navDir: String) -> [String: String] {
+        let delegate = NavXMLDelegate(navDir: navDir)
+        let parser = XMLParser(data: data)
+        parser.delegate = delegate
+        _ = parser.parse()
+        return delegate.labels
     }
 
     private static func parseNCXLabels(_ data: Data) -> [String: String] {
@@ -282,7 +325,8 @@ private class OPFXMLDelegate: NSObject, XMLParserDelegate {
                 id: id,
                 href: decodedHref,
                 mediaType: attributes["media-type"],
-                mediaOverlay: attributes["media-overlay"]
+                mediaOverlay: attributes["media-overlay"],
+                properties: attributes["properties"]
             )
         } else if localName == "itemref" {
             guard let idref = attributes["idref"] else { return }
@@ -361,6 +405,107 @@ private class NCXXMLDelegate: NSObject, XMLParserDelegate {
             default:
                 break
         }
+    }
+}
+
+private class NavXMLDelegate: NSObject, XMLParserDelegate {
+    let navDir: String
+    var labels: [String: String] = [:]
+
+    private var inTocNav = false
+    private var inAnchor = false
+    private var currentHref: String?
+    private var currentText: String = ""
+
+    init(navDir: String) {
+        self.navDir = navDir
+    }
+
+    func parser(
+        _ parser: XMLParser,
+        didStartElement elementName: String,
+        namespaceURI: String?,
+        qualifiedName qName: String?,
+        attributes: [String: String]
+    ) {
+        let localName = elementName.components(separatedBy: ":").last ?? elementName
+
+        switch localName {
+            case "nav":
+                let epubType = attributes["epub:type"] ?? attributes["type"] ?? ""
+                let role = attributes["role"] ?? ""
+                let epubTypeTokens = epubType.split { $0.isWhitespace }.map { String($0) }
+                let roleTokens = role.split { $0.isWhitespace }.map { String($0) }
+                if epubTypeTokens.contains("toc") || roleTokens.contains("doc-toc") {
+                    inTocNav = true
+                }
+            case "a":
+                if inTocNav, let href = attributes["href"] {
+                    inAnchor = true
+                    let baseSrc = href.components(separatedBy: "#").first ?? ""
+                    let decoded = baseSrc.removingPercentEncoding ?? baseSrc
+                    currentHref = resolvePath(decoded, relativeTo: navDir)
+                    currentText = ""
+                }
+            default:
+                break
+        }
+    }
+
+    func parser(_ parser: XMLParser, foundCharacters string: String) {
+        if inAnchor {
+            currentText += string
+        }
+    }
+
+    func parser(
+        _ parser: XMLParser,
+        didEndElement elementName: String,
+        namespaceURI: String?,
+        qualifiedName qName: String?
+    ) {
+        let localName = elementName.components(separatedBy: ":").last ?? elementName
+
+        switch localName {
+            case "nav":
+                inTocNav = false
+            case "a":
+                if inAnchor, let href = currentHref {
+                    let trimmedText = currentText.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !trimmedText.isEmpty {
+                        labels[href] = trimmedText
+                    }
+                }
+                inAnchor = false
+                currentHref = nil
+            default:
+                break
+        }
+    }
+
+    private func resolvePath(_ path: String, relativeTo base: String) -> String {
+        if path.hasPrefix("/") || path.hasPrefix("http") || path.isEmpty {
+            return path
+        }
+        if base.isEmpty {
+            return path
+        }
+        let combined = (base as NSString).appendingPathComponent(path)
+        return normalizePath(combined)
+    }
+
+    private func normalizePath(_ path: String) -> String {
+        var components: [String] = []
+        for component in path.components(separatedBy: "/") {
+            if component == ".." {
+                if !components.isEmpty && components.last != ".." {
+                    components.removeLast()
+                }
+            } else if component != "." && !component.isEmpty {
+                components.append(component)
+            }
+        }
+        return components.joined(separator: "/")
     }
 }
 
