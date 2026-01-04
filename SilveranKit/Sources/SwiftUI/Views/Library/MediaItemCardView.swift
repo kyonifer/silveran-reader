@@ -83,14 +83,84 @@ struct MediaItemCardView: View {
 
     var body: some View {
         #if os(iOS)
-        NavigationLink(value: item) {
-            cardContent
+        if let playerData = preferredPlayerBookData {
+            NavigationLink(value: playerData) {
+                cardContent
+            }
+            .buttonStyle(.plain)
+            .contextMenu {
+                NavigationLink(value: item) {
+                    Label("View Details", systemImage: "info.circle")
+                }
+
+                Divider()
+
+                if mediaViewModel.isCategoryDownloaded(.synced, for: item) {
+                    NavigationLink(value: makePlayerBookData(for: .synced)) {
+                        Label("Read Readaloud", systemImage: "text.book.closed")
+                    }
+                }
+                if mediaViewModel.isCategoryDownloaded(.ebook, for: item) {
+                    NavigationLink(value: makePlayerBookData(for: .ebook)) {
+                        Label("Read Ebook", systemImage: "book.fill")
+                    }
+                }
+                if mediaViewModel.isCategoryDownloaded(.audio, for: item) {
+                    NavigationLink(value: makePlayerBookData(for: .audio)) {
+                        Label("Play Audiobook", systemImage: "headphones")
+                    }
+                }
+            }
+        } else {
+            NavigationLink(value: item) {
+                cardContent
+            }
+            .buttonStyle(.plain)
         }
-        .buttonStyle(.plain)
         #else
         cardContent
         #endif
     }
+
+    #if os(iOS)
+    private var preferredPlayerBookData: PlayerBookData? {
+        let settings = mediaViewModel.cachedConfig.library
+        guard settings.tapToPlayPreferredPlayer else { return nil }
+
+        let syncedDownloaded = mediaViewModel.isCategoryDownloaded(.synced, for: item)
+        let audioDownloaded = mediaViewModel.isCategoryDownloaded(.audio, for: item)
+        let ebookDownloaded = mediaViewModel.isCategoryDownloaded(.ebook, for: item)
+
+        let category: LocalMediaCategory?
+        if syncedDownloaded {
+            category = .synced
+        } else if audioDownloaded && ebookDownloaded {
+            category = settings.preferAudioOverEbook ? .audio : .ebook
+        } else if audioDownloaded {
+            category = .audio
+        } else if ebookDownloaded {
+            category = .ebook
+        } else {
+            category = nil
+        }
+
+        guard let category else { return nil }
+        return makePlayerBookData(for: category)
+    }
+
+    private func makePlayerBookData(for category: LocalMediaCategory) -> PlayerBookData {
+        let freshMetadata = mediaViewModel.library.bookMetaData.first { $0.id == item.id } ?? item
+        let path = mediaViewModel.localMediaPath(for: item.id, category: category)
+        let variant: MediaViewModel.CoverVariant = freshMetadata.hasAvailableAudiobook ? .audioSquare : .standard
+        let cover = mediaViewModel.coverImage(for: freshMetadata, variant: variant)
+        return PlayerBookData(
+            metadata: freshMetadata,
+            localMediaPath: path,
+            category: category,
+            coverArt: cover
+        )
+    }
+    #endif
 
     private var cardContent: some View {
         let placeholderColor = Color(white: 0.2)

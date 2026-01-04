@@ -53,6 +53,8 @@ public final class SettingsViewModel {
     #if os(iOS)
     public var tabBarSlot1: String = kDefaultTabBarSlot1
     public var tabBarSlot2: String = kDefaultTabBarSlot2
+    public var tapToPlayPreferredPlayer: Bool = kDefaultTapToPlayPreferredPlayer
+    public var preferAudioOverEbook: Bool = kDefaultPreferAudioOverEbook
     #endif
 
     public var userHighlightColor1: String = kDefaultUserHighlightColor1
@@ -156,6 +158,8 @@ public final class SettingsViewModel {
         #if os(iOS)
         tabBarSlot1 = config.library.tabBarSlot1
         tabBarSlot2 = config.library.tabBarSlot2
+        tapToPlayPreferredPlayer = config.library.tapToPlayPreferredPlayer
+        preferAudioOverEbook = config.library.preferAudioOverEbook
         #endif
 
         userHighlightColor1 = config.reading.userHighlightColor1
@@ -226,6 +230,8 @@ public final class SettingsViewModel {
             metadataRefreshIntervalSeconds: metadataRefreshIntervalSeconds,
             autoSyncToNewerServerPosition: autoSyncToNewerServerPosition,
             showAudioIndicator: showAudioIndicator,
+            tapToPlayPreferredPlayer: tapToPlayPreferredPlayerValue,
+            preferAudioOverEbook: preferAudioOverEbookValue,
             userHighlightMode: userHighlightMode,
             readaloudHighlightMode: readaloudHighlightMode,
             tabBarSlot1: tabBarSlot1Value,
@@ -237,9 +243,13 @@ public final class SettingsViewModel {
     private var alwaysShowMiniPlayerValue: Bool { alwaysShowMiniPlayer }
     private var tabBarSlot1Value: String { tabBarSlot1 }
     private var tabBarSlot2Value: String { tabBarSlot2 }
+    private var tapToPlayPreferredPlayerValue: Bool { tapToPlayPreferredPlayer }
+    private var preferAudioOverEbookValue: Bool { preferAudioOverEbook }
     #else
     private var alwaysShowMiniPlayerValue: Bool { kDefaultAlwaysShowMiniPlayer }
     private var tabBarSlot1Value: String { kDefaultTabBarSlot1 }
     private var tabBarSlot2Value: String { kDefaultTabBarSlot2 }
+    private var tapToPlayPreferredPlayerValue: Bool { kDefaultTapToPlayPreferredPlayer }
+    private var preferAudioOverEbookValue: Bool { kDefaultPreferAudioOverEbook }
     #endif
 }

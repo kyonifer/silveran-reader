@@ -181,6 +181,9 @@ public struct SettingsView: View {
                     progressSyncIntervalSeconds: newValue.sync.progressSyncIntervalSeconds,
                     metadataRefreshIntervalSeconds: newValue.sync.metadataRefreshIntervalSeconds,
                     autoSyncToNewerServerPosition: newValue.sync.autoSyncToNewerServerPosition,
+                    showAudioIndicator: newValue.library.showAudioIndicator,
+                    tapToPlayPreferredPlayer: newValue.library.tapToPlayPreferredPlayer,
+                    preferAudioOverEbook: newValue.library.preferAudioOverEbook,
                     userHighlightColor1: newValue.reading.userHighlightColor1,
                     userHighlightColor2: newValue.reading.userHighlightColor2,
                     userHighlightColor3: newValue.reading.userHighlightColor3,
@@ -295,6 +298,24 @@ extension SettingsView {
                         ForEach(ConfigurableTab.allCases) { tab in
                             Text(tab.label).tag(tab.rawValue)
                         }
+                    }
+                }
+
+                Section {
+                    Toggle("Tap Cover to Play", isOn: $config.library.tapToPlayPreferredPlayer)
+                    if config.library.tapToPlayPreferredPlayer {
+                        Picker("When Both Available", selection: $config.library.preferAudioOverEbook) {
+                            Text("Prefer Ebook").tag(false)
+                            Text("Prefer Audiobook").tag(true)
+                        }
+                    }
+                } header: {
+                    Text("Library")
+                } footer: {
+                    if config.library.tapToPlayPreferredPlayer {
+                        Text("Tapping a book cover opens the preferred player if media is downloaded. Readaloud always takes priority. Long press to access book details via context menu.")
+                    } else {
+                        Text("When enabled, tapping a book cover opens the preferred player instead of book details.")
                     }
                 }
 
