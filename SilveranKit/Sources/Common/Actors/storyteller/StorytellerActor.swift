@@ -1966,17 +1966,23 @@ public actor StorytellerActor {
         return locator
     }
 
-    public func fetchBookProgress(bookId: String) async -> BookReadingPosition? {
-        debugLog("[StorytellerActor] fetchBookProgress: bookId=\(bookId)")
+    public func fetchBookProgress(bookId: String, log: Bool = true) async -> BookReadingPosition? {
+        if log {
+            debugLog("[StorytellerActor] fetchBookProgress: bookId=\(bookId)")
+        }
 
         guard let metadata = await fetchBookDetails(for: bookId) else {
-            debugLog("[StorytellerActor] fetchBookProgress: failed to fetch metadata")
+            if log {
+                debugLog("[StorytellerActor] fetchBookProgress: failed to fetch metadata")
+            }
             return nil
         }
 
-        debugLog(
-            "[StorytellerActor] fetchBookProgress: returning position with timestamp=\(metadata.position?.timestamp ?? 0)"
-        )
+        if log {
+            debugLog(
+                "[StorytellerActor] fetchBookProgress: returning position with timestamp=\(metadata.position?.timestamp ?? 0)"
+            )
+        }
         return metadata.position
     }
 

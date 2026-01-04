@@ -66,9 +66,26 @@ class EbookProgressManager {
 
     // MARK: - User Navigation Detection
 
-    /// Pending task for debounced user navigation notification
-    private var userNavPendingTask: Task<Void, Never>?
-    private var isUserNavPending: Bool = false
+    private enum UserNavDirection: String {
+        case left
+        case right
+    }
+
+    private struct PendingPageNav {
+        var sectionIndex: Int
+        var expectedPage: Int
+        var totalPages: Int?
+    }
+
+    private struct PendingSeekNav {
+        var sectionIndex: Int
+    }
+
+    private var pendingPageNav: PendingPageNav? = nil
+    private var pendingSeekNav: PendingSeekNav? = nil
+    private var pendingChapterTransition: Int? = nil
+    private var pendingSwiftCommandFlipEchoes = 0
+    private var userNavFallbackTask: Task<Void, Never>? = nil
 
     // MARK: - Progress Sync State
 
@@ -375,6 +392,24 @@ class EbookProgressManager {
 
     // MARK: - Chapter Navigation
 
+    /*
+     Navigation flow (page flips + relocates):
+     - Swipes are handled in JS, which emits PageFlipped with from/to/direction. We queue an
+       expected page for the current section and wait for the matching relocate before syncing
+       readaloud (MOM).
+     - Button/margin nav is Swift-triggered (sendJsGoLeft/Right). We queue the expected page
+       immediately because JS doesn't reliably emit PageFlipped in all environments. If a
+       PageFlipped echo does arrive, we suppress it to avoid double-queueing.
+     - If multiple swipes arrive before relocates settle, we advance the expected page each time.
+     - If the expected page crosses the chapter boundary (page < 1 or > totalPages), we set up
+       a pendingChapterTransition and let the original goLeft/goRight command execute. Foliate
+       handles landing on the correct page (first page going right, last page going left). MOM
+       syncs after the relocate confirms the new position.
+     - If a pending page nav never resolves (e.g., Foliate drops a goLeft/goRight), a 700ms
+       fallback fires MOM using the latest known page so readaloud can catch up.
+     - Relocate events do the final arbitration: they resolve pending expectations and determine
+       whether MOM gets a user-nav event or a natural-nav event.
+     */
     /// JS sent relocate (position or chapter changed during playback)
     private func handleRelocated(_ message: RelocatedMessage) {
         debugLog(
@@ -383,18 +418,70 @@ class EbookProgressManager {
 
         recordActivity()
 
-        if isUserNavPending {
-            debugLog("[EPM] User nav pending, ignoring relocate (will be handled when timer fires)")
-        } else {
-            if let section = message.sectionIndex,
-                let page = message.pageIndex,
-                let total = message.totalPages,
-                let mom = mediaOverlayManager
-            {
-                Task { @MainActor in
-                    await mom.handleNaturalNavEvent(section: section, page: page, totalPages: total)
-                }
+        var chapterTransitionResolved = false
+
+        if let pendingChapter = pendingChapterTransition {
+            if message.sectionIndex != pendingChapter {
+                debugLog(
+                    "[EPM] Ignoring relocate while awaiting chapter \(pendingChapter) (got \(message.sectionIndex?.description ?? "nil"))"
+                )
+                return
             }
+
+            debugLog("[EPM] Chapter transition settled at section \(pendingChapter)")
+            pendingChapterTransition = nil
+            pendingPageNav = nil
+            pendingSeekNav = nil
+            pendingSwiftCommandFlipEchoes = 0
+            cancelUserNavFallback()
+            chapterTransitionResolved = true
+        }
+
+        let shouldNotifyUserNavForChapterTransition = chapterTransitionResolved
+
+        if let pending = pendingPageNav,
+            let section = message.sectionIndex,
+            section != pending.sectionIndex
+        {
+            debugLog(
+                "[EPM] Pending page nav invalidated by section change (expected \(pending.sectionIndex), got \(section))"
+            )
+            pendingPageNav = nil
+            pendingSwiftCommandFlipEchoes = 0
+            cancelUserNavFallback()
+        }
+
+        if let pending = pendingSeekNav,
+            let section = message.sectionIndex,
+            section != pending.sectionIndex
+        {
+            debugLog(
+                "[EPM] Pending seek nav invalidated by section change (expected \(pending.sectionIndex), got \(section))"
+            )
+            pendingSeekNav = nil
+        }
+
+        var shouldNotifyUserNav = false
+        let canNotifyNaturalNav = !chapterTransitionResolved
+
+        if let pending = pendingPageNav,
+            let section = message.sectionIndex,
+            let page = message.pageIndex,
+            section == pending.sectionIndex,
+            page == pending.expectedPage
+        {
+            debugLog("[EPM] Matched pending page nav: section \(section), page \(page)")
+            pendingPageNav = nil
+            pendingSwiftCommandFlipEchoes = 0
+            cancelUserNavFallback()
+            shouldNotifyUserNav = true
+        } else if let pending = pendingSeekNav,
+            let section = message.sectionIndex,
+            section == pending.sectionIndex
+        {
+            debugLog("[EPM] Seek nav settled at section \(section)")
+            pendingSeekNav = nil
+            shouldNotifyUserNav = true
         }
 
         selectedChapterId = message.sectionIndex
@@ -402,71 +489,182 @@ class EbookProgressManager {
         chapterCurrentPage = message.pageIndex
         chapterTotalPages = message.totalPages
         updateChapterProgress(currentPage: message.pageIndex, totalPages: message.totalPages)
+
+        if let section = message.sectionIndex,
+            let page = message.pageIndex,
+            let total = message.totalPages,
+            let mom = mediaOverlayManager
+        {
+            if shouldNotifyUserNav || shouldNotifyUserNavForChapterTransition {
+                Task { @MainActor in
+                    await mom.handleUserNavEvent(section: section, page: page, totalPages: total)
+                }
+            } else if canNotifyNaturalNav && pendingPageNav == nil && pendingSeekNav == nil {
+                Task { @MainActor in
+                    await mom.handleNaturalNavEvent(section: section, page: page, totalPages: total)
+                }
+            }
+        }
     }
 
-    /// Records a user navigation action and starts debounce timer
-    private func recordUserNavAction() {
-        userNavPendingTask?.cancel()
-        isUserNavPending = true
-        recordActivity()
+    @discardableResult
+    private func queuePageNav(
+        direction: UserNavDirection,
+        delta: Int = 1,
+        fromPage: Int? = nil,
+        totalPages: Int? = nil,
+        source: String
+    ) -> Bool {
+        guard pendingChapterTransition == nil else {
+            debugLog("[EPM] Ignoring page nav (\(direction.rawValue)) - chapter transition pending")
+            return false
+        }
 
-        userNavPendingTask = Task { @MainActor in
-            do {
-                try await Task.sleep(for: .milliseconds(300))
-            } catch {
-                return
+        guard let sectionIndex = selectedChapterId else {
+            debugLog("[EPM] Cannot queue page nav - no current section")
+            return false
+        }
+
+        let stepMagnitude = max(1, abs(delta))
+        let step = direction == .right ? stepMagnitude : -stepMagnitude
+
+        let resolvedTotalPages = totalPages ?? pendingPageNav?.totalPages ?? chapterTotalPages
+        let basePage: Int?
+
+        if let pending = pendingPageNav, pending.sectionIndex == sectionIndex {
+            basePage = pending.expectedPage
+        } else if let fromPage = fromPage {
+            basePage = fromPage
+        } else {
+            basePage = chapterCurrentPage
+        }
+
+        guard let basePage else {
+            debugLog("[EPM] Cannot queue page nav - no current page")
+            return false
+        }
+
+        let expectedPage = basePage + step
+
+        if let total = resolvedTotalPages, (expectedPage < 1 || expectedPage > total) {
+            let targetSection =
+                direction == .right
+                ? sectionIndex + 1
+                : sectionIndex - 1
+
+            guard targetSection >= 0 && targetSection < bookStructure.count else {
+                debugLog(
+                    "[EPM] Page nav crossed boundary but no adjacent chapter (section \(sectionIndex), page \(basePage)/\(total))"
+                )
+                return false
             }
 
-            guard !Task.isCancelled else { return }
+            debugLog(
+                "[EPM] Page nav crossed chapter boundary at \(basePage)/\(total), awaiting section \(targetSection)"
+            )
 
-            let section = selectedChapterId
-            let page = chapterCurrentPage
-            let total = chapterTotalPages
+            pendingPageNav = nil
+            pendingSeekNav = nil
+            cancelUserNavFallback()
+            pendingChapterTransition = targetSection
+            recordActivity()
+            recentUserNavReason = .userFlippedPage
 
-            isUserNavPending = false
+            return false
+        }
 
-            if let section, let page, let total, let mom = mediaOverlayManager {
+        pendingSeekNav = nil
+        pendingPageNav = PendingPageNav(
+            sectionIndex: sectionIndex,
+            expectedPage: expectedPage,
+            totalPages: resolvedTotalPages
+        )
+        recordActivity()
+        recentUserNavReason = .userFlippedPage
+        scheduleUserNavFallback(source: source)
+
+        debugLog(
+            "[EPM] Queued page nav (\(source)): section \(sectionIndex), expecting page \(expectedPage)/\(resolvedTotalPages?.description ?? "nil")"
+        )
+
+        resolvePendingPageNavIfAlreadyAtExpected()
+        return true
+    }
+
+    private func resolvePendingPageNavIfAlreadyAtExpected() {
+        guard let pending = pendingPageNav else { return }
+        guard let section = selectedChapterId,
+            let page = chapterCurrentPage,
+            let total = chapterTotalPages,
+            section == pending.sectionIndex,
+            page == pending.expectedPage
+        else {
+            return
+        }
+
+        debugLog("[EPM] Pending page nav already satisfied - dispatching")
+        pendingPageNav = nil
+        cancelUserNavFallback()
+
+        if let mom = mediaOverlayManager {
+            Task { @MainActor in
                 await mom.handleUserNavEvent(section: section, page: page, totalPages: total)
             }
         }
     }
 
-    // MARK: - User Navigation Methods
-
-    /// User pressed left arrow or swiped right (previous page)
-    func handleUserNavLeft() {
-        recordUserNavAction()
-        recentUserNavReason = .userFlippedPage
-        Task { @MainActor in
+    private func scheduleUserNavFallback(source: String) {
+        userNavFallbackTask?.cancel()
+        userNavFallbackTask = Task { @MainActor in
             do {
-                try await commsBridge?.sendJsGoLeftCommand()
+                try await Task.sleep(for: .milliseconds(700))
             } catch {
-                debugLog("[EPM] Failed to send left nav: \(error)")
+                return
             }
+
+            guard !Task.isCancelled else { return }
+            guard pendingChapterTransition == nil, pendingPageNav != nil else { return }
+            guard let section = selectedChapterId,
+                let page = chapterCurrentPage,
+                let total = chapterTotalPages,
+                let mom = mediaOverlayManager
+            else {
+                return
+            }
+
+            debugLog(
+                "[EPM] User nav fallback fired (\(source)): section \(section), page \(page)/\(total)"
+            )
+            pendingPageNav = nil
+            pendingSwiftCommandFlipEchoes = 0
+            await mom.handleUserNavEvent(section: section, page: page, totalPages: total)
         }
     }
 
-    /// User pressed right arrow or swiped left (next page)
-    func handleUserNavRight() {
-        recordUserNavAction()
-        recentUserNavReason = .userFlippedPage
-        Task { @MainActor in
-            do {
-                try await commsBridge?.sendJsGoRightCommand()
-            } catch {
-                debugLog("[EPM] Failed to send right nav: \(error)")
-            }
+    private func cancelUserNavFallback() {
+        userNavFallbackTask?.cancel()
+        userNavFallbackTask = nil
+    }
+
+    private func queueSeekNav(sectionIndex: Int) {
+        guard pendingChapterTransition == nil else {
+            debugLog("[EPM] Ignoring seek nav - chapter transition pending")
+            return
         }
+
+        cancelUserNavFallback()
+        pendingPageNav = nil
+        pendingSeekNav = PendingSeekNav(sectionIndex: sectionIndex)
+        recordActivity()
+        recentUserNavReason = .userDraggedSeekBar
+        debugLog("[EPM] Queued seek nav for section \(sectionIndex)")
     }
 
-    /// User performed touch swipe on webview (JS already handled navigation)
-    func handleUserNavSwipeDetected() {
-        recordUserNavAction()
-        recentUserNavReason = .userFlippedPage
-    }
-
-    /// User clicked on a chapter in sidebar to navigate
-    func handleUserChapterSelected(_ newId: Int) {
+    private func performChapterNavigation(
+        to newId: Int,
+        reason: String,
+        syncReason: SyncReason
+    ) {
         guard newId != selectedChapterId else {
             debugLog("[EPM] UI selection matches current chapter, ignoring")
             return
@@ -479,10 +677,18 @@ class EbookProgressManager {
             return
         }
 
+        pendingPageNav = nil
+        pendingSeekNav = nil
+        cancelUserNavFallback()
+        pendingChapterTransition = newId
+
+        debugLog("[EPM] Chapter transition pending → Section.\(newId) (\(reason))")
         debugLog("[EPM] User selected chapter \(newId): \(chapter.label ?? "nil")")
 
+        let previousChapterId = selectedChapterId
+
         recordActivity()
-        recentUserNavReason = .userSelectedChapter
+        recentUserNavReason = syncReason
         selectedChapterId = newId
 
         Task { @MainActor in
@@ -497,8 +703,83 @@ class EbookProgressManager {
                 }
             } catch {
                 debugLog("[EPM] Failed to navigate to chapter: \(error)")
+                pendingChapterTransition = nil
+                selectedChapterId = previousChapterId
             }
         }
+    }
+
+    // MARK: - User Navigation Methods
+
+    /// User pressed left arrow or swiped right (previous page)
+    func handleUserNavLeft() {
+        // Swift-triggered nav queues immediately; a PageFlipped echo may follow.
+        if queuePageNav(direction: .left, source: "left-nav") {
+            pendingSwiftCommandFlipEchoes += 1
+        }
+        Task { @MainActor in
+            do {
+                try await commsBridge?.sendJsGoLeftCommand()
+            } catch {
+                debugLog("[EPM] Failed to send left nav: \(error)")
+                pendingPageNav = nil
+                pendingSwiftCommandFlipEchoes = 0
+                cancelUserNavFallback()
+            }
+        }
+    }
+
+    /// User pressed right arrow or swiped left (next page)
+    func handleUserNavRight() {
+        // Swift-triggered nav queues immediately; a PageFlipped echo may follow.
+        if queuePageNav(direction: .right, source: "right-nav") {
+            pendingSwiftCommandFlipEchoes += 1
+        }
+        Task { @MainActor in
+            do {
+                try await commsBridge?.sendJsGoRightCommand()
+            } catch {
+                debugLog("[EPM] Failed to send right nav: \(error)")
+                pendingPageNav = nil
+                pendingSwiftCommandFlipEchoes = 0
+                cancelUserNavFallback()
+            }
+        }
+    }
+
+    /// User performed touch swipe on webview (JS already handled navigation)
+    func handleUserNavSwipeDetected(_ message: PageFlippedMessage) {
+        // PageFlipped is the single source of truth for swipe gestures.
+        // Swift-triggered goLeft/goRight can emit a PageFlipped echo; suppress those.
+        if pendingSwiftCommandFlipEchoes > 0 {
+            pendingSwiftCommandFlipEchoes -= 1
+            debugLog("[EPM] Ignoring PageFlipped echo from Swift-triggered nav")
+            return
+        }
+
+        guard let direction = UserNavDirection(rawValue: message.direction) else {
+            debugLog("[EPM] Unrecognized page flip direction: \(message.direction)")
+            return
+        }
+
+        let delta = message.delta ?? 1
+
+        queuePageNav(
+            direction: direction,
+            delta: delta,
+            fromPage: message.fromPage,
+            totalPages: chapterTotalPages,
+            source: "page-flip"
+        )
+    }
+
+    /// User clicked on a chapter in sidebar to navigate
+    func handleUserChapterSelected(_ newId: Int) {
+        performChapterNavigation(
+            to: newId,
+            reason: "user selection",
+            syncReason: .userSelectedChapter
+        )
     }
 
     /// User dragged progress bar to seek within chapter (0.0 - 1.0)
@@ -517,8 +798,7 @@ class EbookProgressManager {
             return
         }
 
-        recordUserNavAction()
-        recentUserNavReason = .userDraggedSeekBar
+        queueSeekNav(sectionIndex: currentChapterIndex)
 
         Task { @MainActor in
             do {
@@ -528,6 +808,7 @@ class EbookProgressManager {
                 )
             } catch {
                 debugLog("[EPM] Failed to send seek command: \(error)")
+                pendingSeekNav = nil
             }
         }
     }

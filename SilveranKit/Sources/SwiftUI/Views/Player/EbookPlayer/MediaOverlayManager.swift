@@ -33,6 +33,9 @@ class MediaOverlayManager {
     private(set) var cachedEntryIndex: Int = 0
     private var lastObservedFragment: String = ""
 
+    /// Suppress actor-driven highlights briefly after user-initiated navigation
+    private var suppressActorHighlightsUntil: Date? = nil
+
     var isPlaying: Bool = false
     var isInBackground: Bool = false
     var backgroundAudioPlayed: Bool = false
@@ -237,6 +240,11 @@ class MediaOverlayManager {
     }
 
     private func handleEntryAdvancement(sectionIndex: Int, entryIndex: Int) {
+        if let suppressUntil = suppressActorHighlightsUntil, Date() < suppressUntil {
+            debugLog("[MOM] Actor advancement suppressed during user nav")
+            return
+        }
+
         guard let section = getSection(at: sectionIndex) else { return }
         guard entryIndex < section.mediaOverlay.count else { return }
 
@@ -303,6 +311,8 @@ class MediaOverlayManager {
             debugLog("[MOM] Section \(section) has no audio, skipping sync")
             return
         }
+
+        suppressActorHighlightsUntil = Date().addingTimeInterval(0.5)
 
         if page == 1 {
             debugLog(

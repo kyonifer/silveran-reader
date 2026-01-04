@@ -472,9 +472,11 @@ public actor ProgressSyncActor {
             await saveQueueToDisk()
         }
 
-        debugLog(
-            "[PSA] updateServerPositions: updated \(updatedCount), reconciled \(reconciledCount), total=\(serverPositions.count)"
-        )
+        if updatedCount > 0 || reconciledCount > 0 {
+            debugLog(
+                "[PSA] updateServerPositions: updated \(updatedCount), reconciled \(reconciledCount), total=\(serverPositions.count)"
+            )
+        }
     }
 
     private func buildLocationDescription(from locator: BookLocator?) -> String {
@@ -621,7 +623,10 @@ public actor ProgressSyncActor {
         guard !downloadedBookIds.isEmpty else { return }
 
         for bookId in downloadedBookIds {
-            if let position = await StorytellerActor.shared.fetchBookProgress(bookId: bookId) {
+            if let position = await StorytellerActor.shared.fetchBookProgress(
+                bookId: bookId,
+                log: false
+            ) {
                 await updateServerPositions([bookId: position])
             }
         }

@@ -670,7 +670,7 @@ class EbookPlayerViewModel {
         bridge.onPageFlipped = { [weak self] message in
             guard let self else { return }
             Task { @MainActor in
-                self.progressManager?.handleUserNavSwipeDetected()
+                self.progressManager?.handleUserNavSwipeDetected(message)
             }
         }
 
