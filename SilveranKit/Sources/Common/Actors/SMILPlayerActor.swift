@@ -1219,11 +1219,12 @@ class SMILAudioManager {
         commandCenter.previousTrackCommand.isEnabled = false
         commandCenter.changePlaybackPositionCommand.isEnabled = false
 
+        // Many Bluetooth headsets only send playCommand for both play AND pause
         commandCenter.playCommand.isEnabled = true
         commandCenter.playCommand.addTarget { _ in
             Task { @SMILPlayerActor in
-                debugLog("[SMILAudioManager] Remote play command")
-                try? await SMILPlayerActor.shared.play()
+                debugLog("[SMILAudioManager] Remote play command (toggle)")
+                try? await SMILPlayerActor.shared.togglePlayPause()
             }
             return .success
         }
