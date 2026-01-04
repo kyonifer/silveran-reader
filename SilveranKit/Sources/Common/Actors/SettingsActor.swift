@@ -222,6 +222,23 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
             self.autoSyncToNewerServerPosition = autoSyncToNewerServerPosition
         }
 
+        public init(from decoder: Decoder) throws {
+            let container = try? decoder.container(keyedBy: CodingKeys.self)
+            progressSyncIntervalSeconds = (try? container?.decode(Double.self, forKey: .progressSyncIntervalSeconds))
+                ?? kDefaultProgressSyncIntervalSeconds
+            metadataRefreshIntervalSeconds = (try? container?.decode(Double.self, forKey: .metadataRefreshIntervalSeconds))
+                ?? kDefaultMetadataRefreshIntervalSeconds
+            isManuallyOffline = (try? container?.decode(Bool.self, forKey: .isManuallyOffline))
+                ?? kDefaultIsManuallyOffline
+            autoSyncToNewerServerPosition = (try? container?.decode(Bool.self, forKey: .autoSyncToNewerServerPosition))
+                ?? kDefaultAutoSyncToNewerServerPosition
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case progressSyncIntervalSeconds, metadataRefreshIntervalSeconds, isManuallyOffline
+            case autoSyncToNewerServerPosition
+        }
+
         public var isProgressSyncDisabled: Bool {
             progressSyncIntervalSeconds < 0
         }
