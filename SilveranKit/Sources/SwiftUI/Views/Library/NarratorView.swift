@@ -17,7 +17,7 @@ struct NarratorView: View {
 
     #if os(macOS)
     @State private var selectedNarrator: String? = nil
-    private let narratorListWidth: CGFloat = 220
+    @State private var narratorListWidth: CGFloat = 220
     #endif
 
     #if os(iOS)
@@ -246,7 +246,7 @@ extension NarratorView {
         HStack(spacing: 0) {
             macOSNarratorListSidebar
 
-            Divider()
+            ResizableDivider(width: $narratorListWidth, minWidth: 150, maxWidth: 400)
 
             macOSBooksContentArea
         }

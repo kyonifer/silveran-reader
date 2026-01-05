@@ -17,7 +17,7 @@ struct TagView: View {
 
     #if os(macOS)
     @State private var selectedTag: String? = nil
-    private let tagListWidth: CGFloat = 220
+    @State private var tagListWidth: CGFloat = 220
     #endif
 
     #if os(iOS)
@@ -242,7 +242,7 @@ extension TagView {
         HStack(spacing: 0) {
             macOSTagListSidebar
 
-            Divider()
+            ResizableDivider(width: $tagListWidth, minWidth: 150, maxWidth: 400)
 
             macOSBooksContentArea
         }

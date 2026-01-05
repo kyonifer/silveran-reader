@@ -19,7 +19,7 @@ struct AuthorView: View {
     @State private var selectedAuthor: String? = nil
     @State private var activeInfoItem: BookMetadata? = nil
     @State private var isSidebarVisible: Bool = false
-    private let authorListWidth: CGFloat = 220
+    @State private var authorListWidth: CGFloat = 220
     private let infoSidebarWidth: CGFloat = 340
     #endif
 
@@ -259,7 +259,7 @@ extension AuthorView {
         HStack(spacing: 0) {
             macOSAuthorListSidebar
 
-            Divider()
+            ResizableDivider(width: $authorListWidth, minWidth: 150, maxWidth: 400)
 
             macOSBooksContentArea
         }
