@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import SilveranKitCommon
 import SwiftUI
 
 #if canImport(AppKit)
@@ -13,14 +14,14 @@ import UIKit
 @Observable
 public final class MediaViewModel {
     public var library: BookLibrary
-    var libraryVersion: Int = 0
-    var isReady: Bool = false
-    var connectionStatus: ConnectionStatus = .disconnected
-    var availableStatuses: [BookStatus] = []
-    var lastNetworkOpSucceeded: Bool? = nil
-    var cachedConfig: SilveranGlobalConfig = SilveranGlobalConfig()
-    var pendingSyncsByBook: [String: PendingProgressSync] = [:]
-    var syncNotification: SyncNotification?
+    public var libraryVersion: Int = 0
+    public var isReady: Bool = false
+    public var connectionStatus: ConnectionStatus = .disconnected
+    public var availableStatuses: [BookStatus] = []
+    public var lastNetworkOpSucceeded: Bool? = nil
+    public var cachedConfig: SilveranGlobalConfig = SilveranGlobalConfig()
+    public var pendingSyncsByBook: [String: PendingProgressSync] = [:]
+    public var syncNotification: SyncNotification?
     var bookProgressCache: [String: BookProgress] = [:]
 
     private let lma: LocalMediaActor = LocalMediaActor.shared
@@ -37,31 +38,31 @@ public final class MediaViewModel {
     private var localStandaloneBookIds: Set<String> = []
     @ObservationIgnored private var metadataRefreshTask: Task<Void, Never>?
 
-    struct DownloadProgressState: Equatable {
-        struct CategoryState: Equatable {
-            var expected: Int64?
-            var latestReceived: Int64 = 0
-            var isFinished: Bool = false
-            var wasSkipped: Bool = false
+    public struct DownloadProgressState: Equatable {
+        public struct CategoryState: Equatable {
+            public var expected: Int64?
+            public var latestReceived: Int64 = 0
+            public var isFinished: Bool = false
+            public var wasSkipped: Bool = false
 
-            var progressFraction: Double? {
+            public var progressFraction: Double? {
                 guard let expected, expected > 0 else { return nil }
                 return min(max(Double(latestReceived) / Double(expected), 0), 1)
             }
 
-            var isActive: Bool {
+            public var isActive: Bool {
                 !isFinished && !wasSkipped
             }
         }
 
-        var categories: [LocalMediaCategory: CategoryState] = [:]
-        var errorDescription: String?
+        public var categories: [LocalMediaCategory: CategoryState] = [:]
+        public var errorDescription: String?
 
-        var totalReceived: Int64 {
+        public var totalReceived: Int64 {
             categories.values.reduce(0) { $0 + $1.latestReceived }
         }
 
-        var totalExpected: Int64? {
+        public var totalExpected: Int64? {
             guard !categories.isEmpty else { return nil }
             var sum: Int64 = 0
             for state in categories.values {
@@ -71,27 +72,27 @@ public final class MediaViewModel {
             return sum
         }
 
-        var progressFraction: Double? {
+        public var progressFraction: Double? {
             guard let totalExpected = totalExpected, totalExpected > 0 else { return nil }
             return min(max(Double(totalReceived) / Double(totalExpected), 0), 1)
         }
 
-        var isActive: Bool {
+        public var isActive: Bool {
             categories.values.contains { $0.isActive }
         }
 
-        var isCompleted: Bool {
+        public var isCompleted: Bool {
             !categories.isEmpty && categories.values.allSatisfy { $0.isFinished || $0.wasSkipped }
         }
 
-        var hasError: Bool { errorDescription != nil }
+        public var hasError: Bool { errorDescription != nil }
     }
 
-    enum CoverVariant: Hashable {
+    public enum CoverVariant: Hashable {
         case standard
         case audioSquare
 
-        var requestParameters: (audio: Bool, width: Int, height: Int) {
+        public var requestParameters: (audio: Bool, width: Int, height: Int) {
             switch self {
                 case .standard:
                     return (audio: false, width: 209, height: 320)
@@ -100,7 +101,7 @@ public final class MediaViewModel {
             }
         }
 
-        var preferredAspectRatio: CGFloat {
+        public var preferredAspectRatio: CGFloat {
             switch self {
                 case .standard:
                     return 2.0 / 3.0
@@ -117,9 +118,9 @@ public final class MediaViewModel {
 
     @MainActor
     @Observable
-    final class CoverImageState {
-        var image: Image?
-        init(image: Image? = nil) { self.image = image }
+    public final class CoverImageState {
+        public var image: Image?
+        public init(image: Image? = nil) { self.image = image }
     }
 
     @ObservationIgnored private var coverStates: [CoverKey: CoverImageState] = [:]
@@ -373,7 +374,7 @@ public final class MediaViewModel {
                     && metadata.hasAvailableAudiobook
         }
     }
-    func items(for kind: MediaKind, narrationFilter: NarrationFilter, tagFilter: String?)
+    public func items(for kind: MediaKind, narrationFilter: NarrationFilter, tagFilter: String?)
         -> [BookMetadata]
     {
         var base = library.bookMetaData.filter { metadataMatchesKind($0, kind: kind) }
@@ -394,7 +395,8 @@ public final class MediaViewModel {
         return base
     }
 
-    func itemsByStatus(_ statusName: String, sortBy: StatusSortOrder, limit: Int) -> [BookMetadata]
+    public func itemsByStatus(_ statusName: String, sortBy: StatusSortOrder, limit: Int)
+        -> [BookMetadata]
     {
         let filtered = library.bookMetaData.filter { metadata in
             metadata.status?.name == statusName
@@ -417,14 +419,16 @@ public final class MediaViewModel {
         return Array(sorted.prefix(limit))
     }
 
-    func recentlyAddedItems(limit: Int) -> [BookMetadata] {
+    public func recentlyAddedItems(limit: Int) -> [BookMetadata] {
         let sorted = library.bookMetaData.sorted { a, b in
             (a.createdAt ?? "") > (b.createdAt ?? "")
         }
         return Array(sorted.prefix(limit))
     }
 
-    func booksBySeries(for kind: MediaKind) -> [(series: BookSeries?, books: [BookMetadata])] {
+    public func booksBySeries(for kind: MediaKind)
+        -> [(series: BookSeries?, books: [BookMetadata])]
+    {
         let allBooks = library.bookMetaData
 
         var seriesMap: [String: (series: BookSeries?, books: [BookMetadata])] = [:]
@@ -467,7 +471,9 @@ public final class MediaViewModel {
         return result
     }
 
-    func booksByAuthor(for kind: MediaKind) -> [(author: BookCreator?, books: [BookMetadata])] {
+    public func booksByAuthor(for kind: MediaKind)
+        -> [(author: BookCreator?, books: [BookMetadata])]
+    {
         let allBooks = library.bookMetaData
 
         var authorMap: [String: (author: BookCreator?, books: [BookMetadata])] = [:]
@@ -510,7 +516,7 @@ public final class MediaViewModel {
         return result
     }
 
-    func booksByCollection(for kind: MediaKind) -> [(
+    public func booksByCollection(for kind: MediaKind) -> [(
         collection: BookCollectionSummary?, books: [BookMetadata]
     )] {
         let allBooks = library.bookMetaData
@@ -550,7 +556,9 @@ public final class MediaViewModel {
         return result
     }
 
-    func booksByNarrator(for kind: MediaKind) -> [(narrator: BookCreator?, books: [BookMetadata])] {
+    public func booksByNarrator(for kind: MediaKind)
+        -> [(narrator: BookCreator?, books: [BookMetadata])]
+    {
         let allBooks = library.bookMetaData
 
         var narratorMap: [String: (narrator: BookCreator?, books: [BookMetadata])] = [:]
@@ -593,7 +601,7 @@ public final class MediaViewModel {
         return result
     }
 
-    func booksByTag(for kind: MediaKind) -> [(tag: String, books: [BookMetadata])] {
+    public func booksByTag(for kind: MediaKind) -> [(tag: String, books: [BookMetadata])] {
         let allBooks = library.bookMetaData
 
         var tagMap: [String: [BookMetadata]] = [:]
@@ -624,12 +632,12 @@ public final class MediaViewModel {
         return result
     }
 
-    enum StatusSortOrder {
+    public enum StatusSortOrder {
         case recentPositionUpdate
         case recentlyAdded
     }
 
-    func badgeCount(for content: SidebarContentKind) -> Int {
+    public func badgeCount(for content: SidebarContentKind) -> Int {
         switch content {
             case .home:
                 return 0
@@ -742,16 +750,16 @@ public final class MediaViewModel {
         return result
     }
 
-    func downloadStatus(for item: BookMetadata) -> DownloadProgressState? {
+    public func downloadStatus(for item: BookMetadata) -> DownloadProgressState? {
         downloadStatuses[item.id]
     }
 
-    func isDownloadInProgress(for item: BookMetadata) -> Bool {
+    public func isDownloadInProgress(for item: BookMetadata) -> Bool {
         downloadStatuses[item.id]?.isActive ?? false
             || downloadTasks.keys.contains(where: { $0.bookID == item.id })
     }
 
-    func startDownload(for item: BookMetadata, category: LocalMediaCategory) {
+    public func startDownload(for item: BookMetadata, category: LocalMediaCategory) {
         let key = DownloadKey(bookID: item.id, category: category)
         guard downloadTasks[key] == nil else { return }
 
@@ -768,7 +776,7 @@ public final class MediaViewModel {
         downloadTasks[key] = task
     }
 
-    func cancelDownload(for item: BookMetadata, category: LocalMediaCategory) {
+    public func cancelDownload(for item: BookMetadata, category: LocalMediaCategory) {
         let key = DownloadKey(bookID: item.id, category: category)
         if let task = downloadTasks[key] {
             task.cancel()
@@ -799,7 +807,7 @@ public final class MediaViewModel {
         }
     }
 
-    func localMediaPath(for bookID: String, category: LocalMediaCategory) -> URL? {
+    public func localMediaPath(for bookID: String, category: LocalMediaCategory) -> URL? {
         guard let paths = cachedBookPaths[bookID] else { return nil }
         switch category {
             case .ebook:
@@ -811,11 +819,11 @@ public final class MediaViewModel {
         }
     }
 
-    func isLocalStandaloneBook(_ bookID: String) -> Bool {
+    public func isLocalStandaloneBook(_ bookID: String) -> Bool {
         localStandaloneBookIds.contains(bookID)
     }
 
-    func sourceLabel(for bookID: String) -> String {
+    public func sourceLabel(for bookID: String) -> String {
         if localStandaloneBookIds.contains(bookID) {
             return "Local File"
         } else {
@@ -825,11 +833,11 @@ public final class MediaViewModel {
 
     // MARK: - Progress from PSA
 
-    func progress(for bookId: String) -> Double {
+    public func progress(for bookId: String) -> Double {
         bookProgressCache[bookId]?.progressFraction ?? 0
     }
 
-    func position(for bookId: String) -> BookReadingPosition? {
+    public func position(for bookId: String) -> BookReadingPosition? {
         guard let bp = bookProgressCache[bookId], let locator = bp.locator else { return nil }
         return BookReadingPosition(
             uuid: nil,
@@ -840,21 +848,21 @@ public final class MediaViewModel {
         )
     }
 
-    func downloadProgressFraction(
+    public func downloadProgressFraction(
         for item: BookMetadata,
         category: LocalMediaCategory
     ) -> Double? {
         downloadStatuses[item.id]?.categories[category]?.progressFraction
     }
 
-    func isCategoryDownloadInProgress(
+    public func isCategoryDownloadInProgress(
         for item: BookMetadata,
         category: LocalMediaCategory
     ) -> Bool {
         downloadStatuses[item.id]?.categories[category]?.isActive ?? false
     }
 
-    func openMediaFolder(for item: BookMetadata, category: LocalMediaCategory) {
+    public func openMediaFolder(for item: BookMetadata, category: LocalMediaCategory) {
         #if canImport(AppKit)
         Task { [weak self] in
             guard
@@ -873,7 +881,7 @@ public final class MediaViewModel {
         #endif
     }
 
-    func deleteDownload(for item: BookMetadata, category: LocalMediaCategory) {
+    public func deleteDownload(for item: BookMetadata, category: LocalMediaCategory) {
         Task { [weak self] in
             guard let self else { return }
             do {
@@ -988,7 +996,7 @@ public final class MediaViewModel {
         }
     }
 
-    func coverVariant(for item: BookMetadata) -> CoverVariant {
+    public func coverVariant(for item: BookMetadata) -> CoverVariant {
         if item.hasAvailableEbook {
             return .standard
         }
@@ -998,14 +1006,15 @@ public final class MediaViewModel {
         return .standard
     }
 
-    func coverImage(for item: BookMetadata, variant overrideVariant: CoverVariant? = nil) -> Image?
+    public func coverImage(for item: BookMetadata, variant overrideVariant: CoverVariant? = nil)
+        -> Image?
     {
         let variant = overrideVariant ?? coverVariant(for: item)
         let key = CoverKey(id: item.id, variant: variant)
         return coverStates[key]?.image
     }
 
-    func coverState(for item: BookMetadata, variant overrideVariant: CoverVariant? = nil)
+    public func coverState(for item: BookMetadata, variant overrideVariant: CoverVariant? = nil)
         -> CoverImageState
     {
         let variant = overrideVariant ?? coverVariant(for: item)
@@ -1016,7 +1025,8 @@ public final class MediaViewModel {
         return state
     }
 
-    func ensureCoverLoaded(for item: BookMetadata, variant overrideVariant: CoverVariant? = nil) {
+    public func ensureCoverLoaded(for item: BookMetadata, variant overrideVariant: CoverVariant? = nil)
+    {
         let variant = overrideVariant ?? coverVariant(for: item)
         let key = CoverKey(id: item.id, variant: variant)
         if coverStates[key]?.image != nil || missingCoverKeys.contains(key) {

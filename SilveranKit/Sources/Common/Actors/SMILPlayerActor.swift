@@ -2,7 +2,7 @@
 import AVFoundation
 import Foundation
 
-#if os(iOS) || os(watchOS)
+#if os(iOS) || os(watchOS) || os(tvOS)
 import MediaPlayer
 #endif
 
@@ -175,7 +175,7 @@ public actor SMILPlayerActor {
 
     // MARK: - iOS/watchOS Audio
 
-    #if os(iOS) || os(watchOS)
+    #if os(iOS) || os(watchOS) || os(tvOS)
     private var audioManager: SMILAudioManager?
     private var nowPlayingUpdateTimer: Timer?
     private var audioSessionObserversConfigured = false
@@ -205,7 +205,7 @@ public actor SMILPlayerActor {
         if self.bookId == bookId && !bookStructure.isEmpty {
             debugLog("[SMILPlayerActor] Same book already loaded, skipping reload")
             sessionID = UUID()
-            #if os(iOS) || os(watchOS)
+            #if os(iOS) || os(watchOS) || os(tvOS)
             setupAudioSession()
             configureAudioSessionObservers()
             #endif
@@ -230,7 +230,7 @@ public actor SMILPlayerActor {
         self.currentSectionIndex = 0
         self.currentEntryIndex = 0
 
-        #if os(iOS) || os(watchOS)
+        #if os(iOS) || os(watchOS) || os(tvOS)
         setupAudioSession()
         configureAudioSessionObservers()
         await setupAudioManager()
@@ -280,7 +280,7 @@ public actor SMILPlayerActor {
             throw SMILPlayerError.audioLoadFailed("Player not initialized")
         }
 
-        #if os(iOS) || os(watchOS)
+        #if os(iOS) || os(watchOS) || os(tvOS)
         ensureAudioSessionActive()
         #endif
 
@@ -288,7 +288,7 @@ public actor SMILPlayerActor {
         isPlaying = true
         startUpdateTimer()
 
-        #if os(iOS) || os(watchOS)
+        #if os(iOS) || os(watchOS) || os(tvOS)
         startNowPlayingUpdateTimer()
         #endif
 
@@ -307,7 +307,7 @@ public actor SMILPlayerActor {
         isPlaying = false
         stopUpdateTimer()
 
-        #if os(iOS) || os(watchOS)
+        #if os(iOS) || os(watchOS) || os(tvOS)
         stopNowPlayingUpdateTimer()
         updateNowPlayingInfo()
         #endif
@@ -544,7 +544,7 @@ public actor SMILPlayerActor {
         currentAudioFile = ""
         isPlaying = false
 
-        #if os(iOS) || os(watchOS)
+        #if os(iOS) || os(watchOS) || os(tvOS)
         stopNowPlayingUpdateTimer()
         #endif
     }
@@ -620,7 +620,7 @@ public actor SMILPlayerActor {
                 player.rate = Float(playbackRate)
                 isPlaying = true
                 startUpdateTimer()
-                #if os(iOS) || os(watchOS)
+                #if os(iOS) || os(watchOS) || os(tvOS)
                 startNowPlayingUpdateTimer()
                 #endif
             }
@@ -737,10 +737,6 @@ public actor SMILPlayerActor {
         let duration = player.currentItem?.duration.seconds ?? 0
         let tolerance = 0.02
         let playerIsPlaying = player.rate > 0
-
-        debugLog(
-            "[SMILPlayerActor] timerFired: currentTime=\(currentTime), duration=\(duration), entryEnd=\(currentEntryEndTime), isPlaying=\(playerIsPlaying)"
-        )
 
         let reachedEntryEnd = currentTime >= currentEntryEndTime - tolerance
         let reachedFileEnd = duration > 0 && currentTime >= duration - tolerance
@@ -960,10 +956,9 @@ public actor SMILPlayerActor {
     private func notifyStateChange() async {
         guard let state = buildCurrentState() else { return }
 
-        #if os(iOS) || os(watchOS)
+        #if os(iOS) || os(watchOS) || os(tvOS)
         updateNowPlayingInfo()
         #endif
-        debugLog("[SMILPlayerActor] notifyStateChange: \(stateObservers.count) observers")
         for observer in stateObservers.values {
             await observer(state)
         }
@@ -971,7 +966,7 @@ public actor SMILPlayerActor {
 
     // MARK: - iOS/watchOS Audio Session
 
-    #if os(iOS) || os(watchOS)
+    #if os(iOS) || os(watchOS) || os(tvOS)
     private func setupAudioSession() {
         if audioSessionInitialized {
             debugLog("[SMILPlayerActor] Audio session already initialized, skipping setup")
@@ -1164,9 +1159,6 @@ public actor SMILPlayerActor {
 
         let state = buildCurrentState()
         let manager = audioManager
-        debugLog(
-            "[SMILPlayerActor] updateNowPlayingInfo: isPlaying=\(state?.isPlaying ?? false), hasManager=\(manager != nil)"
-        )
 
         Task { @MainActor in
             manager?.updateNowPlayingInfo(
@@ -1183,7 +1175,7 @@ public actor SMILPlayerActor {
 
 // MARK: - Audio Manager Helper
 
-#if os(iOS) || os(watchOS)
+#if os(iOS) || os(watchOS) || os(tvOS)
 @MainActor
 class SMILAudioManager {
     var bookTitle: String?
@@ -1278,7 +1270,6 @@ class SMILAudioManager {
         playbackRate: Double
     ) {
         let rate = isPlaying ? playbackRate : 0.0
-        debugLog("[SMILAudioManager] updateNowPlayingInfo: isPlaying=\(isPlaying), rate=\(rate)")
 
         var info = [String: Any]()
 

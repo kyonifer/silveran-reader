@@ -8,13 +8,16 @@ let package = Package(
         .macOS(.v14),
         .iOS(.v17),
         .watchOS(.v10),
+        .tvOS(.v17),
     ],
     products: [
         .library(name: "SilveranKitCommon", targets: ["SilveranKitCommon"]),
+        .library(name: "SilveranKitAppModel", targets: ["SilveranKitAppModel"]),
         .library(name: "SilveranKitSwiftUI", targets: ["SilveranKitSwiftUI"]),
         .library(name: "SilveranKitiOSApp", targets: ["SilveranKitiOSApp"]),
         .library(name: "SilveranKitMacApp", targets: ["SilveranKitMacApp"]),
         .library(name: "SilveranKitWatchApp", targets: ["SilveranKitWatchApp"]),
+        .library(name: "SilveranKitTVApp", targets: ["SilveranKitTVApp"]),
         .executable(name: "SilveranKitLinuxApp", targets: ["SilveranKitLinuxApp"]),
     ],
     dependencies: [
@@ -49,9 +52,17 @@ let package = Package(
         .target(
             name: "SilveranKitSwiftUI",
             dependencies: [
-                "SilveranKitCommon"
+                "SilveranKitCommon",
+                "SilveranKitAppModel",
             ],
             path: "Sources/SwiftUI"
+        ),
+        .target(
+            name: "SilveranKitAppModel",
+            dependencies: [
+                "SilveranKitCommon"
+            ],
+            path: "Sources/AppModel"
         ),
         .target(
             name: "SilveranKitiOSApp",
@@ -75,6 +86,14 @@ let package = Package(
                 "SilveranKitCommon"
             ],
             path: "Sources/watchApp"
+        ),
+        .target(
+            name: "SilveranKitTVApp",
+            dependencies: [
+                "SilveranKitCommon",
+                "SilveranKitAppModel",
+            ],
+            path: "Sources/tvApp"
         ),
         .executableTarget(
             name: "SilveranKitLinuxApp",

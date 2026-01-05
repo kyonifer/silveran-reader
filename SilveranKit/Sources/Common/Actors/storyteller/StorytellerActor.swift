@@ -2019,6 +2019,7 @@ private final class StorytellerDownloadDelegate: NSObject, URLSessionDownloadDel
         var contentType: String?
         var etag: String?
         var lastModified: String?
+        var lastProgressTime: CFAbsoluteTime = 0
     }
 
     private let stateQueue = DispatchQueue(
@@ -2131,14 +2132,19 @@ private final class StorytellerDownloadDelegate: NSObject, URLSessionDownloadDel
         totalBytesWritten: Int64,
         totalBytesExpectedToWrite: Int64
     ) {
-        let updateResult = mutateState(for: downloadTask) { state -> Int64? in
+        let now = CFAbsoluteTimeGetCurrent()
+        let updateResult = mutateState(for: downloadTask) { state -> (Int64?, String, Bool) in
             if state.expectedBytes == nil, totalBytesExpectedToWrite > 0 {
                 state.expectedBytes = totalBytesExpectedToWrite
             }
-            return state.expectedBytes
+            let shouldEmit = now - state.lastProgressTime >= 0.1
+            if shouldEmit {
+                state.lastProgressTime = now
+            }
+            return (state.expectedBytes, state.bookId, shouldEmit)
         }
 
-        guard let (state, expectedBytes) = updateResult else { return }
+        guard let (state, (expectedBytes, _, shouldEmit)) = updateResult, shouldEmit else { return }
         state.continuation.yield(
             .progress(
                 receivedBytes: totalBytesWritten,

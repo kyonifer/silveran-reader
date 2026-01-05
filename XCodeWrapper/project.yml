@@ -5,6 +5,7 @@ options:
     iOS: "17.0"
     macOS: "14.0"
     watchOS: "10.0"
+    tvOS: "17.0"
 configs:
   Debug: debug
   Release: release
@@ -181,6 +182,47 @@ targets:
     dependencies:
       - package: SilveranKit
         product: SilveranKitWatchApp
+  Silveran Reader (tvOS):
+    type: application
+    platform: tvOS
+    productName: "Silveran Reader"
+    settings:
+      base:
+        TVOS_DEPLOYMENT_TARGET: 17.0
+        CODE_SIGN_ENTITLEMENTS: XCodeWrapper/SilveranReaderTV.entitlements
+        CODE_SIGN_STYLE: Automatic
+        CURRENT_PROJECT_VERSION: 1
+        DEVELOPMENT_TEAM: 9CJ7KG7UKQ
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIUserInterfaceStyle: Automatic
+        MARKETING_VERSION: 0.1
+        PRODUCT_BUNDLE_IDENTIFIER: com.kyonifer.SilveranReader.tv
+        PRODUCT_NAME: Silveran Reader
+        SWIFT_VERSION: 6.2
+        ASSETCATALOG_COMPILER_APPICON_NAME: "App Icon"
+    info:
+      path: XCodeWrapper/Info-tvOS.plist
+      properties:
+        CFBundleName: "Silveran Reader"
+        CFBundleDisplayName: "Silveran Reader"
+        CFBundleIdentifier: "$(PRODUCT_BUNDLE_IDENTIFIER)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundlePackageType: "$(PRODUCT_BUNDLE_PACKAGE_TYPE)"
+        CFBundleExecutable: "$(EXECUTABLE_NAME)"
+        LSApplicationCategoryType: "public.app-category.books"
+        UILaunchScreen: {}
+        UIBackgroundModes:
+          - audio
+        ITSAppUsesNonExemptEncryption: false
+    sources:
+      - path: XCodeWrapper/EntryPointStub.swift
+      - path: XCodeWrapper/TVAssets.xcassets
+        type: assetcatalog
+    dependencies:
+      - package: SilveranKit
+        product: SilveranKitTVApp
 schemes:
   "Silveran Reader (macOS)":
     shared: true
@@ -225,6 +267,23 @@ schemes:
     run:
       config: Debug
       executable: "Silveran Reader (watchOS)"
+    test:
+      config: Debug
+      targets: []
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release
+  "Silveran Reader (tvOS)":
+    shared: true
+    build:
+      targets:
+        "Silveran Reader (tvOS)": all
+    run:
+      config: Debug
+      executable: "Silveran Reader (tvOS)"
     test:
       config: Debug
       targets: []

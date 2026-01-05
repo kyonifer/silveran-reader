@@ -4,6 +4,8 @@ import SilveranKitMacApp
 import SilveranKitiOSApp
 #elseif os(watchOS)
 import SilveranKitWatchApp
+#elseif os(tvOS)
+import SilveranKitTVApp
 #endif
 
 /// Keep code out of the Xcode project, because LSP can't complete here.
@@ -16,6 +18,8 @@ class EntryPointStub {
         iosAppEntryPoint()
         #elseif os(watchOS)
         watchAppEntryPoint()
+        #elseif os(tvOS)
+        tvAppEntryPoint()
         #endif
     }
 }

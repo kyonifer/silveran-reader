@@ -824,18 +824,29 @@ public actor FilesystemActor {
 
     private func applicationSupportBaseDirectory() -> URL {
         let fm = FileManager.default
+        let bundleID = Bundle.main.bundleIdentifier ?? "SilveranReader"
+
+        #if os(tvOS)
+        let cachesDir = try! fm.url(
+            for: .cachesDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        )
+        return cachesDir.appendingPathComponent(bundleID, isDirectory: true)
+        #else
         let appSupport = try! fm.url(
             for: .applicationSupportDirectory,
             in: .userDomainMask,
             appropriateFor: nil,
             create: true
         )
-        let bundleID = Bundle.main.bundleIdentifier ?? "SilveranReader"
 
         if appSupport.path.contains("/Containers/") {
             return appSupport
         } else {
             return appSupport.appendingPathComponent(bundleID, isDirectory: true)
         }
+        #endif
     }
 }
