@@ -12,8 +12,10 @@ public struct PlaybackRateButton: View {
     private let compactLabel: Bool
     private let iconFont: Font
 
-    @State private var showCustomInput = false
-    @State private var customPlaybackRate: String = ""
+    @State private var showSpeedPicker = false
+    @State private var sliderValue: Double = 1.0
+    @State private var textFieldValue: String = ""
+    @FocusState private var isTextFieldFocused: Bool
 
     public init(
         currentRate: Double,
@@ -42,7 +44,11 @@ public struct PlaybackRateButton: View {
     public var body: some View {
         VStack(spacing: compactLabel ? 0 : 6) {
             #if os(iOS)
-            Button(action: { showCustomInput = true }) {
+            Button(action: {
+                sliderValue = currentRate
+                textFieldValue = formatRate(currentRate)
+                showSpeedPicker = true
+            }) {
                 Image(systemName: "speedometer")
                     .font(iconFont)
                     .foregroundStyle(foregroundColor.opacity(transparency))
@@ -57,31 +63,15 @@ public struct PlaybackRateButton: View {
                     )
             }
             .buttonStyle(.plain)
-            .sheet(isPresented: $showCustomInput) {
+            .sheet(isPresented: $showSpeedPicker) {
                 speedSheet
             }
             #else
-            Menu {
-                ForEach([0.75, 1.0, 1.1, 1.2, 1.25, 1.3], id: \.self) { rate in
-                    Button(action: {
-                        onRateChange(rate)
-                    }) {
-                        HStack {
-                            Text(String(format: "%.2fx", rate))
-                            if abs(currentRate - rate) < 0.01 {
-                                Image(systemName: "checkmark")
-                            }
-                        }
-                    }
-                }
-
-                Divider()
-
-                Button("Custom Speed...") {
-                    customPlaybackRate = String(format: "%.1f", currentRate)
-                    showCustomInput = true
-                }
-            } label: {
+            Button(action: {
+                sliderValue = currentRate
+                textFieldValue = formatRate(currentRate)
+                showSpeedPicker = true
+            }) {
                 Image(systemName: "speedometer")
                     .font(iconFont)
                     .foregroundStyle(foregroundColor.opacity(transparency))
@@ -95,22 +85,16 @@ public struct PlaybackRateButton: View {
                         }
                     )
             }
-            .menuStyle(.button)
             .buttonStyle(.plain)
-            .alert("Custom Playback Speed", isPresented: $showCustomInput) {
-                TextField("1.0", text: $customPlaybackRate)
-                    .frame(width: 100)
-                Button("Cancel", role: .cancel) {
-                    customPlaybackRate = ""
+            .popover(isPresented: $showSpeedPicker) {
+                speedPickerContent
+                    .frame(width: 340)
+                    .padding()
+            }
+            .onChange(of: showSpeedPicker) { _, isShowing in
+                if !isShowing {
+                    applyTextFieldValue()
                 }
-                Button("Set") {
-                    if let rate = Double(customPlaybackRate), rate >= 0.5, rate <= 10.0 {
-                        onRateChange(rate)
-                        customPlaybackRate = ""
-                    }
-                }
-            } message: {
-                Text("Enter a playback speed between 0.5x and 10.0x")
             }
             #endif
 
@@ -130,68 +114,100 @@ public struct PlaybackRateButton: View {
         }
     }
 
+    private var speedPickerContent: some View {
+        HStack(spacing: 12) {
+            Text("1x")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Slider(
+                value: $sliderValue,
+                in: 1.0...2.0,
+                step: 0.05
+            )
+            .onChange(of: sliderValue) { _, newValue in
+                let snapped = snapToIncrement(newValue)
+                textFieldValue = formatRate(snapped)
+                onRateChange(snapped)
+            }
+
+            Text("2x")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: 4) {
+                TextField("1.0", text: $textFieldValue)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 60)
+                    .multilineTextAlignment(.center)
+                    #if os(iOS)
+                    .keyboardType(.decimalPad)
+                    #endif
+                    .focused($isTextFieldFocused)
+                    .onSubmit {
+                        applyTextFieldValue()
+                    }
+                    .onChange(of: isTextFieldFocused) { _, focused in
+                        if !focused {
+                            applyTextFieldValue()
+                        }
+                    }
+
+                Text("x")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
     #if os(iOS)
     private var speedSheet: some View {
         NavigationStack {
-            List {
-                Section {
-                    ForEach([0.75, 1.0, 1.1, 1.2, 1.25, 1.3], id: \.self) { rate in
-                        Button(action: {
-                            onRateChange(rate)
-                            showCustomInput = false
-                        }) {
-                            HStack {
-                                Text(String(format: "%.2fx", rate))
-                                    .foregroundStyle(.primary)
-                                Spacer()
-                                if abs(currentRate - rate) < 0.01 {
-                                    Image(systemName: "checkmark")
-                                        .foregroundStyle(Color.accentColor)
-                                }
-                            }
-                        }
-                    }
-                } header: {
-                    Text("Preset Speeds")
-                }
-
-                Section {
-                    HStack {
-                        TextField("1.0", text: $customPlaybackRate)
-                            .keyboardType(.decimalPad)
-                        Button("Set") {
-                            if let rate = Double(customPlaybackRate), rate >= 0.5, rate <= 10.0 {
-                                onRateChange(rate)
-                                customPlaybackRate = ""
-                                showCustomInput = false
-                            }
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(
-                            Double(customPlaybackRate) == nil
-                                || Double(customPlaybackRate).map { $0 < 0.5 || $0 > 10.0 } ?? true
-                        )
-                    }
-                } header: {
-                    Text("Custom Speed")
-                } footer: {
-                    Text("Enter a playback speed between 0.5x and 10.0x")
-                }
+            VStack {
+                Spacer()
+                speedPickerContent
+                    .padding(.horizontal, 16)
+                Spacer()
             }
             .navigationTitle("Playback Speed")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
+                ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {
-                        customPlaybackRate = ""
-                        showCustomInput = false
+                        applyTextFieldValue()
+                        showSpeedPicker = false
                     }
                 }
             }
         }
-        .presentationDetents([.medium])
+        .presentationDetents([.height(140)])
     }
     #endif
+
+    private func snapToIncrement(_ value: Double) -> Double {
+        (value * 20).rounded() / 20
+    }
+
+    private func formatRate(_ rate: Double) -> String {
+        if rate == rate.rounded() {
+            return String(format: "%.1f", rate)
+        }
+        let formatted = String(format: "%.2f", rate)
+        if formatted.hasSuffix("0") {
+            return String(format: "%.1f", rate)
+        }
+        return formatted
+    }
+
+    private func applyTextFieldValue() {
+        if let rate = Double(textFieldValue) {
+            let clampedRate = min(max(rate, 0.5), 10.0)
+            textFieldValue = formatRate(clampedRate)
+            onRateChange(clampedRate)
+        } else {
+            textFieldValue = formatRate(sliderValue)
+        }
+    }
 
     private var playbackRateDescription: String {
         let formatted = String(format: "%.2fx", currentRate)
