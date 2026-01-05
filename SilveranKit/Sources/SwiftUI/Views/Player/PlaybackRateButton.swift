@@ -163,10 +163,37 @@ public struct PlaybackRateButton: View {
     #if os(iOS)
     private var speedSheet: some View {
         NavigationStack {
-            VStack {
+            VStack(spacing: 16) {
                 Spacer()
                 speedPickerContent
                     .padding(.horizontal, 16)
+
+                HStack(spacing: 24) {
+                    Button(action: {
+                        let newRate = max(0.5, sliderValue - 0.1)
+                        sliderValue = snapToIncrement(newRate)
+                        textFieldValue = formatRate(sliderValue)
+                        onRateChange(sliderValue)
+                    }) {
+                        Image(systemName: "minus.circle.fill")
+                            .font(.title)
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+
+                    Button(action: {
+                        let newRate = min(10.0, sliderValue + 0.1)
+                        sliderValue = snapToIncrement(newRate)
+                        textFieldValue = formatRate(sliderValue)
+                        onRateChange(sliderValue)
+                    }) {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.title)
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+
                 Spacer()
             }
             .navigationTitle("Playback Speed")
@@ -180,7 +207,7 @@ public struct PlaybackRateButton: View {
                 }
             }
         }
-        .presentationDetents([.height(140)])
+        .presentationDetents([.height(180)])
     }
     #endif
 
