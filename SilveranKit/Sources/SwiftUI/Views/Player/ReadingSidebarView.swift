@@ -16,6 +16,7 @@ public struct ReadingSidebarView: View {
         public var author: String
         public var chapterTitle: String
         public var coverArt: Image?
+        public var ebookCoverArt: Image?
         public var chapterDuration: TimeInterval
         public var totalRemaining: TimeInterval
         public var playbackRate: Double
@@ -30,6 +31,7 @@ public struct ReadingSidebarView: View {
             author: String,
             chapterTitle: String,
             coverArt: Image?,
+            ebookCoverArt: Image? = nil,
             chapterDuration: TimeInterval,
             totalRemaining: TimeInterval,
             playbackRate: Double,
@@ -43,6 +45,7 @@ public struct ReadingSidebarView: View {
             self.author = author
             self.chapterTitle = chapterTitle
             self.coverArt = coverArt
+            self.ebookCoverArt = ebookCoverArt
             self.chapterDuration = chapterDuration
             self.totalRemaining = totalRemaining
             self.playbackRate = playbackRate
@@ -70,6 +73,7 @@ public struct ReadingSidebarView: View {
     @State private var isDraggingSlider = false
     @State private var draggedSliderValue: Double = 0.0
     @State private var seekDebounceUntil: Date?
+    @AppStorage("showEbookCoverInAudioView") private var showEbookCover = false
 
     private let onPrevChapter: () -> Void
     private let onSkipBackward: () -> Void
@@ -165,23 +169,59 @@ public struct ReadingSidebarView: View {
         bookData?.metadata.hasAvailableAudiobook == true
     }
 
+    private var displayedCover: Image? {
+        if showEbookCover, let ebookCover = model.ebookCoverArt {
+            return ebookCover
+        }
+        return model.coverArt
+    }
+
+    private var canToggleCover: Bool {
+        model.coverArt != nil && model.ebookCoverArt != nil
+    }
+
     private var metadataSection: some View {
         VStack(spacing: 12) {
-            if let coverArt = model.coverArt, let scale = coverScale {
-                if isSquareCover {
-                    coverArt
-                        .resizable()
-                        .aspectRatio(1, contentMode: .fit)
-                        .frame(maxWidth: .infinity)
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        .shadow(radius: 8)
+            if let coverArt = displayedCover, let scale = coverScale {
+                let coverView = Group {
+                    if isSquareCover && !showEbookCover {
+                        coverArt
+                            .resizable()
+                            .aspectRatio(1, contentMode: .fit)
+                            .frame(maxWidth: .infinity)
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .shadow(radius: 8)
+                    } else if isSquareCover && showEbookCover {
+                        Color.clear
+                            .aspectRatio(1, contentMode: .fit)
+                            .frame(maxWidth: .infinity)
+                            .overlay {
+                                coverArt
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fit)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                    .shadow(radius: 8)
+                            }
+                    } else {
+                        coverArt
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 180 * scale, height: 180 * scale)
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .shadow(radius: 8)
+                    }
+                }
+
+                if canToggleCover {
+                    coverView
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                showEbookCover.toggle()
+                            }
+                        }
                 } else {
-                    coverArt
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 180 * scale, height: 180 * scale)
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        .shadow(radius: 8)
+                    coverView
                 }
             }
 

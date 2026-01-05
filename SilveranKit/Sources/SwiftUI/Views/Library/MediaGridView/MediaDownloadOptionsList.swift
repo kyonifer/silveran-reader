@@ -362,11 +362,15 @@ struct MediaDownloadOptionRow: View {
         let variant: MediaViewModel.CoverVariant =
             freshMetadata.hasAvailableAudiobook ? .audioSquare : .standard
         let cover = mediaViewModel.coverImage(for: freshMetadata, variant: variant)
+        let ebookCover = freshMetadata.hasAvailableAudiobook
+            ? mediaViewModel.coverImage(for: freshMetadata, variant: .standard)
+            : nil
         return PlayerBookData(
             metadata: freshMetadata,
             localMediaPath: path,
             category: option.category,
-            coverArt: cover
+            coverArt: cover,
+            ebookCoverArt: ebookCover
         )
     }
 

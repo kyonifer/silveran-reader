@@ -129,6 +129,7 @@ public struct AudiobookPlayerView: View {
                 author: bookAuthor,
                 chapterTitle: currentChapterTitle,
                 coverArt: bookData?.coverArt,
+                ebookCoverArt: bookData?.ebookCoverArt,
                 chapterDuration: chapterDuration,
                 totalRemaining: totalRemaining,
                 playbackRate: playbackRate,

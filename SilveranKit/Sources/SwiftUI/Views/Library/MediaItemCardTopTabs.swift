@@ -313,11 +313,15 @@ struct MediaItemCardTopTabsButtonOverlay: View {
         let variant: MediaViewModel.CoverVariant =
             item.hasAvailableAudiobook ? .audioSquare : .standard
         let cover = mediaViewModel.coverImage(for: item, variant: variant)
+        let ebookCover = item.hasAvailableAudiobook
+            ? mediaViewModel.coverImage(for: item, variant: .standard)
+            : nil
         let bookData = PlayerBookData(
             metadata: item,
             localMediaPath: path,
             category: category,
-            coverArt: cover
+            coverArt: cover,
+            ebookCoverArt: ebookCover
         )
         openWindow(id: windowID, value: bookData)
         #endif

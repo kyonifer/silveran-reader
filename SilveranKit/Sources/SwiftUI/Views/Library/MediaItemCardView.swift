@@ -153,11 +153,15 @@ struct MediaItemCardView: View {
         let path = mediaViewModel.localMediaPath(for: item.id, category: category)
         let variant: MediaViewModel.CoverVariant = freshMetadata.hasAvailableAudiobook ? .audioSquare : .standard
         let cover = mediaViewModel.coverImage(for: freshMetadata, variant: variant)
+        let ebookCover = freshMetadata.hasAvailableAudiobook
+            ? mediaViewModel.coverImage(for: freshMetadata, variant: .standard)
+            : nil
         return PlayerBookData(
             metadata: freshMetadata,
             localMediaPath: path,
             category: category,
-            coverArt: cover
+            coverArt: cover,
+            ebookCoverArt: ebookCover
         )
     }
     #endif

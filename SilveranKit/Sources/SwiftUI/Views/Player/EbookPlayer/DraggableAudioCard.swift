@@ -8,6 +8,7 @@ struct DraggableAudioCard<FullContent: View>: View {
 
     let bookTitle: String?
     let coverArt: Image?
+    let ebookCoverArt: Image?
     let chapterTitle: String?
     let isPlaying: Bool
     let chapterProgress: Double
@@ -44,6 +45,7 @@ struct DraggableAudioCard<FullContent: View>: View {
     @GestureState private var isDragging = false
     @State private var sliderValue: Double = 0
     @State private var isDraggingSlider = false
+    @AppStorage("showEbookCoverInAudioView") private var showEbookCover = false
 
     private let compactHeight: CGFloat = 50
     private let expandedFraction: CGFloat = 1.0
@@ -169,14 +171,37 @@ struct DraggableAudioCard<FullContent: View>: View {
             .contentShape(Rectangle())
     }
 
+    private var displayedCover: Image? {
+        if showEbookCover, let ebookCover = ebookCoverArt {
+            return ebookCover
+        }
+        return coverArt
+    }
+
+    private var canToggleCover: Bool {
+        coverArt != nil && ebookCoverArt != nil
+    }
+
     private var compactPlayerContent: some View {
         HStack(spacing: 12) {
-            if let coverArt = coverArt {
-                coverArt
+            if let cover = displayedCover {
+                let coverView = cover
                     .resizable()
                     .aspectRatio(contentMode: .fill)
                     .frame(width: 40, height: 40)
                     .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+
+                if canToggleCover {
+                    coverView
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                showEbookCover.toggle()
+                            }
+                        }
+                } else {
+                    coverView
+                }
             } else {
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .fill(Color.secondary.opacity(0.2))

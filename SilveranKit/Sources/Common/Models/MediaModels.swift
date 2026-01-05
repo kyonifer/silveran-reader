@@ -532,6 +532,7 @@ public struct PlayerBookData: Codable, Hashable, Sendable {
     public let localMediaPath: URL?
     public let category: LocalMediaCategory
     public var coverArt: Image?
+    public var ebookCoverArt: Image?
 
     enum CodingKeys: String, CodingKey {
         case metadata
@@ -543,12 +544,14 @@ public struct PlayerBookData: Codable, Hashable, Sendable {
         metadata: BookMetadata,
         localMediaPath: URL?,
         category: LocalMediaCategory,
-        coverArt: Image? = nil
+        coverArt: Image? = nil,
+        ebookCoverArt: Image? = nil
     ) {
         self.metadata = metadata
         self.localMediaPath = localMediaPath
         self.category = category
         self.coverArt = coverArt
+        self.ebookCoverArt = ebookCoverArt
     }
 
     public init(from decoder: Decoder) throws {
@@ -557,6 +560,7 @@ public struct PlayerBookData: Codable, Hashable, Sendable {
         localMediaPath = try container.decodeIfPresent(URL.self, forKey: .localMediaPath)
         category = try container.decode(LocalMediaCategory.self, forKey: .category)
         coverArt = nil
+        ebookCoverArt = nil
     }
 
     public func encode(to encoder: Encoder) throws {

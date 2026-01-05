@@ -201,13 +201,17 @@ public struct iOSLibraryView: View {
                 let variant: MediaViewModel.CoverVariant =
                     book.hasAvailableAudiobook ? .audioSquare : .standard
                 let cover = mediaViewModel.coverImage(for: book, variant: variant)
+                let ebookCover = book.hasAvailableAudiobook
+                    ? mediaViewModel.coverImage(for: book, variant: .standard)
+                    : nil
                 NavigationStack {
                     playerView(
                         for: PlayerBookData(
                             metadata: book,
                             localMediaPath: path,
                             category: category,
-                            coverArt: cover
+                            coverArt: cover,
+                            ebookCoverArt: ebookCover
                         )
                     )
                     .toolbar {
