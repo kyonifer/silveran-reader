@@ -8,6 +8,7 @@ cd "${SCRIPT_DIR}/.."
 ASSETS_DIR="XCodeWrapper/Assets.xcassets/AppIcon.appiconset"
 WATCH_ASSETS_DIR="XCodeWrapper/WatchAssets.xcassets/AppIcon.appiconset"
 ORIG_ICON="extern/assets/icons/app_icon_orig.png"
+MAC_MASK="extern/assets/icons/macos_icon_mask.png"
 
 if [ ! -f $ORIG_ICON ]; then
     echo "Error: app_icon_orig.png not found in project"
@@ -25,6 +26,40 @@ SRGB_PROFILE="/System/Library/ColorSync/Profiles/sRGB Profile.icc"
 
 magick "${ORIG_ICON}" -resize 1024x1024 -colorspace sRGB -profile "${SRGB_PROFILE}" "${ASSETS_DIR}/icon_1024x1024.png"
 magick "${ORIG_ICON}" -resize 1024x1024 -colorspace sRGB -profile "${SRGB_PROFILE}" "${WATCH_ASSETS_DIR}/icon_1024x1024.png"
+
+if [ ! -f "${MAC_MASK}" ]; then
+    echo "Error: macOS app icon mask not found at ${MAC_MASK}"
+    exit 1
+fi
+
+mkdir -p tmp
+
+generate_mac_icon() {
+    local canvas_size=$1
+    local output_file=$2
+    local icon_size=$(echo "$canvas_size * 824 / 1024" | bc)
+
+    local tmp_resized="tmp/mac_resized_${canvas_size}.png"
+    local tmp_mask="tmp/mac_mask_${canvas_size}.png"
+    local tmp_masked="tmp/mac_masked_${canvas_size}.png"
+
+    magick "${ORIG_ICON}" -resize ${icon_size}x${icon_size} -colorspace sRGB -profile "${SRGB_PROFILE}" "${tmp_resized}"
+    magick "${MAC_MASK}" -resize ${icon_size}x${icon_size} "${tmp_mask}"
+    magick "${tmp_resized}" \( "${tmp_mask}" -channel A -separate +channel \) -compose CopyOpacity -composite "${tmp_masked}"
+    magick "${tmp_masked}" -gravity center -background none -extent ${canvas_size}x${canvas_size} "${output_file}"
+
+    rm -f "${tmp_resized}" "${tmp_mask}" "${tmp_masked}"
+}
+
+generate_mac_icon 16 "${ASSETS_DIR}/icon_mac_16.png"
+generate_mac_icon 32 "${ASSETS_DIR}/icon_mac_32.png"
+generate_mac_icon 64 "${ASSETS_DIR}/icon_mac_64.png"
+generate_mac_icon 128 "${ASSETS_DIR}/icon_mac_128.png"
+generate_mac_icon 256 "${ASSETS_DIR}/icon_mac_256.png"
+generate_mac_icon 512 "${ASSETS_DIR}/icon_mac_512.png"
+generate_mac_icon 1024 "${ASSETS_DIR}/icon_mac_1024.png"
+
+rm -f "${ASSETS_DIR}/icon_1024x1024_mac.png"
 
 echo "Generated all app icon sizes"
 
