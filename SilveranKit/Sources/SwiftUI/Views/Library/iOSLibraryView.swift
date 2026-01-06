@@ -707,10 +707,11 @@ struct CollectionsListView: View {
         let collectionName = collection?.name ?? "Unknown Collection"
         let stackWidth = max(contentWidth - (horizontalPadding * 2), 100)
         let navIdentifier = CollectionNavIdentifier(id: collectionId, name: collectionName)
+        let displayBooks = Array(books.prefix(30))
 
         VStack(alignment: .center, spacing: 12) {
             SeriesStackView(
-                books: books,
+                books: displayBooks,
                 mediaKind: .ebook,
                 availableWidth: stackWidth,
                 showAudioIndicator: settingsViewModel.showAudioIndicator,
@@ -882,10 +883,11 @@ struct SeriesContentView: View {
     ) -> some View {
         let seriesName = series?.name ?? "Unknown Series"
         let stackWidth = max(contentWidth - (horizontalPadding * 2), 100)
+        let displayBooks = Array(books.prefix(30))
 
         VStack(alignment: .center, spacing: 12) {
             SeriesStackView(
-                books: books,
+                books: displayBooks,
                 mediaKind: .ebook,
                 availableWidth: stackWidth,
                 showAudioIndicator: settingsViewModel.showAudioIndicator,
