@@ -72,6 +72,7 @@ struct MediaItemCardView: View {
     let isSelected: Bool
     let showAudioIndicator: Bool
     let sourceLabel: String?
+    let seriesPositionBadge: String?
     let onSelect: (BookMetadata) -> Void
     let onInfo: (BookMetadata) -> Void
     @Environment(MediaViewModel.self) private var mediaViewModel
@@ -199,6 +200,17 @@ struct MediaItemCardView: View {
                             AudioIndicatorBadge(item: item, coverVariant: coverVariant)
                                 .padding(.trailing, 2)
                                 .padding(.bottom, 4)
+                        }
+                    }
+                    .overlay(alignment: .topLeading) {
+                        if let badge = seriesPositionBadge {
+                            Text(badge)
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 3)
+                                .background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                                .padding(4)
                         }
                     }
                     Spacer(minLength: 0)

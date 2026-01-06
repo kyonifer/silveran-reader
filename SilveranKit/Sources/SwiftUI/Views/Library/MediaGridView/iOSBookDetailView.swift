@@ -72,6 +72,24 @@ struct iOSBookDetailView: View {
         } message: {
             Text("Please connect to the server to change the book status.")
         }
+        .navigationDestination(for: SeriesNavIdentifier.self) { series in
+            MediaGridView(
+                title: series.name,
+                searchText: "",
+                mediaKind: mediaKind,
+                tagFilter: nil,
+                seriesFilter: series.name,
+                statusFilter: nil,
+                defaultSort: "seriesPosition",
+                preferredTileWidth: 110,
+                minimumTileWidth: 90,
+                columnBreakpoints: [
+                    MediaGridView.ColumnBreakpoint(columns: 3, minWidth: 0)
+                ],
+                initialNarrationFilterOption: .both
+            )
+            .navigationTitle(series.name)
+        }
     }
 
     private func loadCurrentChapter() async {
@@ -185,20 +203,20 @@ struct iOSBookDetailView: View {
                 .textSelection(.enabled)
 
             if let series = item.series?.first {
-                HStack(spacing: 4) {
-                    Text(series.name)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                    if let position = series.position {
-                        Text("•")
+                NavigationLink(value: SeriesNavIdentifier(name: series.name)) {
+                    HStack(spacing: 4) {
+                        Text(series.name)
                             .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                        Text("Book \(position)")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                        if let position = series.position {
+                            Text("•")
+                                .font(.subheadline)
+                            Text("Book \(position)")
+                                .font(.subheadline)
+                        }
                     }
+                    .foregroundStyle(.secondary)
                 }
-                .textSelection(.enabled)
+                .buttonStyle(.plain)
             }
         }
         .frame(maxWidth: .infinity)
