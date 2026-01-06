@@ -365,6 +365,8 @@ public struct EbookPlayerView: View {
             }
 
             draggableAudioCard
+
+            playbackProgressBar
             #else
             let shouldShowBar = viewModel.settingsVM.enableReadingBar && !viewModel.showAudioSidebar
 
@@ -453,6 +455,22 @@ public struct EbookPlayerView: View {
                 audiobookSidebar
             }
         )
+    }
+
+    private var playbackProgressBar: some View {
+        let progress = viewModel.chapterProgressBinding.wrappedValue
+        return GeometryReader { geometry in
+            let inset = geometry.size.width * 0.1
+            let availableWidth = geometry.size.width - (inset * 2)
+            Color.gray
+                .opacity(colorScheme == .dark ? 0.6 : 0.4)
+                .frame(width: availableWidth * progress, height: 3)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, inset)
+        }
+        .frame(height: 3)
+        .frame(maxHeight: .infinity, alignment: .bottom)
+        .ignoresSafeArea()
     }
     #endif
 

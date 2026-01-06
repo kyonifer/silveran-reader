@@ -232,17 +232,6 @@ struct DraggableAudioCard<FullContent: View>: View {
 
             if hasAudioNarration {
                 HStack(spacing: 15) {
-                    Button(action: {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                            cardState = .expanded
-                        }
-                    }) {
-                        Image(systemName: "headphones")
-                            .font(.title3)
-                            .frame(width: 36, height: 36)
-                    }
-                    .buttonStyle(.plain)
-
                     PlaybackRateButton(
                         currentRate: playbackRate,
                         onRateChange: onPlaybackRateChange,
