@@ -7,6 +7,8 @@ struct EbookOverlayIos: View {
     let showTimeRemainingInBook: Bool
     let showTimeRemainingInChapter: Bool
     let showPageNumber: Bool
+    let showSkipBackward: Bool
+    let showSkipForward: Bool
     let overlayTransparency: Double
     let bookFraction: Double?
     let bookTimeRemaining: TimeInterval?
@@ -16,7 +18,9 @@ struct EbookOverlayIos: View {
     let isPlaying: Bool
     let hasAudioNarration: Bool
     let positionAtTop: Bool
+    let onSkipBackward: () -> Void
     let onTogglePlaying: () -> Void
+    let onSkipForward: () -> Void
 
     private var hasTimeStatsToDisplay: Bool {
         hasAudioNarration && (showTimeRemainingInBook || showTimeRemainingInChapter)
@@ -121,7 +125,7 @@ struct EbookOverlayIos: View {
                 }
 
                 if hasAudioNarration {
-                    playPauseButton
+                    playbackControls
                 }
             }
             .padding(.horizontal, 20)
@@ -132,12 +136,37 @@ struct EbookOverlayIos: View {
 
     // MARK: - Shared Components
 
+    private var playbackControls: some View {
+        HStack(spacing: 16) {
+            if showSkipBackward {
+                skipButton(systemName: "arrow.counterclockwise", action: onSkipBackward)
+            }
+
+            playPauseButton
+
+            if showSkipForward {
+                skipButton(systemName: "arrow.clockwise", action: onSkipForward)
+            }
+        }
+    }
+
     private var playPauseButton: some View {
         Button(action: onTogglePlaying) {
             Image(systemName: isPlaying ? "pause.fill" : "play.fill")
                 .font(.system(size: 20))
                 .foregroundStyle(.gray.opacity(overlayTransparency))
                 .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func skipButton(systemName: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 16))
+                .foregroundStyle(.gray.opacity(overlayTransparency))
+                .frame(width: 36, height: 36)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

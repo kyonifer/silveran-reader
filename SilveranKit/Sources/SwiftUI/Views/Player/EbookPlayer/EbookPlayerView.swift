@@ -312,6 +312,8 @@ public struct EbookPlayerView: View {
                     showTimeRemainingInBook: viewModel.settingsVM.showTimeRemainingInBook,
                     showTimeRemainingInChapter: viewModel.settingsVM.showTimeRemainingInChapter,
                     showPageNumber: viewModel.settingsVM.showPageNumber,
+                    showSkipBackward: viewModel.settingsVM.showOverlaySkipBackward,
+                    showSkipForward: viewModel.settingsVM.showOverlaySkipForward,
                     overlayTransparency: viewModel.settingsVM.overlayTransparency,
                     bookFraction: viewModel.progressManager?.bookFraction,
                     bookTimeRemaining: viewModel.mediaOverlayManager?.bookTimeRemaining,
@@ -321,8 +323,14 @@ public struct EbookPlayerView: View {
                     isPlaying: viewModel.mediaOverlayManager?.isPlaying ?? false,
                     hasAudioNarration: viewModel.hasAudioNarration,
                     positionAtTop: alwaysShowMini,
+                    onSkipBackward: {
+                        viewModel.handlePrevSentence()
+                    },
                     onTogglePlaying: {
                         Task { await viewModel.progressManager?.togglePlaying() }
+                    },
+                    onSkipForward: {
+                        viewModel.handleNextSentence()
                     }
                 )
                 .transition(.opacity)

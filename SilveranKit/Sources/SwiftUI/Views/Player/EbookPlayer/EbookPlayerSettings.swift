@@ -479,6 +479,8 @@ struct EbookPlayerSettings: View {
         settingsVM.singleColumnMode = kDefaultSingleColumnMode
         #if os(iOS)
         settingsVM.showPlayerControls = kDefaultShowPlayerControlsIOS
+        settingsVM.showOverlaySkipBackward = kDefaultShowOverlaySkipBackward
+        settingsVM.showOverlaySkipForward = kDefaultShowOverlaySkipForward
         #else
         settingsVM.showPlayerControls = kDefaultShowPlayerControlsMac
         #endif

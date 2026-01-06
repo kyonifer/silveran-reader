@@ -176,6 +176,8 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
         public var showPageNumber: Bool
         public var overlayTransparency: Double
         public var alwaysShowMiniPlayer: Bool
+        public var showOverlaySkipBackward: Bool
+        public var showOverlaySkipForward: Bool
 
         public init(
             enabled: Bool = kDefaultReadingBarEnabled,
@@ -186,7 +188,9 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
             showTimeRemainingInChapter: Bool = kDefaultShowTimeRemainingInChapter,
             showPageNumber: Bool = kDefaultShowPageNumber,
             overlayTransparency: Double = kDefaultOverlayTransparency,
-            alwaysShowMiniPlayer: Bool = kDefaultAlwaysShowMiniPlayer
+            alwaysShowMiniPlayer: Bool = kDefaultAlwaysShowMiniPlayer,
+            showOverlaySkipBackward: Bool = kDefaultShowOverlaySkipBackward,
+            showOverlaySkipForward: Bool = kDefaultShowOverlaySkipForward
         ) {
             self.enabled = enabled
             #if os(iOS)
@@ -201,6 +205,34 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
             self.showPageNumber = showPageNumber
             self.overlayTransparency = overlayTransparency
             self.alwaysShowMiniPlayer = alwaysShowMiniPlayer
+            self.showOverlaySkipBackward = showOverlaySkipBackward
+            self.showOverlaySkipForward = showOverlaySkipForward
+        }
+
+        public init(from decoder: Decoder) throws {
+            let container = try? decoder.container(keyedBy: CodingKeys.self)
+            enabled = (try? container?.decode(Bool.self, forKey: .enabled)) ?? kDefaultReadingBarEnabled
+            #if os(iOS)
+            showPlayerControls = (try? container?.decode(Bool.self, forKey: .showPlayerControls)) ?? kDefaultShowPlayerControlsIOS
+            #else
+            showPlayerControls = (try? container?.decode(Bool.self, forKey: .showPlayerControls)) ?? kDefaultShowPlayerControlsMac
+            #endif
+            showProgressBar = (try? container?.decode(Bool.self, forKey: .showProgressBar)) ?? kDefaultShowProgressBar
+            showProgress = (try? container?.decode(Bool.self, forKey: .showProgress)) ?? kDefaultShowProgress
+            showTimeRemainingInBook = (try? container?.decode(Bool.self, forKey: .showTimeRemainingInBook)) ?? kDefaultShowTimeRemainingInBook
+            showTimeRemainingInChapter = (try? container?.decode(Bool.self, forKey: .showTimeRemainingInChapter)) ?? kDefaultShowTimeRemainingInChapter
+            showPageNumber = (try? container?.decode(Bool.self, forKey: .showPageNumber)) ?? kDefaultShowPageNumber
+            overlayTransparency = (try? container?.decode(Double.self, forKey: .overlayTransparency)) ?? kDefaultOverlayTransparency
+            alwaysShowMiniPlayer = (try? container?.decode(Bool.self, forKey: .alwaysShowMiniPlayer)) ?? kDefaultAlwaysShowMiniPlayer
+            showOverlaySkipBackward = (try? container?.decode(Bool.self, forKey: .showOverlaySkipBackward)) ?? kDefaultShowOverlaySkipBackward
+            showOverlaySkipForward = (try? container?.decode(Bool.self, forKey: .showOverlaySkipForward)) ?? kDefaultShowOverlaySkipForward
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case enabled, showPlayerControls, showProgressBar, showProgress
+            case showTimeRemainingInBook, showTimeRemainingInChapter, showPageNumber
+            case overlayTransparency, alwaysShowMiniPlayer
+            case showOverlaySkipBackward, showOverlaySkipForward
         }
     }
 
@@ -355,6 +387,8 @@ public actor SettingsActor {
         showPageNumber: Bool? = nil,
         overlayTransparency: Double? = nil,
         alwaysShowMiniPlayer: Bool? = nil,
+        showOverlaySkipBackward: Bool? = nil,
+        showOverlaySkipForward: Bool? = nil,
         progressSyncIntervalSeconds: Double? = nil,
         metadataRefreshIntervalSeconds: Double? = nil,
         isManuallyOffline: Bool? = nil,
@@ -413,6 +447,12 @@ public actor SettingsActor {
         if let overlayTransparency { updated.readingBar.overlayTransparency = overlayTransparency }
         if let alwaysShowMiniPlayer {
             updated.readingBar.alwaysShowMiniPlayer = alwaysShowMiniPlayer
+        }
+        if let showOverlaySkipBackward {
+            updated.readingBar.showOverlaySkipBackward = showOverlaySkipBackward
+        }
+        if let showOverlaySkipForward {
+            updated.readingBar.showOverlaySkipForward = showOverlaySkipForward
         }
         if let progressSyncIntervalSeconds {
             debugLog(

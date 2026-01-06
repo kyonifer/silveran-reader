@@ -45,6 +45,8 @@ public let kDefaultShowTimeRemainingInChapter = true
 public let kDefaultShowPageNumber = true
 public let kDefaultOverlayTransparency: Double = 0.8
 public let kDefaultAlwaysShowMiniPlayer = false
+public let kDefaultShowOverlaySkipBackward = true
+public let kDefaultShowOverlaySkipForward = true
 
 // MARK: - Sync Settings
 

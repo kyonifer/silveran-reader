@@ -43,6 +43,8 @@ public final class SettingsViewModel {
     public var overlayTransparency: Double = kDefaultOverlayTransparency
     #if os(iOS)
     public var alwaysShowMiniPlayer: Bool = kDefaultAlwaysShowMiniPlayer
+    public var showOverlaySkipBackward: Bool = kDefaultShowOverlaySkipBackward
+    public var showOverlaySkipForward: Bool = kDefaultShowOverlaySkipForward
     #endif
 
     public var progressSyncIntervalSeconds: Double = kDefaultProgressSyncIntervalSeconds
@@ -151,6 +153,8 @@ public final class SettingsViewModel {
         overlayTransparency = config.readingBar.overlayTransparency
         #if os(iOS)
         alwaysShowMiniPlayer = config.readingBar.alwaysShowMiniPlayer
+        showOverlaySkipBackward = config.readingBar.showOverlaySkipBackward
+        showOverlaySkipForward = config.readingBar.showOverlaySkipForward
         #endif
 
         progressSyncIntervalSeconds = config.sync.progressSyncIntervalSeconds
@@ -232,6 +236,8 @@ public final class SettingsViewModel {
             showPageNumber: showPageNumber,
             overlayTransparency: overlayTransparency,
             alwaysShowMiniPlayer: alwaysShowMiniPlayerValue,
+            showOverlaySkipBackward: showOverlaySkipBackwardValue,
+            showOverlaySkipForward: showOverlaySkipForwardValue,
             progressSyncIntervalSeconds: progressSyncIntervalSeconds,
             metadataRefreshIntervalSeconds: metadataRefreshIntervalSeconds,
             autoSyncToNewerServerPosition: autoSyncToNewerServerPosition,
@@ -248,6 +254,8 @@ public final class SettingsViewModel {
 
     #if os(iOS)
     private var alwaysShowMiniPlayerValue: Bool { alwaysShowMiniPlayer }
+    private var showOverlaySkipBackwardValue: Bool { showOverlaySkipBackward }
+    private var showOverlaySkipForwardValue: Bool { showOverlaySkipForward }
     private var tabBarSlot1Value: String { tabBarSlot1 }
     private var tabBarSlot2Value: String { tabBarSlot2 }
     private var tapToPlayPreferredPlayerValue: Bool { tapToPlayPreferredPlayer }
@@ -255,6 +263,8 @@ public final class SettingsViewModel {
     private var showTabsOnHoverValue: Bool { kDefaultShowTabsOnHover }
     #else
     private var alwaysShowMiniPlayerValue: Bool { kDefaultAlwaysShowMiniPlayer }
+    private var showOverlaySkipBackwardValue: Bool { kDefaultShowOverlaySkipBackward }
+    private var showOverlaySkipForwardValue: Bool { kDefaultShowOverlaySkipForward }
     private var tabBarSlot1Value: String { kDefaultTabBarSlot1 }
     private var tabBarSlot2Value: String { kDefaultTabBarSlot2 }
     private var tapToPlayPreferredPlayerValue: Bool { kDefaultTapToPlayPreferredPlayer }

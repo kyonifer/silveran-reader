@@ -238,6 +238,32 @@ struct EbookPlayerTopToolbar: View {
                             ) {
                                 Label("Show Time in Chapter", systemImage: "clock.badge")
                             }
+
+                            Divider()
+
+                            Toggle(
+                                isOn: Binding(
+                                    get: { settingsVM.showOverlaySkipBackward },
+                                    set: { newValue in
+                                        settingsVM.showOverlaySkipBackward = newValue
+                                        Task { try? await settingsVM.save() }
+                                    }
+                                )
+                            ) {
+                                Label("Show Skip Back", systemImage: "arrow.counterclockwise")
+                            }
+
+                            Toggle(
+                                isOn: Binding(
+                                    get: { settingsVM.showOverlaySkipForward },
+                                    set: { newValue in
+                                        settingsVM.showOverlaySkipForward = newValue
+                                        Task { try? await settingsVM.save() }
+                                    }
+                                )
+                            ) {
+                                Label("Show Skip Forward", systemImage: "arrow.clockwise")
+                            }
                         }
                     } label: {
                         Image(systemName: "ellipsis.circle")
