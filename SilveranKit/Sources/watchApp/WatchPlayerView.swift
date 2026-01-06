@@ -213,10 +213,10 @@ private struct AudioControlsPage: View {
             Spacer()
 
             HStack(spacing: 3) {
-                Image(systemName: "book.fill")
-                    .font(.system(size: 9))
                 Text(formatHoursMinutes(viewModel.bookDuration - viewModel.bookElapsed))
                     .font(.system(size: 11, design: .monospaced))
+                Image(systemName: "book.fill")
+                    .font(.system(size: 9))
             }
             .foregroundStyle(.secondary)
         }
