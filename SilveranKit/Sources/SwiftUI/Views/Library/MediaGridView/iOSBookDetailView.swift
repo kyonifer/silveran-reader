@@ -7,6 +7,10 @@ struct iOSBookDetailView: View {
     @Environment(MediaViewModel.self) private var mediaViewModel: MediaViewModel
     @State private var showingSyncHistory = false
     @State private var currentChapter: String?
+    @State private var selectedStatusName: String?
+    @State private var isUpdatingStatus = false
+    @State private var showOfflineError = false
+    @State private var showingOptionsSheet = false
 
     private var currentItem: BookMetadata {
         mediaViewModel.library.bookMetaData.first { $0.uuid == item.uuid } ?? item
@@ -32,11 +36,41 @@ struct iOSBookDetailView: View {
         }
         .navigationTitle("Book Details")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    showingOptionsSheet = true
+                } label: {
+                    Image(systemName: "ellipsis")
+                }
+            }
+        }
+        .sheet(isPresented: $showingOptionsSheet) {
+            BookOptionsSheet(
+                item: item,
+                selectedStatusName: $selectedStatusName,
+                isUpdatingStatus: $isUpdatingStatus,
+                showOfflineError: $showOfflineError
+            )
+            .presentationDetents([.medium])
+            .presentationDragIndicator(.visible)
+        }
         .sheet(isPresented: $showingSyncHistory) {
             SyncHistorySheet(bookId: item.uuid, bookTitle: item.title)
         }
         .task {
             await loadCurrentChapter()
+        }
+        .onAppear {
+            selectedStatusName = currentItem.status?.name
+        }
+        .onChange(of: currentItem.status?.name) { _, newValue in
+            selectedStatusName = newValue
+        }
+        .alert("Cannot Change Status", isPresented: $showOfflineError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Please connect to the server to change the book status.")
         }
     }
 
@@ -73,21 +107,17 @@ struct iOSBookDetailView: View {
     private let labelWidth: CGFloat = 90
 
     private var infoColumnsSection: some View {
-        HStack(alignment: .top, spacing: 16) {
-            leftInfoColumn
-            Spacer(minLength: 0)
-            rightInfoColumn
-        }
+        leftInfoColumn
     }
 
     private var leftInfoColumn: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 4) {
             if let authors = item.authors, let first = authors.first?.name {
-                HStack(alignment: .top, spacing: 0) {
+                HStack(alignment: .top, spacing: 8) {
                     Text("Written by")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
-                        .frame(width: labelWidth, alignment: .leading)
+                        .frame(width: labelWidth, alignment: .trailing)
                     Text(first)
                         .font(.subheadline)
                         .fontWeight(.medium)
@@ -113,11 +143,11 @@ struct iOSBookDetailView: View {
             }
 
             if let narrators = item.narrators, let first = narrators.first?.name {
-                HStack(alignment: .top, spacing: 0) {
+                HStack(alignment: .top, spacing: 8) {
                     Text("Narrated by")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
-                        .frame(width: labelWidth, alignment: .leading)
+                        .frame(width: labelWidth, alignment: .trailing)
                     Text(first)
                         .font(.subheadline)
                         .fontWeight(.medium)
@@ -141,34 +171,10 @@ struct iOSBookDetailView: View {
                     }
                 }
             }
+
         }
     }
 
-    private var rightInfoColumn: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top, spacing: 0) {
-                Text("Status")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .frame(width: labelWidth, alignment: .leading)
-                CompactStatusPicker(item: item)
-            }
-
-            if let chapter = currentChapter {
-                HStack(alignment: .top, spacing: 0) {
-                    Text("Chapter")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .frame(width: labelWidth, alignment: .leading)
-                    Text(chapter)
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                }
-            }
-        }
-    }
 
     private var titleTopSection: some View {
         VStack(alignment: .center, spacing: 8) {
@@ -228,9 +234,15 @@ struct iOSBookDetailView: View {
         let progress = mediaViewModel.progress(for: item.id)
         return VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("Reading Progress")
-                    .font(.callout)
-                    .fontWeight(.medium)
+                if let chapter = currentChapter {
+                    Text("Reading Progress: \(chapter)")
+                        .font(.callout)
+                        .fontWeight(.medium)
+                } else {
+                    Text("Reading Progress")
+                        .font(.callout)
+                        .fontWeight(.medium)
+                }
                 SyncStatusIndicators(bookId: item.id)
                 Spacer()
                 Text("\(Int((progress * 100).rounded()))%")
@@ -599,6 +611,132 @@ private struct CompactStatusPicker: View {
             }
         } else {
             selectedStatusName = currentItem.status?.name
+        }
+    }
+}
+
+private struct BookOptionsSheet: View {
+    let item: BookMetadata
+    @Binding var selectedStatusName: String?
+    @Binding var isUpdatingStatus: Bool
+    @Binding var showOfflineError: Bool
+    @Environment(MediaViewModel.self) private var mediaViewModel
+    @Environment(\.dismiss) private var dismiss
+
+    private var currentItem: BookMetadata {
+        mediaViewModel.library.bookMetaData.first { $0.uuid == item.uuid } ?? item
+    }
+
+    private var sortedStatuses: [BookStatus] {
+        mediaViewModel.availableStatuses.sorted {
+            $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                NavigationLink {
+                    StatusPickerView(
+                        item: item,
+                        selectedStatusName: $selectedStatusName,
+                        isUpdatingStatus: $isUpdatingStatus,
+                        showOfflineError: $showOfflineError
+                    )
+                } label: {
+                    HStack {
+                        Label("Status", systemImage: "bookmark")
+                        Spacer()
+                        if isUpdatingStatus {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Text(selectedStatusName ?? "-")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Options")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+        .onAppear {
+            if selectedStatusName == nil {
+                selectedStatusName = currentItem.status?.name
+            }
+        }
+    }
+}
+
+private struct StatusPickerView: View {
+    let item: BookMetadata
+    @Binding var selectedStatusName: String?
+    @Binding var isUpdatingStatus: Bool
+    @Binding var showOfflineError: Bool
+    @Environment(MediaViewModel.self) private var mediaViewModel
+    @Environment(\.dismiss) private var dismiss
+
+    private var sortedStatuses: [BookStatus] {
+        mediaViewModel.availableStatuses.sorted {
+            $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+        }
+    }
+
+    var body: some View {
+        let statuses = sortedStatuses
+        return List {
+            ForEach(statuses, id: \.name) { (status: BookStatus) in
+                Button {
+                    Task { await updateStatus(to: status.name) }
+                } label: {
+                    HStack {
+                        Text(status.name)
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        if status.name == selectedStatusName {
+                            Image(systemName: "checkmark")
+                                .foregroundStyle(Color.accentColor)
+                        }
+                    }
+                }
+                .disabled(isUpdatingStatus)
+            }
+        }
+        .navigationTitle("Status")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func updateStatus(to statusName: String) async {
+        guard statusName != selectedStatusName else { return }
+        guard mediaViewModel.connectionStatus == .connected else {
+            showOfflineError = true
+            return
+        }
+
+        isUpdatingStatus = true
+        defer { isUpdatingStatus = false }
+
+        let success = await StorytellerActor.shared.updateStatus(
+            forBooks: [item.uuid],
+            toStatusNamed: statusName
+        )
+
+        if success {
+            if let newStatus = mediaViewModel.availableStatuses.first(where: { $0.name == statusName }) {
+                await LocalMediaActor.shared.updateBookStatus(
+                    bookId: item.uuid,
+                    status: newStatus
+                )
+                selectedStatusName = statusName
+            }
+            dismiss()
         }
     }
 }
