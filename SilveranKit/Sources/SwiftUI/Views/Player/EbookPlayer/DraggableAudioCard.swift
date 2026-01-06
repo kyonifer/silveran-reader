@@ -14,6 +14,7 @@ struct DraggableAudioCard<FullContent: View>: View {
     let chapterProgress: Double
     let chapterElapsedSeconds: TimeInterval?
     let chapterTotalSeconds: TimeInterval?
+    let bookTimeRemaining: TimeInterval?
     let playbackRate: Double
     let hasAudioNarration: Bool
     let chapters: [ChapterItem]
@@ -227,11 +228,15 @@ struct DraggableAudioCard<FullContent: View>: View {
                         .lineLimit(1)
                 }
             }
+            .layoutPriority(-1)
 
             Spacer(minLength: 0)
 
             if hasAudioNarration {
                 HStack(spacing: 15) {
+                    audioTimeStats
+                        .fixedSize()
+
                     PlaybackRateButton(
                         currentRate: playbackRate,
                         onRateChange: onPlaybackRateChange,
@@ -257,6 +262,37 @@ struct DraggableAudioCard<FullContent: View>: View {
         }
         .padding(.horizontal, 16)
         .padding(.top, 28)
+    }
+
+    private var chapterTimeRemaining: TimeInterval? {
+        guard let elapsed = chapterElapsedSeconds, let total = chapterTotalSeconds else {
+            return nil
+        }
+        return max(0, total - elapsed)
+    }
+
+    private var audioTimeStats: some View {
+        VStack(alignment: .trailing, spacing: 2) {
+            if let bookRemaining = bookTimeRemaining {
+                HStack(spacing: 4) {
+                    Text(formatTimeHoursMinutes(bookRemaining))
+                        .font(.caption2.monospacedDigit())
+                    Image(systemName: "book.fill")
+                        .font(.caption2)
+                }
+                .foregroundStyle(.secondary)
+            }
+
+            if let chapterRemaining = chapterTimeRemaining {
+                HStack(spacing: 4) {
+                    Text(formatTimeMinutesSeconds(chapterRemaining))
+                        .font(.caption2.monospacedDigit())
+                    Image(systemName: "bookmark.fill")
+                        .font(.caption2)
+                }
+                .foregroundStyle(.secondary)
+            }
+        }
     }
 
     private func handleDragEnd(translation: CGFloat, velocity: CGFloat, screenHeight: CGFloat) {

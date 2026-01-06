@@ -421,6 +421,7 @@ public struct EbookPlayerView: View {
             chapterProgress: viewModel.chapterProgressBinding.wrappedValue,
             chapterElapsedSeconds: mom?.chapterElapsedSeconds,
             chapterTotalSeconds: mom?.chapterTotalSeconds,
+            bookTimeRemaining: mom?.bookTimeRemaining,
             playbackRate: mom?.playbackRate ?? viewModel.settingsVM.defaultPlaybackSpeed,
             hasAudioNarration: viewModel.hasAudioNarration,
             chapters: viewModel.chapterList,
