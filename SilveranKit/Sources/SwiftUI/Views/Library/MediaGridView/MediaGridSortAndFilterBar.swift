@@ -11,6 +11,7 @@ struct MediaGridSortAndFilterBar: View {
     @Binding var selectedLocation: MediaGridView.LocationFilterOption
     @Binding var showAudioIndicator: Bool
     @Binding var showSourceBadge: Bool
+    @Binding var showSeriesPositionBadge: Bool
     let availableTags: [String]
     let availableSeries: [String]
     let availableAuthors: [String]
@@ -299,6 +300,19 @@ struct MediaGridSortAndFilterBar: View {
                     Text("Show Source Badge")
                     Spacer()
                     if showSourceBadge {
+                        Image(systemName: "checkmark")
+                            .imageScale(.small)
+                    }
+                }
+            }
+
+            Button {
+                showSeriesPositionBadge.toggle()
+            } label: {
+                HStack {
+                    Text("Show Series Position")
+                    Spacer()
+                    if showSeriesPositionBadge {
                         Image(systemName: "checkmark")
                             .imageScale(.small)
                     }

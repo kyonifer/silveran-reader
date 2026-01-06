@@ -795,6 +795,7 @@ private struct HomeSectionRow: View {
             isSelected: isItemSelected(item.id),
             showAudioIndicator: showAudioIndicator,
             sourceLabel: nil,
+            seriesPositionBadge: nil,
             onSelect: { selected in
                 select(selected)
             },
@@ -818,6 +819,7 @@ private struct HomeSectionRow: View {
             isSelected: isItemSelected(item.id),
             showAudioIndicator: showAudioIndicator,
             sourceLabel: nil,
+            seriesPositionBadge: nil,
             onSelect: { selected in
                 select(selected)
             },

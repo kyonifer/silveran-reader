@@ -73,6 +73,7 @@ struct MediaGridView: View {
     @State private var selectedLocation: LocationFilterOption = .all
     @State private var shouldEnsureActiveItemVisible: Bool = false
     @State private var showSourceBadge: Bool = false
+    @State private var showSeriesPositionBadge: Bool
 
     private static let defaultHorizontalSpacing: CGFloat = 16
     private let horizontalSpacing: CGFloat = MediaGridView.defaultHorizontalSpacing
@@ -154,6 +155,7 @@ struct MediaGridView: View {
             sortOption = .titleAZ
         }
         _selectedSortOption = State(initialValue: sortOption)
+        _showSeriesPositionBadge = State(initialValue: seriesFilter != nil)
     }
 
     private static func defaultColumnBreakpoints(preferredTileWidth: CGFloat) -> [ColumnBreakpoint]
@@ -333,6 +335,7 @@ struct MediaGridView: View {
                         }
                     ),
                     showSourceBadge: $showSourceBadge,
+                    showSeriesPositionBadge: $showSeriesPositionBadge,
                     availableTags: availableTags,
                     availableSeries: availableSeries,
                     availableAuthors: availableAuthors,
@@ -426,6 +429,7 @@ struct MediaGridView: View {
     @ViewBuilder
     private func card(for item: BookMetadata, metrics: MediaItemCardMetrics) -> some View {
         let sourceLabel = showSourceBadge ? mediaViewModel.sourceLabel(for: item.id) : nil
+        let seriesPositionBadge = seriesPositionBadge(for: item)
         #if os(macOS)
         MediaItemCardView(
             item: item,
@@ -434,6 +438,7 @@ struct MediaGridView: View {
             isSelected: activeInfoItem?.id == item.id,
             showAudioIndicator: settingsViewModel.showAudioIndicator,
             sourceLabel: sourceLabel,
+            seriesPositionBadge: seriesPositionBadge,
             onSelect: { [self] selected in
                 selectItem(selected)
             },
@@ -457,6 +462,7 @@ struct MediaGridView: View {
             isSelected: activeInfoItem?.id == item.id,
             showAudioIndicator: settingsViewModel.showAudioIndicator,
             sourceLabel: sourceLabel,
+            seriesPositionBadge: seriesPositionBadge,
             onSelect: { selected in
                 selectItem(selected)
             },
@@ -465,6 +471,12 @@ struct MediaGridView: View {
             }
         )
         #endif
+    }
+
+    private func seriesPositionBadge(for item: BookMetadata) -> String? {
+        guard showSeriesPositionBadge else { return nil }
+        guard let series = item.series?.first, let position = series.position else { return nil }
+        return "#\(position)"
     }
 
     private func selectItem(_ item: BookMetadata, ensureVisible: Bool = false) {
