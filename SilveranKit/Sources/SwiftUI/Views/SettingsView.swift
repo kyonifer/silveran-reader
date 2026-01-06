@@ -289,6 +289,8 @@ extension SettingsView {
                     GeneralSettingsFields(sync: $config.sync)
                 }
 
+                GeneralSettingsFields(sync: $config.sync).autoNavigateSection
+
                 Section("Tab Bar") {
                     Picker("First Tab", selection: $config.library.tabBarSlot1) {
                         ForEach(ConfigurableTab.allCases) { tab in
@@ -500,10 +502,10 @@ private struct MacGeneralSettingsView: View {
                     .padding(.vertical, 8)
 
                 Toggle(
-                    "Auto-sync to newer server position",
+                    "Auto-navigate to server position",
                     isOn: $sync.autoSyncToNewerServerPosition
                 )
-                .help("Automatically navigate to a newer reading position synced from another device")
+                .help("When the server has a newer reading position (from another device), automatically jump to that position.")
             }
 
             Divider()
@@ -1286,10 +1288,17 @@ private struct GeneralSettingsFields: View {
             }
         }
 
-        Toggle(
-            "Auto-sync to newer server position",
-            isOn: $sync.autoSyncToNewerServerPosition
-        )
+    }
+
+    var autoNavigateSection: some View {
+        Section {
+            Toggle(
+                "Auto-navigate to server position",
+                isOn: $sync.autoSyncToNewerServerPosition
+            )
+        } footer: {
+            Text("When the server has a newer reading position (from another device), automatically jump to that position.")
+        }
     }
 
     private func formatInterval(_ seconds: Double) -> String {
