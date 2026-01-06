@@ -158,16 +158,15 @@ private struct LibraryBookRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 4) {
+            HStack(alignment: .top, spacing: 4) {
                 Image("readalong")
                     .renderingMode(.template)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .frame(width: 12, height: 12)
                     .foregroundStyle(.secondary)
-                Text(book.title)
-                    .font(.headline)
-                    .lineLimit(2)
+                    .padding(.top, 3)
+                MarqueeText(text: book.title, font: .headline)
             }
 
             if let author = book.authors?.first?.name {

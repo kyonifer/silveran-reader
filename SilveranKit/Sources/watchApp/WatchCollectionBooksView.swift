@@ -111,9 +111,7 @@ struct WatchCollectionBooksView: View {
                 } label: {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(book.title)
-                                .font(.caption)
-                                .lineLimit(2)
+                            MarqueeText(text: book.title, font: .caption)
 
                             if let author = book.authors?.first?.name {
                                 Text(author)
