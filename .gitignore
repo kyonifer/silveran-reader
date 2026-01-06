@@ -17,4 +17,7 @@ Package.resolved
 !SilveranKit/Package.resolved
 .cache
 icon*.png
+XCodeWrapper/Assets.xcassets/AppIcon.appiconset/*.png
+XCodeWrapper/WatchAssets.xcassets/AppIcon.appiconset/*.png
+XCodeWrapper/TVAssets.xcassets/**/*.png
 XCodeWrapper/Info-iOS.plist

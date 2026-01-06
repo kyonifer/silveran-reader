@@ -7,6 +7,7 @@ cd "${SCRIPT_DIR}/.."
 
 ASSETS_DIR="XCodeWrapper/Assets.xcassets/AppIcon.appiconset"
 WATCH_ASSETS_DIR="XCodeWrapper/WatchAssets.xcassets/AppIcon.appiconset"
+TV_ASSETS_DIR="XCodeWrapper/TVAssets.xcassets/App Icon.brandassets"
 ORIG_ICON="extern/assets/icons/app_icon_orig.png"
 MAC_MASK="extern/assets/icons/macos_icon_mask.png"
 
@@ -60,6 +61,32 @@ generate_mac_icon 512 "${ASSETS_DIR}/icon_mac_512.png"
 generate_mac_icon 1024 "${ASSETS_DIR}/icon_mac_1024.png"
 
 rm -f "${ASSETS_DIR}/icon_1024x1024_mac.png"
+
+generate_tv_icon() {
+    local width=$1
+    local height=$2
+    local output_file=$3
+    magick "${ORIG_ICON}" -resize x${height} -gravity center -background 'srgb(40,40,40)' -extent ${width}x${height} -colorspace sRGB -profile "${SRGB_PROFILE}" -alpha off "${output_file}"
+}
+
+generate_tv_icon 400 240 "${TV_ASSETS_DIR}/App Icon.imagestack/Back.imagestacklayer/Content.imageset/back.png"
+generate_tv_icon 800 480 "${TV_ASSETS_DIR}/App Icon.imagestack/Back.imagestacklayer/Content.imageset/back@2x.png"
+generate_tv_icon 400 240 "${TV_ASSETS_DIR}/App Icon.imagestack/Front.imagestacklayer/Content.imageset/front.png"
+generate_tv_icon 800 480 "${TV_ASSETS_DIR}/App Icon.imagestack/Front.imagestacklayer/Content.imageset/front@2x.png"
+generate_tv_icon 1280 768 "${TV_ASSETS_DIR}/App Icon - App Store.imagestack/Back.imagestacklayer/Content.imageset/back_store.png"
+generate_tv_icon 1280 768 "${TV_ASSETS_DIR}/App Icon - App Store.imagestack/Front.imagestacklayer/Content.imageset/front_store.png"
+
+generate_tv_shelf() {
+    local width=$1
+    local height=$2
+    local output_file=$3
+    magick "${ORIG_ICON}" -resize x${height} -gravity center -background 'srgb(40,40,40)' -extent ${width}x${height} -colorspace sRGB -profile "${SRGB_PROFILE}" -alpha off "${output_file}"
+}
+
+generate_tv_shelf 1920 720 "${TV_ASSETS_DIR}/Top Shelf Image.imageset/shelf.png"
+generate_tv_shelf 3840 1440 "${TV_ASSETS_DIR}/Top Shelf Image.imageset/shelf@2x.png"
+generate_tv_shelf 2320 720 "${TV_ASSETS_DIR}/Top Shelf Image Wide.imageset/shelf_wide.png"
+generate_tv_shelf 4640 1440 "${TV_ASSETS_DIR}/Top Shelf Image Wide.imageset/shelf_wide@2x.png"
 
 echo "Generated all app icon sizes"
 
