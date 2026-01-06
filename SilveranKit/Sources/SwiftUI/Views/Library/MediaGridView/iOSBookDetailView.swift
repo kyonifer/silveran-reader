@@ -126,6 +126,7 @@ struct iOSBookDetailView: View {
 
     private var infoColumnsSection: some View {
         leftInfoColumn
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var leftInfoColumn: some View {
@@ -135,7 +136,7 @@ struct iOSBookDetailView: View {
                     Text("Written by")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
-                        .frame(width: labelWidth, alignment: .trailing)
+                        .frame(width: labelWidth, alignment: .leading)
                     Text(first)
                         .font(.subheadline)
                         .fontWeight(.medium)
@@ -165,7 +166,7 @@ struct iOSBookDetailView: View {
                     Text("Narrated by")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
-                        .frame(width: labelWidth, alignment: .trailing)
+                        .frame(width: labelWidth, alignment: .leading)
                     Text(first)
                         .font(.subheadline)
                         .fontWeight(.medium)
