@@ -111,6 +111,23 @@ struct WatchDownloadMenuView: View {
                             .foregroundStyle(.purple)
                     }
                 }
+
+                NavigationLink {
+                    WatchCollectionsView()
+                } label: {
+                    Label {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Custom Collections")
+                                .font(.caption)
+                            Text("Curated sets")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    } icon: {
+                        Image(systemName: "rectangle.stack")
+                            .foregroundStyle(.orange)
+                    }
+                }
             } header: {
                 Text("Browse by:")
                     .font(.headline)

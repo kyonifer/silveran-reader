@@ -13,7 +13,7 @@ struct WatchModeSelectionView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Remote Control")
                                 .font(.headline)
-                            Text("For iPhone")
+                            Text("Of iPhone")
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                         }
