@@ -220,16 +220,19 @@ public final class SMILTextPlaybackViewModel: NSObject {
     private func handleStateUpdate(_ state: SMILPlaybackState) {
         let sectionChanged = state.currentSectionIndex != currentSectionIndex
         let playingChanged = state.isPlaying != isPlaying
+        let entryChanged = state.currentEntryIndex != currentEntryIndex
 
-        isPlaying = state.isPlaying
-        currentTime = state.chapterElapsed
-        currentSectionIndex = state.currentSectionIndex
-        currentEntryIndex = state.currentEntryIndex
-        playbackRate = state.playbackRate
-        bookElapsed = state.bookElapsed
-        bookDuration = state.bookTotal
+        if playingChanged { isPlaying = state.isPlaying }
+        if state.chapterElapsed != currentTime { currentTime = state.chapterElapsed }
+        if sectionChanged { currentSectionIndex = state.currentSectionIndex }
+        if entryChanged { currentEntryIndex = state.currentEntryIndex }
+        if state.playbackRate != playbackRate { playbackRate = state.playbackRate }
+        if state.bookElapsed != bookElapsed { bookElapsed = state.bookElapsed }
+        if state.bookTotal != bookDuration { bookDuration = state.bookTotal }
 
-        updateCachedTextIfNeeded()
+        if sectionChanged || entryChanged {
+            updateCachedTextIfNeeded()
+        }
 
         if sectionChanged {
             chapterTitle =

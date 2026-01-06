@@ -148,6 +148,8 @@ public actor SMILPlayerActor {
     private var player: AVPlayer?
     private let endObserver = AVPlayerEndObserver()
     private var bookStructure: [SectionInfo] = []
+    private var cachedBookTotal: Double = 0
+    private var cachedChapterStartCumSums: [Int: Double] = [:]
     private var epubPath: URL?
     private var bookId: String?
     private var bookTitle: String?
@@ -165,7 +167,6 @@ public actor SMILPlayerActor {
 
     private var updateTimer: Timer?
     private var lastPausedWhilePlayingTime: Date?
-    private var lastProgressNotifyTime: Date = .distantPast
     private var isAdvancing: Bool = false
 
     // MARK: - Observer Pattern
@@ -229,6 +230,8 @@ public actor SMILPlayerActor {
         self.bookAuthor = author
         self.currentSectionIndex = 0
         self.currentEntryIndex = 0
+
+        computeCachedTotals()
 
         #if os(iOS) || os(watchOS) || os(tvOS)
         setupAudioSession()
@@ -522,6 +525,22 @@ public actor SMILPlayerActor {
 
     // MARK: - Cleanup
 
+    private func computeCachedTotals() {
+        cachedBookTotal = 0
+        cachedChapterStartCumSums = [:]
+
+        var lastCumSum: Double = 0
+        for section in bookStructure {
+            if !section.mediaOverlay.isEmpty {
+                cachedChapterStartCumSums[section.index] = lastCumSum
+                if let lastEntry = section.mediaOverlay.last {
+                    lastCumSum = lastEntry.cumSumAtEnd
+                }
+            }
+        }
+        cachedBookTotal = lastCumSum
+    }
+
     private func clearBookState() {
         debugLog("[SMILPlayerActor] Clearing book state")
         stopUpdateTimer()
@@ -535,6 +554,8 @@ public actor SMILPlayerActor {
         }
 
         bookStructure = []
+        cachedBookTotal = 0
+        cachedChapterStartCumSums = [:]
         epubPath = nil
         bookId = nil
         bookTitle = nil
@@ -715,7 +736,7 @@ public actor SMILPlayerActor {
 
     private func startUpdateTimer() {
         stopUpdateTimer()
-        let timer = Timer(timeInterval: 0.1, repeats: true) { _ in
+        let timer = Timer(timeInterval: 0.2, repeats: true) { _ in
             Task { @SMILPlayerActor in
                 await SMILPlayerActor.shared.timerFired()
             }
@@ -749,11 +770,7 @@ public actor SMILPlayerActor {
             await advanceToNextEntry()
         }
 
-        let now = Date()
-        if now.timeIntervalSince(lastProgressNotifyTime) >= 0.2 {
-            lastProgressNotifyTime = now
-            await notifyStateChange()
-        }
+        await notifyStateChange()
     }
 
     func handleAudioFinished() async {
@@ -880,30 +897,14 @@ public actor SMILPlayerActor {
         var chapterElapsed: Double = 0
         var chapterTotal: Double = 0
         var bookElapsed: Double = 0
-        var bookTotal: Double = 0
-
-        for section in bookStructure.reversed() {
-            if !section.mediaOverlay.isEmpty, let lastEntry = section.mediaOverlay.last {
-                bookTotal = lastEntry.cumSumAtEnd
-                break
-            }
-        }
+        let bookTotal = cachedBookTotal
 
         if currentSectionIndex < bookStructure.count {
             let section = bookStructure[currentSectionIndex]
             chapterLabel = section.label
 
             if !section.mediaOverlay.isEmpty {
-                let chapterStartCumSum: Double
-                if let prevSection = bookStructure.prefix(currentSectionIndex).last(where: {
-                    !$0.mediaOverlay.isEmpty
-                }),
-                    let prevLastEntry = prevSection.mediaOverlay.last
-                {
-                    chapterStartCumSum = prevLastEntry.cumSumAtEnd
-                } else {
-                    chapterStartCumSum = 0
-                }
+                let chapterStartCumSum = cachedChapterStartCumSums[section.index] ?? 0
 
                 if let lastEntry = section.mediaOverlay.last {
                     chapterTotal = lastEntry.cumSumAtEnd - chapterStartCumSum
