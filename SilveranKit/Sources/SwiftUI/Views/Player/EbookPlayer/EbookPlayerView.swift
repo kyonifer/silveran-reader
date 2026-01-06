@@ -464,7 +464,7 @@ public struct EbookPlayerView: View {
             let inset = geometry.size.width * 0.1
             let availableWidth = geometry.size.width - (inset * 2)
             Color.gray
-                .opacity(colorScheme == .dark ? 0.6 : 0.4)
+                .opacity(colorScheme == .dark ? 0.6 : 0.7)
                 .frame(width: availableWidth * progress, height: 3)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, inset)
