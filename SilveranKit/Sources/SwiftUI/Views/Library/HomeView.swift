@@ -46,9 +46,7 @@ struct HomeView: View {
     // Workaround for macOS Sequoia bug where parent view's onTapGesture fires after card tap
     @State private var cardTapInProgress: Bool = false
     #endif
-    #if os(iOS)
     @State private var navigationPath = NavigationPath()
-    #endif
 
     private let sidebarWidth: CGFloat = 340
     private let sidebarSpacing: CGFloat = 1
@@ -128,10 +126,15 @@ struct HomeView: View {
             }
         }
         #else
-        ZStack {
-            homeContent
-            if searchText.count >= 2 {
-                searchOverlayMacOS
+        NavigationStack(path: $navigationPath) {
+            ZStack {
+                homeContent
+                if searchText.count >= 2 {
+                    searchOverlayMacOS
+                }
+            }
+            .navigationDestination(for: SeriesNavIdentifier.self) { series in
+                seriesDetailView(for: series.name)
             }
         }
         #endif
@@ -248,6 +251,10 @@ struct HomeView: View {
                         onReadNow: { dismissSidebar() },
                         onRename: {},
                         onDelete: { dismissSidebar() },
+                        onSeriesSelected: { seriesName in
+                            dismissSidebar()
+                            navigationPath.append(SeriesNavIdentifier(name: seriesName))
+                        }
                     )
                     .frame(width: sidebarWidth, height: geometry.size.height)
                     .transition(.move(edge: .trailing).combined(with: .opacity))
@@ -619,6 +626,26 @@ struct HomeView: View {
             initialNarrationFilterOption: .both
         )
         .background(Color(nsColor: .windowBackgroundColor))
+    }
+
+    @ViewBuilder
+    private func seriesDetailView(for seriesName: String) -> some View {
+        MediaGridView(
+            title: seriesName,
+            searchText: "",
+            mediaKind: .ebook,
+            tagFilter: nil,
+            seriesFilter: seriesName,
+            statusFilter: nil,
+            defaultSort: "seriesPosition",
+            preferredTileWidth: 120,
+            minimumTileWidth: 50,
+            onSeriesSelected: { newSeriesName in
+                navigationPath.append(SeriesNavIdentifier(name: newSeriesName))
+            },
+            initialNarrationFilterOption: .both
+        )
+        .navigationTitle(seriesName)
     }
     #endif
 

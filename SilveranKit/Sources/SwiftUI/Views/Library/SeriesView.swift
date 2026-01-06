@@ -143,7 +143,13 @@ struct SeriesView: View {
                         },
                         onReadNow: {},
                         onRename: {},
-                        onDelete: {}
+                        onDelete: {},
+                        onSeriesSelected: { seriesName in
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                isSidebarVisible = false
+                            }
+                            navigateToSeries(seriesName)
+                        }
                     )
                     .frame(width: sidebarWidth)
                 }
@@ -315,6 +321,9 @@ struct SeriesView: View {
             defaultSort: sortKey,
             preferredTileWidth: 120,
             minimumTileWidth: 50,
+            onSeriesSelected: { newSeriesName in
+                navigateToSeries(newSeriesName)
+            },
             initialNarrationFilterOption: .both,
             scrollPosition: nil
         )

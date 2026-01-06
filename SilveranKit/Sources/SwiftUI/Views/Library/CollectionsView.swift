@@ -81,6 +81,15 @@ struct CollectionsView: View {
                     )
                         #endif
                 }
+                .navigationDestination(for: SeriesNavIdentifier.self) { series in
+                    seriesDetailView(for: series.name)
+                        #if os(iOS)
+                    .iOSLibraryToolbar(
+                        showSettings: $showSettings,
+                        showOfflineSheet: showOfflineSheet ?? .constant(false)
+                    )
+                        #endif
+                }
                 #if os(iOS)
             .navigationDestination(for: BookMetadata.self) { item in
                 iOSBookDetailView(item: item, mediaKind: mediaKind)
@@ -140,7 +149,13 @@ struct CollectionsView: View {
                         },
                         onReadNow: {},
                         onRename: {},
-                        onDelete: {}
+                        onDelete: {},
+                        onSeriesSelected: { seriesName in
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                isSidebarVisible = false
+                            }
+                            navigationPath.append(SeriesNavIdentifier(name: seriesName))
+                        }
                     )
                     .frame(width: sidebarWidth)
                 }
@@ -324,6 +339,48 @@ struct CollectionsView: View {
             scrollPosition: nil
         )
         .navigationTitle(collectionName)
+        #endif
+    }
+
+    @ViewBuilder
+    private func seriesDetailView(for seriesName: String) -> some View {
+        let sortKey = "seriesPosition"
+        #if os(iOS)
+        MediaGridView(
+            title: seriesName,
+            searchText: "",
+            mediaKind: mediaKind,
+            tagFilter: nil,
+            seriesFilter: seriesName,
+            statusFilter: nil,
+            defaultSort: sortKey,
+            preferredTileWidth: 110,
+            minimumTileWidth: 90,
+            columnBreakpoints: [
+                MediaGridView.ColumnBreakpoint(columns: 3, minWidth: 0)
+            ],
+            initialNarrationFilterOption: .both,
+            scrollPosition: nil
+        )
+        .navigationTitle(seriesName)
+        #else
+        MediaGridView(
+            title: seriesName,
+            searchText: "",
+            mediaKind: mediaKind,
+            tagFilter: nil,
+            seriesFilter: seriesName,
+            statusFilter: nil,
+            defaultSort: sortKey,
+            preferredTileWidth: 120,
+            minimumTileWidth: 50,
+            onSeriesSelected: { newSeriesName in
+                navigationPath.append(SeriesNavIdentifier(name: newSeriesName))
+            },
+            initialNarrationFilterOption: .both,
+            scrollPosition: nil
+        )
+        .navigationTitle(seriesName)
         #endif
     }
 

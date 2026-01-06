@@ -554,10 +554,6 @@ struct CollectionNavIdentifier: Hashable {
     let name: String
 }
 
-struct SeriesNavIdentifier: Hashable {
-    let name: String
-}
-
 struct BooksContentView: View {
     let searchText: String
 

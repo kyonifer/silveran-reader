@@ -20,6 +20,10 @@ extension MediaKind {
     }
 }
 
+struct SeriesNavIdentifier: Hashable {
+    let name: String
+}
+
 struct MediaGridView: View {
     public struct ColumnBreakpoint: Hashable {
         public let columns: Int
@@ -49,6 +53,7 @@ struct MediaGridView: View {
     let onReadNow: (BookMetadata) -> Void
     let onRename: (BookMetadata) -> Void
     let onDelete: (BookMetadata) -> Void
+    let onSeriesSelected: ((String) -> Void)?
     let initialNarrationFilterOption: NarrationFilter
     private let scrollPosition: Binding<BookMetadata.ID?>?
     private let headerScrollID = "media-grid-header"
@@ -107,6 +112,7 @@ struct MediaGridView: View {
         onReadNow: ((BookMetadata) -> Void)? = { _ in },
         onRename: ((BookMetadata) -> Void)? = { _ in },
         onDelete: ((BookMetadata) -> Void)? = { _ in },
+        onSeriesSelected: ((String) -> Void)? = nil,
         initialNarrationFilterOption: NarrationFilter = .both,
         initialLocationFilter: LocationFilterOption = .all,
         scrollPosition: Binding<BookMetadata.ID?>? = nil
@@ -135,6 +141,7 @@ struct MediaGridView: View {
         self.onReadNow = onReadNow ?? { _ in }
         self.onRename = onRename ?? { _ in }
         self.onDelete = onDelete ?? { _ in }
+        self.onSeriesSelected = onSeriesSelected
         self.initialNarrationFilterOption = initialNarrationFilterOption
         self.scrollPosition = scrollPosition
         _selectedFormatFilter = State(
@@ -286,6 +293,12 @@ struct MediaGridView: View {
                                 onDelete(activeInfoItem)
                                 dismissSidebar()
                             },
+                            onSeriesSelected: onSeriesSelected.map { handler in
+                                { seriesName in
+                                    dismissSidebar()
+                                    handler(seriesName)
+                                }
+                            }
                         )
                     }
                     #endif

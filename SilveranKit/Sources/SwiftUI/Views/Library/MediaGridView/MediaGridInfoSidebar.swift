@@ -13,6 +13,7 @@ struct MediaGridInfoSidebar: View {
     let onReadNow: () -> Void
     let onRename: () -> Void
     let onDelete: () -> Void
+    let onSeriesSelected: ((String) -> Void)?
 
     @Environment(MediaViewModel.self) private var mediaViewModel: MediaViewModel
     @State private var animatedProgress: Double = 0
@@ -24,7 +25,8 @@ struct MediaGridInfoSidebar: View {
         onClose: @escaping () -> Void,
         onReadNow: @escaping () -> Void,
         onRename: @escaping () -> Void,
-        onDelete: @escaping () -> Void
+        onDelete: @escaping () -> Void,
+        onSeriesSelected: ((String) -> Void)? = nil
     ) {
         self.item = item
         self.mediaKind = mediaKind
@@ -32,6 +34,7 @@ struct MediaGridInfoSidebar: View {
         self.onReadNow = onReadNow
         self.onRename = onRename
         self.onDelete = onDelete
+        self.onSeriesSelected = onSeriesSelected
     }
 
     var body: some View {
@@ -64,21 +67,41 @@ struct MediaGridInfoSidebar: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .textSelection(.enabled)
                 if let series = item.series?.first {
-                    HStack(spacing: 4) {
-                        Text(series.name)
-                            .font(.subheadline)
+                    if let onSeriesSelected {
+                        Button {
+                            onSeriesSelected(series.name)
+                        } label: {
+                            HStack(spacing: 4) {
+                                Text(series.name)
+                                    .font(.subheadline)
+                                if let position = series.position {
+                                    Text("•")
+                                        .font(.subheadline)
+                                    Text("Book \(position)")
+                                        .font(.subheadline)
+                                }
+                            }
                             .foregroundStyle(.secondary)
-                        if let position = series.position {
-                            Text("•")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                            Text("Book \(position)")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
                         }
+                        .buttonStyle(.plain)
+                        .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        HStack(spacing: 4) {
+                            Text(series.name)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                            if let position = series.position {
+                                Text("•")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                Text("Book \(position)")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .fixedSize(horizontal: false, vertical: true)
+                        .textSelection(.enabled)
                     }
-                    .fixedSize(horizontal: false, vertical: true)
-                    .textSelection(.enabled)
                 }
                 if let authors = item.authors, let first = authors.first?.name {
                     HStack(spacing: 4) {
