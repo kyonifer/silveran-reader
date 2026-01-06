@@ -603,6 +603,7 @@ public struct BookMetadata: Codable, Sendable, Identifiable, Hashable {
     public let readaloud: BookReadaloud?
     public let status: BookStatus?
     public let position: BookReadingPosition?
+    public let rating: Double?
     public var id: String { uuid }
 
     public var hasAudioNarration: Bool {

@@ -324,7 +324,8 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
                 audiobook: nil,
                 readaloud: nil,
                 status: nil,
-                position: nil
+                position: nil,
+                rating: nil
             )
         }
 

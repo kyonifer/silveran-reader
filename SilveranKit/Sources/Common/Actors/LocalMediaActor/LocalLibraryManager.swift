@@ -204,7 +204,8 @@ public final class LocalLibraryManager: Sendable {
             audiobook: nil,
             readaloud: readaloudAsset,
             status: nil,
-            position: nil
+            position: nil,
+            rating: nil
         )
     }
 
@@ -276,7 +277,8 @@ public final class LocalLibraryManager: Sendable {
             audiobook: audiobookAsset,
             readaloud: nil,
             status: nil,
-            position: nil
+            position: nil,
+            rating: nil
         )
     }
 

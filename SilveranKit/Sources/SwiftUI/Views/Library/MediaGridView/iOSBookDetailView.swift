@@ -126,66 +126,67 @@ struct iOSBookDetailView: View {
     private let labelWidth: CGFloat = 90
 
     private var infoSection: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            if let authors = item.authors, let first = authors.first?.name {
-                HStack(alignment: .top, spacing: 8) {
-                    Text("Written by")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .frame(width: labelWidth, alignment: .leading)
-                    Text(first)
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                    if authors.count > 1 {
-                        Menu {
-                            ForEach(authors, id: \.name) { author in
-                                if let name = author.name {
-                                    Text(name)
+        HStack(alignment: .center) {
+            VStack(alignment: .leading, spacing: 4) {
+                if let authors = item.authors, let first = authors.first?.name {
+                    HStack(alignment: .center, spacing: 8) {
+                        Text("Written by")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .frame(width: labelWidth, alignment: .leading)
+                        Text(first)
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                        if authors.count > 1 {
+                            Menu {
+                                ForEach(authors, id: \.name) { author in
+                                    if let name = author.name {
+                                        Text(name)
+                                    }
                                 }
+                            } label: {
+                                Image(systemName: "ellipsis")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(.tertiary)
                             }
-                        } label: {
-                            Image(systemName: "ellipsis")
-                                .font(.system(size: 12))
-                                .foregroundStyle(.tertiary)
-                                .frame(width: 32, height: 24)
-                                .contentShape(Rectangle())
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
                 }
-            }
 
-            if let narrators = item.narrators, let first = narrators.first?.name {
-                HStack(alignment: .top, spacing: 8) {
-                    Text("Narrated by")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .frame(width: labelWidth, alignment: .leading)
-                    Text(first)
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                    if narrators.count > 1 {
-                        Menu {
-                            ForEach(narrators, id: \.name) { narrator in
-                                if let name = narrator.name {
-                                    Text(name)
+                if let narrators = item.narrators, let first = narrators.first?.name {
+                    HStack(alignment: .center, spacing: 8) {
+                        Text("Narrated by")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .frame(width: labelWidth, alignment: .leading)
+                        Text(first)
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                        if narrators.count > 1 {
+                            Menu {
+                                ForEach(narrators, id: \.name) { narrator in
+                                    if let name = narrator.name {
+                                        Text(name)
+                                    }
                                 }
+                            } label: {
+                                Image(systemName: "ellipsis")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(.tertiary)
                             }
-                        } label: {
-                            Image(systemName: "ellipsis")
-                                .font(.system(size: 12))
-                                .foregroundStyle(.tertiary)
-                                .frame(width: 32, height: 24)
-                                .contentShape(Rectangle())
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
                 }
             }
+            Spacer()
+            StarRatingView(rating: item.rating)
+                .offset(y: -2)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -326,17 +327,17 @@ struct iOSBookDetailView: View {
         let progress = mediaViewModel.progress(for: item.id)
         return VStack(alignment: .leading, spacing: 8) {
             HStack {
-                if let chapter = currentChapter {
-                    Text("Reading Progress: \(chapter)")
-                        .font(.callout)
-                        .fontWeight(.medium)
-                } else {
-                    Text("Reading Progress")
-                        .font(.callout)
-                        .fontWeight(.medium)
-                }
+                Text("Reading Progress")
+                    .font(.callout)
+                    .fontWeight(.medium)
                 SyncStatusIndicators(bookId: item.id)
                 Spacer()
+                if let chapter = currentChapter {
+                    Text(chapter)
+                        .font(.callout)
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                }
                 Text("\(Int((progress * 100).rounded()))%")
                     .font(.callout)
                     .foregroundStyle(.secondary)
@@ -512,9 +513,12 @@ private struct iOSMediaButton: View {
                 .font(.system(size: 14, weight: .semibold))
             Text(buttonLabel)
                 .font(.system(size: 15, weight: .semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
         }
+        .frame(maxWidth: .infinity)
         .foregroundStyle(tintColor)
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 10)
         .padding(.vertical, 12)
         .background(tintColor.opacity(0.15))
         .clipShape(Capsule())
@@ -526,9 +530,12 @@ private struct iOSMediaButton: View {
                 .font(.system(size: 14, weight: .semibold))
             Text(buttonLabel)
                 .font(.system(size: 15, weight: .semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
         }
+        .frame(maxWidth: .infinity)
         .foregroundStyle(tintColor)
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 10)
         .padding(.vertical, 12)
         .background(tintColor.opacity(0.15))
         .clipShape(Capsule())
@@ -539,11 +546,14 @@ private struct iOSMediaButton: View {
             iOSCircularProgress(progress: downloadProgress)
             Text(buttonLabel)
                 .font(.system(size: 15, weight: .semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
             Image(systemName: "xmark")
                 .font(.system(size: 12, weight: .semibold))
         }
+        .frame(maxWidth: .infinity)
         .foregroundStyle(Color.accentColor)
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 10)
         .padding(.vertical, 12)
         .background(Color.accentColor.opacity(0.15))
         .clipShape(Capsule())
@@ -829,6 +839,36 @@ private struct StatusPickerView: View {
                 selectedStatusName = statusName
             }
             dismiss()
+        }
+    }
+}
+
+private struct StarRatingView: View {
+    let rating: Double?
+
+    private var roundedRating: Double {
+        guard let rating else { return 0 }
+        return (rating * 2).rounded() / 2
+    }
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(0..<5, id: \.self) { index in
+                starImage(for: index)
+                    .font(.system(size: 14))
+                    .foregroundStyle(rating == nil ? Color.gray.opacity(0.4) : .yellow)
+            }
+        }
+    }
+
+    private func starImage(for index: Int) -> Image {
+        let starValue = Double(index) + 1
+        if roundedRating >= starValue {
+            return Image(systemName: "star.fill")
+        } else if roundedRating >= starValue - 0.5 {
+            return Image(systemName: "star.leadinghalf.filled")
+        } else {
+            return Image(systemName: "star")
         }
     }
 }

@@ -152,7 +152,8 @@ public actor LocalMediaActor: GlobalActor {
                     audiobook: existing.audiobook,
                     readaloud: existing.readaloud,
                     status: existing.status,
-                    position: newPosition
+                    position: newPosition,
+                    rating: existing.rating
                 )
                 localStorytellerMetadata[index] = updatedMetadata
                 debugLog("[LocalMediaActor] updateBookProgress: updated storyteller metadata")
@@ -194,7 +195,8 @@ public actor LocalMediaActor: GlobalActor {
                     audiobook: existing.audiobook,
                     readaloud: existing.readaloud,
                     status: existing.status,
-                    position: newPosition
+                    position: newPosition,
+                    rating: existing.rating
                 )
                 localStandaloneMetadata[index] = updatedMetadata
                 debugLog("[LocalMediaActor] updateBookProgress: updated standalone metadata")
@@ -232,7 +234,8 @@ public actor LocalMediaActor: GlobalActor {
             audiobook: existing.audiobook,
             readaloud: existing.readaloud,
             status: status,
-            position: existing.position
+            position: existing.position,
+            rating: existing.rating
         )
         localStorytellerMetadata[index] = updatedMetadata
         await notifyObservers()
@@ -310,7 +313,8 @@ public actor LocalMediaActor: GlobalActor {
                         BookReadaloud(uuid: saved.uuid, filepath: asset.filepath, missing: asset.missing, status: asset.status, currentStage: asset.currentStage, stageProgress: asset.stageProgress, queuePosition: asset.queuePosition, restartPending: asset.restartPending, createdAt: asset.createdAt, updatedAt: asset.updatedAt)
                     },
                     status: saved.status,
-                    position: saved.position
+                    position: saved.position,
+                    rating: saved.rating
                 )
                 mergedMetadata.append(merged)
 
