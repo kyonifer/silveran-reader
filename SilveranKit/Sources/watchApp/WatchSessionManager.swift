@@ -9,7 +9,8 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
     nonisolated(unsafe) private var cachedBookInfos: [WatchBookInfoResponse] = []
 
     nonisolated(unsafe) var onTransferProgress: ((String, Int, Int) -> Void)?
-    nonisolated(unsafe) var onTransferComplete: (() -> Void)?
+    nonisolated(unsafe) var onTransferComplete: ((String, String) -> Void)?  // (uuid, title)
+    nonisolated(unsafe) var onImportComplete: ((Bool) -> Void)?  // success
     nonisolated(unsafe) var onBookDeleted: (() -> Void)?
     nonisolated(unsafe) var onPlaybackStateReceived: ((RemotePlaybackState?) -> Void)?
     nonisolated(unsafe) var onCredentialsReceived: ((String, String, String) -> Void)?
@@ -267,20 +268,24 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
                 "[WatchSessionManager] All chunks received for: \(chunkMetadata.title) [\(chunkMetadata.category)]"
             )
 
+            onTransferComplete?(chunkMetadata.uuid, chunkMetadata.title)
+
             Task {
-                await importTransferredBook(manifest: manifest)
+                let success = await importTransferredBook(manifest: manifest)
+                await MainActor.run {
+                    onImportComplete?(success)
+                }
             }
 
-            onTransferComplete?()
             notifyPhone(bookUUID: chunkMetadata.uuid, category: chunkMetadata.category)
         }
     }
 
-    private func importTransferredBook(manifest: TransferManifest) async {
+    private func importTransferredBook(manifest: TransferManifest) async -> Bool {
         guard let tempURL = WatchStorageManager.shared.assembleChunksToTempFile(manifest: manifest)
         else {
             print("[WatchSessionManager] Failed to assemble chunks")
-            return
+            return false
         }
 
         let category: LocalMediaCategory = manifest.category == "synced" ? .synced : .ebook
@@ -334,9 +339,11 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
             )
             print("[WatchSessionManager] Imported book to LMA: \(manifest.title)")
             refreshCachedBooks()
+            return true
         } catch {
             print("[WatchSessionManager] Failed to import book to LMA: \(error)")
             try? FileManager.default.removeItem(at: tempURL)
+            return false
         }
     }
 

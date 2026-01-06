@@ -9,6 +9,7 @@ public final class WatchViewModel {
     var receivingTitle: String?
     var receivedChunks: Int = 0
     var totalChunks: Int = 0
+    var savingBook: (uuid: String, title: String)?
     var remotePlaybackState: RemotePlaybackState?
     private var metadataRefreshTask: Task<Void, Never>?
 
@@ -36,11 +37,20 @@ public final class WatchViewModel {
             }
         }
 
-        WatchSessionManager.shared.onTransferComplete = { [weak self] in
+        WatchSessionManager.shared.onTransferComplete = { [weak self] uuid, title in
             Task { @MainActor in
                 self?.receivingTitle = nil
                 self?.receivedChunks = 0
                 self?.totalChunks = 0
+                self?.savingBook = (uuid: uuid, title: title)
+            }
+        }
+
+        WatchSessionManager.shared.onImportComplete = { [weak self] success in
+            Task { @MainActor in
+                if !success {
+                    self?.savingBook = nil
+                }
                 self?.loadBooks()
             }
         }
@@ -89,6 +99,11 @@ public final class WatchViewModel {
             }
             await MainActor.run {
                 self.books = booksWithFiles
+                if let saving = self.savingBook,
+                   booksWithFiles.contains(where: { $0.uuid == saving.uuid })
+                {
+                    self.savingBook = nil
+                }
             }
         }
     }

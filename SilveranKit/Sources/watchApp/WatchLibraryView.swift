@@ -30,7 +30,7 @@ struct WatchLibraryView: View {
     var body: some View {
         ZStack(alignment: .top) {
             Group {
-                if viewModel.books.isEmpty {
+                if viewModel.books.isEmpty && viewModel.savingBook == nil {
                     emptyState
                 } else {
                     bookList
@@ -133,6 +133,9 @@ struct WatchLibraryView: View {
 
     private var bookList: some View {
         List {
+            if let saving = viewModel.savingBook {
+                SavingBookRow(title: saving.title)
+            }
             ForEach(viewModel.books) { book in
                 NavigationLink {
                     WatchPlayerView(book: book)
@@ -173,6 +176,28 @@ private struct LibraryBookRow: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
+        }
+        .padding(.vertical, 2)
+    }
+}
+
+private struct SavingBookRow: View {
+    let title: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 4) {
+                ProgressView()
+                    .scaleEffect(0.5)
+                    .frame(width: 12, height: 12)
+                Text("Saving...")
+                    .font(.headline)
+                    .foregroundStyle(.secondary)
+            }
+            Text(title)
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .lineLimit(2)
         }
         .padding(.vertical, 2)
     }
