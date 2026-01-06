@@ -11,9 +11,9 @@ struct WatchModeSelectionView: View {
                 } label: {
                     Label {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("On iPhone")
+                            Text("Remote Control")
                                 .font(.headline)
-                            Text("Control playback")
+                            Text("For iPhone")
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                         }
@@ -28,9 +28,9 @@ struct WatchModeSelectionView: View {
                 } label: {
                     Label {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("On Watch")
+                            Text("Local Playback")
                                 .font(.headline)
-                            Text("Offline library")
+                            Text("On Watch")
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                         }
