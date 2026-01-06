@@ -7,7 +7,6 @@ struct iOSBookDetailView: View {
     @Environment(MediaViewModel.self) private var mediaViewModel: MediaViewModel
     @State private var showingSyncHistory = false
     @State private var currentChapter: String?
-    @AppStorage("iOSBookDetailForceCompactButtons") private var forceCompactButtons = false
 
     private var currentItem: BookMetadata {
         mediaViewModel.library.bookMetaData.first { $0.uuid == item.uuid } ?? item
@@ -56,50 +55,32 @@ struct iOSBookDetailView: View {
     }
 
     private var headerSection: some View {
-        VStack(alignment: .leading, spacing: 24) {
+        VStack(alignment: .center, spacing: 20) {
             titleTopSection
-            GeometryReader { geo in
-                let autoCompact = geo.size.width < 380
-                let useCompact = autoCompact || forceCompactButtons
-                let expandedLeftWidth = useCompact ? geo.size.width - 80 : leftColumnWidth
-                ZStack(alignment: .topLeading) {
-                    leftInfoColumn(width: expandedLeftWidth)
-                    VStack(alignment: .trailing, spacing: 8) {
-                        ForEach(mediaOptions) { option in
-                            CompactMediaButton(item: item, option: option, useCompactLayout: useCompact)
-                        }
-                    }
-                    .overlay(alignment: .bottom) {
-                        if !autoCompact {
-                            Button {
-                                withAnimation(.easeInOut(duration: 0.2)) {
-                                    forceCompactButtons.toggle()
-                                }
-                            } label: {
-                                Image(systemName: "chevron.right")
-                                    .font(.system(size: 12, weight: .medium))
-                                    .foregroundStyle(.tertiary)
-                                    .rotationEffect(.degrees(forceCompactButtons ? 180 : 0))
-                                    .frame(width: 44, height: 32)
-                                    .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                            .offset(x: 0, y: 32)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .trailing)
-                }
-            }
-            .frame(height: max(CGFloat(mediaOptions.count) * 40, 140))
+            mediaButtonsRow
+            infoColumnsSection
         }
     }
 
-    private let leftColumnWidth: CGFloat = 200
+    private var mediaButtonsRow: some View {
+        HStack(spacing: 12) {
+            ForEach(mediaOptions) { option in
+                iOSMediaButton(item: item, option: option)
+            }
+        }
+    }
 
     private let labelWidth: CGFloat = 90
 
-    @ViewBuilder
-    private func leftInfoColumn(width: CGFloat) -> some View {
+    private var infoColumnsSection: some View {
+        HStack(alignment: .top, spacing: 16) {
+            leftInfoColumn
+            Spacer(minLength: 0)
+            rightInfoColumn
+        }
+    }
+
+    private var leftInfoColumn: some View {
         VStack(alignment: .leading, spacing: 8) {
             if let authors = item.authors, let first = authors.first?.name {
                 HStack(alignment: .top, spacing: 0) {
@@ -111,7 +92,7 @@ struct iOSBookDetailView: View {
                         .font(.subheadline)
                         .fontWeight(.medium)
                         .foregroundStyle(.primary)
-                        .textSelection(.enabled)
+                        .lineLimit(1)
                     if authors.count > 1 {
                         Menu {
                             ForEach(authors, id: \.name) { author in
@@ -141,7 +122,7 @@ struct iOSBookDetailView: View {
                         .font(.subheadline)
                         .fontWeight(.medium)
                         .foregroundStyle(.primary)
-                        .textSelection(.enabled)
+                        .lineLimit(1)
                     if narrators.count > 1 {
                         Menu {
                             ForEach(narrators, id: \.name) { narrator in
@@ -160,8 +141,18 @@ struct iOSBookDetailView: View {
                     }
                 }
             }
+        }
+    }
 
-            CompactStatusPicker(item: item, labelWidth: labelWidth)
+    private var rightInfoColumn: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 0) {
+                Text("Status")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .frame(width: labelWidth, alignment: .leading)
+                CompactStatusPicker(item: item)
+            }
 
             if let chapter = currentChapter {
                 HStack(alignment: .top, spacing: 0) {
@@ -173,11 +164,10 @@ struct iOSBookDetailView: View {
                         .font(.subheadline)
                         .fontWeight(.medium)
                         .foregroundStyle(.primary)
-                        .lineLimit(2)
+                        .lineLimit(1)
                 }
             }
         }
-        .frame(width: width, alignment: .leading)
     }
 
     private var titleTopSection: some View {
@@ -332,22 +322,12 @@ struct iOSBookDetailView: View {
     }
 }
 
-private struct CompactMediaButton: View {
+private struct iOSMediaButton: View {
     let item: BookMetadata
     let option: MediaDownloadOption
-    let useCompactLayout: Bool
     @Environment(MediaViewModel.self) private var mediaViewModel
 
     @State private var showConnectionAlert = false
-    @State private var swipeOffset: CGFloat = 0
-    @State private var showingDelete = false
-
-    private let cornerRadius: CGFloat = 8
-    private let deleteButtonWidth: CGFloat = 60
-
-    private var totalWidth: CGFloat {
-        useCompactLayout ? 64 : 155
-    }
 
     private var isDownloaded: Bool {
         mediaViewModel.isCategoryDownloaded(option.category, for: item)
@@ -375,62 +355,43 @@ private struct CompactMediaButton: View {
         }
     }
 
+    private var tintColor: Color {
+        isDownloaded ? .green : Color.accentColor
+    }
+
     var body: some View {
-        ZStack(alignment: .trailing) {
+        Group {
             if isDownloaded {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        showingDelete = false
-                        swipeOffset = 0
-                    }
-                    mediaViewModel.deleteDownload(for: item, category: option.category)
-                } label: {
-                    Image(systemName: "trash.fill")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .frame(width: deleteButtonWidth, height: 32)
-                        .background(Color.red)
-                        .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+                NavigationLink(value: makePlayerBookData()) {
+                    playButtonContent
                 }
                 .buttonStyle(.plain)
-                .opacity(swipeOffset < -10 ? 1 : 0)
-            }
-
-            HStack(spacing: 0) {
-                mainActionArea
-                trailingSection
-            }
-            .frame(width: totalWidth, height: 32)
-            .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
-            .offset(x: swipeOffset)
-            .highPriorityGesture(
-                isDownloaded ? DragGesture(minimumDistance: 10)
-                    .onChanged { value in
-                        if value.translation.width < 0 {
-                            swipeOffset = max(value.translation.width, -deleteButtonWidth - 8)
-                        } else if showingDelete {
-                            swipeOffset = min(0, -deleteButtonWidth - 8 + value.translation.width)
-                        }
+            } else if isDownloading {
+                Button {
+                    mediaViewModel.cancelDownload(for: item, category: option.category)
+                } label: {
+                    downloadingContent
+                }
+                .buttonStyle(.plain)
+            } else {
+                Button {
+                    if hasConnectionError {
+                        showConnectionAlert = true
+                    } else {
+                        mediaViewModel.startDownload(for: item, category: option.category)
                     }
-                    .onEnded { value in
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            if value.translation.width < -30 {
-                                showingDelete = true
-                                swipeOffset = -deleteButtonWidth - 8
-                            } else {
-                                showingDelete = false
-                                swipeOffset = 0
-                            }
-                        }
-                    } : nil
-            )
-            .contextMenu {
-                if isDownloaded {
-                    Button(role: .destructive) {
-                        mediaViewModel.deleteDownload(for: item, category: option.category)
-                    } label: {
-                        Label("Delete Download", systemImage: "trash")
-                    }
+                } label: {
+                    downloadButtonContent
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .contextMenu {
+            if isDownloaded {
+                Button(role: .destructive) {
+                    mediaViewModel.deleteDownload(for: item, category: option.category)
+                } label: {
+                    Label("Delete Download", systemImage: "trash")
                 }
             }
         }
@@ -441,114 +402,47 @@ private struct CompactMediaButton: View {
         }
     }
 
-    @ViewBuilder
-    private var mainActionArea: some View {
-        if isDownloaded {
-            NavigationLink(value: makePlayerBookData()) {
-                pillContent(icon: playIcon)
-            }
-            .buttonStyle(.plain)
-        } else if isDownloading {
-            pillContent(icon: downloadingIcon)
-        } else {
-            Button {
-                if hasConnectionError {
-                    showConnectionAlert = true
-                } else {
-                    mediaViewModel.startDownload(for: item, category: option.category)
-                }
-            } label: {
-                pillContent(icon: downloadIcon)
-            }
-            .buttonStyle(.plain)
-        }
-    }
-
-    private func pillContent(icon: some View) -> some View {
-        HStack(spacing: 0) {
-            icon
-            if !useCompactLayout {
-                Text(buttonLabel)
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                    .foregroundStyle(.primary)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 32)
-                    .background(Color(.secondarySystemBackground))
-            }
-        }
-        .contentShape(Rectangle())
-    }
-
-    private var playIcon: some View {
-        ZStack {
-            Color.green
+    private var playButtonContent: some View {
+        HStack(spacing: 6) {
             Image(systemName: "play.fill")
                 .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(.white)
+            Text(buttonLabel)
+                .font(.system(size: 15, weight: .semibold))
         }
-        .frame(width: 32, height: 32)
+        .foregroundStyle(tintColor)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(tintColor.opacity(0.15))
+        .clipShape(Capsule())
     }
 
-    private var downloadIcon: some View {
-        ZStack {
-            Color.blue
+    private var downloadButtonContent: some View {
+        HStack(spacing: 6) {
             Image(systemName: "arrow.down.to.line")
                 .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(.white)
+            Text(buttonLabel)
+                .font(.system(size: 15, weight: .semibold))
         }
-        .frame(width: 32, height: 32)
+        .foregroundStyle(tintColor)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(tintColor.opacity(0.15))
+        .clipShape(Capsule())
     }
 
-    private var downloadingIcon: some View {
-        ZStack {
-            Color.blue
-            CircularDownloadProgress(progress: downloadProgress)
+    private var downloadingContent: some View {
+        HStack(spacing: 6) {
+            iOSCircularProgress(progress: downloadProgress)
+            Text(buttonLabel)
+                .font(.system(size: 15, weight: .semibold))
+            Image(systemName: "xmark")
+                .font(.system(size: 12, weight: .semibold))
         }
-        .frame(width: 32, height: 32)
-    }
-
-    @ViewBuilder
-    private var trailingSection: some View {
-        if isDownloading {
-            Button {
-                mediaViewModel.cancelDownload(for: item, category: option.category)
-            } label: {
-                ZStack {
-                    Color(.secondarySystemBackground)
-                    Image(systemName: "xmark")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                }
-                .frame(width: 32, height: 32)
-            }
-            .buttonStyle(.plain)
-        } else {
-            ZStack {
-                Color(.secondarySystemBackground)
-                mediaTypeIconView
-                    .foregroundStyle(.tertiary)
-            }
-            .frame(width: 32, height: 32)
-        }
-    }
-
-    @ViewBuilder
-    private var mediaTypeIconView: some View {
-        switch option.category {
-        case .ebook:
-            Image(systemName: "book.fill")
-                .font(.system(size: 14))
-        case .audio:
-            Image(systemName: "headphones")
-                .font(.system(size: 14))
-        case .synced:
-            Image("readalong")
-                .renderingMode(.template)
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .frame(width: 16, height: 16)
-        }
+        .foregroundStyle(Color.accentColor)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(Color.accentColor.opacity(0.15))
+        .clipShape(Capsule())
     }
 
     private func makePlayerBookData() -> PlayerBookData {
@@ -570,31 +464,31 @@ private struct CompactMediaButton: View {
     }
 }
 
-private struct CircularDownloadProgress: View {
+private struct iOSCircularProgress: View {
     let progress: Double?
     @State private var rotation: Double = 0
 
-    private let size: CGFloat = 16
-    private let lineWidth: CGFloat = 2
+    private let size: CGFloat = 18
+    private let lineWidth: CGFloat = 2.5
 
     var body: some View {
         ZStack {
             Circle()
-                .stroke(Color.white.opacity(0.3), lineWidth: lineWidth)
+                .stroke(Color.accentColor.opacity(0.3), lineWidth: lineWidth)
                 .frame(width: size, height: size)
 
             if let progress {
                 Circle()
                     .trim(from: 0, to: max(0.02, CGFloat(progress)))
                     .stroke(style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Color.accentColor)
                     .rotationEffect(.degrees(-90))
                     .frame(width: size, height: size)
             } else {
                 Circle()
                     .trim(from: 0, to: 0.25)
                     .stroke(style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Color.accentColor)
                     .rotationEffect(.degrees(rotation))
                     .frame(width: size, height: size)
                     .onAppear {
@@ -609,7 +503,6 @@ private struct CircularDownloadProgress: View {
 
 private struct CompactStatusPicker: View {
     let item: BookMetadata
-    let labelWidth: CGFloat
     @Environment(MediaViewModel.self) private var mediaViewModel
 
     @State private var selectedStatusName: String?
@@ -627,11 +520,7 @@ private struct CompactStatusPicker: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 0) {
-            Text("Status")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .frame(width: labelWidth, alignment: .leading)
+        HStack(spacing: 4) {
             if !sortedStatuses.isEmpty {
                 Menu {
                     ForEach(sortedStatuses, id: \.name) { status in
@@ -648,10 +537,11 @@ private struct CompactStatusPicker: View {
                     }
                 } label: {
                     HStack(spacing: 4) {
-                        Text(selectedStatusName ?? "Status")
+                        Text(selectedStatusName ?? "-")
                             .font(.subheadline)
                             .fontWeight(.medium)
                             .foregroundStyle(.primary)
+                            .lineLimit(1)
                         Image(systemName: "chevron.up.chevron.down")
                             .font(.system(size: 8, weight: .medium))
                             .foregroundStyle(.secondary)
@@ -662,7 +552,9 @@ private struct CompactStatusPicker: View {
             } else if let statusName = currentItem.status?.name {
                 Text(statusName)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .fontWeight(.medium)
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
             }
 
             if isUpdating {
