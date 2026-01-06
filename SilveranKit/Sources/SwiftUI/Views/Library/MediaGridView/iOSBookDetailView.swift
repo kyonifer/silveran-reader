@@ -11,6 +11,7 @@ struct iOSBookDetailView: View {
     @State private var isUpdatingStatus = false
     @State private var showOfflineError = false
     @State private var showingOptionsSheet = false
+    @AppStorage("showEbookCoverInAudioView") private var showEbookCover = false
 
     private var currentItem: BookMetadata {
         mediaViewModel.library.bookMetaData.first { $0.uuid == item.uuid } ?? item
@@ -110,7 +111,7 @@ struct iOSBookDetailView: View {
         VStack(alignment: .center, spacing: 20) {
             titleTopSection
             mediaButtonsRow
-            infoColumnsSection
+            infoSection
         }
     }
 
@@ -124,12 +125,7 @@ struct iOSBookDetailView: View {
 
     private let labelWidth: CGFloat = 90
 
-    private var infoColumnsSection: some View {
-        leftInfoColumn
-            .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private var leftInfoColumn: some View {
+    private var infoSection: some View {
         VStack(alignment: .leading, spacing: 4) {
             if let authors = item.authors, let first = authors.first?.name {
                 HStack(alignment: .top, spacing: 8) {
@@ -190,8 +186,8 @@ struct iOSBookDetailView: View {
                     }
                 }
             }
-
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
 
@@ -223,27 +219,104 @@ struct iOSBookDetailView: View {
         .frame(maxWidth: .infinity)
     }
 
+    private var audioCover: Image? {
+        mediaViewModel.coverImage(for: item, variant: .audioSquare)
+    }
+
+    private var ebookCover: Image? {
+        mediaViewModel.coverImage(for: item, variant: .standard)
+    }
+
+    private var canToggleCover: Bool {
+        audioCover != nil && ebookCover != nil
+    }
+
+    private var showingSquareCover: Bool {
+        if showEbookCover {
+            return audioCover != nil && ebookCover == nil
+        } else {
+            return audioCover != nil
+        }
+    }
+
+    private var displayedCoverImage: Image? {
+        if showEbookCover {
+            return ebookCover ?? audioCover
+        } else {
+            return audioCover ?? ebookCover
+        }
+    }
+
     private var coverSection: some View {
-        let variant = mediaViewModel.coverVariant(for: item)
-        let image = mediaViewModel.coverImage(for: item, variant: variant)
         let placeholderColor = Color(white: 0.2)
 
         return HStack {
             Spacer()
-            ZStack {
-                placeholderColor
-                if let image {
-                    image
-                        .resizable()
-                        .interpolation(.medium)
-                        .scaledToFill()
+            let coverView = Group {
+                if showingSquareCover {
+                    ZStack {
+                        placeholderColor
+                        if let image = displayedCoverImage {
+                            image
+                                .resizable()
+                                .interpolation(.medium)
+                                .scaledToFill()
+                        }
+                    }
+                    .aspectRatio(1, contentMode: .fit)
+                    .frame(height: 300)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .shadow(radius: 8)
+                } else if canToggleCover {
+                    Color.clear
+                        .aspectRatio(1, contentMode: .fit)
+                        .frame(height: 300)
+                        .overlay {
+                            ZStack {
+                                placeholderColor
+                                if let image = displayedCoverImage {
+                                    image
+                                        .resizable()
+                                        .interpolation(.medium)
+                                        .scaledToFill()
+                                }
+                            }
+                            .aspectRatio(2.0 / 3.0, contentMode: .fit)
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .shadow(radius: 8)
+                        }
+                } else {
+                    ZStack {
+                        placeholderColor
+                        if let image = displayedCoverImage {
+                            image
+                                .resizable()
+                                .interpolation(.medium)
+                                .scaledToFill()
+                        }
+                    }
+                    .frame(width: 200, height: 300)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .shadow(radius: 8)
                 }
             }
-            .frame(width: 200, height: 300)
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .shadow(radius: 8)
             .task {
-                mediaViewModel.ensureCoverLoaded(for: item, variant: variant)
+                mediaViewModel.ensureCoverLoaded(for: item, variant: .standard)
+                if item.hasAvailableAudiobook {
+                    mediaViewModel.ensureCoverLoaded(for: item, variant: .audioSquare)
+                }
+            }
+
+            if canToggleCover {
+                coverView
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            showEbookCover.toggle()
+                        }
+                    }
+            } else {
+                coverView
             }
             Spacer()
         }
