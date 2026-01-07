@@ -255,7 +255,7 @@ extension SettingsView {
             }
             .padding(12)
         }
-        .frame(width: 880, height: 600)
+        .frame(width: 960, height: 600)
     }
 
     private func resetReaderSettings() {
