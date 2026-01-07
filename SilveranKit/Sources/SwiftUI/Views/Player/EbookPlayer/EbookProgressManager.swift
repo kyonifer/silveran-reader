@@ -106,6 +106,10 @@ class EbookProgressManager {
     private var syncTimer: Timer? = nil
     private var bookId: String? = nil
 
+    /// Debounced sync task - cancelled and recreated on each page flip to avoid sync spam
+    private var debouncedSyncTask: Task<Void, Never>? = nil
+    private let syncDebounceDelay: Duration = .seconds(1)
+
     /// Wake-from-sleep handling
     private var lastResumeTime: Date?
     private let resumeSuppressionDuration: TimeInterval = 30
@@ -522,11 +526,11 @@ class EbookProgressManager {
                         section: section, page: page, totalPages: total
                     )
                     self.recordActivity()
-                    await self.syncProgressToServer(reason: reason, useFragment: foundSMILMatch)
+                    self.scheduleDebouncedSync(reason: reason, useFragment: foundSMILMatch)
                 }
             } else {
                 recordActivity()
-                Task { await syncProgressToServer(reason: reason, useFragment: false) }
+                scheduleDebouncedSync(reason: reason, useFragment: false)
             }
         } else if let section = message.sectionIndex,
             let page = message.pageIndex,
@@ -686,10 +690,10 @@ class EbookProgressManager {
                         section: section, page: page, totalPages: total
                     )
                     recordActivity()
-                    await syncProgressToServer(reason: reason, useFragment: foundSMILMatch)
+                    scheduleDebouncedSync(reason: reason, useFragment: foundSMILMatch)
                 } else {
                     recordActivity()
-                    await syncProgressToServer(reason: reason, useFragment: false)
+                    scheduleDebouncedSync(reason: reason, useFragment: false)
                 }
             }
         }
@@ -970,6 +974,21 @@ class EbookProgressManager {
         debugLog("[EPM] Activity recorded at \(timestampMs) ms (unix epoch)")
     }
 
+    /// Schedule a debounced sync - cancels any pending sync and schedules a new one.
+    /// This prevents lag from rapid page flips by only syncing after user settles.
+    private func scheduleDebouncedSync(reason: SyncReason, useFragment: Bool) {
+        debouncedSyncTask?.cancel()
+        debouncedSyncTask = Task { @MainActor in
+            do {
+                try await Task.sleep(for: syncDebounceDelay)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            await syncProgressToServer(reason: reason, useFragment: useFragment)
+        }
+    }
+
     func startPeriodicSync(syncInterval: TimeInterval) {
         stopPeriodicSync()
         debugLog("[EPM] Starting periodic sync with interval \(syncInterval)s")
@@ -1179,6 +1198,8 @@ class EbookProgressManager {
     func cleanup() async {
         debugLog("[EPM] Cleanup: performing final sync")
         stopPeriodicSync()
+        debouncedSyncTask?.cancel()
+        debouncedSyncTask = nil
         await syncProgressToServer(reason: .userClosedBook)
     }
 }
