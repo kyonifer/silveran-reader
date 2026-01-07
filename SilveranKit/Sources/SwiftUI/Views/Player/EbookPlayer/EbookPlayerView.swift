@@ -371,7 +371,43 @@ public struct EbookPlayerView: View {
             let shouldShowBar = viewModel.settingsVM.enableReadingBar && !viewModel.showAudioSidebar
 
             if shouldShowBar {
-                readingBottomBar
+                let pm = viewModel.progressManager
+                let mom = viewModel.mediaOverlayManager
+                let progressData = ProgressData(
+                    chapterLabel: pm?.selectedChapterId.flatMap { index in
+                        viewModel.bookStructure[safe: index]?.label
+                    },
+                    chapterCurrentPage: pm?.chapterCurrentPage,
+                    chapterTotalPages: pm?.chapterTotalPages,
+                    chapterCurrentSecondsAudio: mom?.chapterElapsedSeconds,
+                    chapterTotalSecondsAudio: mom?.chapterTotalSeconds,
+                    bookCurrentSecondsAudio: mom?.bookElapsedSeconds,
+                    bookTotalSecondsAudio: mom?.bookTotalSeconds,
+                    bookCurrentFraction: pm?.bookFraction
+                )
+                let bgHex =
+                    viewModel.settingsVM.backgroundColor
+                    ?? (colorScheme == .dark ? kDefaultBackgroundColorDark : kDefaultBackgroundColorLight)
+                let isLight = isLightColor(hex: bgHex)
+
+                EbookOverlayMac(
+                    readingBarConfig: viewModel.settingsVM.readingBarConfig,
+                    progressData: progressData,
+                    isPlaying: mom?.isPlaying ?? false,
+                    playbackRate: mom?.playbackRate ?? viewModel.settingsVM.defaultPlaybackSpeed,
+                    isLightBackground: isLight,
+                    chapterProgress: viewModel.chapterProgressBinding,
+                    onPrevChapter: viewModel.handlePrevChapter,
+                    onSkipBackward: viewModel.handlePrevSentence,
+                    onPlayPause: {
+                        Task { await pm?.togglePlaying() }
+                    },
+                    onSkipForward: viewModel.handleNextSentence,
+                    onNextChapter: viewModel.handleNextChapter,
+                    onProgressSeek: viewModel.handleProgressSeek
+                )
+                .ignoresSafeArea(edges: .bottom)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
             }
             #endif
         }
@@ -475,67 +511,6 @@ public struct EbookPlayerView: View {
     }
     #endif
 
-    private var readingBottomBar: some View {
-        let pm = viewModel.progressManager
-        let mom = viewModel.mediaOverlayManager
-        let progressData = ProgressData(
-            chapterLabel: pm?.selectedChapterId.flatMap { index in
-                viewModel.bookStructure[safe: index]?.label
-            },
-            chapterCurrentPage: pm?.chapterCurrentPage,
-            chapterTotalPages: pm?.chapterTotalPages,
-            chapterCurrentSecondsAudio: mom?.chapterElapsedSeconds,
-            chapterTotalSecondsAudio: mom?.chapterTotalSeconds,
-            bookCurrentSecondsAudio: mom?.bookElapsedSeconds,
-            bookTotalSecondsAudio: mom?.bookTotalSeconds,
-            bookCurrentFraction: pm?.bookFraction
-        )
-
-        #if os(iOS)
-        return AnyView(
-            EbookBottomBarIos(
-                bookTitle: viewModel.bookData?.metadata.title,
-                coverArt: viewModel.bookData?.coverArt,
-                progressData: progressData,
-                playbackRate: mom?.playbackRate ?? viewModel.settingsVM.defaultPlaybackSpeed,
-                isPlaying: mom?.isPlaying ?? false,
-                hasAudioNarration: viewModel.hasAudioNarration,
-                chapterProgress: viewModel.chapterProgressBinding,
-                onShowAudioSheet: { viewModel.showAudioSheet = true },
-                onPlayPause: {
-                    Task { await pm?.togglePlaying() }
-                },
-                onProgressSeek: viewModel.handleProgressSeek
-            )
-            .transition(.move(edge: .bottom).combined(with: .opacity))
-        )
-        #else
-        let bgHex =
-            viewModel.settingsVM.backgroundColor
-            ?? (colorScheme == .dark ? kDefaultBackgroundColorDark : kDefaultBackgroundColorLight)
-        let isLight = isLightColor(hex: bgHex)
-        return AnyView(
-            EbookOverlayMac(
-                readingBarConfig: viewModel.settingsVM.readingBarConfig,
-                progressData: progressData,
-                isPlaying: mom?.isPlaying ?? false,
-                playbackRate: mom?.playbackRate ?? viewModel.settingsVM.defaultPlaybackSpeed,
-                isLightBackground: isLight,
-                chapterProgress: viewModel.chapterProgressBinding,
-                onPrevChapter: viewModel.handlePrevChapter,
-                onSkipBackward: viewModel.handlePrevSentence,
-                onPlayPause: {
-                    Task { await pm?.togglePlaying() }
-                },
-                onSkipForward: viewModel.handleNextSentence,
-                onNextChapter: viewModel.handleNextChapter,
-                onProgressSeek: viewModel.handleProgressSeek
-            )
-            .ignoresSafeArea(edges: .bottom)
-            .transition(.move(edge: .bottom).combined(with: .opacity))
-        )
-        #endif
-    }
 
     private func sidebarToggleButton(
         isVisible: Bool,
