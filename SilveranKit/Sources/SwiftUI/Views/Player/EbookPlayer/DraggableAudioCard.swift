@@ -191,47 +191,43 @@ struct DraggableAudioCard<FullContent: View>: View {
 
     private var compactPlayerContent: some View {
         HStack(spacing: 12) {
-            if let cover = displayedCover {
-                let coverView = cover
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .frame(width: 40, height: 40)
-                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-
-                if canToggleCover {
-                    coverView
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                showEbookCover.toggle()
-                            }
-                        }
+            HStack(spacing: 12) {
+                if let cover = displayedCover {
+                    cover
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: 40, height: 40)
+                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                 } else {
-                    coverView
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(Color.secondary.opacity(0.2))
+                        .frame(width: 40, height: 40)
+                        .overlay(
+                            Image(systemName: "book.fill")
+                                .font(.body)
+                                .foregroundStyle(.secondary)
+                        )
                 }
-            } else {
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(Color.secondary.opacity(0.2))
-                    .frame(width: 40, height: 40)
-                    .overlay(
-                        Image(systemName: "book.fill")
-                            .font(.body)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    if let title = bookTitle {
+                        Text(title)
+                            .font(.subheadline.weight(.medium))
+                            .lineLimit(1)
+                    }
+
+                    if let chapter = chapterTitle {
+                        Text(chapter)
+                            .font(.caption)
                             .foregroundStyle(.secondary)
-                    )
-            }
-
-            VStack(alignment: .leading, spacing: 2) {
-                if let title = bookTitle {
-                    Text(title)
-                        .font(.subheadline.weight(.medium))
-                        .lineLimit(1)
+                            .lineLimit(1)
+                    }
                 }
-
-                if let chapter = chapterTitle {
-                    Text(chapter)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                    cardState = .expanded
                 }
             }
 
@@ -267,7 +263,7 @@ struct DraggableAudioCard<FullContent: View>: View {
     }
 
     private var compactStatsRow: some View {
-        HStack {
+        HStack(spacing: 24) {
             if let bookRemaining = bookTimeRemaining {
                 HStack(spacing: 4) {
                     Image(systemName: "book.fill")
@@ -277,8 +273,6 @@ struct DraggableAudioCard<FullContent: View>: View {
                 }
                 .foregroundStyle(.secondary)
             }
-
-            Spacer()
 
             if let chapterRemaining = chapterTimeRemaining {
                 HStack(spacing: 4) {
@@ -290,7 +284,7 @@ struct DraggableAudioCard<FullContent: View>: View {
                 .foregroundStyle(.secondary)
             }
         }
-        .padding(.horizontal, 45)
+        .frame(maxWidth: .infinity)
         .padding(.bottom, 8)
     }
 

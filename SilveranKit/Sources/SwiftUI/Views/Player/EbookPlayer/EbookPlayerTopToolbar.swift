@@ -153,7 +153,7 @@ struct EbookPlayerTopToolbar: View {
                                 }
                             }
                         }
-                        .presentationDetents([.medium, .large])
+                        .presentationDetents([.fraction(0.7)])
                     }
 
                     Button {
