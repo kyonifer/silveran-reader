@@ -122,7 +122,7 @@ public struct PlaybackRateButton: View {
 
             Slider(
                 value: $sliderValue,
-                in: 1.0...2.0,
+                in: 1.0...3.0,
                 step: 0.05
             )
             .onChange(of: sliderValue) { _, newValue in
@@ -131,7 +131,7 @@ public struct PlaybackRateButton: View {
                 onRateChange(snapped)
             }
 
-            Text("2x")
+            Text("3x")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
