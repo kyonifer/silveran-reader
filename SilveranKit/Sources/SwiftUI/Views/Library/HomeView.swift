@@ -872,6 +872,13 @@ private struct HomeSectionRow: View {
         if selection != newSelection {
             selection = newSelection
         }
+        #if os(macOS)
+        if mediaViewModel.cachedConfig.library.showTabsOnHover && !isSidebarVisible {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                isSidebarVisible = true
+            }
+        }
+        #endif
     }
 
     private func openInfo(for item: BookMetadata) {

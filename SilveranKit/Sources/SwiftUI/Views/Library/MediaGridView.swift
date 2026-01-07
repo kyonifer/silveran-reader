@@ -454,6 +454,11 @@ struct MediaGridView: View {
             seriesPositionBadge: seriesPositionBadge,
             onSelect: { [self] selected in
                 selectItem(selected)
+                if mediaViewModel.cachedConfig.library.showTabsOnHover && !isSidebarVisible {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        isSidebarVisible = true
+                    }
+                }
             },
             onInfo: { selected in
                 openSidebar(for: selected)
