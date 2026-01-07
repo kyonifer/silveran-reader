@@ -47,6 +47,7 @@ public let kDefaultOverlayTransparency: Double = 0.8
 public let kDefaultAlwaysShowMiniPlayer = false
 public let kDefaultShowOverlaySkipBackward = true
 public let kDefaultShowOverlaySkipForward = true
+public let kDefaultShowMiniPlayerStats = false
 
 // MARK: - Sync Settings
 

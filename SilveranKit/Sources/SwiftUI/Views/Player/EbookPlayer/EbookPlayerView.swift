@@ -465,6 +465,7 @@ public struct EbookPlayerView: View {
             sleepTimerActive: mom?.sleepTimerActive ?? false,
             sleepTimerRemaining: mom?.sleepTimerRemaining,
             sleepTimerType: mom?.sleepTimerType,
+            showMiniPlayerStats: viewModel.settingsVM.showMiniPlayerStats,
             onPlayPause: {
                 Task { await pm?.togglePlaying() }
             },

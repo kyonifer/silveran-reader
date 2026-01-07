@@ -22,6 +22,7 @@ struct DraggableAudioCard<FullContent: View>: View {
     let sleepTimerActive: Bool
     let sleepTimerRemaining: TimeInterval?
     let sleepTimerType: SleepTimerType?
+    let showMiniPlayerStats: Bool
 
     let onPlayPause: () -> Void
     let onSkipBackward: () -> Void
@@ -48,7 +49,7 @@ struct DraggableAudioCard<FullContent: View>: View {
     @State private var isDraggingSlider = false
     @AppStorage("showEbookCoverInAudioView") private var showEbookCover = false
 
-    private let compactHeight: CGFloat = 50
+    private var compactHeight: CGFloat { showMiniPlayerStats ? 54 : 50 }
     private let expandedFraction: CGFloat = 1.0
     private let dragThreshold: CGFloat = 40
 
@@ -84,14 +85,19 @@ struct DraggableAudioCard<FullContent: View>: View {
                                 .transition(.opacity)
                         }
 
-                        Spacer(minLength: safeAreaBottom)
+                        if cardState == .compact && hasAudioNarration && showMiniPlayerStats {
+                            compactStatsRow
+                                .frame(height: safeAreaBottom)
+                        } else {
+                            Spacer(minLength: safeAreaBottom)
+                        }
                     }
                     .overlay(alignment: .top) {
                         if cardState == .compact {
                             RoundedRectangle(cornerRadius: 2.5)
                                 .fill(Color.secondary.opacity(0.5))
                                 .frame(width: 36, height: 5)
-                                .padding(.top, 22)
+                                .padding(.top, showMiniPlayerStats ? 14 : 22)
                         }
                     }
                     .overlay(alignment: .topTrailing) {
@@ -228,29 +234,25 @@ struct DraggableAudioCard<FullContent: View>: View {
                         .lineLimit(1)
                 }
             }
-            .layoutPriority(-1)
 
             Spacer(minLength: 0)
 
             if hasAudioNarration {
                 HStack(spacing: 15) {
-                    audioTimeStats
-                        .fixedSize()
-
                     PlaybackRateButton(
                         currentRate: playbackRate,
                         onRateChange: onPlaybackRateChange,
                         showLabel: true,
-                        buttonSize: 36,
+                        buttonSize: showMiniPlayerStats ? 32 : 36,
                         showBackground: false,
                         compactLabel: true,
-                        iconFont: .title3
+                        iconFont: showMiniPlayerStats ? .body : .title3
                     )
 
                     Button(action: onPlayPause) {
                         Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                            .font(.title)
-                            .frame(width: 54, height: 54)
+                            .font(showMiniPlayerStats ? .title2 : .title)
+                            .frame(width: showMiniPlayerStats ? 48 : 54, height: showMiniPlayerStats ? 48 : 54)
                             .background(
                                 Circle()
                                     .fill(Color.primary.opacity(0.1))
@@ -261,27 +263,22 @@ struct DraggableAudioCard<FullContent: View>: View {
             }
         }
         .padding(.horizontal, 16)
-        .padding(.top, 28)
+        .padding(.top, showMiniPlayerStats ? 20 : 28)
     }
 
-    private var chapterTimeRemaining: TimeInterval? {
-        guard let elapsed = chapterElapsedSeconds, let total = chapterTotalSeconds else {
-            return nil
-        }
-        return max(0, total - elapsed)
-    }
-
-    private var audioTimeStats: some View {
-        VStack(alignment: .trailing, spacing: 2) {
+    private var compactStatsRow: some View {
+        HStack {
             if let bookRemaining = bookTimeRemaining {
                 HStack(spacing: 4) {
-                    Text(formatTimeHoursMinutes(bookRemaining))
-                        .font(.caption2.monospacedDigit())
                     Image(systemName: "book.fill")
                         .font(.caption2)
+                    Text(formatTimeHoursMinutes(bookRemaining))
+                        .font(.caption2.monospacedDigit())
                 }
                 .foregroundStyle(.secondary)
             }
+
+            Spacer()
 
             if let chapterRemaining = chapterTimeRemaining {
                 HStack(spacing: 4) {
@@ -293,6 +290,15 @@ struct DraggableAudioCard<FullContent: View>: View {
                 .foregroundStyle(.secondary)
             }
         }
+        .padding(.horizontal, 45)
+        .padding(.bottom, 8)
+    }
+
+    private var chapterTimeRemaining: TimeInterval? {
+        guard let elapsed = chapterElapsedSeconds, let total = chapterTotalSeconds else {
+            return nil
+        }
+        return max(0, total - elapsed)
     }
 
     private func handleDragEnd(translation: CGFloat, velocity: CGFloat, screenHeight: CGFloat) {

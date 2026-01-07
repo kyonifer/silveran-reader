@@ -29,6 +29,7 @@ struct EbookPlayerTopToolbar: View {
     let settingsVM: SettingsViewModel
 
     @State private var showSleepTimerSheet = false
+    @State private var showOptionsSheet = false
 
     private var toolbarForegroundColor: Color {
         let bgHex =
@@ -155,116 +156,8 @@ struct EbookPlayerTopToolbar: View {
                         .presentationDetents([.medium, .large])
                     }
 
-                    Menu {
-                        if hasAudioNarration {
-                            Toggle(
-                                isOn: Binding(
-                                    get: { !isSynced },
-                                    set: { newValue in
-                                        Task { try? await onSyncToggle(!newValue) }
-                                    }
-                                )
-                            ) {
-                                Label("Free Browse When Paused", systemImage: "lock.open")
-                            }
-
-                            Divider()
-                        }
-
-                        if hasAudioNarration {
-                            Toggle(
-                                isOn: Binding(
-                                    get: { settingsVM.alwaysShowMiniPlayer },
-                                    set: { newValue in
-                                        settingsVM.alwaysShowMiniPlayer = newValue
-                                        Task { try? await settingsVM.save() }
-                                    }
-                                )
-                            ) {
-                                Label(
-                                    "Always Show Mini Player",
-                                    systemImage: "rectangle.bottomhalf.inset.filled"
-                                )
-                            }
-
-                            Divider()
-                        }
-
-                        Toggle(
-                            isOn: Binding(
-                                get: { settingsVM.showProgress },
-                                set: { newValue in
-                                    settingsVM.showProgress = newValue
-                                    Task { try? await settingsVM.save() }
-                                }
-                            )
-                        ) {
-                            Label("Show Book Progress", systemImage: "percent")
-                        }
-
-                        Toggle(
-                            isOn: Binding(
-                                get: { settingsVM.showPageNumber },
-                                set: { newValue in
-                                    settingsVM.showPageNumber = newValue
-                                    Task { try? await settingsVM.save() }
-                                }
-                            )
-                        ) {
-                            Label("Show Page Number", systemImage: "book.pages")
-                        }
-
-                        if hasAudioNarration {
-                            Toggle(
-                                isOn: Binding(
-                                    get: { settingsVM.showTimeRemainingInBook },
-                                    set: { newValue in
-                                        settingsVM.showTimeRemainingInBook = newValue
-                                        Task { try? await settingsVM.save() }
-                                    }
-                                )
-                            ) {
-                                Label("Show Time in Book", systemImage: "clock")
-                            }
-
-                            Toggle(
-                                isOn: Binding(
-                                    get: { settingsVM.showTimeRemainingInChapter },
-                                    set: { newValue in
-                                        settingsVM.showTimeRemainingInChapter = newValue
-                                        Task { try? await settingsVM.save() }
-                                    }
-                                )
-                            ) {
-                                Label("Show Time in Chapter", systemImage: "clock.badge")
-                            }
-
-                            Divider()
-
-                            Toggle(
-                                isOn: Binding(
-                                    get: { settingsVM.showOverlaySkipBackward },
-                                    set: { newValue in
-                                        settingsVM.showOverlaySkipBackward = newValue
-                                        Task { try? await settingsVM.save() }
-                                    }
-                                )
-                            ) {
-                                Label("Show Skip Back", systemImage: "arrow.counterclockwise")
-                            }
-
-                            Toggle(
-                                isOn: Binding(
-                                    get: { settingsVM.showOverlaySkipForward },
-                                    set: { newValue in
-                                        settingsVM.showOverlaySkipForward = newValue
-                                        Task { try? await settingsVM.save() }
-                                    }
-                                )
-                            ) {
-                                Label("Show Skip Forward", systemImage: "arrow.clockwise")
-                            }
-                        }
+                    Button {
+                        showOptionsSheet = true
                     } label: {
                         Image(systemName: "ellipsis.circle")
                             .font(.system(size: 20, weight: .regular))
@@ -272,6 +165,9 @@ struct EbookPlayerTopToolbar: View {
                             .contentShape(Rectangle())
                     }
                     .frame(width: 44, height: 44)
+                    .sheet(isPresented: $showOptionsSheet) {
+                        optionsSheet
+                    }
                 }
             }
             .padding(.horizontal, 8)
@@ -322,6 +218,143 @@ struct EbookPlayerTopToolbar: View {
         let minutes = totalSeconds / 60
         let seconds = totalSeconds % 60
         return String(format: "%d:%02d", minutes, seconds)
+    }
+
+    private var optionsSheet: some View {
+        NavigationStack {
+            List {
+                if hasAudioNarration {
+                    Section("Playback") {
+                        Toggle(
+                            isOn: Binding(
+                                get: { !isSynced },
+                                set: { newValue in
+                                    Task { try? await onSyncToggle(!newValue) }
+                                }
+                            )
+                        ) {
+                            Label("Free Browse When Paused", systemImage: "lock.open")
+                        }
+                    }
+
+                    Section("Mini Player") {
+                        Toggle(
+                            isOn: Binding(
+                                get: { settingsVM.alwaysShowMiniPlayer },
+                                set: { newValue in
+                                    settingsVM.alwaysShowMiniPlayer = newValue
+                                    Task { try? await settingsVM.save() }
+                                }
+                            )
+                        ) {
+                            Label("Always Show", systemImage: "rectangle.bottomhalf.inset.filled")
+                        }
+
+                        Toggle(
+                            isOn: Binding(
+                                get: { settingsVM.showMiniPlayerStats },
+                                set: { newValue in
+                                    settingsVM.showMiniPlayerStats = newValue
+                                    Task { try? await settingsVM.save() }
+                                }
+                            )
+                        ) {
+                            Label("Show Stats Below", systemImage: "clock")
+                        }
+                    }
+                }
+
+                Section("Overlay Info") {
+                    Toggle(
+                        isOn: Binding(
+                            get: { settingsVM.showProgress },
+                            set: { newValue in
+                                settingsVM.showProgress = newValue
+                                Task { try? await settingsVM.save() }
+                            }
+                        )
+                    ) {
+                        Label("Book Progress", systemImage: "percent")
+                    }
+
+                    Toggle(
+                        isOn: Binding(
+                            get: { settingsVM.showPageNumber },
+                            set: { newValue in
+                                settingsVM.showPageNumber = newValue
+                                Task { try? await settingsVM.save() }
+                            }
+                        )
+                    ) {
+                        Label("Page Number", systemImage: "book.pages")
+                    }
+
+                    if hasAudioNarration {
+                        Toggle(
+                            isOn: Binding(
+                                get: { settingsVM.showTimeRemainingInBook },
+                                set: { newValue in
+                                    settingsVM.showTimeRemainingInBook = newValue
+                                    Task { try? await settingsVM.save() }
+                                }
+                            )
+                        ) {
+                            Label("Time in Book", systemImage: "clock")
+                        }
+
+                        Toggle(
+                            isOn: Binding(
+                                get: { settingsVM.showTimeRemainingInChapter },
+                                set: { newValue in
+                                    settingsVM.showTimeRemainingInChapter = newValue
+                                    Task { try? await settingsVM.save() }
+                                }
+                            )
+                        ) {
+                            Label("Time in Chapter", systemImage: "clock.badge")
+                        }
+                    }
+                }
+
+                if hasAudioNarration {
+                    Section("Overlay Controls") {
+                        Toggle(
+                            isOn: Binding(
+                                get: { settingsVM.showOverlaySkipBackward },
+                                set: { newValue in
+                                    settingsVM.showOverlaySkipBackward = newValue
+                                    Task { try? await settingsVM.save() }
+                                }
+                            )
+                        ) {
+                            Label("Skip Back", systemImage: "arrow.counterclockwise")
+                        }
+
+                        Toggle(
+                            isOn: Binding(
+                                get: { settingsVM.showOverlaySkipForward },
+                                set: { newValue in
+                                    settingsVM.showOverlaySkipForward = newValue
+                                    Task { try? await settingsVM.save() }
+                                }
+                            )
+                        ) {
+                            Label("Skip Forward", systemImage: "arrow.clockwise")
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Display Options")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        showOptionsSheet = false
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
     }
 
     private var sleepTimerSheet: some View {
