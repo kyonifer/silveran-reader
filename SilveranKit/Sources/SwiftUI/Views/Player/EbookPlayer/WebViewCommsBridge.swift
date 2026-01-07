@@ -161,14 +161,24 @@ class WebViewCommsBridge {
     }
 
     /// Swift commands JS to navigate to a Readium locator (href + optional fragment)
+    /// Audio locators (type contains "audio") skip fragment navigation and use totalProgression
     func sendJsGoToLocatorCommand(locator: BookLocator) async throws {
-        var href = locator.href
+        let isAudioLocator = locator.type.contains("audio")
+        let totalProgression = locator.locations?.totalProgression
 
-        if let fragment = locator.locations?.fragments?.first {
-            href = "\(href)#\(fragment)"
+        if isAudioLocator, totalProgression == nil {
+            debugLog("[WebViewCommsBridge] Audio locator missing totalProgression; skipping nav")
+            return
         }
 
-        try await sendJsGoToHrefCommand(href: href)
+        if let fragment = locator.locations?.fragments?.first, !isAudioLocator {
+            let href = "\(locator.href)#\(fragment)"
+            try await sendJsGoToHrefCommand(href: href)
+        } else if let totalProgression {
+            try await sendJsGoToBookFractionCommand(fraction: totalProgression)
+        } else {
+            try await sendJsGoToHrefCommand(href: locator.href)
+        }
     }
 
     /// Swift commands JS to navigate to a specific fraction within a section/chapter

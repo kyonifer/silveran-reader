@@ -540,6 +540,7 @@ class EbookPlayerViewModel {
 
         progressManager = EbookProgressManager(
             bridge: bridge,
+            settingsVM: settingsVM,
             bookId: bookData?.metadata.uuid,
             initialLocator: bookData?.metadata.position?.locator
         )

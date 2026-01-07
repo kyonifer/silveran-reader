@@ -294,22 +294,23 @@ class MediaOverlayManager {
 
     /// Called when user initiates navigation (arrow keys, swipe, progress seek)
     /// This is called after a debounce period to handle the final settled location
-    func handleUserNavEvent(section: Int, page: Int, totalPages: Int) async {
+    /// Returns true if a SMIL match was found and audio position updated, false otherwise
+    func handleUserNavEvent(section: Int, page: Int, totalPages: Int) async -> Bool {
         debugLog("[MOM] User nav → Section.\(section): \(page)/\(totalPages)")
 
         guard syncEnabled || isPlaying else {
             debugLog("[MOM] Not playing and sync disabled - audio will not follow page navigation")
-            return
+            return false
         }
 
         guard let sectionInfo = getSection(at: section) else {
             debugLog("[MOM] Invalid section index: \(section)")
-            return
+            return false
         }
 
         guard !sectionInfo.mediaOverlay.isEmpty else {
             debugLog("[MOM] Section \(section) has no audio, skipping sync")
-            return
+            return false
         }
 
         suppressActorHighlightsUntil = Date().addingTimeInterval(0.5)
@@ -319,7 +320,7 @@ class MediaOverlayManager {
                 "[MOM] First page of section with audio - seeking to first fragment: \(sectionInfo.mediaOverlay[0].textId)"
             )
             await handleSeekEvent(sectionIndex: section, anchor: sectionInfo.mediaOverlay[0].textId)
-            return
+            return true
         }
 
         debugLog("[MOM] Mid-chapter page (\(page)), querying fully visible elements")
@@ -328,18 +329,19 @@ class MediaOverlayManager {
             !visibleIds.isEmpty
         else {
             debugLog("[MOM] No visible elements found, skipping audio sync")
-            return
+            return false
         }
 
         for smilEntry in sectionInfo.mediaOverlay {
             if visibleIds.contains(smilEntry.textId) {
                 debugLog("[MOM] Syncing audio to first visible SMIL element: \(smilEntry.textId)")
                 await handleSeekEvent(sectionIndex: section, anchor: smilEntry.textId)
-                return
+                return true
             }
         }
 
         debugLog("[MOM] No SMIL match found on page, audio position unchanged")
+        return false
     }
 
     /// Called when navigation occurs naturally (media overlay auto-progression, resize events)
