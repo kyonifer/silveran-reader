@@ -170,7 +170,7 @@ public struct PlaybackRateButton: View {
 
                 HStack(spacing: 24) {
                     Button(action: {
-                        let newRate = max(0.5, sliderValue - 0.1)
+                        let newRate = max(0.5, sliderValue - 0.05)
                         sliderValue = snapToIncrement(newRate)
                         textFieldValue = formatRate(sliderValue)
                         onRateChange(sliderValue)
@@ -182,7 +182,7 @@ public struct PlaybackRateButton: View {
                     .buttonStyle(.plain)
 
                     Button(action: {
-                        let newRate = min(10.0, sliderValue + 0.1)
+                        let newRate = min(10.0, sliderValue + 0.05)
                         sliderValue = snapToIncrement(newRate)
                         textFieldValue = formatRate(sliderValue)
                         onRateChange(sliderValue)
