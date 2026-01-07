@@ -32,6 +32,11 @@ public struct AudiobookPlayerView: View {
     @State private var progressMessage: PlaybackProgressUpdateMessage?
     @State private var lastRestartTime: Date?
 
+    @State private var showServerPositionDialog = false
+    @State private var pendingServerPosition: IncomingServerPosition? = nil
+    @State private var incomingPositionObserverId: UUID? = nil
+    @State private var positionObserverRegistrationTask: Task<Void, Never>? = nil
+
     public init(bookData: PlayerBookData?) {
         self.bookData = bookData
     }
@@ -50,6 +55,19 @@ public struct AudiobookPlayerView: View {
                 if let error = errorMessage {
                     Text(error)
                 }
+            }
+            .alert(
+                "Server Has Newer Position",
+                isPresented: $showServerPositionDialog
+            ) {
+                Button("Go to New Position") {
+                    acceptServerPosition()
+                }
+                Button("Stay Here", role: .cancel) {
+                    declineServerPosition()
+                }
+            } message: {
+                Text(serverPositionDescription)
             }
             .onAppear {
                 #if os(iOS)
@@ -79,11 +97,17 @@ public struct AudiobookPlayerView: View {
                 syncTimer?.invalidate()
                 syncTimer = nil
 
+                positionObserverRegistrationTask?.cancel()
+
                 Task {
                     await syncProgressToServer(reason: .userClosedBook)
 
                     if let observerID = stateObserverID {
                         await AudiobookActor.shared.removeStateObserver(id: observerID)
+                    }
+                    await positionObserverRegistrationTask?.value
+                    if let observerId = incomingPositionObserverId {
+                        await ProgressSyncActor.shared.removeIncomingPositionObserver(id: observerId)
                     }
                     await AudiobookActor.shared.cleanup()
                 }
@@ -280,6 +304,8 @@ public struct AudiobookPlayerView: View {
 
             startProgressTimer()
             startSyncTimer()
+
+            registerIncomingPositionObserver(bookId: bookData.metadata.uuid)
 
             isLoading = false
         } catch let error as AudiobookError {
@@ -513,6 +539,79 @@ public struct AudiobookPlayerView: View {
                 lastSyncedProgress = currentProgress
             case .failed:
                 debugLog("[AudiobookPlayerView] Sync result: FAILED (conflict or error)")
+        }
+    }
+
+    // MARK: - Incoming Server Position Handling
+
+    private var serverPositionDescription: String {
+        guard let position = pendingServerPosition else {
+            return "Another device has synced a more recent reading position."
+        }
+        let locator = position.locator
+        var details: [String] = []
+        if let title = locator.title {
+            details.append(title)
+        }
+        if let prog = locator.locations?.totalProgression {
+            details.append("\(Int(prog * 100))%")
+        }
+        let locationStr = details.isEmpty ? "" : " (\(details.joined(separator: ", ")))"
+        return "Another device has synced a more recent reading position\(locationStr). Would you like to go to that location?"
+    }
+
+    private func acceptServerPosition() {
+        guard let position = pendingServerPosition else { return }
+        Task {
+            await navigateToServerPosition(position.locator)
+        }
+        pendingServerPosition = nil
+        showServerPositionDialog = false
+    }
+
+    private func declineServerPosition() {
+        pendingServerPosition = nil
+        showServerPositionDialog = false
+    }
+
+    @MainActor
+    private func navigateToServerPosition(_ locator: BookLocator) async {
+        let isAudioLocator = locator.type.contains("audio")
+
+        if let totalProgression = locator.locations?.totalProgression {
+            debugLog("[AudiobookPlayerView] Navigating to server position: totalProgression=\(totalProgression) (isAudioLocator=\(isAudioLocator))")
+            await AudiobookActor.shared.seekToTotalProgressFraction(totalProgression)
+            lastSyncedProgress = totalProgression
+        } else {
+            debugLog("[AudiobookPlayerView] Server position has no totalProgression, cannot seek")
+        }
+    }
+
+    private func registerIncomingPositionObserver(bookId: String) {
+        positionObserverRegistrationTask = Task {
+            let observerId = await ProgressSyncActor.shared.addIncomingPositionObserver(
+                for: bookId
+            ) { [self] position in
+                Task { @MainActor in
+                    let config = await SettingsActor.shared.config
+                    if config.sync.autoSyncToNewerServerPosition {
+                        await navigateToServerPosition(position.locator)
+                    } else {
+                        pendingServerPosition = position
+                        showServerPositionDialog = true
+                    }
+                }
+            }
+
+            guard !Task.isCancelled else {
+                await ProgressSyncActor.shared.removeIncomingPositionObserver(id: observerId)
+                return
+            }
+
+            await MainActor.run {
+                incomingPositionObserverId = observerId
+            }
+            debugLog("[AudiobookPlayerView] Registered incoming position observer for \(bookId)")
         }
     }
 }
