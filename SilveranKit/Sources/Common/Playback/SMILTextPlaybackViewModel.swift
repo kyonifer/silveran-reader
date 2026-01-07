@@ -51,6 +51,13 @@ public final class SMILTextPlaybackViewModel: NSObject {
     private var periodicSyncTask: Task<Void, Never>?
     private static let periodicSyncInterval: TimeInterval = 60
 
+    // MARK: - Incoming Position Sync
+
+    public var showServerPositionDialog = false
+    public var pendingServerPosition: IncomingServerPosition? = nil
+    private var incomingPositionObserverId: UUID? = nil
+    private var positionObserverRegistrationTask: Task<Void, Never>? = nil
+
     #if os(tvOS)
     private let logPrefix = "TVPlayerViewModel"
     private let syncSourceIdentifier = "TV Player"
@@ -208,6 +215,7 @@ public final class SMILTextPlaybackViewModel: NSObject {
                 updateChapterDuration()
             }
 
+            registerIncomingPositionObserver(bookId: book.uuid)
             restorePosition(book)
             isLoadingPosition = false
             await loadCurrentSectionHTML()
@@ -506,43 +514,8 @@ public final class SMILTextPlaybackViewModel: NSObject {
                 return
             }
 
-            let href = locator.href
-            let textId = locator.locations?.fragments?.first
-
-            debugLog(
-                "[\(logPrefix)] Restoring position - href: \(href), fragment: \(textId ?? "nil")"
-            )
-
-            if let textId = textId {
-                if let sectionIndex = bookStructure.firstIndex(where: { section in
-                    section.mediaOverlay.contains { $0.textHref == href }
-                }) {
-                    let success = await SMILPlayerActor.shared.seekToFragment(
-                        sectionIndex: sectionIndex,
-                        textId: textId
-                    )
-                    if success {
-                        hasRestoredPosition = true
-                        return
-                    }
-                } else if let sectionIndex = findSectionIndex(for: href, in: bookStructure) {
-                    let success = await SMILPlayerActor.shared.seekToFragment(
-                        sectionIndex: sectionIndex,
-                        textId: textId
-                    )
-                    if success {
-                        hasRestoredPosition = true
-                        return
-                    }
-                }
-            }
-
-            let progression = locator.locations?.totalProgression ?? 0
-            if progression > 0 {
-                debugLog("[\(logPrefix)] Fallback to totalProgression: \(progression)")
-                let _ = await SMILPlayerActor.shared.seekToTotalProgression(progression)
-            }
-
+            debugLog("[\(logPrefix)] Restoring position - href: \(locator.href)")
+            await navigateToServerPosition(locator)
             hasRestoredPosition = true
         }
     }
@@ -590,23 +563,135 @@ public final class SMILTextPlaybackViewModel: NSObject {
         }
     }
 
+    // MARK: - Incoming Position Observer
+
+    public var serverPositionDescription: String {
+        guard let position = pendingServerPosition else {
+            return "Another device has synced a more recent reading position."
+        }
+        let locator = position.locator
+        var details: [String] = []
+        if let title = locator.title {
+            details.append(title)
+        }
+        if let prog = locator.locations?.totalProgression {
+            details.append("\(Int(prog * 100))%")
+        }
+        let locationStr = details.isEmpty ? "" : " (\(details.joined(separator: ", ")))"
+        return "Another device has synced a more recent reading position\(locationStr). Would you like to go to that location?"
+    }
+
+    private func registerIncomingPositionObserver(bookId: String) {
+        positionObserverRegistrationTask = Task {
+            let observerId = await ProgressSyncActor.shared.addIncomingPositionObserver(
+                for: bookId
+            ) { [weak self] position in
+                guard let self else { return }
+                Task { @MainActor in
+                    let config = await SettingsActor.shared.config
+                    if config.sync.autoSyncToNewerServerPosition {
+                        await self.navigateToServerPosition(position.locator)
+                    } else {
+                        self.pendingServerPosition = position
+                        self.showServerPositionDialog = true
+                    }
+                }
+            }
+
+            guard !Task.isCancelled else {
+                await ProgressSyncActor.shared.removeIncomingPositionObserver(id: observerId)
+                return
+            }
+
+            await MainActor.run {
+                incomingPositionObserverId = observerId
+            }
+            debugLog("[\(logPrefix)] Registered incoming position observer for \(bookId)")
+        }
+    }
+
+    private func navigateToServerPosition(_ locator: BookLocator) async {
+        let isAudioLocator = locator.type.contains("audio")
+        let href = locator.href
+        let textId = locator.locations?.fragments?.first
+        let totalProgression = locator.locations?.totalProgression
+
+        if isAudioLocator, totalProgression == nil {
+            debugLog("[\(logPrefix)] Audio locator missing totalProgression; skipping server nav")
+            return
+        }
+
+        if let textId = textId, !isAudioLocator {
+            debugLog("[\(logPrefix)] Navigating to server position via fragment: \(href)#\(textId)")
+
+            if let sectionIndex = bookStructure.firstIndex(where: { section in
+                section.mediaOverlay.contains { $0.textHref == href }
+            }) {
+                let success = await SMILPlayerActor.shared.seekToFragment(
+                    sectionIndex: sectionIndex,
+                    textId: textId
+                )
+                if success { return }
+            } else if let sectionIndex = findSectionIndex(for: href, in: bookStructure) {
+                let success = await SMILPlayerActor.shared.seekToFragment(
+                    sectionIndex: sectionIndex,
+                    textId: textId
+                )
+                if success { return }
+            }
+        }
+
+        if let totalProgression = totalProgression, totalProgression > 0 {
+            debugLog("[\(logPrefix)] Using totalProgression: \(totalProgression)")
+            let _ = await SMILPlayerActor.shared.seekToTotalProgression(totalProgression)
+        } else {
+            debugLog("[\(logPrefix)] Server position has no usable location data, cannot seek")
+        }
+    }
+
+    public func acceptServerPosition() {
+        guard let position = pendingServerPosition else { return }
+        Task {
+            await navigateToServerPosition(position.locator)
+        }
+        pendingServerPosition = nil
+        showServerPositionDialog = false
+    }
+
+    public func declineServerPosition() {
+        pendingServerPosition = nil
+        showServerPositionDialog = false
+    }
+
     // MARK: - Cleanup
 
     public func cleanup() {
         stopPeriodicSync()
         syncProgress()
+
+        positionObserverRegistrationTask?.cancel()
+
         #if os(tvOS)
         UIApplication.shared.isIdleTimerDisabled = false
         #endif
-        let observerId = stateObserverId
-        Task { @SMILPlayerActor in
-            await SMILPlayerActor.shared.pause()
-            if let observerId {
-                await SMILPlayerActor.shared.removeStateObserver(id: observerId)
-            }
-        }
+        let stateObserver = stateObserverId
+        let positionRegistrationTask = positionObserverRegistrationTask
+
         stateObserverId = nil
         isPlaying = false
+
+        Task { @MainActor in
+            await SMILPlayerActor.shared.pause()
+            if let stateObserver {
+                await SMILPlayerActor.shared.removeStateObserver(id: stateObserver)
+            }
+
+            await positionRegistrationTask?.value
+            if let positionObserverId = incomingPositionObserverId {
+                incomingPositionObserverId = nil
+                await ProgressSyncActor.shared.removeIncomingPositionObserver(id: positionObserverId)
+            }
+        }
     }
 }
 

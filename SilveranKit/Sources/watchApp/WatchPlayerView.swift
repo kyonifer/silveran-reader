@@ -42,6 +42,22 @@ struct WatchPlayerView: View {
         .task {
             await viewModel.loadBook(book)
         }
+        .onDisappear {
+            viewModel.cleanup()
+        }
+        .alert(
+            "Server Has Newer Position",
+            isPresented: $viewModel.showServerPositionDialog
+        ) {
+            Button("Go to New Position") {
+                viewModel.acceptServerPosition()
+            }
+            Button("Stay Here", role: .cancel) {
+                viewModel.declineServerPosition()
+            }
+        } message: {
+            Text("Another device has a more recent reading location.")
+        }
     }
 
     private var loadingView: some View {

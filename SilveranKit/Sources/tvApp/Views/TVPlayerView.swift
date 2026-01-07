@@ -121,6 +121,19 @@ struct TVPlayerView: View {
         .sheet(isPresented: $showSpeedPicker) {
             TVSpeedPickerView(viewModel: viewModel)
         }
+        .alert(
+            "Server Has Newer Position",
+            isPresented: $viewModel.showServerPositionDialog
+        ) {
+            Button("Go to New Position") {
+                viewModel.acceptServerPosition()
+            }
+            Button("Stay Here", role: .cancel) {
+                viewModel.declineServerPosition()
+            }
+        } message: {
+            Text(viewModel.serverPositionDescription)
+        }
     }
 
     private var backgroundView: some View {
