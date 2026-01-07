@@ -254,6 +254,7 @@ public actor StorytellerActor {
         do {
             var allowedStatuses = Set(200..<300)
             allowedStatuses.insert(401)
+            allowedStatuses.insert(403)
             allowedStatuses.insert(404)
 
             let response = try await httpGet(
@@ -494,6 +495,7 @@ public actor StorytellerActor {
         do {
             var allowedStatuses = Set(200..<300)
             allowedStatuses.insert(401)
+            allowedStatuses.insert(403)
             allowedStatuses.insert(404)
 
             let response = try await httpGet(
@@ -676,6 +678,7 @@ public actor StorytellerActor {
 
         var allowedStatuses = Set(200..<300)
         allowedStatuses.insert(401)
+        allowedStatuses.insert(403)
         allowedStatuses.insert(404)
         allowedStatuses.insert(405)
 
@@ -730,6 +733,7 @@ public actor StorytellerActor {
 
         var allowedStatuses = Set(200..<300)
         allowedStatuses.insert(401)
+        allowedStatuses.insert(403)
         allowedStatuses.insert(404)
 
         do {
@@ -775,6 +779,7 @@ public actor StorytellerActor {
 
         var allowedStatuses = Set(200..<300)
         allowedStatuses.insert(401)
+        allowedStatuses.insert(403)
         allowedStatuses.insert(404)
         allowedStatuses.insert(405)
 
@@ -832,6 +837,7 @@ public actor StorytellerActor {
 
         var allowedStatuses = Set(200..<300)
         allowedStatuses.insert(401)
+        allowedStatuses.insert(403)
         allowedStatuses.insert(404)
 
         do {
@@ -1028,6 +1034,7 @@ public actor StorytellerActor {
         do {
             var createAllowedStatuses = Set(200..<300)
             createAllowedStatuses.insert(401)
+            createAllowedStatuses.insert(403)
 
             let createResponse = try await httpPost(
                 uploadBaseURL.absoluteString,
@@ -1064,6 +1071,7 @@ public actor StorytellerActor {
 
             var patchAllowedStatuses = Set(200..<300)
             patchAllowedStatuses.insert(401)
+            patchAllowedStatuses.insert(403)
 
             let patchResponse = try await httpPatch(
                 uploadURL.absoluteString,
@@ -1110,6 +1118,7 @@ public actor StorytellerActor {
         do {
             var allowedStatuses = Set(200..<300)
             allowedStatuses.insert(401)
+            allowedStatuses.insert(403)
             allowedStatuses.insert(404)
 
             let response = try await httpGet(
@@ -1186,6 +1195,7 @@ public actor StorytellerActor {
 
             var allowedStatuses = Set(200..<300)
             allowedStatuses.insert(401)
+            allowedStatuses.insert(403)
 
             let response = try await httpPut(
                 statusURL.absoluteString,
@@ -1219,6 +1229,7 @@ public actor StorytellerActor {
         do {
             var allowedStatuses = Set(200..<300)
             allowedStatuses.insert(401)
+            allowedStatuses.insert(403)
             allowedStatuses.insert(404)
 
             let response = try await httpGet(
@@ -1272,6 +1283,7 @@ public actor StorytellerActor {
 
             var allowedStatuses = Set(200..<300)
             allowedStatuses.insert(401)
+            allowedStatuses.insert(403)
 
             let response = try await httpPost(
                 tagsURL.absoluteString,
@@ -1320,6 +1332,7 @@ public actor StorytellerActor {
 
             var allowedStatuses = Set(200..<300)
             allowedStatuses.insert(401)
+            allowedStatuses.insert(403)
 
             let response = try await httpDelete(
                 tagsURL.absoluteString,
@@ -1353,6 +1366,7 @@ public actor StorytellerActor {
         do {
             var allowedStatuses = Set(200..<300)
             allowedStatuses.insert(401)
+            allowedStatuses.insert(403)
             allowedStatuses.insert(404)
 
             let response = try await httpGet(
@@ -1395,6 +1409,7 @@ public actor StorytellerActor {
         do {
             var allowedStatuses = Set(200..<300)
             allowedStatuses.insert(401)
+            allowedStatuses.insert(403)
             allowedStatuses.insert(404)
 
             let response = try await httpGet(
@@ -1438,6 +1453,7 @@ public actor StorytellerActor {
 
             var allowedStatuses = Set(200..<300)
             allowedStatuses.insert(401)
+            allowedStatuses.insert(403)
 
             let response = try await httpPost(
                 collectionsURL.absoluteString,
@@ -1499,6 +1515,7 @@ public actor StorytellerActor {
 
             var allowedStatuses = Set(200..<300)
             allowedStatuses.insert(401)
+            allowedStatuses.insert(403)
             allowedStatuses.insert(404)
 
             let response = try await httpPut(
@@ -1547,6 +1564,7 @@ public actor StorytellerActor {
 
         var allowedStatuses = Set(200..<300)
         allowedStatuses.insert(401)
+        allowedStatuses.insert(403)
         allowedStatuses.insert(404)
 
         do {
@@ -1594,6 +1612,7 @@ public actor StorytellerActor {
 
             var allowedStatuses = Set(200..<300)
             allowedStatuses.insert(401)
+            allowedStatuses.insert(403)
 
             let response = try await httpPost(
                 membershipURL.absoluteString,
@@ -1642,6 +1661,7 @@ public actor StorytellerActor {
 
             var allowedStatuses = Set(200..<300)
             allowedStatuses.insert(401)
+            allowedStatuses.insert(403)
 
             let response = try await httpDelete(
                 membershipURL.absoluteString,
@@ -1683,6 +1703,7 @@ public actor StorytellerActor {
         do {
             var allowedStatuses = Set(200..<300)
             allowedStatuses.insert(401)
+            allowedStatuses.insert(403)
 
             let response = try await httpPost(
                 logoutURL.absoluteString,
@@ -1949,23 +1970,6 @@ public actor StorytellerActor {
         }
     }
 
-    public func fetchBookPosition(bookId: String) async -> BookLocator? {
-        debugLog("[StorytellerActor] fetchBookPosition: bookId=\(bookId)")
-
-        guard let metadata = await fetchBookDetails(for: bookId) else {
-            debugLog("[StorytellerActor] fetchBookPosition: failed to fetch metadata")
-            return nil
-        }
-
-        guard let position = metadata.position, let locator = position.locator else {
-            debugLog("[StorytellerActor] fetchBookPosition: no position in metadata")
-            return nil
-        }
-
-        debugLog("[StorytellerActor] fetchBookPosition: found locator with href=\(locator.href)")
-        return locator
-    }
-
     public func fetchBookProgress(bookId: String, log: Bool = true) async -> BookReadingPosition? {
         if log {
             debugLog("[StorytellerActor] fetchBookProgress: bookId=\(bookId)")
@@ -1984,6 +1988,51 @@ public actor StorytellerActor {
             )
         }
         return metadata.position
+    }
+
+    /// Fetches only the position for a book using the slim /positions endpoint.
+    /// Returns just {locator, timestamp} without full book metadata.
+    public func fetchBookPosition(bookId: String) async -> BookReadingPosition? {
+        guard let (baseURL, token) = await ensureAuthentication() else { return nil }
+
+        let url = baseURL
+            .appendingPathComponent("books")
+            .appendingPathComponent(bookId)
+            .appendingPathComponent("positions")
+
+        do {
+            var allowedStatuses = Set(200..<300)
+            allowedStatuses.insert(401)
+            allowedStatuses.insert(403)
+            allowedStatuses.insert(404)
+
+            let response = try await httpGet(
+                url.absoluteString,
+                headers: [
+                    "Accept": "application/json",
+                    "Authorization": authorizationHeaderValue(for: token),
+                ],
+                session: urlSession,
+                allowedStatusCodes: allowedStatuses
+            )
+
+            guard
+                case .success = evaluateResponse(
+                    response,
+                    methodName: "fetchBookPosition",
+                    context: "position for \(bookId)"
+                )
+            else {
+                return nil
+            }
+
+            let position = try decoder.decode(BookReadingPosition.self, from: response.data)
+            debugLog("[StorytellerActor] fetchBookPosition: got position with timestamp=\(position.timestamp ?? 0)")
+            return position
+        } catch {
+            logStorytellerError("fetchBookPosition", error: error)
+            return nil
+        }
     }
 
     // TODO: Remaining API wrappers

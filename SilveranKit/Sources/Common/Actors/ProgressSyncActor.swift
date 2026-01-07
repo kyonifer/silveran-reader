@@ -619,14 +619,14 @@ public actor ProgressSyncActor {
     }
 
     private func pollServerPositions() async {
-        let downloadedBookIds = await LocalMediaActor.shared.localStorytellerBookPaths.keys
+        let allPaths = await LocalMediaActor.shared.localStorytellerBookPaths
+        let downloadedBookIds = allPaths.filter { _, paths in
+            paths.ebookPath != nil || paths.audioPath != nil || paths.syncedPath != nil
+        }.keys
         guard !downloadedBookIds.isEmpty else { return }
 
         for bookId in downloadedBookIds {
-            if let position = await StorytellerActor.shared.fetchBookProgress(
-                bookId: bookId,
-                log: false
-            ) {
+            if let position = await StorytellerActor.shared.fetchBookPosition(bookId: bookId) {
                 await updateServerPositions([bookId: position])
             }
         }
