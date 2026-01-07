@@ -107,6 +107,48 @@ struct iOSBookDetailView: View {
         }
     }
 
+    private func displayName(for statusName: String) -> String {
+        switch statusName.lowercased() {
+        case "read": return "Completed"
+        case "reading": return "Currently Reading"
+        case "to read": return "To Read"
+        default: return statusName
+        }
+    }
+
+    private var sortedStatuses: [BookStatus] {
+        mediaViewModel.availableStatuses.sorted {
+            $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+        }
+    }
+
+    private func updateStatus(to statusName: String) async {
+        guard mediaViewModel.connectionStatus == .connected else {
+            showOfflineError = true
+            selectedStatusName = currentItem.status?.name
+            return
+        }
+
+        isUpdatingStatus = true
+        defer { isUpdatingStatus = false }
+
+        let success = await StorytellerActor.shared.updateStatus(
+            forBooks: [item.uuid],
+            toStatusNamed: statusName
+        )
+
+        if success {
+            if let newStatus = mediaViewModel.availableStatuses.first(where: { $0.name == statusName }) {
+                await LocalMediaActor.shared.updateBookStatus(
+                    bookId: item.uuid,
+                    status: newStatus
+                )
+            }
+        } else {
+            selectedStatusName = currentItem.status?.name
+        }
+    }
+
     private var headerSection: some View {
         VStack(alignment: .center, spacing: 20) {
             titleTopSection
@@ -332,12 +374,6 @@ struct iOSBookDetailView: View {
                     .fontWeight(.medium)
                 SyncStatusIndicators(bookId: item.id)
                 Spacer()
-                if let chapter = currentChapter {
-                    Text(chapter)
-                        .font(.callout)
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                }
                 Text("\(Int((progress * 100).rounded()))%")
                     .font(.callout)
                     .foregroundStyle(.secondary)
@@ -346,6 +382,51 @@ struct iOSBookDetailView: View {
             ProgressView(value: progress, total: 1)
                 .progressViewStyle(.linear)
                 .animation(.easeOut(duration: 0.45), value: progress)
+
+            HStack {
+                if let chapter = currentChapter {
+                    Text("Chapter: \(chapter)")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer()
+                if !sortedStatuses.isEmpty {
+                    Menu {
+                        ForEach(sortedStatuses, id: \.name) { status in
+                            Button {
+                                guard status.name != selectedStatusName else { return }
+                                Task { await updateStatus(to: status.name) }
+                            } label: {
+                                if status.name == selectedStatusName {
+                                    Label(displayName(for: status.name), systemImage: "checkmark")
+                                } else {
+                                    Text(displayName(for: status.name))
+                                }
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            if isUpdatingStatus {
+                                ProgressView()
+                                    .controlSize(.small)
+                            }
+                            Text(displayName(for: selectedStatusName ?? currentItem.status?.name ?? "-"))
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                            Image(systemName: "chevron.up.chevron.down")
+                                .font(.system(size: 8, weight: .medium))
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isUpdatingStatus)
+                } else if let statusName = currentItem.status?.name {
+                    Text(displayName(for: statusName))
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+            }
         }
     }
 
