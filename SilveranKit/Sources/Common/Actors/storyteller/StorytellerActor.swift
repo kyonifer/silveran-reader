@@ -3,6 +3,9 @@ import Foundation
 #if canImport(FoundationNetworking)
 import FoundationNetworking
 #endif
+#if canImport(Network)
+import Network
+#endif
 
 public enum ConnectionStatus: Equatable, Sendable {
     case disconnected
@@ -53,6 +56,10 @@ public actor StorytellerActor {
 
     private var monitoringTask: Task<Void, Never>? = nil
     public private(set) var lastNetworkOpSucceeded: Bool? = nil
+#if canImport(Network)
+    private var networkMonitor: NWPathMonitor? = nil
+    private let networkMonitorQueue = DispatchQueue(label: "StorytellerActor.NetworkMonitor")
+#endif
 
     public init(
         session: URLSession? = nil
@@ -103,12 +110,13 @@ public actor StorytellerActor {
     }
 
     private func startMonitoring() {
+        startNetworkMonitoring()
         monitoringTask?.cancel()
         monitoringTask = Task { [weak self] in
             guard let self else { return }
 
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(60))
+                try? await Task.sleep(for: .seconds(10))
 
                 guard !Task.isCancelled else { break }
 
@@ -116,6 +124,35 @@ public actor StorytellerActor {
             }
         }
     }
+
+    private func startNetworkMonitoring() {
+#if canImport(Network)
+        guard networkMonitor == nil else { return }
+        let monitor = NWPathMonitor()
+        networkMonitor = monitor
+        monitor.pathUpdateHandler = { [weak self] path in
+            guard let self else { return }
+            Task { await self.handleNetworkPathUpdate(path) }
+        }
+        monitor.start(queue: networkMonitorQueue)
+#endif
+    }
+
+    private func stopNetworkMonitoring() {
+#if canImport(Network)
+        networkMonitor?.cancel()
+        networkMonitor = nil
+#endif
+    }
+
+#if canImport(Network)
+    private func handleNetworkPathUpdate(_ path: NWPath) async {
+        debugLog("[StorytellerActor] network path update: status=\(path.status)")
+        if path.status == .satisfied {
+            await checkConnection(force: true)
+        }
+    }
+#endif
 
     public func setLastNetworkOpSucceeded(_ succeeded: Bool) {
         lastNetworkOpSucceeded = succeeded
@@ -1734,6 +1771,7 @@ public actor StorytellerActor {
         await updateConnectionStatus(.disconnected)
         monitoringTask?.cancel()
         monitoringTask = nil
+        stopNetworkMonitoring()
         return succeeded
     }
 
@@ -2026,9 +2064,7 @@ public actor StorytellerActor {
                 return nil
             }
 
-            let position = try decoder.decode(BookReadingPosition.self, from: response.data)
-            debugLog("[StorytellerActor] fetchBookPosition: got position with timestamp=\(position.timestamp ?? 0)")
-            return position
+            return try decoder.decode(BookReadingPosition.self, from: response.data)
         } catch {
             logStorytellerError("fetchBookPosition", error: error)
             return nil
