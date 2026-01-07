@@ -162,7 +162,6 @@ public struct SettingsView: View {
                     letterSpacing: newValue.reading.letterSpacing,
                     highlightColor: .some(newValue.reading.highlightColor),
                     highlightThickness: newValue.reading.highlightThickness,
-                    readaloudHighlightUnderline: newValue.reading.readaloudHighlightUnderline,
                     backgroundColor: .some(newValue.reading.backgroundColor),
                     foregroundColor: .some(newValue.reading.foregroundColor),
                     customCSS: .some(newValue.reading.customCSS),
@@ -269,9 +268,14 @@ extension SettingsView {
         config.reading.letterSpacing = kDefaultLetterSpacing
         config.reading.highlightColor = nil
         config.reading.highlightThickness = kDefaultHighlightThickness
-        config.reading.readaloudHighlightUnderline = kDefaultReadaloudHighlightUnderline
         config.reading.userHighlightMode = kDefaultUserHighlightMode
         config.reading.readaloudHighlightMode = kDefaultReadaloudHighlightMode
+        config.reading.userHighlightColor1 = kDefaultUserHighlightColor1
+        config.reading.userHighlightColor2 = kDefaultUserHighlightColor2
+        config.reading.userHighlightColor3 = kDefaultUserHighlightColor3
+        config.reading.userHighlightColor4 = kDefaultUserHighlightColor4
+        config.reading.userHighlightColor5 = kDefaultUserHighlightColor5
+        config.reading.userHighlightColor6 = kDefaultUserHighlightColor6
         config.reading.backgroundColor = nil
         config.reading.foregroundColor = nil
         config.reading.enableMarginClickNavigation = kDefaultEnableMarginClickNavigation
@@ -717,9 +721,10 @@ private struct MacReaderSettingsView: View {
                             Picker("", selection: $reading.readaloudHighlightMode) {
                                 Text("Background").tag("background")
                                 Text("Text").tag("text")
+                                Text("Underline").tag("underline")
                             }
                             .pickerStyle(.segmented)
-                            .frame(width: 200)
+                            .frame(width: 260)
                             .labelsHidden()
                         }
 
@@ -731,13 +736,6 @@ private struct MacReaderSettingsView: View {
                                 defaultLightColor: "#CCCCCC",
                                 defaultDarkColor: "#333333"
                             )
-                        }
-
-                        GridRow {
-                            label("Readaloud Underline")
-                            Toggle("", isOn: $reading.readaloudHighlightUnderline)
-                                .labelsHidden()
-                                .frame(width: 200, alignment: .leading)
                         }
 
                         GridRow {
@@ -760,15 +758,17 @@ private struct MacReaderSettingsView: View {
                             )
                         }
 
-                        GridRow {
-                            label("Highlight Height")
-                            HStack(spacing: 8) {
-                                Slider(value: $reading.highlightThickness, in: 0.6...4.0)
-                                    .frame(width: 120)
-                                Text(String(format: "%.1fx", reading.highlightThickness))
-                                    .font(.caption.monospacedDigit())
-                                    .foregroundStyle(.secondary)
-                                    .frame(width: 35, alignment: .trailing)
+                        if reading.readaloudHighlightMode == "background" {
+                            GridRow {
+                                label("Highlight Height")
+                                HStack(spacing: 8) {
+                                    Slider(value: $reading.highlightThickness, in: 0.6...4.0)
+                                        .frame(width: 120)
+                                    Text(String(format: "%.1fx", reading.highlightThickness))
+                                        .font(.caption.monospacedDigit())
+                                        .foregroundStyle(.secondary)
+                                        .frame(width: 35, alignment: .trailing)
+                                }
                             }
                         }
 
@@ -801,6 +801,19 @@ private struct MacReaderSettingsView: View {
                                     reading.highlightColor = "#65A8EE"
                                     reading.readaloudHighlightMode = "text"
                                 }
+                                Divider()
+                                Button("Light Theme (Underline)") {
+                                    reading.backgroundColor = kDefaultBackgroundColorLight
+                                    reading.foregroundColor = kDefaultForegroundColorLight
+                                    reading.highlightColor = "#254DF4"
+                                    reading.readaloudHighlightMode = "underline"
+                                }
+                                Button("Dark Theme (Underline)") {
+                                    reading.backgroundColor = kDefaultBackgroundColorDark
+                                    reading.foregroundColor = kDefaultForegroundColorDark
+                                    reading.highlightColor = "#65A8EE"
+                                    reading.readaloudHighlightMode = "underline"
+                                }
                             } label: {
                                 Label("Reset Colors to Theme...", systemImage: "paintpalette")
                             }
@@ -815,9 +828,10 @@ private struct MacReaderSettingsView: View {
                             Picker("", selection: $reading.userHighlightMode) {
                                 Text("Background").tag("background")
                                 Text("Text").tag("text")
+                                Text("Underline").tag("underline")
                             }
                             .pickerStyle(.segmented)
-                            .frame(width: 200)
+                            .frame(width: 260)
                             .labelsHidden()
                         }
                         GridRow {

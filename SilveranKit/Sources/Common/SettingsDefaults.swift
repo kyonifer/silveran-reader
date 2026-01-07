@@ -11,7 +11,6 @@ public let kDefaultMarginTopBottom: Double = 8
 public let kDefaultWordSpacing: Double = 0
 public let kDefaultLetterSpacing: Double = 0
 public let kDefaultHighlightThickness: Double = 1.0
-public let kDefaultReadaloudHighlightUnderline = false
 public let kDefaultEnableMarginClickNavigation = true
 public let kDefaultSingleColumnMode = true
 

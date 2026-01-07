@@ -33,11 +33,18 @@ class BookmarkManager {
   }
 
   #drawHighlight(rects, options = {}) {
-    const { color } = options;
+    const { color, writingMode } = options;
     const scale = this.#highlightThickness;
     const rectList = Array.from(rects).filter(rect => rect.width > 0 && rect.height > 0);
     if (!rectList.length) {
       return Overlayer.highlight([], { color });
+    }
+
+    if (this.#highlightMode === "underline") {
+      const avgHeight = rectList.reduce((sum, rect) => sum + rect.height, 0) / rectList.length;
+      const baseWidth = Math.max(1, avgHeight * 0.08);
+      const width = baseWidth * scale;
+      return Overlayer.underline(rectList, { color, width, writingMode });
     }
 
     const adjustedRects = rectList.map(rect => {
@@ -254,6 +261,7 @@ class BookmarkManager {
 
     this.#applyOverlayerStyle(overlayer);
 
+    const writingMode = doc.defaultView?.getComputedStyle(doc.body)?.writingMode;
     const sectionHighlightIds = [];
     for (const [id, highlight] of this.#userHighlights) {
       if (highlight.sectionIndex !== sectionIndex) continue;
@@ -269,6 +277,7 @@ class BookmarkManager {
 
         overlayer.add(id, range, (rects, options) => this.#drawHighlight(rects, options), {
           color: highlight.color,
+          writingMode,
         });
       } catch (error) {
         debugLog("BookmarkManager", `Failed to render highlight ${id}:`, error);
@@ -277,7 +286,7 @@ class BookmarkManager {
 
     const currentSpanState = this.#highlightMode === "text"
       ? `text:${sectionHighlightIds.join(",")}`
-      : "background";
+      : this.#highlightMode;
     const previousSpanState = this.#renderedSpanState.get(sectionIndex);
 
     if (forceSpanUpdate || currentSpanState !== previousSpanState) {

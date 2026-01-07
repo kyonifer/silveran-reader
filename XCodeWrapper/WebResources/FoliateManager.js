@@ -142,7 +142,6 @@ class FoliateManager {
   #foregroundColor = null;
   #customCSS = null;
   #readaloudOverlayers = new Map();
-  #readaloudHighlightUnderline = false;
   #readaloudHighlightMode = "background";
   #readaloudSpanHighlighter = new SpanHighlighter();
   #lastSpanHighlightedElement = null;
@@ -586,9 +585,6 @@ class FoliateManager {
       this.#highlightThickness = styles.highlightThickness;
       this.#bookmarkManager.setHighlightThickness(styles.highlightThickness);
     }
-    if (styles.readaloudHighlightUnderline !== undefined && styles.readaloudHighlightUnderline !== null) {
-      this.#readaloudHighlightUnderline = styles.readaloudHighlightUnderline;
-    }
     if (styles.readaloudHighlightMode !== undefined && styles.readaloudHighlightMode !== null) {
       this.#readaloudHighlightMode = styles.readaloudHighlightMode;
       this.#refreshReadaloudHighlight();
@@ -875,6 +871,7 @@ class FoliateManager {
 
     const elementChanged = this.#lastSpanHighlightedElement !== el;
     const colorChanged = this.#lastSpanHighlightedColor !== this.#highlightColor;
+    const isUnderline = this.#readaloudHighlightMode === "underline";
 
     if (this.#readaloudHighlightMode === "text") {
       overlayer.element.style.opacity = "0";
@@ -886,7 +883,7 @@ class FoliateManager {
         {
           color: this.#highlightColor,
           thickness: this.#highlightThickness,
-          underline: this.#readaloudHighlightUnderline,
+          underline: false,
           writingMode,
         },
       );
@@ -912,7 +909,7 @@ class FoliateManager {
         {
           color: this.#highlightColor,
           thickness: this.#highlightThickness,
-          underline: this.#readaloudHighlightUnderline,
+          underline: isUnderline,
           writingMode,
         },
       );

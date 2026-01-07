@@ -17,7 +17,6 @@ public final class SettingsViewModel {
     public var letterSpacing: Double = kDefaultLetterSpacing
     public var highlightColor: String? = nil
     public var highlightThickness: Double = kDefaultHighlightThickness
-    public var readaloudHighlightUnderline: Bool = kDefaultReadaloudHighlightUnderline
     public var backgroundColor: String? = nil
     public var foregroundColor: String? = nil
     public var customCSS: String? = nil
@@ -132,7 +131,6 @@ public final class SettingsViewModel {
         letterSpacing = config.reading.letterSpacing
         highlightColor = config.reading.highlightColor
         highlightThickness = config.reading.highlightThickness
-        readaloudHighlightUnderline = config.reading.readaloudHighlightUnderline
         backgroundColor = config.reading.backgroundColor
         foregroundColor = config.reading.foregroundColor
         customCSS = config.reading.customCSS
@@ -219,7 +217,6 @@ public final class SettingsViewModel {
             letterSpacing: letterSpacing,
             highlightColor: .some(highlightColor),
             highlightThickness: highlightThickness,
-            readaloudHighlightUnderline: readaloudHighlightUnderline,
             backgroundColor: .some(backgroundColor),
             foregroundColor: .some(foregroundColor),
             customCSS: .some(customCSS),

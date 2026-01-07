@@ -281,6 +281,21 @@ struct EbookPlayerSettings: View {
                     settingsVM.readaloudHighlightMode = "text"
                     settingsVM.save()
                 }
+                Divider()
+                Button("Light Theme (Underline)") {
+                    settingsVM.backgroundColor = kDefaultBackgroundColorLight
+                    settingsVM.foregroundColor = kDefaultForegroundColorLight
+                    settingsVM.highlightColor = "#254DF4"
+                    settingsVM.readaloudHighlightMode = "underline"
+                    settingsVM.save()
+                }
+                Button("Dark Theme (Underline)") {
+                    settingsVM.backgroundColor = kDefaultBackgroundColorDark
+                    settingsVM.foregroundColor = kDefaultForegroundColorDark
+                    settingsVM.highlightColor = "#65A8EE"
+                    settingsVM.readaloudHighlightMode = "underline"
+                    settingsVM.save()
+                }
             } label: {
                 Label("Reset Colors to Theme...", systemImage: "paintpalette")
             }
@@ -292,6 +307,7 @@ struct EbookPlayerSettings: View {
                 Picker("Readaloud Style", selection: $settingsVM.readaloudHighlightMode) {
                     Text("Background").tag("background")
                     Text("Text").tag("text")
+                    Text("Underline").tag("underline")
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
@@ -306,11 +322,6 @@ struct EbookPlayerSettings: View {
                 defaultHex: defaultHighlightColor
             )
 
-            Toggle("Readaloud Highlight Underline", isOn: $settingsVM.readaloudHighlightUnderline)
-                .onChange(of: settingsVM.readaloudHighlightUnderline) { _, _ in
-                    settingsVM.save()
-                }
-
             iOSColorControl(
                 label: "Background Color",
                 hex: $settingsVM.backgroundColor,
@@ -323,13 +334,15 @@ struct EbookPlayerSettings: View {
                 defaultHex: nil
             )
 
-            labeledSlider(
-                label: "Highlight Height",
-                value: $settingsVM.highlightThickness,
-                range: 0.6...4.0,
-                step: 0.05,
-                formatter: { String(format: "%.2fx", $0) }
-            )
+            if settingsVM.readaloudHighlightMode == "background" {
+                labeledSlider(
+                    label: "Highlight Height",
+                    value: $settingsVM.highlightThickness,
+                    range: 0.6...4.0,
+                    step: 0.05,
+                    formatter: { String(format: "%.2fx", $0) }
+                )
+            }
 
             Divider()
 
@@ -340,6 +353,7 @@ struct EbookPlayerSettings: View {
             Picker("Highlight Style", selection: $settingsVM.userHighlightMode) {
                 Text("Background").tag("background")
                 Text("Text").tag("text")
+                Text("Underline").tag("underline")
             }
             .pickerStyle(.segmented)
             .onChange(of: settingsVM.userHighlightMode) { _, _ in
@@ -463,9 +477,14 @@ struct EbookPlayerSettings: View {
         settingsVM.letterSpacing = kDefaultLetterSpacing
         settingsVM.highlightColor = nil
         settingsVM.highlightThickness = kDefaultHighlightThickness
-        settingsVM.readaloudHighlightUnderline = kDefaultReadaloudHighlightUnderline
         settingsVM.userHighlightMode = kDefaultUserHighlightMode
         settingsVM.readaloudHighlightMode = kDefaultReadaloudHighlightMode
+        settingsVM.userHighlightColor1 = kDefaultUserHighlightColor1
+        settingsVM.userHighlightColor2 = kDefaultUserHighlightColor2
+        settingsVM.userHighlightColor3 = kDefaultUserHighlightColor3
+        settingsVM.userHighlightColor4 = kDefaultUserHighlightColor4
+        settingsVM.userHighlightColor5 = kDefaultUserHighlightColor5
+        settingsVM.userHighlightColor6 = kDefaultUserHighlightColor6
         settingsVM.backgroundColor = nil
         settingsVM.foregroundColor = nil
         settingsVM.enableMarginClickNavigation = kDefaultEnableMarginClickNavigation

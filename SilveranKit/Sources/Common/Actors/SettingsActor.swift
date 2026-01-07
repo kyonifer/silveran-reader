@@ -36,7 +36,6 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
         public var letterSpacing: Double
         public var highlightColor: String?
         public var highlightThickness: Double
-        public var readaloudHighlightUnderline: Bool
         public var backgroundColor: String?
         public var foregroundColor: String?
         public var customCSS: String?
@@ -61,7 +60,6 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
             letterSpacing: Double = kDefaultLetterSpacing,
             highlightColor: String? = nil,
             highlightThickness: Double = kDefaultHighlightThickness,
-            readaloudHighlightUnderline: Bool = kDefaultReadaloudHighlightUnderline,
             backgroundColor: String? = nil,
             foregroundColor: String? = nil,
             customCSS: String? = nil,
@@ -89,7 +87,6 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
             self.letterSpacing = letterSpacing
             self.highlightColor = highlightColor
             self.highlightThickness = highlightThickness
-            self.readaloudHighlightUnderline = readaloudHighlightUnderline
             self.backgroundColor = backgroundColor
             self.foregroundColor = foregroundColor
             self.singleColumnMode = singleColumnMode ?? kDefaultSingleColumnMode
@@ -120,7 +117,6 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
             letterSpacing = (try? container?.decode(Double.self, forKey: .letterSpacing)) ?? kDefaultLetterSpacing
             highlightColor = try? container?.decode(String.self, forKey: .highlightColor)
             highlightThickness = (try? container?.decode(Double.self, forKey: .highlightThickness)) ?? kDefaultHighlightThickness
-            readaloudHighlightUnderline = (try? container?.decode(Bool.self, forKey: .readaloudHighlightUnderline)) ?? kDefaultReadaloudHighlightUnderline
             backgroundColor = try? container?.decode(String.self, forKey: .backgroundColor)
             foregroundColor = try? container?.decode(String.self, forKey: .foregroundColor)
             customCSS = try? container?.decode(String.self, forKey: .customCSS)
@@ -133,17 +129,30 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
             userHighlightColor5 = (try? container?.decode(String.self, forKey: .userHighlightColor5)) ?? kDefaultUserHighlightColor5
             userHighlightColor6 = (try? container?.decode(String.self, forKey: .userHighlightColor6)) ?? kDefaultUserHighlightColor6
             userHighlightMode = (try? container?.decode(String.self, forKey: .userHighlightMode)) ?? kDefaultUserHighlightMode
-            readaloudHighlightMode = (try? container?.decode(String.self, forKey: .readaloudHighlightMode)) ?? kDefaultReadaloudHighlightMode
+
+            // Migrate from old readaloudHighlightUnderline boolean to new mode value
+            let legacyContainer = try? decoder.container(keyedBy: LegacyCodingKeys.self)
+            let legacyUnderline = (try? legacyContainer?.decode(Bool.self, forKey: .readaloudHighlightUnderline)) ?? false
+            let storedMode = (try? container?.decode(String.self, forKey: .readaloudHighlightMode)) ?? kDefaultReadaloudHighlightMode
+            if legacyUnderline && storedMode == "background" {
+                readaloudHighlightMode = "underline"
+            } else {
+                readaloudHighlightMode = storedMode
+            }
         }
 
         private enum CodingKeys: String, CodingKey {
             case fontSize, fontFamily, lineSpacing, marginLeftRight, marginTopBottom
             case wordSpacing, letterSpacing, highlightColor, highlightThickness
-            case readaloudHighlightUnderline, backgroundColor, foregroundColor
+            case backgroundColor, foregroundColor
             case customCSS, enableMarginClickNavigation, singleColumnMode
             case userHighlightColor1, userHighlightColor2, userHighlightColor3
             case userHighlightColor4, userHighlightColor5, userHighlightColor6
             case userHighlightMode, readaloudHighlightMode
+        }
+
+        private enum LegacyCodingKeys: String, CodingKey {
+            case readaloudHighlightUnderline
         }
     }
 
@@ -372,7 +381,6 @@ public actor SettingsActor {
         letterSpacing: Double? = nil,
         highlightColor: String?? = nil,
         highlightThickness: Double? = nil,
-        readaloudHighlightUnderline: Bool? = nil,
         backgroundColor: String?? = nil,
         foregroundColor: String?? = nil,
         customCSS: String?? = nil,
@@ -424,9 +432,6 @@ public actor SettingsActor {
         if let letterSpacing { updated.reading.letterSpacing = letterSpacing }
         if let highlightColor { updated.reading.highlightColor = highlightColor }
         if let highlightThickness { updated.reading.highlightThickness = highlightThickness }
-        if let readaloudHighlightUnderline {
-            updated.reading.readaloudHighlightUnderline = readaloudHighlightUnderline
-        }
         if let backgroundColor { updated.reading.backgroundColor = backgroundColor }
         if let foregroundColor { updated.reading.foregroundColor = foregroundColor }
         if let customCSS { updated.reading.customCSS = customCSS }
