@@ -10,10 +10,33 @@ public final class TVSettingsViewModel {
     var password: String = ""
     var connectionError: String?
     var isTesting: Bool = false
+    var fontFamily: String = kDefaultFontFamily
+    var customFontFamilies: [CustomFontFamily] = []
 
     init() {
         Task {
             await loadCredentials()
+            await loadSettings()
+            await loadCustomFonts()
+        }
+    }
+
+    func loadSettings() async {
+        let config = await SettingsActor.shared.config
+        fontFamily = config.reading.fontFamily
+    }
+
+    func loadCustomFonts() async {
+        await CustomFontsActor.shared.refreshFonts()
+        customFontFamilies = await CustomFontsActor.shared.availableFamilies
+    }
+
+    func updateFontFamily(_ newValue: String) async {
+        fontFamily = newValue
+        do {
+            try await SettingsActor.shared.updateConfig(fontFamily: newValue)
+        } catch {
+            debugLog("[TVSettingsViewModel] Failed to save font setting: \(error)")
         }
     }
 

@@ -79,6 +79,29 @@ struct TVSettingsView: View {
                         }
                     }
                 }
+
+                Section("Display") {
+                    Picker("Font", selection: Binding(
+                        get: { settingsViewModel.fontFamily },
+                        set: { newValue in
+                            Task {
+                                await settingsViewModel.updateFontFamily(newValue)
+                            }
+                        }
+                    )) {
+                        Text("System Default").tag("System Default")
+                        Text("Serif").tag("serif")
+                        Text("Sans-Serif").tag("sans-serif")
+                        Text("Monospace").tag("monospace")
+
+                        if !settingsViewModel.customFontFamilies.isEmpty {
+                            Divider()
+                            ForEach(settingsViewModel.customFontFamilies) { family in
+                                Text(family.name).tag(family.name)
+                            }
+                        }
+                    }
+                }
             }
             .toolbar(.hidden, for: .navigationBar)
         }

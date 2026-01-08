@@ -16,6 +16,7 @@ struct TVPlayerView: View {
     @FocusState private var focusedControl: FocusedControl?
     @FocusState private var isBackgroundFocused: Bool
     @State private var lastFocusedControl: FocusedControl = .playPause
+    @State private var fontFamily: String = kDefaultFontFamily
 
     @Environment(\.dismiss) private var dismiss
 
@@ -25,6 +26,7 @@ struct TVPlayerView: View {
         .onAppear {
             Task {
                 await viewModel.loadBook(book)
+                fontFamily = await SettingsActor.shared.config.reading.fontFamily
             }
             resetControlsTimer()
             loadCoverImage()
@@ -227,6 +229,7 @@ struct TVPlayerView: View {
             if !viewModel.previousLineText.isEmpty {
                 Text(viewModel.previousLineText)
                     .font(.title2)
+                    .fontDesign(fontDesign)
                     .foregroundStyle(.white.opacity(0.4))
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
@@ -235,6 +238,7 @@ struct TVPlayerView: View {
             if !viewModel.currentLineText.isEmpty {
                 Text(viewModel.currentLineText)
                     .font(.largeTitle)
+                    .fontDesign(fontDesign)
                     .fontWeight(.medium)
                     .foregroundStyle(.white)
                     .multilineTextAlignment(.center)
@@ -244,6 +248,7 @@ struct TVPlayerView: View {
             if !viewModel.nextLineText.isEmpty {
                 Text(viewModel.nextLineText)
                     .font(.title2)
+                    .fontDesign(fontDesign)
                     .foregroundStyle(.white.opacity(0.4))
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
@@ -253,6 +258,19 @@ struct TVPlayerView: View {
         .padding(.horizontal, showControls ? 40 : 80)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .animation(.easeInOut(duration: 0.3), value: showControls)
+    }
+
+    private var fontDesign: Font.Design? {
+        switch fontFamily {
+        case "System Default", "sans-serif":
+            return .default
+        case "serif":
+            return .serif
+        case "monospace":
+            return .monospaced
+        default:
+            return nil
+        }
     }
 
     private var statsOverlay: some View {
