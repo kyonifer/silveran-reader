@@ -56,7 +56,7 @@ struct TVPlayerView: View {
 
             Color.clear
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .focusable(!showControls)
+                .focusable()
                 .focused($isBackgroundFocused)
 
             VStack(spacing: 0) {
@@ -276,7 +276,7 @@ struct TVPlayerView: View {
                     showChapterList = true
                 } label: {
                     Image(systemName: "list.bullet")
-                        .font(.title2)
+                        .font(.system(size: 26))
                 }
                 .buttonStyle(PlayerControlButtonStyle())
 
@@ -284,7 +284,7 @@ struct TVPlayerView: View {
                     viewModel.previousChapter()
                 } label: {
                     Image(systemName: "backward.end.fill")
-                        .font(.system(size: 20))
+                        .font(.system(size: 26))
                 }
                 .buttonStyle(PlayerControlButtonStyle())
 
@@ -292,7 +292,7 @@ struct TVPlayerView: View {
                     viewModel.skipBackward()
                 } label: {
                     Image(systemName: "gobackward.30")
-                        .font(.system(size: 24))
+                        .font(.system(size: 30))
                 }
                 .buttonStyle(PlayerControlButtonStyle())
 
@@ -310,7 +310,7 @@ struct TVPlayerView: View {
                     viewModel.skipForward()
                 } label: {
                     Image(systemName: "goforward.30")
-                        .font(.system(size: 24))
+                        .font(.system(size: 30))
                 }
                 .buttonStyle(PlayerControlButtonStyle())
 
@@ -318,7 +318,7 @@ struct TVPlayerView: View {
                     viewModel.nextChapter()
                 } label: {
                     Image(systemName: "forward.end.fill")
-                        .font(.system(size: 20))
+                        .font(.system(size: 26))
                 }
                 .buttonStyle(PlayerControlButtonStyle())
 
@@ -326,7 +326,7 @@ struct TVPlayerView: View {
                     showSpeedPicker = true
                 } label: {
                     Text("\(viewModel.playbackRate, specifier: "%.1f")x")
-                        .font(.callout)
+                        .font(.system(size: 26))
                 }
                 .buttonStyle(PlayerControlButtonStyle())
             }
@@ -472,7 +472,7 @@ private struct PlayerControlButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .foregroundStyle(isFocused ? .black : .white)
-            .padding(isLarge ? 24 : 20)
+            .padding(isLarge ? 24 : 24)
             .background(
                 Circle()
                     .fill(isFocused ? .white : .white.opacity(0.2))
