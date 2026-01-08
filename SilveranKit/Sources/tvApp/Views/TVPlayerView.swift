@@ -15,6 +15,7 @@ struct TVPlayerView: View {
     @State private var cachedCoverImage: Image?
     @FocusState private var isProgressBarFocused: Bool
     @FocusState private var isPlayButtonFocused: Bool
+    @FocusState private var isBackgroundFocused: Bool
 
     @Environment(\.dismiss) private var dismiss
 
@@ -53,6 +54,11 @@ struct TVPlayerView: View {
             .opacity(showControls ? 1 : 0)
             .animation(.easeInOut(duration: 0.3), value: showControls)
 
+            Color.clear
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .focusable(!showControls)
+                .focused($isBackgroundFocused)
+
             VStack(spacing: 0) {
                 HStack(alignment: .center, spacing: 0) {
                     VStack {
@@ -86,6 +92,13 @@ struct TVPlayerView: View {
         .onChange(of: mediaViewModel.coverState(for: book, variant: mediaViewModel.coverVariant(for: book)).image) { _, newImage in
             if let newImage, cachedCoverImage == nil {
                 cachedCoverImage = newImage
+            }
+        }
+        .onChange(of: showControls) { _, visible in
+            if visible {
+                isPlayButtonFocused = true
+            } else {
+                isBackgroundFocused = true
             }
         }
         .onDisappear {
@@ -271,7 +284,7 @@ struct TVPlayerView: View {
                     viewModel.previousChapter()
                 } label: {
                     Image(systemName: "backward.end.fill")
-                        .font(.title3)
+                        .font(.system(size: 20))
                 }
                 .buttonStyle(PlayerControlButtonStyle())
 
@@ -279,12 +292,13 @@ struct TVPlayerView: View {
                     viewModel.skipBackward()
                 } label: {
                     Image(systemName: "gobackward.30")
-                        .font(.title2)
+                        .font(.system(size: 24))
                 }
                 .buttonStyle(PlayerControlButtonStyle())
 
                 Button {
                     viewModel.playPause()
+                    showControlsTemporarily()
                 } label: {
                     Image(systemName: viewModel.isPlaying ? "pause.fill" : "play.fill")
                         .font(.system(size: 80))
@@ -296,7 +310,7 @@ struct TVPlayerView: View {
                     viewModel.skipForward()
                 } label: {
                     Image(systemName: "goforward.30")
-                        .font(.title2)
+                        .font(.system(size: 24))
                 }
                 .buttonStyle(PlayerControlButtonStyle())
 
@@ -304,7 +318,7 @@ struct TVPlayerView: View {
                     viewModel.nextChapter()
                 } label: {
                     Image(systemName: "forward.end.fill")
-                        .font(.title3)
+                        .font(.system(size: 20))
                 }
                 .buttonStyle(PlayerControlButtonStyle())
 
@@ -458,7 +472,7 @@ private struct PlayerControlButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .foregroundStyle(isFocused ? .black : .white)
-            .padding(isLarge ? 24 : 16)
+            .padding(isLarge ? 24 : 20)
             .background(
                 Circle()
                     .fill(isFocused ? .white : .white.opacity(0.2))
