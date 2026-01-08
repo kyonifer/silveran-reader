@@ -166,7 +166,7 @@ private struct TVHomeSectionView: View {
                 .padding(.horizontal, 60)
 
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 30) {
+                HStack(spacing: 20) {
                     ForEach(books, id: \.uuid) { book in
                         NavigationLink(value: book) {
                             TVBookCardView(
@@ -179,7 +179,7 @@ private struct TVHomeSectionView: View {
                     }
                 }
                 .padding(.horizontal, 60)
-                .padding(.vertical, 20)
+                .padding(.vertical, 35)
             }
         }
     }

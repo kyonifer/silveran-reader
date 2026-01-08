@@ -55,9 +55,9 @@ struct TVLibraryView: View {
         return ScrollView {
             LazyVGrid(
                 columns: [
-                    GridItem(.adaptive(minimum: 260, maximum: 320), spacing: 30)
+                    GridItem(.adaptive(minimum: 240, maximum: 260), spacing: 20)
                 ],
-                spacing: 30
+                spacing: 35
             ) {
                 ForEach(books, id: \.uuid) { book in
                     NavigationLink(value: book) {
