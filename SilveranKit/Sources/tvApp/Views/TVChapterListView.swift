@@ -25,8 +25,8 @@ struct TVChapterListView: View {
                         }
                     }
                 }
-                // Workaround: plain/glass button styles cause blurred text on focus in tvOS Lists
-                .buttonStyle(.bordered)
+                // Workaround: default button style causes blurred text on focus in tvOS Lists
+                .buttonStyle(.plain)
             }
             .navigationTitle("Chapters")
         }
