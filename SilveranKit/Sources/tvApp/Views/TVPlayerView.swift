@@ -13,73 +13,14 @@ struct TVPlayerView: View {
     @State private var isScrubbing = false
     @State private var scrubProgress: Double = 0
     @State private var cachedCoverImage: Image?
-    @FocusState private var isProgressBarFocused: Bool
-    @FocusState private var isPlayButtonFocused: Bool
+    @FocusState private var focusedControl: FocusedControl?
     @FocusState private var isBackgroundFocused: Bool
+    @State private var lastFocusedControl: FocusedControl = .playPause
 
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        ZStack {
-            backgroundView
-
-
-            subtitleView
-                .padding(.horizontal, 60)
-
-            statsOverlay
-                .opacity(showControls ? 0 : 1)
-                .animation(.easeInOut(duration: 0.3), value: showControls)
-
-            VStack(spacing: 0) {
-                LinearGradient(
-                    colors: [.black, .black.opacity(0.8), .clear],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .frame(height: 350)
-                .allowsHitTesting(false)
-
-                Spacer()
-
-                LinearGradient(
-                    colors: [.clear, .black.opacity(0.8), .black],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .frame(height: 300)
-                .allowsHitTesting(false)
-            }
-            .ignoresSafeArea()
-            .opacity(showControls ? 1 : 0)
-            .animation(.easeInOut(duration: 0.3), value: showControls)
-
-            Color.clear
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .focusable()
-                .focused($isBackgroundFocused)
-
-            VStack(spacing: 0) {
-                HStack(alignment: .center, spacing: 0) {
-                    VStack {
-                        headerView
-                        Spacer()
-                    }
-                    .frame(maxWidth: .infinity)
-
-                    coverView
-                        .padding(.leading, 40)
-                }
-
-                Spacer()
-
-                controlsView
-            }
-            .padding(60)
-            .opacity(showControls ? 1 : 0)
-            .disabled(!showControls)
-            .animation(.easeInOut(duration: 0.3), value: showControls)
-        }
+        playerContent
         .ignoresSafeArea()
         .onAppear {
             Task {
@@ -87,18 +28,35 @@ struct TVPlayerView: View {
             }
             resetControlsTimer()
             loadCoverImage()
-            isPlayButtonFocused = true
+            focusedControl = .playPause
         }
-        .onChange(of: mediaViewModel.coverState(for: book, variant: mediaViewModel.coverVariant(for: book)).image) { _, newImage in
-            if let newImage, cachedCoverImage == nil {
-                cachedCoverImage = newImage
+        .onChange(of: focusedControl) { _, newValue in
+            guard showControls else { return }
+            if let newValue {
+                lastFocusedControl = newValue
+                showControlsTemporarily()
+            } else {
+                DispatchQueue.main.async {
+                    if showControls, focusedControl == nil {
+                        focusedControl = lastFocusedControl
+                    }
+                }
             }
         }
         .onChange(of: showControls) { _, visible in
             if visible {
-                isPlayButtonFocused = true
+                isBackgroundFocused = false
+                if focusedControl == nil {
+                    focusedControl = lastFocusedControl
+                }
             } else {
+                focusedControl = nil
                 isBackgroundFocused = true
+            }
+        }
+        .onChange(of: mediaViewModel.coverState(for: book, variant: mediaViewModel.coverVariant(for: book)).image) { _, newImage in
+            if let newImage, cachedCoverImage == nil {
+                cachedCoverImage = newImage
             }
         }
         .onDisappear {
@@ -112,9 +70,6 @@ struct TVPlayerView: View {
                 viewModel.playPause()
             }
             showControlsTemporarily()
-        }
-        .onMoveCommand { direction in
-            handleMoveCommand(direction)
         }
         .onExitCommand {
             if isScrubbing {
@@ -147,6 +102,88 @@ struct TVPlayerView: View {
         } message: {
             Text(viewModel.serverPositionDescription)
         }
+    }
+
+    private var playerContent: some View {
+        GeometryReader { geometry in
+            ZStack {
+                backgroundView
+
+                subtitleView
+                    .padding(.horizontal, 60)
+                    .frame(
+                        width: geometry.size.width,
+                        height: geometry.size.height,
+                        alignment: .center
+                    )
+
+                statsOverlay
+                    .opacity(showControls ? 0 : 1)
+                    .animation(.easeInOut(duration: 0.3), value: showControls)
+
+                VStack(spacing: 0) {
+                    LinearGradient(
+                        colors: [.black, .black.opacity(0.8), .clear],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .frame(height: 350)
+                    .allowsHitTesting(false)
+
+                    Spacer()
+
+                    LinearGradient(
+                        colors: [.clear, .black.opacity(0.8), .black],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .frame(height: 300)
+                    .allowsHitTesting(false)
+                }
+                .ignoresSafeArea()
+                .opacity(showControls ? 1 : 0)
+                .animation(.easeInOut(duration: 0.3), value: showControls)
+
+                if !showControls {
+                    Color.clear
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .focusable()
+                        .focused($isBackgroundFocused)
+                        .onMoveCommand { direction in
+                            handleMoveCommand(direction)
+                        }
+                }
+
+                headerOverlay
+                controlsOverlay
+            }
+            .frame(width: geometry.size.width, height: geometry.size.height)
+        }
+    }
+
+    private var headerOverlay: some View {
+        ZStack {
+            headerView
+                .padding(60)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+
+            coverView
+                .padding(.trailing, 60)
+                .offset(y: -60)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+        }
+        .opacity(showControls ? 1 : 0)
+        .animation(.easeInOut(duration: 0.3), value: showControls)
+        .allowsHitTesting(false)
+    }
+
+    private var controlsOverlay: some View {
+        controlsView
+            .padding(60)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+            .opacity(showControls ? 1 : 0)
+            .disabled(!showControls)
+            .animation(.easeInOut(duration: 0.3), value: showControls)
     }
 
     private var backgroundView: some View {
@@ -274,27 +311,33 @@ struct TVPlayerView: View {
             HStack(spacing: 60) {
                 Button {
                     showChapterList = true
+                    showControlsTemporarily()
                 } label: {
                     Image(systemName: "list.bullet")
                         .font(.system(size: 26))
                 }
                 .buttonStyle(PlayerControlButtonStyle())
+                .focused($focusedControl, equals: .chapterList)
 
                 Button {
                     viewModel.previousChapter()
+                    showControlsTemporarily()
                 } label: {
                     Image(systemName: "backward.end.fill")
                         .font(.system(size: 26))
                 }
                 .buttonStyle(PlayerControlButtonStyle())
+                .focused($focusedControl, equals: .previousChapter)
 
                 Button {
                     viewModel.skipBackward()
+                    showControlsTemporarily()
                 } label: {
                     Image(systemName: "gobackward.30")
                         .font(.system(size: 30))
                 }
                 .buttonStyle(PlayerControlButtonStyle())
+                .focused($focusedControl, equals: .skipBackward)
 
                 Button {
                     viewModel.playPause()
@@ -304,31 +347,37 @@ struct TVPlayerView: View {
                         .font(.system(size: 80))
                 }
                 .buttonStyle(PlayerControlButtonStyle(isLarge: true))
-                .focused($isPlayButtonFocused)
+                .focused($focusedControl, equals: .playPause)
 
                 Button {
                     viewModel.skipForward()
+                    showControlsTemporarily()
                 } label: {
                     Image(systemName: "goforward.30")
                         .font(.system(size: 30))
                 }
                 .buttonStyle(PlayerControlButtonStyle())
+                .focused($focusedControl, equals: .skipForward)
 
                 Button {
                     viewModel.nextChapter()
+                    showControlsTemporarily()
                 } label: {
                     Image(systemName: "forward.end.fill")
                         .font(.system(size: 26))
                 }
                 .buttonStyle(PlayerControlButtonStyle())
+                .focused($focusedControl, equals: .nextChapter)
 
                 Button {
                     showSpeedPicker = true
+                    showControlsTemporarily()
                 } label: {
                     Text("\(viewModel.playbackRate, specifier: "%.1f")x")
                         .font(.system(size: 26))
                 }
                 .buttonStyle(PlayerControlButtonStyle())
+                .focused($focusedControl, equals: .speed)
             }
         }
         .transition(.opacity)
@@ -337,7 +386,7 @@ struct TVPlayerView: View {
     private var progressBar: some View {
         let displayProgress = isScrubbing ? scrubProgress : viewModel.chapterProgress
 
-        return Button {
+        let progressButton = Button {
             if isScrubbing {
                 seekToChapterProgress(scrubProgress)
                 isScrubbing = false
@@ -345,7 +394,7 @@ struct TVPlayerView: View {
                 isScrubbing = true
                 scrubProgress = viewModel.chapterProgress
             }
-            resetControlsTimer()
+            showControlsTemporarily()
         } label: {
             VStack(spacing: 8) {
                 Capsule()
@@ -376,7 +425,15 @@ struct TVPlayerView: View {
             .padding(.horizontal, 24)
         }
         .buttonStyle(ProgressBarButtonStyle())
-        .focused($isProgressBarFocused)
+        .focused($focusedControl, equals: .progressBar)
+        if isScrubbing {
+            return AnyView(
+                progressButton.onMoveCommand { direction in
+                    handleMoveCommand(direction)
+                }
+            )
+        }
+        return AnyView(progressButton)
     }
 
     private func formatScrubTime(_ progress: Double) -> String {
@@ -440,7 +497,11 @@ struct TVPlayerView: View {
     }
 
     private func showControlsTemporarily() {
-        showControls = true
+        if !showControls {
+            showControls = true
+        } else if focusedControl == nil {
+            focusedControl = lastFocusedControl
+        }
         resetControlsTimer()
     }
 
@@ -449,7 +510,7 @@ struct TVPlayerView: View {
         controlsHideTask = Task {
             try? await Task.sleep(for: .seconds(5))
             guard !Task.isCancelled else { return }
-            if viewModel.isPlaying {
+            if viewModel.isPlaying && !isScrubbing {
                 showControls = false
             }
         }
@@ -463,6 +524,18 @@ struct TVPlayerView: View {
             cachedCoverImage = image
         }
     }
+
+}
+
+private enum FocusedControl: Hashable {
+    case progressBar
+    case chapterList
+    case previousChapter
+    case skipBackward
+    case playPause
+    case skipForward
+    case nextChapter
+    case speed
 }
 
 private struct PlayerControlButtonStyle: ButtonStyle {

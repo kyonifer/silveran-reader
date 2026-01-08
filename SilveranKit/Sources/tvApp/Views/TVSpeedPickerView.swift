@@ -25,6 +25,8 @@ struct TVSpeedPickerView: View {
                         }
                     }
                 }
+                // Workaround: plain/glass button styles cause blurred text on focus in tvOS Lists
+                .buttonStyle(.bordered)
             }
             .navigationTitle("Playback Speed")
         }
