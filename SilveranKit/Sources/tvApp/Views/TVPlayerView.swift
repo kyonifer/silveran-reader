@@ -225,13 +225,13 @@ struct TVPlayerView: View {
     }
 
     private var subtitleView: some View {
-        VStack(spacing: 20) {
+        VStack(alignment: .leading, spacing: 20) {
             if !viewModel.previousLineText.isEmpty {
                 Text(viewModel.previousLineText)
                     .font(.title2)
                     .fontDesign(fontDesign)
                     .foregroundStyle(.white.opacity(0.4))
-                    .multilineTextAlignment(.center)
+                    .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -241,7 +241,7 @@ struct TVPlayerView: View {
                     .fontDesign(fontDesign)
                     .fontWeight(.medium)
                     .foregroundStyle(.white)
-                    .multilineTextAlignment(.center)
+                    .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -250,7 +250,7 @@ struct TVPlayerView: View {
                     .font(.title2)
                     .fontDesign(fontDesign)
                     .foregroundStyle(.white.opacity(0.4))
-                    .multilineTextAlignment(.center)
+                    .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
