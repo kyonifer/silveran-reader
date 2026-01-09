@@ -348,10 +348,10 @@ struct TVPlayerView: View {
                 .focused($focusedControl, equals: .previousChapter)
 
                 Button {
-                    viewModel.skipBackward()
+                    viewModel.previousSentence()
                     showControlsTemporarily()
                 } label: {
-                    Image(systemName: "gobackward.30")
+                    Image(systemName: "gobackward")
                         .font(.system(size: 30))
                 }
                 .buttonStyle(PlayerControlButtonStyle())
@@ -368,10 +368,10 @@ struct TVPlayerView: View {
                 .focused($focusedControl, equals: .playPause)
 
                 Button {
-                    viewModel.skipForward()
+                    viewModel.nextSentence()
                     showControlsTemporarily()
                 } label: {
-                    Image(systemName: "goforward.30")
+                    Image(systemName: "goforward")
                         .font(.system(size: 30))
                 }
                 .buttonStyle(PlayerControlButtonStyle())
@@ -548,7 +548,9 @@ struct TVPlayerView: View {
         animated: Bool = true,
         consumeForce: Bool = true
     ) {
-        guard let targetIndex = viewModel.scrollTargetIndex(for: viewModel.currentEntryIndex) else {
+        guard let targetIndex = viewModel.scrollTargetIndex(
+            for: viewModel.currentEntryIndex
+        ) else {
             return
         }
         let shouldAnimate = animated && !forceInstantScroll

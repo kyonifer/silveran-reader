@@ -152,18 +152,8 @@ public final class SMILTextPlaybackViewModel: NSObject {
     }
 
     public func scrollTargetIndex(for entryIndex: Int) -> Int? {
-        guard !allChapterLines.isEmpty else { return nil }
-        var previousIndex: Int? = nil
-        for line in allChapterLines {
-            if line.index >= entryIndex {
-                guard let prev = previousIndex else { return line.index }
-                let prevDistance = entryIndex - prev
-                let nextDistance = line.index - entryIndex
-                return prevDistance <= nextDistance ? prev : line.index
-            }
-            previousIndex = line.index
-        }
-        return allChapterLines.last?.index
+        guard entryIndex >= 0, entryIndex < allChapterLines.count else { return nil }
+        return entryIndex
     }
 
     // MARK: - Initialization
@@ -337,6 +327,69 @@ public final class SMILTextPlaybackViewModel: NSObject {
         }
     }
 
+    public func nextSentence() {
+        hasUserProgress = true
+        Task { @MainActor in
+            let position = await SMILPlayerActor.shared.getCurrentPosition()
+            let structure = await SMILPlayerActor.shared.getBookStructure()
+            guard position.sectionIndex < structure.count else { return }
+            let section = structure[position.sectionIndex]
+            var targetSectionIndex = position.sectionIndex
+            var targetEntryIndex = position.entryIndex + 1
+
+            if targetEntryIndex >= section.mediaOverlay.count {
+                var nextSectionIndex = position.sectionIndex + 1
+                while nextSectionIndex < structure.count
+                    && structure[nextSectionIndex].mediaOverlay.isEmpty
+                {
+                    nextSectionIndex += 1
+                }
+                guard nextSectionIndex < structure.count else { return }
+                targetSectionIndex = nextSectionIndex
+                targetEntryIndex = 0
+            }
+            try? await SMILPlayerActor.shared.seekToEntry(
+                sectionIndex: targetSectionIndex,
+                entryIndex: targetEntryIndex
+            )
+        }
+    }
+
+    public func previousSentence() {
+        hasUserProgress = true
+        Task { @MainActor in
+            let position = await SMILPlayerActor.shared.getCurrentPosition()
+            let structure = await SMILPlayerActor.shared.getBookStructure()
+            guard position.sectionIndex < structure.count else { return }
+            var targetSectionIndex = position.sectionIndex
+            var targetEntryIndex = position.entryIndex - 1
+
+            if targetEntryIndex < 0 {
+                var prevSectionIndex = position.sectionIndex - 1
+                while prevSectionIndex >= 0
+                    && structure[prevSectionIndex].mediaOverlay.isEmpty
+                {
+                    prevSectionIndex -= 1
+                }
+                guard prevSectionIndex >= 0 else { return }
+                let prevSection = structure[prevSectionIndex]
+                guard let lastEntryIndex = prevSection.mediaOverlay.indices.last else { return }
+                targetSectionIndex = prevSectionIndex
+                targetEntryIndex = lastEntryIndex
+            }
+            let targetSection = structure[targetSectionIndex]
+            guard targetEntryIndex >= 0,
+                targetEntryIndex < targetSection.mediaOverlay.count
+            else {
+                return
+            }
+            try? await SMILPlayerActor.shared.seekToEntry(
+                sectionIndex: targetSectionIndex,
+                entryIndex: targetEntryIndex
+            )
+        }
+    }
+
     public func setPlaybackRate(_ rate: Double) {
         playbackRate = rate
         Task { @SMILPlayerActor in
@@ -434,7 +487,11 @@ public final class SMILTextPlaybackViewModel: NSObject {
 
         hasUserProgress = true
         do {
+            let wasPlaying = isPlaying
             try await SMILPlayerActor.shared.seekToEntry(sectionIndex: sectionIndex, entryIndex: 0)
+            if wasPlaying {
+                try? await SMILPlayerActor.shared.play()
+            }
         } catch {
             debugLog("[\(logPrefix)] Failed to jump to chapter: \(error)")
         }
@@ -544,9 +601,7 @@ public final class SMILTextPlaybackViewModel: NSObject {
 
         var lines: [ChapterLine] = []
         for (index, text) in chapterTextByIndex.enumerated() {
-            if !text.isEmpty {
-                lines.append(ChapterLine(index: index, text: text))
-            }
+            lines.append(ChapterLine(index: index, text: text))
         }
         allChapterLines = lines
     }
