@@ -378,6 +378,9 @@ private struct SpeedPickerSheet: View {
         List {
             ForEach(speeds, id: \.self) { speed in
                 Button {
+                    Task {
+                        try? await SettingsActor.shared.updateConfig(defaultPlaybackSpeed: speed)
+                    }
                     onSelect(speed)
                 } label: {
                     HStack {
