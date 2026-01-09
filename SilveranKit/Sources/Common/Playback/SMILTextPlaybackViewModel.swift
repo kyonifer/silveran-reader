@@ -315,6 +315,7 @@ public final class SMILTextPlaybackViewModel: NSObject {
     // MARK: - Playback Controls
 
     public func playPause() {
+        guard !isLoadingPosition else { return }
         hasUserProgress = true
         Task { @SMILPlayerActor in
             try? await SMILPlayerActor.shared.togglePlayPause()
@@ -322,6 +323,7 @@ public final class SMILTextPlaybackViewModel: NSObject {
     }
 
     public func skipForward(seconds: Double = 30) {
+        guard !isLoadingPosition else { return }
         hasUserProgress = true
         Task { @SMILPlayerActor in
             await SMILPlayerActor.shared.skipForward(seconds: seconds)
@@ -329,6 +331,7 @@ public final class SMILTextPlaybackViewModel: NSObject {
     }
 
     public func skipBackward(seconds: Double = 30) {
+        guard !isLoadingPosition else { return }
         hasUserProgress = true
         Task { @SMILPlayerActor in
             await SMILPlayerActor.shared.skipBackward(seconds: seconds)
@@ -336,6 +339,7 @@ public final class SMILTextPlaybackViewModel: NSObject {
     }
 
     public func nextSentence() {
+        guard !isLoadingPosition else { return }
         hasUserProgress = true
         sentenceNavigationTask?.cancel()
         sentenceNavigationTask = Task { @MainActor in
@@ -368,6 +372,7 @@ public final class SMILTextPlaybackViewModel: NSObject {
     }
 
     public func previousSentence() {
+        guard !isLoadingPosition else { return }
         hasUserProgress = true
         sentenceNavigationTask?.cancel()
         sentenceNavigationTask = Task { @MainActor in
@@ -443,6 +448,7 @@ public final class SMILTextPlaybackViewModel: NSObject {
     #endif
 
     public func nextChapter() {
+        guard !isLoadingPosition else { return }
         let nextIndex = currentSectionIndex + 1
         guard nextIndex < bookStructure.count else { return }
 
@@ -459,6 +465,7 @@ public final class SMILTextPlaybackViewModel: NSObject {
     }
 
     public func previousChapter() {
+        guard !isLoadingPosition else { return }
         let restartThreshold = 3.0
         if currentTime > restartThreshold {
             hasUserProgress = true

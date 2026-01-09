@@ -125,6 +125,12 @@ struct TVPlayerView: View {
                         alignment: .center
                     )
 
+                if viewModel.isLoadingPosition || viewModel.allChapterLines.isEmpty {
+                    ProgressView()
+                        .scaleEffect(2)
+                        .tint(.white)
+                }
+
                 statsOverlay
                     .opacity(showControls ? 0 : 1)
                     .animation(.easeInOut(duration: 0.3), value: showControls)
