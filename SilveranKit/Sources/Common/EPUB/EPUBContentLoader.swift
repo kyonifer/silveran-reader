@@ -51,6 +51,26 @@ public enum EPUBContentLoader {
         }
     }
 
+    public static func extractElementsText(
+        from html: String,
+        elementIds: [String]
+    ) -> [String: String] {
+        do {
+            let doc = try SwiftSoup.parse(html)
+            var results: [String: String] = [:]
+            for elementId in Set(elementIds) {
+                guard let element = try doc.getElementById(elementId) else { continue }
+                let text = try element.text()
+                if !text.isEmpty {
+                    results[elementId] = text
+                }
+            }
+            return results
+        } catch {
+            return [:]
+        }
+    }
+
     /// Get plain text for a specific element
     public static func getElementText(
         from epubURL: URL,

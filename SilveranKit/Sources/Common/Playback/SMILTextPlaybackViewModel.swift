@@ -37,6 +37,7 @@ public final class SMILTextPlaybackViewModel: NSObject {
 
     private var currentSectionHTML: String = ""
     private var cachedSectionHref: String = ""
+    private var chapterTextByIndex: [String] = []
 
     // MARK: - Private
 
@@ -136,11 +137,34 @@ public final class SMILTextPlaybackViewModel: NSObject {
 
     // MARK: - Subtitle Text (cached to avoid HTML parsing on every view update)
 
+    public var usesFullChapterCache = false
     public private(set) var previousLineText: String = ""
     public private(set) var currentLineText: String = ""
     public private(set) var nextLineText: String = ""
+    public private(set) var allChapterLines: [ChapterLine] = []
     private var cachedEntryIndex: Int = -1
     private var cachedSectionIndex: Int = -1
+
+    public struct ChapterLine: Identifiable {
+        public let index: Int
+        public let text: String
+        public var id: Int { index }
+    }
+
+    public func scrollTargetIndex(for entryIndex: Int) -> Int? {
+        guard !allChapterLines.isEmpty else { return nil }
+        var previousIndex: Int? = nil
+        for line in allChapterLines {
+            if line.index >= entryIndex {
+                guard let prev = previousIndex else { return line.index }
+                let prevDistance = entryIndex - prev
+                let nextDistance = line.index - entryIndex
+                return prevDistance <= nextDistance ? prev : line.index
+            }
+            previousIndex = line.index
+        }
+        return allChapterLines.last?.index
+    }
 
     // MARK: - Initialization
 
@@ -237,6 +261,12 @@ public final class SMILTextPlaybackViewModel: NSObject {
         if state.playbackRate != playbackRate { playbackRate = state.playbackRate }
         if state.bookElapsed != bookElapsed { bookElapsed = state.bookElapsed }
         if state.bookTotal != bookDuration { bookDuration = state.bookTotal }
+
+        if sectionChanged {
+            currentSectionHTML = ""
+            chapterTextByIndex = []
+            allChapterLines = []
+        }
 
         if sectionChanged || entryChanged {
             updateCachedTextIfNeeded()
@@ -440,8 +470,11 @@ public final class SMILTextPlaybackViewModel: NSObject {
         let section = bookStructure[currentSectionIndex]
         guard targetIndex >= 0, targetIndex < section.mediaOverlay.count else { return "" }
 
-        let entry = section.mediaOverlay[targetIndex]
+        if usesFullChapterCache, !chapterTextByIndex.isEmpty {
+            return chapterTextByIndex[targetIndex]
+        }
 
+        let entry = section.mediaOverlay[targetIndex]
         if let elementHTML = EPUBContentLoader.extractElement(
             from: currentSectionHTML,
             elementId: entry.textId
@@ -455,20 +488,67 @@ public final class SMILTextPlaybackViewModel: NSObject {
     private func loadCurrentSectionHTML() async {
         guard let url = epubURL, currentSectionIndex < bookStructure.count else { return }
 
-        let section = bookStructure[currentSectionIndex]
+        let sectionIndex = currentSectionIndex
+        let section = bookStructure[sectionIndex]
         let href = section.id
 
         if href == cachedSectionHref { return }
 
         do {
-            currentSectionHTML = try EPUBContentLoader.loadSection(from: url, href: href)
-            cachedSectionHref = href
-            cachedEntryIndex = -1
-            updateCachedTextIfNeeded()
+            let html = try EPUBContentLoader.loadSection(from: url, href: href)
+            if usesFullChapterCache {
+                let elementIds = section.mediaOverlay.map { $0.textId }
+                let textById = await Task.detached(priority: .utility) {
+                    EPUBContentLoader.extractElementsText(from: html, elementIds: elementIds)
+                }.value
+                guard sectionIndex == currentSectionIndex,
+                    sectionIndex < bookStructure.count,
+                    href == bookStructure[sectionIndex].id,
+                    usesFullChapterCache
+                else {
+                    return
+                }
+                currentSectionHTML = html
+                cachedSectionHref = href
+                cachedEntryIndex = -1
+                chapterTextByIndex = elementIds.map { textById[$0] ?? "" }
+                rebuildAllChapterLines()
+                updateCachedTextIfNeeded()
+            } else {
+                guard sectionIndex == currentSectionIndex,
+                    sectionIndex < bookStructure.count,
+                    href == bookStructure[sectionIndex].id
+                else {
+                    return
+                }
+                currentSectionHTML = html
+                cachedSectionHref = href
+                cachedEntryIndex = -1
+                chapterTextByIndex = []
+                allChapterLines = []
+                updateCachedTextIfNeeded()
+            }
         } catch {
             debugLog("[\(logPrefix)] Failed to load section HTML: \(error)")
             currentSectionHTML = ""
+            chapterTextByIndex = []
+            allChapterLines = []
         }
+    }
+
+    private func rebuildAllChapterLines() {
+        guard !chapterTextByIndex.isEmpty else {
+            allChapterLines = []
+            return
+        }
+
+        var lines: [ChapterLine] = []
+        for (index, text) in chapterTextByIndex.enumerated() {
+            if !text.isEmpty {
+                lines.append(ChapterLine(index: index, text: text))
+            }
+        }
+        allChapterLines = lines
     }
 
     // MARK: - Helpers

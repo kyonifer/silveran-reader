@@ -17,6 +17,7 @@ struct TVPlayerView: View {
     @FocusState private var isBackgroundFocused: Bool
     @State private var lastFocusedControl: FocusedControl = .playPause
     @State private var fontFamily: String = kDefaultFontFamily
+    @State private var forceInstantScroll = false
 
     @Environment(\.dismiss) private var dismiss
 
@@ -24,6 +25,7 @@ struct TVPlayerView: View {
         playerContent
         .ignoresSafeArea()
         .onAppear {
+            viewModel.usesFullChapterCache = true
             Task {
                 await viewModel.loadBook(book)
                 fontFamily = await SettingsActor.shared.config.reading.fontFamily
@@ -225,37 +227,35 @@ struct TVPlayerView: View {
     }
 
     private var subtitleView: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            if !viewModel.previousLineText.isEmpty {
-                Text(viewModel.previousLineText)
-                    .font(.title2)
-                    .fontDesign(fontDesign)
-                    .foregroundStyle(.white.opacity(0.4))
-                    .multilineTextAlignment(.leading)
-                    .fixedSize(horizontal: false, vertical: true)
+        ScrollViewReader { proxy in
+            ScrollView(showsIndicators: false) {
+                LazyVStack(alignment: .leading, spacing: 24) {
+                    ForEach(viewModel.allChapterLines) { line in
+                        Text(line.text)
+                            .font(.title)
+                            .fontDesign(fontDesign)
+                            .foregroundStyle(.white.opacity(line.index == viewModel.currentEntryIndex ? 1 : 0.35))
+                            .multilineTextAlignment(.leading)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .id(line.index)
+                    }
+                }
+                .padding(.vertical, 300)
             }
-
-            if !viewModel.currentLineText.isEmpty {
-                Text(viewModel.currentLineText)
-                    .font(.largeTitle)
-                    .fontDesign(fontDesign)
-                    .fontWeight(.medium)
-                    .foregroundStyle(.white)
-                    .multilineTextAlignment(.leading)
-                    .fixedSize(horizontal: false, vertical: true)
+            .scrollDisabled(true)
+            .onChange(of: viewModel.currentEntryIndex) { _, _ in
+                scrollToCurrent(proxy)
             }
-
-            if !viewModel.nextLineText.isEmpty {
-                Text(viewModel.nextLineText)
-                    .font(.title2)
-                    .fontDesign(fontDesign)
-                    .foregroundStyle(.white.opacity(0.4))
-                    .multilineTextAlignment(.leading)
-                    .fixedSize(horizontal: false, vertical: true)
+            .onChange(of: viewModel.allChapterLines.count) { _, _ in
+                forceInstantScroll = true
+                DispatchQueue.main.async {
+                    scrollToCurrent(proxy, animated: false, consumeForce: false)
+                }
             }
         }
-        .frame(maxWidth: showControls ? 800 : 1200)
-        .padding(.horizontal, showControls ? 40 : 80)
+        .frame(maxWidth: 1200)
+        .padding(.horizontal, 80)
+        .offset(x: showControls ? -160 : 0)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .animation(.easeInOut(duration: 0.3), value: showControls)
     }
@@ -540,6 +540,32 @@ struct TVPlayerView: View {
         let coverState = mediaViewModel.coverState(for: book, variant: variant)
         if let image = coverState.image {
             cachedCoverImage = image
+        }
+    }
+
+    private func scrollToCurrent(
+        _ proxy: ScrollViewProxy,
+        animated: Bool = true,
+        consumeForce: Bool = true
+    ) {
+        guard let targetIndex = viewModel.scrollTargetIndex(for: viewModel.currentEntryIndex) else {
+            return
+        }
+        let shouldAnimate = animated && !forceInstantScroll
+        let action = { proxy.scrollTo(targetIndex, anchor: .center) }
+        if shouldAnimate {
+            withAnimation(.smooth(duration: 0.5)) {
+                action()
+            }
+        } else {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                action()
+            }
+        }
+        if forceInstantScroll && consumeForce {
+            forceInstantScroll = false
         }
     }
 
