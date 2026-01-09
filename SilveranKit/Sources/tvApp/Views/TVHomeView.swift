@@ -7,31 +7,32 @@ struct TVHomeView: View {
     @Binding var navigationPath: NavigationPath
 
     private var currentlyReading: [BookMetadata] {
-        mediaViewModel.itemsByStatus(
+        Array(mediaViewModel.itemsByStatus(
             "Reading",
             sortBy: .recentPositionUpdate,
-            limit: 12
-        )
+            limit: .max
+        ).filter { $0.hasAvailableReadaloud }.prefix(12))
     }
 
     private var startReading: [BookMetadata] {
-        mediaViewModel.itemsByStatus(
+        Array(mediaViewModel.itemsByStatus(
             "To read",
             sortBy: .recentlyAdded,
-            limit: 12
-        )
+            limit: .max
+        ).filter { $0.hasAvailableReadaloud }.prefix(12))
     }
 
     private var recentlyAdded: [BookMetadata] {
-        mediaViewModel.recentlyAddedItems(limit: 12)
+        Array(mediaViewModel.recentlyAddedItems(limit: .max)
+            .filter { $0.hasAvailableReadaloud }.prefix(12))
     }
 
     private var completed: [BookMetadata] {
-        mediaViewModel.itemsByStatus(
+        Array(mediaViewModel.itemsByStatus(
             "Read",
             sortBy: .recentPositionUpdate,
-            limit: 12
-        )
+            limit: .max
+        ).filter { $0.hasAvailableReadaloud }.prefix(12))
     }
 
     private var hasAnyContent: Bool {

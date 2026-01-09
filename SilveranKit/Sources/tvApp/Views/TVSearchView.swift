@@ -32,7 +32,7 @@ struct TVSearchView: View {
                 .foregroundStyle(.secondary)
             Text("Search Your Library")
                 .font(.title)
-            Text("Search by title or author")
+            Text("Search by title, author, or series")
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -54,9 +54,11 @@ struct TVSearchView: View {
     private var filteredBooks: [BookMetadata] {
         guard !searchText.isEmpty else { return [] }
         return mediaViewModel.library.bookMetaData
+            .filter { $0.hasAvailableReadaloud }
             .filter { book in
                 book.title.localizedCaseInsensitiveContains(searchText)
-                    || book.creators?.contains { $0.name?.localizedCaseInsensitiveContains(searchText) == true } == true
+                    || book.authors?.contains { $0.name?.localizedCaseInsensitiveContains(searchText) == true } == true
+                    || book.series?.contains { $0.name.localizedCaseInsensitiveContains(searchText) } == true
             }
             .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
     }
