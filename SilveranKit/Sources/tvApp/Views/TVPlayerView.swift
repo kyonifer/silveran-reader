@@ -22,6 +22,7 @@ struct TVPlayerView: View {
     @State private var lastFocusedControl: FocusedControl = .progressBar
     @State private var fontFamily: String = kDefaultFontFamily
     @State private var forceInstantScroll = false
+    @State private var scrollDebounceTask: Task<Void, Never>?
 
     @Environment(\.dismiss) private var dismiss
 
@@ -73,7 +74,12 @@ struct TVPlayerView: View {
             viewModel.cleanup()
         }
         .onPlayPauseCommand {
+            print("[TVDBG] onPlayPauseCommand fired")
             viewModel.playPause()
+            showControlsTemporarily()
+        }
+        .onChange(of: viewModel.isPlaying) { _, _ in
+            print("[TVDBG] isPlaying changed")
             showControlsTemporarily()
         }
         .onExitCommand {
@@ -147,13 +153,21 @@ struct TVPlayerView: View {
                 .animation(.easeInOut(duration: 0.3), value: showControls)
 
                 if !showControls {
-                    Color.clear
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .focusable()
-                        .focused($isBackgroundFocused)
-                        .onMoveCommand { direction in
+                    DirectionalPressButton(
+                        onSelect: {
+                            print("[TVDBG] background onSelect called")
+                            viewModel.playPause()
+                            showControlsTemporarily()
+                        },
+                        onMove: { direction in
+                            print("[TVDBG] background onMove: \(direction)")
                             handleBackgroundMove(direction)
                         }
+                    ) {
+                        Color.clear
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .focused($isBackgroundFocused)
                 }
 
                 headerOverlay
@@ -242,7 +256,13 @@ struct TVPlayerView: View {
             }
             .scrollDisabled(true)
             .onChange(of: viewModel.currentEntryIndex) { _, _ in
-                scrollToCurrent(proxy, animated: !showControls)
+                scrollToCurrent(proxy, animated: true)
+                scrollDebounceTask?.cancel()
+                scrollDebounceTask = Task {
+                    try? await Task.sleep(for: .milliseconds(500))
+                    guard !Task.isCancelled else { return }
+                    scrollToCurrent(proxy, animated: true)
+                }
             }
             .onChange(of: viewModel.allChapterLines.count) { _, _ in
                 forceInstantScroll = true
@@ -321,7 +341,7 @@ struct TVPlayerView: View {
     }
 
     private var controlsView: some View {
-        VStack(spacing: 3) {
+        VStack(spacing: 12) {
             HStack {
                 Spacer()
 
@@ -363,7 +383,6 @@ struct TVPlayerView: View {
                 }
                 }
                 .padding(.horizontal, 24)
-                .padding(.vertical, 12)
             }
 
             progressBar
@@ -388,8 +407,8 @@ struct TVPlayerView: View {
                 handleProgressBarScrub(progress, state: state)
             },
             currentProgress: displayProgress,
-            scrubScale: 0.4,
-            scrubActivationProgress: 0.25
+            scrubScale: 0.52,
+            scrubActivationProgress: 0.10
         ) {
             ProgressBarContent(
                 progress: displayProgress,
@@ -414,11 +433,13 @@ struct TVPlayerView: View {
 
     private func handleBackgroundMove(_ direction: MoveCommandDirection) {
         switch direction {
+        case .left:
+            viewModel.previousSentence()
+        case .right:
+            viewModel.nextSentence()
         case .up, .down:
             showControlsTemporarily()
             focusedControl = .progressBar
-        case .left, .right:
-            break
         @unknown default:
             break
         }
@@ -489,7 +510,9 @@ struct TVPlayerView: View {
     }
 
     private func showControlsTemporarily() {
+        print("[TVDBG] showControlsTemporarily showControls=\(showControls)")
         if !showControls {
+            print("[TVDBG] setting showControls=true")
             showControls = true
         } else if focusedControl == nil {
             focusedControl = lastFocusedControl
@@ -632,6 +655,7 @@ private struct ProgressBarContent: View {
                             .opacity(isFocused ? 1 : 0)
                     }
                 }
+                .frame(height: 18, alignment: .center)
                 .animation(.easeInOut(duration: 0.15), value: isFocused)
 
             HStack {
@@ -653,7 +677,8 @@ private struct ProgressBarContent: View {
 private struct DirectionalPressButton<Label: View>: UIViewRepresentable {
     var onSelect: () -> Void
     var onMove: (MoveCommandDirection) -> Void
-    var onScrub: (Double, UIGestureRecognizer.State) -> Void
+    var onPlayPause: (() -> Void)?
+    var onScrub: ((Double, UIGestureRecognizer.State) -> Void)?
     var currentProgress: Double
     var scrubScale: CGFloat
     var scrubActivationProgress: Double
@@ -662,14 +687,16 @@ private struct DirectionalPressButton<Label: View>: UIViewRepresentable {
     init(
         onSelect: @escaping () -> Void,
         onMove: @escaping (MoveCommandDirection) -> Void,
-        onScrub: @escaping (Double, UIGestureRecognizer.State) -> Void,
-        currentProgress: Double,
-        scrubScale: CGFloat,
-        scrubActivationProgress: Double,
+        onPlayPause: (() -> Void)? = nil,
+        onScrub: ((Double, UIGestureRecognizer.State) -> Void)? = nil,
+        currentProgress: Double = 0,
+        scrubScale: CGFloat = 0.4,
+        scrubActivationProgress: Double = 0.1,
         @ViewBuilder label: () -> Label
     ) {
         self.onSelect = onSelect
         self.onMove = onMove
+        self.onPlayPause = onPlayPause
         self.onScrub = onScrub
         self.currentProgress = currentProgress
         self.scrubScale = scrubScale
@@ -681,10 +708,12 @@ private struct DirectionalPressButton<Label: View>: UIViewRepresentable {
         let button = PressButton()
         button.onSelect = onSelect
         button.onMove = onMove
+        button.onPlayPause = onPlayPause
         button.onScrub = onScrub
         button.currentProgress = currentProgress
         button.scrubScale = scrubScale
         button.scrubActivationProgress = scrubActivationProgress
+        button.scrubbingEnabled = onScrub != nil
         button.backgroundColor = .clear
         button.contentHorizontalAlignment = .fill
         button.contentVerticalAlignment = .fill
@@ -708,10 +737,13 @@ private struct DirectionalPressButton<Label: View>: UIViewRepresentable {
     func updateUIView(_ uiView: PressButton, context: Context) {
         uiView.onSelect = onSelect
         uiView.onMove = onMove
+        uiView.onPlayPause = onPlayPause
         uiView.onScrub = onScrub
         uiView.currentProgress = currentProgress
         uiView.scrubScale = scrubScale
         uiView.scrubActivationProgress = scrubActivationProgress
+        uiView.scrubbingEnabled = onScrub != nil
+        uiView.updateScrubbingEnabled()
         context.coordinator.host?.rootView = label
     }
 
@@ -740,13 +772,16 @@ private struct DirectionalPressButton<Label: View>: UIViewRepresentable {
 private final class PressButton: UIButton {
     var onSelect: (() -> Void)?
     var onMove: ((MoveCommandDirection) -> Void)?
+    var onPlayPause: (() -> Void)?
     var onScrub: ((Double, UIGestureRecognizer.State) -> Void)?
     var currentProgress: Double = 0
     var scrubScale: CGFloat = 0.4
     var scrubActivationProgress: Double = 0.1
+    var scrubbingEnabled = false
     private var panStartProgress: CGFloat = 0
     private var panActivationOffset: CGFloat = 0
     private var scrubActivated = false
+    private var verticalSwipeTriggered = false
     private let panRecognizer = UIPanGestureRecognizer()
 
     override var canBecomeFocused: Bool {
@@ -769,7 +804,11 @@ private final class PressButton: UIButton {
         if #available(tvOS 14.0, *) {
             panRecognizer.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.indirect.rawValue)]
         }
+        panRecognizer.isEnabled = true
         addGestureRecognizer(panRecognizer)
+    }
+
+    func updateScrubbingEnabled() {
     }
 
     @objc func handlePrimaryAction() {
@@ -783,8 +822,23 @@ private final class PressButton: UIButton {
             panStartProgress = CGFloat(currentProgress)
             panActivationOffset = 0
             scrubActivated = false
+            verticalSwipeTriggered = false
         case .changed, .ended, .cancelled, .failed:
             let translation = recognizer.translation(in: self)
+
+            if !scrubActivated && !verticalSwipeTriggered {
+                let verticalThreshold: CGFloat = 30
+                if abs(translation.y) > verticalThreshold && abs(translation.y) > abs(translation.x) {
+                    verticalSwipeTriggered = true
+                    let direction: MoveCommandDirection = translation.y < 0 ? .up : .down
+                    print("[TVDBG] vertical swipe -> onMove \(direction)")
+                    onMove?(direction)
+                    return
+                }
+            }
+
+            guard scrubbingEnabled else { return }
+
             if !scrubActivated {
                 let requiredTranslation = CGFloat(scrubActivationProgress)
                     * bounds.width
@@ -815,19 +869,40 @@ private final class PressButton: UIButton {
 
     override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
         for press in presses {
+            print("[TVDBG] pressesBegan type=\(press.type.rawValue)")
             switch press.type {
             case .leftArrow:
+                print("[TVDBG] leftArrow -> onMove")
                 onMove?(.left)
                 return
             case .rightArrow:
+                print("[TVDBG] rightArrow -> onMove")
                 onMove?(.right)
                 return
-            case .upArrow, .downArrow:
+            case .playPause:
+                print("[TVDBG] playPause onPlayPause=\(onPlayPause == nil ? "nil" : "set")")
+                if let onPlayPause {
+                    print("[TVDBG] calling onPlayPause")
+                    onPlayPause()
+                    return
+                }
+            case .select:
+                print("[TVDBG] select -> fallthrough")
                 break
+            case .upArrow:
+                print("[TVDBG] upArrow -> onMove")
+                onMove?(.up)
+                return
+            case .downArrow:
+                print("[TVDBG] downArrow -> onMove")
+                onMove?(.down)
+                return
             default:
+                print("[TVDBG] unknown type=\(press.type.rawValue)")
                 break
             }
         }
+        print("[TVDBG] calling super.pressesBegan")
         super.pressesBegan(presses, with: event)
     }
 }

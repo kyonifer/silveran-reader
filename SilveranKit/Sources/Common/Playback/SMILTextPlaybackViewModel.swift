@@ -50,6 +50,7 @@ public final class SMILTextPlaybackViewModel: NSObject {
     private var hasRestoredPosition = false
     private var hasUserProgress = false
     private var periodicSyncTask: Task<Void, Never>?
+    private var sentenceNavigationTask: Task<Void, Never>?
     private static let periodicSyncInterval: TimeInterval = 60
 
     // MARK: - Incoming Position Sync
@@ -244,6 +245,10 @@ public final class SMILTextPlaybackViewModel: NSObject {
         let playingChanged = state.isPlaying != isPlaying
         let entryChanged = state.currentEntryIndex != currentEntryIndex
 
+        if entryChanged {
+            print("[TVDBG] handleStateUpdate entryChanged: \(currentEntryIndex) -> \(state.currentEntryIndex)")
+        }
+
         if playingChanged { isPlaying = state.isPlaying }
         if state.chapterElapsed != currentTime { currentTime = state.chapterElapsed }
         if sectionChanged { currentSectionIndex = state.currentSectionIndex }
@@ -329,9 +334,12 @@ public final class SMILTextPlaybackViewModel: NSObject {
 
     public func nextSentence() {
         hasUserProgress = true
-        Task { @MainActor in
+        sentenceNavigationTask?.cancel()
+        sentenceNavigationTask = Task { @MainActor in
             let position = await SMILPlayerActor.shared.getCurrentPosition()
+            guard !Task.isCancelled else { return }
             let structure = await SMILPlayerActor.shared.getBookStructure()
+            guard !Task.isCancelled else { return }
             guard position.sectionIndex < structure.count else { return }
             let section = structure[position.sectionIndex]
             var targetSectionIndex = position.sectionIndex
@@ -348,6 +356,7 @@ public final class SMILTextPlaybackViewModel: NSObject {
                 targetSectionIndex = nextSectionIndex
                 targetEntryIndex = 0
             }
+            print("[TVDBG] nextSentence: current=\(position.entryIndex) target=\(targetEntryIndex) viewModel.currentEntryIndex=\(currentEntryIndex)")
             try? await SMILPlayerActor.shared.seekToEntry(
                 sectionIndex: targetSectionIndex,
                 entryIndex: targetEntryIndex
@@ -357,9 +366,12 @@ public final class SMILTextPlaybackViewModel: NSObject {
 
     public func previousSentence() {
         hasUserProgress = true
-        Task { @MainActor in
+        sentenceNavigationTask?.cancel()
+        sentenceNavigationTask = Task { @MainActor in
             let position = await SMILPlayerActor.shared.getCurrentPosition()
+            guard !Task.isCancelled else { return }
             let structure = await SMILPlayerActor.shared.getBookStructure()
+            guard !Task.isCancelled else { return }
             guard position.sectionIndex < structure.count else { return }
             var targetSectionIndex = position.sectionIndex
             var targetEntryIndex = position.entryIndex - 1
@@ -383,6 +395,7 @@ public final class SMILTextPlaybackViewModel: NSObject {
             else {
                 return
             }
+            print("[TVDBG] previousSentence: current=\(position.entryIndex) target=\(targetEntryIndex) viewModel.currentEntryIndex=\(currentEntryIndex)")
             try? await SMILPlayerActor.shared.seekToEntry(
                 sectionIndex: targetSectionIndex,
                 entryIndex: targetEntryIndex
