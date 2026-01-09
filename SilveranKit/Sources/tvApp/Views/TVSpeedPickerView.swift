@@ -1,3 +1,4 @@
+import SilveranKitCommon
 import SwiftUI
 
 struct TVSpeedPickerView: View {
@@ -11,6 +12,9 @@ struct TVSpeedPickerView: View {
             List(speeds, id: \.self) { speed in
                 Button {
                     viewModel.setPlaybackRate(speed)
+                    Task {
+                        try? await SettingsActor.shared.updateConfig(defaultPlaybackSpeed: speed)
+                    }
                     dismiss()
                 } label: {
                     HStack {

@@ -224,6 +224,9 @@ public final class SMILTextPlaybackViewModel: NSObject {
             await SMILPlayerActor.shared.setVolume(volume)
             #endif
 
+            let config = await SettingsActor.shared.config
+            await SMILPlayerActor.shared.setPlaybackRate(config.playback.defaultPlaybackSpeed)
+
             if let firstSection = bookStructure.first(where: { !$0.mediaOverlay.isEmpty }) {
                 currentSectionIndex = firstSection.index
                 chapterTitle = chapterLabel(forSectionIndex: firstSection.index)

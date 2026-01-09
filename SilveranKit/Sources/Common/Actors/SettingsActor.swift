@@ -549,28 +549,30 @@ public actor SettingsActor {
 
 extension SettingsActor {
     fileprivate static func defaultStorageURL(fileManager: FileManager) -> URL {
-        let appSupport: URL
-        if let resolved = try? fileManager.url(
+        let bundleID = Bundle.main.bundleIdentifier ?? "SilveranReader"
+
+        #if os(tvOS)
+        let cachesDir = try! fileManager.url(
+            for: .cachesDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        )
+        let base = cachesDir.appendingPathComponent(bundleID, isDirectory: true)
+        #else
+        let appSupport = try! fileManager.url(
             for: .applicationSupportDirectory,
             in: .userDomainMask,
             appropriateFor: nil,
             create: true
-        ) {
-            appSupport = resolved
-        } else {
-            let fallback =
-                fileManager.urls(for: .documentDirectory, in: .userDomainMask).first
-                ?? fileManager.temporaryDirectory
-            appSupport = fallback
-        }
-
-        let bundleID = Bundle.main.bundleIdentifier ?? "SilveranReader"
+        )
         let base: URL =
             if appSupport.path.contains("/Containers/") {
                 appSupport
             } else {
                 appSupport.appendingPathComponent(bundleID, isDirectory: true)
             }
+        #endif
 
         let configDirectory = base.appendingPathComponent("Config", isDirectory: true)
         return configDirectory.appendingPathComponent(
