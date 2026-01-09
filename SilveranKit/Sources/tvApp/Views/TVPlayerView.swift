@@ -1,6 +1,7 @@
 import SilveranKitAppModel
 import SilveranKitCommon
 import SwiftUI
+import UIKit
 
 struct TVPlayerView: View {
     let book: BookMetadata
@@ -12,10 +13,13 @@ struct TVPlayerView: View {
     @State private var controlsHideTask: Task<Void, Never>?
     @State private var isScrubbing = false
     @State private var scrubProgress: Double = 0
+    @State private var isScrubSettling = false
+    @State private var scrubTargetProgress: Double = 0
+    @State private var scrubSettleTask: Task<Void, Never>?
     @State private var cachedCoverImage: Image?
     @FocusState private var focusedControl: FocusedControl?
     @FocusState private var isBackgroundFocused: Bool
-    @State private var lastFocusedControl: FocusedControl = .playPause
+    @State private var lastFocusedControl: FocusedControl = .progressBar
     @State private var fontFamily: String = kDefaultFontFamily
     @State private var forceInstantScroll = false
 
@@ -32,7 +36,7 @@ struct TVPlayerView: View {
             }
             resetControlsTimer()
             loadCoverImage()
-            focusedControl = .playPause
+            focusedControl = .progressBar
         }
         .onChange(of: focusedControl) { _, newValue in
             guard showControls else { return }
@@ -50,9 +54,8 @@ struct TVPlayerView: View {
         .onChange(of: showControls) { _, visible in
             if visible {
                 isBackgroundFocused = false
-                if focusedControl == nil {
-                    focusedControl = lastFocusedControl
-                }
+                focusedControl = .progressBar
+                lastFocusedControl = .progressBar
             } else {
                 focusedControl = nil
                 isBackgroundFocused = true
@@ -63,23 +66,18 @@ struct TVPlayerView: View {
                 cachedCoverImage = newImage
             }
         }
+        .onChange(of: viewModel.chapterProgress) { _, newValue in
+            clearScrubSettlingIfNeeded(for: newValue)
+        }
         .onDisappear {
             viewModel.cleanup()
         }
         .onPlayPauseCommand {
-            if isScrubbing {
-                viewModel.seekToProgress(scrubProgress)
-                isScrubbing = false
-            } else {
-                viewModel.playPause()
-            }
+            viewModel.playPause()
             showControlsTemporarily()
         }
         .onExitCommand {
-            if isScrubbing {
-                isScrubbing = false
-                scrubProgress = viewModel.bookProgress
-            } else if showChapterList || showSpeedPicker {
+            if showChapterList || showSpeedPicker {
                 showChapterList = false
                 showSpeedPicker = false
             } else {
@@ -154,7 +152,7 @@ struct TVPlayerView: View {
                         .focusable()
                         .focused($isBackgroundFocused)
                         .onMoveCommand { direction in
-                            handleMoveCommand(direction)
+                            handleBackgroundMove(direction)
                         }
                 }
 
@@ -244,7 +242,7 @@ struct TVPlayerView: View {
             }
             .scrollDisabled(true)
             .onChange(of: viewModel.currentEntryIndex) { _, _ in
-                scrollToCurrent(proxy)
+                scrollToCurrent(proxy, animated: !showControls)
             }
             .onChange(of: viewModel.allChapterLines.count) { _, _ in
                 forceInstantScroll = true
@@ -323,147 +321,84 @@ struct TVPlayerView: View {
     }
 
     private var controlsView: some View {
-        VStack(spacing: 24) {
-            progressBar
+        VStack(spacing: 3) {
+            HStack {
+                Spacer()
 
-            HStack(spacing: 60) {
-                Button {
-                    showChapterList = true
-                    showControlsTemporarily()
-                } label: {
-                    Image(systemName: "list.bullet")
-                        .font(.system(size: 26))
-                }
-                .buttonStyle(PlayerControlButtonStyle())
-                .focused($focusedControl, equals: .chapterList)
-
-                Button {
+                HStack(spacing: 20) {
+                controlButton(
+                    systemName: "backward.end.fill",
+                    caption: nil,
+                    focused: .previousChapter
+                ) {
                     viewModel.previousChapter()
                     showControlsTemporarily()
-                } label: {
-                    Image(systemName: "backward.end.fill")
-                        .font(.system(size: 26))
                 }
-                .buttonStyle(PlayerControlButtonStyle())
-                .focused($focusedControl, equals: .previousChapter)
 
-                Button {
-                    viewModel.previousSentence()
+                controlButton(
+                    systemName: "list.bullet",
+                    caption: nil,
+                    focused: .chapterList
+                ) {
+                    showChapterList = true
                     showControlsTemporarily()
-                } label: {
-                    Image(systemName: "gobackward")
-                        .font(.system(size: 30))
                 }
-                .buttonStyle(PlayerControlButtonStyle())
-                .focused($focusedControl, equals: .skipBackward)
 
-                Button {
-                    viewModel.playPause()
-                    showControlsTemporarily()
-                } label: {
-                    Image(systemName: viewModel.isPlaying ? "pause.fill" : "play.fill")
-                        .font(.system(size: 80))
-                }
-                .buttonStyle(PlayerControlButtonStyle(isLarge: true))
-                .focused($focusedControl, equals: .playPause)
-
-                Button {
-                    viewModel.nextSentence()
-                    showControlsTemporarily()
-                } label: {
-                    Image(systemName: "goforward")
-                        .font(.system(size: 30))
-                }
-                .buttonStyle(PlayerControlButtonStyle())
-                .focused($focusedControl, equals: .skipForward)
-
-                Button {
-                    viewModel.nextChapter()
-                    showControlsTemporarily()
-                } label: {
-                    Image(systemName: "forward.end.fill")
-                        .font(.system(size: 26))
-                }
-                .buttonStyle(PlayerControlButtonStyle())
-                .focused($focusedControl, equals: .nextChapter)
-
-                Button {
+                controlButton(
+                    systemName: "speedometer",
+                    caption: nil,
+                    focused: .speed
+                ) {
                     showSpeedPicker = true
                     showControlsTemporarily()
-                } label: {
-                    Text("\(viewModel.playbackRate, specifier: "%.1f")x")
-                        .font(.system(size: 26))
                 }
-                .buttonStyle(PlayerControlButtonStyle())
-                .focused($focusedControl, equals: .speed)
+
+                controlButton(
+                    systemName: "forward.end.fill",
+                    caption: nil,
+                    focused: .nextChapter
+                ) {
+                    viewModel.nextChapter()
+                    showControlsTemporarily()
+                }
+                }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 12)
             }
+
+            progressBar
         }
         .transition(.opacity)
     }
 
     private var progressBar: some View {
-        let displayProgress = isScrubbing ? scrubProgress : viewModel.chapterProgress
-
-        let progressButton = Button {
-            if isScrubbing {
-                seekToChapterProgress(scrubProgress)
-                isScrubbing = false
-            } else {
-                isScrubbing = true
-                scrubProgress = viewModel.chapterProgress
-            }
-            showControlsTemporarily()
-        } label: {
-            VStack(spacing: 8) {
-                Capsule()
-                    .fill(.white.opacity(0.3))
-                    .frame(height: isScrubbing ? 12 : 8)
-                    .overlay(alignment: .leading) {
-                        Capsule()
-                            .fill(isScrubbing ? .blue : .white)
-                            .scaleEffect(x: max(0.001, displayProgress), y: 1, anchor: .leading)
-                    }
-                    .clipShape(Capsule())
-                    .animation(.easeInOut(duration: 0.2), value: isScrubbing)
-
-                HStack {
-                    Text(isScrubbing ? formatScrubTime(scrubProgress) : viewModel.currentTimeFormatted)
-                    Spacer()
-                    if isScrubbing {
-                        Text("Scrubbing - Press Select to Seek")
-                            .foregroundStyle(.blue)
-                    }
-                    Spacer()
-                    Text(viewModel.chapterDurationFormatted)
-                }
-                .font(.caption)
-                .foregroundStyle(.white.opacity(0.7))
-            }
-            .padding(.vertical, 16)
-            .padding(.horizontal, 24)
-        }
-        .buttonStyle(ProgressBarButtonStyle())
-        .focused($focusedControl, equals: .progressBar)
-        if isScrubbing {
-            return AnyView(
-                progressButton.onMoveCommand { direction in
-                    handleMoveCommand(direction)
-                }
+        let isFocused = focusedControl == .progressBar
+        let displayProgress = (isScrubbing || isScrubSettling)
+            ? scrubProgress
+            : viewModel.chapterProgress
+        return DirectionalPressButton(
+            onSelect: {
+                viewModel.playPause()
+                showControlsTemporarily()
+            },
+            onMove: { direction in
+                handleProgressBarMove(direction)
+            },
+            onScrub: { progress, state in
+                handleProgressBarScrub(progress, state: state)
+            },
+            currentProgress: displayProgress,
+            scrubScale: 0.4,
+            scrubActivationProgress: 0.25
+        ) {
+            ProgressBarContent(
+                progress: displayProgress,
+                currentTime: viewModel.currentTimeFormatted,
+                duration: viewModel.chapterDurationFormatted,
+                isFocused: isFocused
             )
         }
-        return AnyView(progressButton)
-    }
-
-    private func formatScrubTime(_ progress: Double) -> String {
-        let totalSeconds = progress * viewModel.chapterDuration
-        let hours = Int(totalSeconds) / 3600
-        let mins = (Int(totalSeconds) % 3600) / 60
-        let secs = Int(totalSeconds) % 60
-
-        if hours > 0 {
-            return String(format: "%d:%02d:%02d", hours, mins, secs)
-        }
-        return String(format: "%d:%02d", mins, secs)
+        .focused($focusedControl, equals: .progressBar)
     }
 
     private func seekToChapterProgress(_ progress: Double) {
@@ -477,40 +412,79 @@ struct TVPlayerView: View {
         }
     }
 
-    private func handleMoveCommand(_ direction: MoveCommandDirection) {
-        if isScrubbing {
-            resetControlsTimer()
-            let stepSeconds = 5.0
-            let step = viewModel.chapterDuration > 0 ? stepSeconds / viewModel.chapterDuration : 0.01
-            switch direction {
-            case .left:
-                scrubProgress = max(0, scrubProgress - step)
-            case .right:
-                scrubProgress = min(1, scrubProgress + step)
-            case .up, .down:
-                break
-            @unknown default:
-                break
-            }
-            return
-        }
-
-        if showControls {
+    private func handleBackgroundMove(_ direction: MoveCommandDirection) {
+        switch direction {
+        case .up, .down:
             showControlsTemporarily()
-            return
+            focusedControl = .progressBar
+        case .left, .right:
+            break
+        @unknown default:
+            break
         }
+    }
 
-        showControlsTemporarily()
-
+    private func handleProgressBarMove(_ direction: MoveCommandDirection) {
         switch direction {
         case .left:
-            viewModel.skipBackward(seconds: 10)
+            viewModel.previousSentence()
+            showControlsTemporarily()
         case .right:
-            viewModel.skipForward(seconds: 10)
+            viewModel.nextSentence()
+            showControlsTemporarily()
         case .up, .down:
             break
         @unknown default:
             break
+        }
+    }
+
+    private func handleProgressBarScrub(
+        _ progress: Double,
+        state: UIGestureRecognizer.State
+    ) {
+        let clamped = min(max(progress, 0), 1)
+        switch state {
+        case .began, .changed:
+            scrubSettleTask?.cancel()
+            scrubSettleTask = nil
+            isScrubSettling = false
+            if !isScrubbing {
+                scrubProgress = viewModel.chapterProgress
+            }
+            isScrubbing = true
+            scrubProgress = clamped
+            showControlsTemporarily()
+        case .ended, .cancelled, .failed:
+            if isScrubbing {
+                let target = scrubProgress
+                isScrubbing = false
+                isScrubSettling = true
+                scrubTargetProgress = target
+                seekToChapterProgress(target)
+                scheduleScrubSettleTimeout()
+            }
+        default:
+            break
+        }
+    }
+
+    private func scheduleScrubSettleTimeout() {
+        scrubSettleTask?.cancel()
+        scrubSettleTask = Task {
+            try? await Task.sleep(for: .milliseconds(400))
+            guard !Task.isCancelled else { return }
+            isScrubSettling = false
+        }
+    }
+
+    private func clearScrubSettlingIfNeeded(for progress: Double) {
+        guard isScrubSettling else { return }
+        let delta = abs(progress - scrubTargetProgress)
+        if delta < 0.002 {
+            scrubSettleTask?.cancel()
+            scrubSettleTask = nil
+            isScrubSettling = false
         }
     }
 
@@ -528,7 +502,7 @@ struct TVPlayerView: View {
         controlsHideTask = Task {
             try? await Task.sleep(for: .seconds(5))
             guard !Task.isCancelled else { return }
-            if viewModel.isPlaying && !isScrubbing {
+            if viewModel.isPlaying && !isScrubbing && !isScrubSettling {
                 showControls = false
             }
         }
@@ -571,15 +545,37 @@ struct TVPlayerView: View {
         }
     }
 
+    private func controlButton(
+        systemName: String,
+        caption: String?,
+        focused: FocusedControl,
+        action: @escaping () -> Void
+    ) -> some View {
+        let isFocused = focusedControl == focused
+        return VStack(spacing: 6) {
+            Button(action: action) {
+                Image(systemName: systemName)
+                    .font(.system(size: 20))
+            }
+            .buttonStyle(PlayerControlButtonStyle())
+            .focused($focusedControl, equals: focused)
+
+            Text(caption ?? " ")
+                .font(.caption2)
+                .foregroundStyle(
+                    caption == nil
+                        ? Color.clear
+                        : Color.white.opacity(isFocused ? 0.9 : 0.7)
+                )
+        }
+    }
+
 }
 
 private enum FocusedControl: Hashable {
     case progressBar
     case chapterList
     case previousChapter
-    case skipBackward
-    case playPause
-    case skipForward
     case nextChapter
     case speed
 }
@@ -591,9 +587,9 @@ private struct PlayerControlButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .foregroundStyle(isFocused ? .black : .white)
-            .padding(isLarge ? 24 : 24)
+            .frame(width: isLarge ? 86 : 60, height: isLarge ? 86 : 60)
             .background(
-                Circle()
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .fill(isFocused ? .white : .white.opacity(0.2))
             )
             .scaleEffect(isFocused ? 1.1 : 1.0)
@@ -601,20 +597,237 @@ private struct PlayerControlButtonStyle: ButtonStyle {
     }
 }
 
-private struct ProgressBarButtonStyle: ButtonStyle {
-    @Environment(\.isFocused) private var isFocused
+private struct ProgressBarContent: View {
+    let progress: Double
+    let currentTime: String
+    let duration: String
+    let isFocused: Bool
 
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(isFocused ? .white.opacity(0.15) : .clear)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(isFocused ? .white : .clear, lineWidth: 4)
-            )
-            .scaleEffect(isFocused ? 1.02 : 1.0)
-            .animation(.easeInOut(duration: 0.15), value: isFocused)
+    var body: some View {
+        let barHeight: CGFloat = isFocused ? 12 : 8
+        let handleSize: CGFloat = isFocused ? 18 : 0
+
+        VStack(spacing: 8) {
+            Capsule()
+                .fill(.white.opacity(0.3))
+                .frame(height: barHeight)
+                .overlay(alignment: .leading) {
+                    Capsule()
+                        .fill(.white)
+                        .scaleEffect(x: max(0.001, progress), y: 1, anchor: .leading)
+                }
+                .clipShape(Capsule())
+                .overlay {
+                    GeometryReader { proxy in
+                        let clampedProgress = min(max(progress, 0), 1)
+                        let xPosition = max(
+                            handleSize / 2,
+                            min(proxy.size.width - handleSize / 2, proxy.size.width * clampedProgress)
+                        )
+                        Circle()
+                            .fill(.white)
+                            .frame(width: handleSize, height: handleSize)
+                            .shadow(color: .black.opacity(0.3), radius: 4, x: 0, y: 2)
+                            .position(x: xPosition, y: proxy.size.height / 2)
+                            .opacity(isFocused ? 1 : 0)
+                    }
+                }
+                .animation(.easeInOut(duration: 0.15), value: isFocused)
+
+            HStack {
+                Text(currentTime)
+                Spacer()
+                Text(duration)
+            }
+            .font(.caption)
+            .foregroundStyle(.white.opacity(0.7))
+        }
+        .padding(.vertical, 16)
+        .padding(.horizontal, 24)
+    }
+}
+
+// Workaround: tvOS 18 drops the first directional press on onMoveCommand for the
+// silver Siri Remote, so we intercept arrow presses in UIKit instead.
+// https://developer.apple.com/forums/thread/764582
+private struct DirectionalPressButton<Label: View>: UIViewRepresentable {
+    var onSelect: () -> Void
+    var onMove: (MoveCommandDirection) -> Void
+    var onScrub: (Double, UIGestureRecognizer.State) -> Void
+    var currentProgress: Double
+    var scrubScale: CGFloat
+    var scrubActivationProgress: Double
+    var label: Label
+
+    init(
+        onSelect: @escaping () -> Void,
+        onMove: @escaping (MoveCommandDirection) -> Void,
+        onScrub: @escaping (Double, UIGestureRecognizer.State) -> Void,
+        currentProgress: Double,
+        scrubScale: CGFloat,
+        scrubActivationProgress: Double,
+        @ViewBuilder label: () -> Label
+    ) {
+        self.onSelect = onSelect
+        self.onMove = onMove
+        self.onScrub = onScrub
+        self.currentProgress = currentProgress
+        self.scrubScale = scrubScale
+        self.scrubActivationProgress = scrubActivationProgress
+        self.label = label()
+    }
+
+    func makeUIView(context: Context) -> PressButton {
+        let button = PressButton()
+        button.onSelect = onSelect
+        button.onMove = onMove
+        button.onScrub = onScrub
+        button.currentProgress = currentProgress
+        button.scrubScale = scrubScale
+        button.scrubActivationProgress = scrubActivationProgress
+        button.backgroundColor = .clear
+        button.contentHorizontalAlignment = .fill
+        button.contentVerticalAlignment = .fill
+        button.addTarget(button, action: #selector(PressButton.handlePrimaryAction), for: .primaryActionTriggered)
+
+        let host = UIHostingController(rootView: label)
+        host.view.translatesAutoresizingMaskIntoConstraints = false
+        host.view.backgroundColor = .clear
+        button.addSubview(host.view)
+        NSLayoutConstraint.activate([
+            host.view.leadingAnchor.constraint(equalTo: button.leadingAnchor),
+            host.view.trailingAnchor.constraint(equalTo: button.trailingAnchor),
+            host.view.topAnchor.constraint(equalTo: button.topAnchor),
+            host.view.bottomAnchor.constraint(equalTo: button.bottomAnchor)
+        ])
+        context.coordinator.host = host
+
+        return button
+    }
+
+    func updateUIView(_ uiView: PressButton, context: Context) {
+        uiView.onSelect = onSelect
+        uiView.onMove = onMove
+        uiView.onScrub = onScrub
+        uiView.currentProgress = currentProgress
+        uiView.scrubScale = scrubScale
+        uiView.scrubActivationProgress = scrubActivationProgress
+        context.coordinator.host?.rootView = label
+    }
+
+    func sizeThatFits(
+        _ proposal: ProposedViewSize,
+        uiView: PressButton,
+        context: Context
+    ) -> CGSize? {
+        guard let host = context.coordinator.host else { return nil }
+        let targetWidth = proposal.width ?? UIScreen.main.bounds.width
+        let size = host.sizeThatFits(
+            in: CGSize(width: targetWidth, height: .greatestFiniteMagnitude)
+        )
+        return CGSize(width: proposal.width ?? size.width, height: size.height)
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    final class Coordinator {
+        var host: UIHostingController<Label>?
+    }
+}
+
+private final class PressButton: UIButton {
+    var onSelect: (() -> Void)?
+    var onMove: ((MoveCommandDirection) -> Void)?
+    var onScrub: ((Double, UIGestureRecognizer.State) -> Void)?
+    var currentProgress: Double = 0
+    var scrubScale: CGFloat = 0.4
+    var scrubActivationProgress: Double = 0.1
+    private var panStartProgress: CGFloat = 0
+    private var panActivationOffset: CGFloat = 0
+    private var scrubActivated = false
+    private let panRecognizer = UIPanGestureRecognizer()
+
+    override var canBecomeFocused: Bool {
+        true
+    }
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        configureGestures()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        configureGestures()
+    }
+
+    private func configureGestures() {
+        panRecognizer.addTarget(self, action: #selector(handlePan(_:)))
+        panRecognizer.cancelsTouchesInView = false
+        if #available(tvOS 14.0, *) {
+            panRecognizer.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.indirect.rawValue)]
+        }
+        addGestureRecognizer(panRecognizer)
+    }
+
+    @objc func handlePrimaryAction() {
+        onSelect?()
+    }
+
+    @objc private func handlePan(_ recognizer: UIPanGestureRecognizer) {
+        guard bounds.width > 0 else { return }
+        switch recognizer.state {
+        case .began:
+            panStartProgress = CGFloat(currentProgress)
+            panActivationOffset = 0
+            scrubActivated = false
+        case .changed, .ended, .cancelled, .failed:
+            let translation = recognizer.translation(in: self)
+            if !scrubActivated {
+                let requiredTranslation = CGFloat(scrubActivationProgress)
+                    * bounds.width
+                    / max(scrubScale, 0.01)
+                if abs(translation.x) < requiredTranslation {
+                    if recognizer.state != .ended {
+                        return
+                    }
+                } else {
+                    scrubActivated = true
+                    panActivationOffset = translation.x > 0
+                        ? requiredTranslation
+                        : -requiredTranslation
+                }
+            }
+            guard scrubActivated else { return }
+            let adjustedTranslation = translation.x - panActivationOffset
+            let delta = (adjustedTranslation / bounds.width) * scrubScale
+            let progress = min(max(panStartProgress + delta, 0), 1)
+            onScrub?(progress, recognizer.state)
+            if recognizer.state == .ended || recognizer.state == .cancelled || recognizer.state == .failed {
+                scrubActivated = false
+            }
+        default:
+            break
+        }
+    }
+
+    override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        for press in presses {
+            switch press.type {
+            case .leftArrow:
+                onMove?(.left)
+                return
+            case .rightArrow:
+                onMove?(.right)
+                return
+            case .upArrow, .downArrow:
+                break
+            default:
+                break
+            }
+        }
+        super.pressesBegan(presses, with: event)
     }
 }
