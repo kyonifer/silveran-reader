@@ -384,7 +384,7 @@ private struct SpeedPickerSheet: View {
                     onSelect(speed)
                 } label: {
                     HStack {
-                        Text(speedLabel(speed))
+                        Text(formatSpeedPickerLabel(speed, includeNormalLabel: true))
                         Spacer()
                         if abs(currentRate - speed) < 0.01 {
                             Image(systemName: "checkmark")
@@ -397,14 +397,5 @@ private struct SpeedPickerSheet: View {
         .navigationTitle("Speed")
     }
 
-    private func speedLabel(_ speed: Double) -> String {
-        if speed == 1.0 {
-            return "1x (Normal)"
-        } else if speed == floor(speed) {
-            return "\(Int(speed))x"
-        } else {
-            return String(format: "%.2gx", speed)
-        }
-    }
 }
 #endif

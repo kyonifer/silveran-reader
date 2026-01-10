@@ -18,7 +18,7 @@ struct TVSpeedPickerView: View {
                     dismiss()
                 } label: {
                     HStack {
-                        Text(formatSpeed(speed))
+                        Text(formatSpeedPickerLabel(speed, includeNormalLabel: true))
                             .font(.headline)
 
                         Spacer()
@@ -36,10 +36,4 @@ struct TVSpeedPickerView: View {
         }
     }
 
-    private func formatSpeed(_ speed: Double) -> String {
-        if speed == 1.0 {
-            return "Normal (1.0x)"
-        }
-        return String(format: "%.2gx", speed)
-    }
 }

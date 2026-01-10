@@ -15,3 +15,15 @@ public func formatTimeMinutesSeconds(_ time: TimeInterval?) -> String {
     let seconds = totalSeconds % 60
     return "\(minutes)m\(seconds)s"
 }
+
+public func formatSpeedPickerLabel(_ speed: Double, includeNormalLabel: Bool = false) -> String {
+    if speed == 1.0 {
+        return includeNormalLabel ? "Normal (1x)" : "Normal"
+    }
+    if speed == floor(speed) {
+        return "\(Int(speed))x"
+    }
+    let formatted = String(format: "%.2f", speed)
+    let trimmed = formatted.replacingOccurrences(of: "\\.?0+$", with: "", options: .regularExpression)
+    return "\(trimmed)x"
+}

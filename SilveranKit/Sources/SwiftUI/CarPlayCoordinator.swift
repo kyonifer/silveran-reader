@@ -342,7 +342,9 @@ public final class CarPlayCoordinator {
 
         isPositionRestored = true
 
-        debugLog("[CarPlayCoordinator] M4B audiobook loaded, starting playback immediately")
+        let playbackSpeed = await SettingsActor.shared.config.playback.defaultPlaybackSpeed
+        await AudiobookActor.shared.setPlaybackRate(playbackSpeed)
+        debugLog("[CarPlayCoordinator] M4B audiobook loaded at \(playbackSpeed)x, starting playback")
         try await AudiobookActor.shared.play()
     }
 
@@ -417,7 +419,9 @@ public final class CarPlayCoordinator {
 
         isPositionRestored = true
 
-        debugLog("[CarPlayCoordinator] SMIL book loaded, starting playback immediately")
+        let playbackSpeed = await SettingsActor.shared.config.playback.defaultPlaybackSpeed
+        await SMILPlayerActor.shared.setPlaybackRate(playbackSpeed)
+        debugLog("[CarPlayCoordinator] SMIL book loaded at \(playbackSpeed)x, starting playback")
         try await SMILPlayerActor.shared.play()
     }
 
@@ -451,6 +455,28 @@ public final class CarPlayCoordinator {
 
     public func isBookCurrentlyPlaying(_ bookId: String) -> Bool {
         currentBookId == bookId && isPlaying
+    }
+
+    public var currentPlaybackRate: Double {
+        switch activePlayer {
+            case .audiobook:
+                return Double(currentAudiobookState?.playbackRate ?? 1.0)
+            case .smil, .none:
+                return currentPlaybackState?.playbackRate ?? 1.0
+        }
+    }
+
+    public func setPlaybackRate(_ rate: Double) async {
+        switch activePlayer {
+            case .audiobook:
+                await AudiobookActor.shared.setPlaybackRate(rate)
+            case .smil:
+                await SMILPlayerActor.shared.setPlaybackRate(rate)
+            case .none:
+                break
+        }
+        try? await SettingsActor.shared.updateConfig(defaultPlaybackSpeed: rate)
+        debugLog("[CarPlayCoordinator] Playback rate set to \(rate)x")
     }
 
     // MARK: - Progress Sync

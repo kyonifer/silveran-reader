@@ -99,12 +99,23 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     private func configureNowPlayingTemplate() {
         let nowPlaying = CPNowPlayingTemplate.shared
 
+        var buttons: [CPNowPlayingButton] = []
+
         if let listImage = UIImage(systemName: "list.bullet") {
             let chaptersButton = CPNowPlayingImageButton(image: listImage) { [weak self] _ in
                 self?.showChaptersList()
             }
-            nowPlaying.updateNowPlayingButtons([chaptersButton])
+            buttons.append(chaptersButton)
         }
+
+        if let speedImage = UIImage(systemName: "speedometer") {
+            let speedButton = CPNowPlayingImageButton(image: speedImage) { [weak self] _ in
+                self?.showSpeedList()
+            }
+            buttons.append(speedButton)
+        }
+
+        nowPlaying.updateNowPlayingButtons(buttons)
     }
 
     private func showChaptersList() {
@@ -139,6 +150,36 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
 
             let section = CPListSection(items: items)
             let template = CPListTemplate(title: "Chapters", sections: [section])
+            interfaceController?.pushTemplate(template, animated: true, completion: nil)
+        }
+    }
+
+    private func showSpeedList() {
+        Task { @MainActor in
+            let speeds: [Double] = [0.75, 1.0, 1.1, 1.2, 1.3, 1.5, 1.75, 2.0, 2.25, 2.5, 2.75, 3.0, 5.0]
+            let currentRate = CarPlayCoordinator.shared.currentPlaybackRate
+
+            let items: [CPListItem] = speeds.map { speed in
+                let isCurrent = abs(speed - currentRate) < 0.01
+                let label = formatSpeedPickerLabel(speed)
+                let item = CPListItem(
+                    text: label,
+                    detailText: isCurrent ? "Current" : nil
+                )
+                item.isPlaying = isCurrent
+                item.handler = { [weak self] _, completion in
+                    debugLog("[CarPlay] Speed selected: \(speed)x")
+                    Task { @MainActor in
+                        await CarPlayCoordinator.shared.setPlaybackRate(speed)
+                    }
+                    self?.interfaceController?.popTemplate(animated: true, completion: nil)
+                    completion()
+                }
+                return item
+            }
+
+            let section = CPListSection(items: items)
+            let template = CPListTemplate(title: "Playback Speed", sections: [section])
             interfaceController?.pushTemplate(template, animated: true, completion: nil)
         }
     }
