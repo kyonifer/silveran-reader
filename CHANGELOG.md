@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.1-58] -> Unreleased
+## [0.1-58] -> [0.1-67]
 
 ### Features
 
