@@ -101,6 +101,20 @@ struct TVSettingsView: View {
                             }
                         }
                     }
+
+                    Picker("Book Font Size", selection: Binding(
+                        get: { settingsViewModel.tvSubtitleFontSize },
+                        set: { newValue in
+                            Task {
+                                await settingsViewModel.updateSubtitleFontSize(newValue)
+                            }
+                        }
+                    )) {
+                        Text("Small").tag(36.0)
+                        Text("Medium").tag(48.0)
+                        Text("Large").tag(64.0)
+                        Text("Extra Large").tag(80.0)
+                    }
                 }
             }
             .toolbar(.hidden, for: .navigationBar)

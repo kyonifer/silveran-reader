@@ -21,6 +21,7 @@ struct TVPlayerView: View {
     @FocusState private var isBackgroundFocused: Bool
     @State private var lastFocusedControl: FocusedControl = .progressBar
     @State private var fontFamily: String = kDefaultFontFamily
+    @State private var subtitleFontSize: Double = kDefaultTVSubtitleFontSize
     @State private var forceInstantScroll = false
     @State private var scrollDebounceTask: Task<Void, Never>?
 
@@ -33,7 +34,9 @@ struct TVPlayerView: View {
             viewModel.usesFullChapterCache = true
             Task {
                 await viewModel.loadBook(book)
-                fontFamily = await SettingsActor.shared.config.reading.fontFamily
+                let config = await SettingsActor.shared.config
+                fontFamily = config.reading.fontFamily
+                subtitleFontSize = config.reading.tvSubtitleFontSize
             }
             resetControlsTimer()
             loadCoverImage()
@@ -250,7 +253,7 @@ struct TVPlayerView: View {
                 LazyVStack(alignment: .leading, spacing: 24) {
                     ForEach(viewModel.allChapterLines) { line in
                         Text(line.text)
-                            .font(.title)
+                            .font(.system(size: subtitleFontSize))
                             .fontDesign(fontDesign)
                             .foregroundStyle(.white.opacity(line.index == viewModel.currentEntryIndex ? 1 : 0.35))
                             .multilineTextAlignment(.leading)

@@ -63,3 +63,7 @@ public let kDefaultTabBarSlot2 = "series"
 public let kDefaultTapToPlayPreferredPlayer = false
 public let kDefaultPreferAudioOverEbook = false
 public let kDefaultShowTabsOnHover = true
+
+// MARK: - tvOS Settings
+
+public let kDefaultTVSubtitleFontSize: Double = 48

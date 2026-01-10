@@ -11,6 +11,7 @@ public final class TVSettingsViewModel {
     var connectionError: String?
     var isTesting: Bool = false
     var fontFamily: String = kDefaultFontFamily
+    var tvSubtitleFontSize: Double = kDefaultTVSubtitleFontSize
     var customFontFamilies: [CustomFontFamily] = []
 
     init() {
@@ -24,6 +25,7 @@ public final class TVSettingsViewModel {
     func loadSettings() async {
         let config = await SettingsActor.shared.config
         fontFamily = config.reading.fontFamily
+        tvSubtitleFontSize = config.reading.tvSubtitleFontSize
     }
 
     func loadCustomFonts() async {
@@ -37,6 +39,15 @@ public final class TVSettingsViewModel {
             try await SettingsActor.shared.updateConfig(fontFamily: newValue)
         } catch {
             debugLog("[TVSettingsViewModel] Failed to save font setting: \(error)")
+        }
+    }
+
+    func updateSubtitleFontSize(_ newValue: Double) async {
+        tvSubtitleFontSize = newValue
+        do {
+            try await SettingsActor.shared.updateConfig(tvSubtitleFontSize: newValue)
+        } catch {
+            debugLog("[TVSettingsViewModel] Failed to save subtitle font size: \(error)")
         }
     }
 

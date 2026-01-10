@@ -49,6 +49,7 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
         public var userHighlightColor6: String
         public var userHighlightMode: String
         public var readaloudHighlightMode: String
+        public var tvSubtitleFontSize: Double
 
         public init(
             fontSize: Double = kDefaultFontSize,
@@ -72,7 +73,8 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
             userHighlightColor5: String = kDefaultUserHighlightColor5,
             userHighlightColor6: String = kDefaultUserHighlightColor6,
             userHighlightMode: String = kDefaultUserHighlightMode,
-            readaloudHighlightMode: String = kDefaultReadaloudHighlightMode
+            readaloudHighlightMode: String = kDefaultReadaloudHighlightMode,
+            tvSubtitleFontSize: Double = kDefaultTVSubtitleFontSize
         ) {
             self.fontSize = fontSize
             self.fontFamily = fontFamily
@@ -100,6 +102,7 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
             self.userHighlightColor6 = userHighlightColor6
             self.userHighlightMode = userHighlightMode
             self.readaloudHighlightMode = readaloudHighlightMode
+            self.tvSubtitleFontSize = tvSubtitleFontSize
         }
 
         public init(from decoder: Decoder) throws {
@@ -139,6 +142,7 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
             } else {
                 readaloudHighlightMode = storedMode
             }
+            tvSubtitleFontSize = (try? container?.decode(Double.self, forKey: .tvSubtitleFontSize)) ?? kDefaultTVSubtitleFontSize
         }
 
         private enum CodingKeys: String, CodingKey {
@@ -148,7 +152,7 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
             case customCSS, enableMarginClickNavigation, singleColumnMode
             case userHighlightColor1, userHighlightColor2, userHighlightColor3
             case userHighlightColor4, userHighlightColor5, userHighlightColor6
-            case userHighlightMode, readaloudHighlightMode
+            case userHighlightMode, readaloudHighlightMode, tvSubtitleFontSize
         }
 
         private enum LegacyCodingKeys: String, CodingKey {
@@ -419,7 +423,8 @@ public actor SettingsActor {
         userHighlightMode: String? = nil,
         readaloudHighlightMode: String? = nil,
         tabBarSlot1: String? = nil,
-        tabBarSlot2: String? = nil
+        tabBarSlot2: String? = nil,
+        tvSubtitleFontSize: Double? = nil
     ) throws {
         var updated = config
 
@@ -526,6 +531,9 @@ public actor SettingsActor {
         }
         if let readaloudHighlightMode {
             updated.reading.readaloudHighlightMode = readaloudHighlightMode
+        }
+        if let tvSubtitleFontSize {
+            updated.reading.tvSubtitleFontSize = tvSubtitleFontSize
         }
 
         #if os(iOS)
