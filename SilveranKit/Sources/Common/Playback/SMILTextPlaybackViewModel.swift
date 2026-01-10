@@ -143,8 +143,10 @@ public final class SMILTextPlaybackViewModel: NSObject {
     public private(set) var currentLineText: String = ""
     public private(set) var nextLineText: String = ""
     public private(set) var allChapterLines: [ChapterLine] = []
+    public private(set) var chapterParagraphs: [ChapterParagraph] = []
     private var cachedEntryIndex: Int = -1
     private var cachedSectionIndex: Int = -1
+    private var paragraphIndexByEntry: [Int: Int] = [:]
 
     public struct ChapterLine: Identifiable {
         public let index: Int
@@ -152,7 +154,27 @@ public final class SMILTextPlaybackViewModel: NSObject {
         public var id: Int { index }
     }
 
+    public struct ChapterSegment: Identifiable {
+        public let entryIndex: Int
+        public let text: String
+        public let separator: String
+        public var id: Int { entryIndex }
+    }
+
+    public struct ChapterParagraph: Identifiable {
+        public let index: Int
+        public let segments: [ChapterSegment]
+        public let text: String
+        public var id: Int { index }
+    }
+
     public func scrollTargetIndex(for entryIndex: Int) -> Int? {
+        if let paragraphIndex = paragraphIndexByEntry[entryIndex],
+            paragraphIndex >= 0,
+            paragraphIndex < chapterParagraphs.count
+        {
+            return paragraphIndex
+        }
         guard entryIndex >= 0, entryIndex < allChapterLines.count else { return nil }
         return entryIndex
     }
@@ -264,6 +286,8 @@ public final class SMILTextPlaybackViewModel: NSObject {
             currentSectionHTML = ""
             chapterTextByIndex = []
             allChapterLines = []
+            chapterParagraphs = []
+            paragraphIndexByEntry = [:]
         }
 
         if sectionChanged || entryChanged {
@@ -578,8 +602,11 @@ public final class SMILTextPlaybackViewModel: NSObject {
             let html = try EPUBContentLoader.loadSection(from: url, href: href)
             if usesFullChapterCache {
                 let elementIds = section.mediaOverlay.map { $0.textId }
-                let textById = await Task.detached(priority: .utility) {
-                    EPUBContentLoader.extractElementsText(from: html, elementIds: elementIds)
+                let extraction = await Task.detached(priority: .utility) {
+                    EPUBContentLoader.extractElementsTextAndParagraphKeys(
+                        from: html,
+                        elementIds: elementIds
+                    )
                 }.value
                 guard sectionIndex == currentSectionIndex,
                     sectionIndex < bookStructure.count,
@@ -591,8 +618,12 @@ public final class SMILTextPlaybackViewModel: NSObject {
                 currentSectionHTML = html
                 cachedSectionHref = href
                 cachedEntryIndex = -1
-                chapterTextByIndex = elementIds.map { textById[$0] ?? "" }
+                chapterTextByIndex = elementIds.map { extraction.textById[$0] ?? "" }
                 rebuildAllChapterLines()
+                rebuildChapterParagraphs(
+                    elementIds: elementIds,
+                    paragraphKeyById: extraction.paragraphKeyById
+                )
                 updateCachedTextIfNeeded()
             } else {
                 guard sectionIndex == currentSectionIndex,
@@ -606,6 +637,8 @@ public final class SMILTextPlaybackViewModel: NSObject {
                 cachedEntryIndex = -1
                 chapterTextByIndex = []
                 allChapterLines = []
+                chapterParagraphs = []
+                paragraphIndexByEntry = [:]
                 updateCachedTextIfNeeded()
             }
         } catch {
@@ -613,12 +646,16 @@ public final class SMILTextPlaybackViewModel: NSObject {
             currentSectionHTML = ""
             chapterTextByIndex = []
             allChapterLines = []
+            chapterParagraphs = []
+            paragraphIndexByEntry = [:]
         }
     }
 
     private func rebuildAllChapterLines() {
         guard !chapterTextByIndex.isEmpty else {
             allChapterLines = []
+            chapterParagraphs = []
+            paragraphIndexByEntry = [:]
             return
         }
 
@@ -627,6 +664,93 @@ public final class SMILTextPlaybackViewModel: NSObject {
             lines.append(ChapterLine(index: index, text: text))
         }
         allChapterLines = lines
+    }
+
+    private func rebuildChapterParagraphs(
+        elementIds: [String],
+        paragraphKeyById: [String: String]
+    ) {
+        guard !elementIds.isEmpty else {
+            chapterParagraphs = []
+            paragraphIndexByEntry = [:]
+            return
+        }
+
+        var paragraphs: [ChapterParagraph] = []
+        var paragraphIndexMap: [Int: Int] = [:]
+        var currentKey: String? = nil
+        var currentSegments: [(entryIndex: Int, text: String)] = []
+        var currentParagraphIndex = 0
+
+        func flushParagraph() {
+            guard !currentSegments.isEmpty else { return }
+            let segments = buildSegments(from: currentSegments)
+            let text = segments.map { $0.text + $0.separator }.joined()
+            paragraphs.append(
+                ChapterParagraph(
+                    index: currentParagraphIndex,
+                    segments: segments,
+                    text: text.trimmingCharacters(in: .whitespacesAndNewlines)
+                )
+            )
+            currentParagraphIndex += 1
+            currentSegments = []
+        }
+
+        for (entryIndex, elementId) in elementIds.enumerated() {
+            let key = paragraphKeyById[elementId] ?? "entry-\(entryIndex)"
+            if currentKey == nil {
+                currentKey = key
+            } else if key != currentKey {
+                flushParagraph()
+                currentKey = key
+            }
+
+            let text = chapterTextByIndex.indices.contains(entryIndex)
+                ? chapterTextByIndex[entryIndex]
+                : ""
+            currentSegments.append((entryIndex: entryIndex, text: text))
+            paragraphIndexMap[entryIndex] = currentParagraphIndex
+        }
+
+        flushParagraph()
+        chapterParagraphs = paragraphs
+        paragraphIndexByEntry = paragraphIndexMap
+    }
+
+    private func buildSegments(
+        from rawSegments: [(entryIndex: Int, text: String)]
+    ) -> [ChapterSegment] {
+        var segments: [ChapterSegment] = []
+        segments.reserveCapacity(rawSegments.count)
+        for index in rawSegments.indices {
+            let raw = rawSegments[index]
+            let nextText = index + 1 < rawSegments.count
+                ? rawSegments[index + 1].text
+                : ""
+            let separator = shouldInsertSpace(between: raw.text, and: nextText) ? " " : ""
+            segments.append(
+                ChapterSegment(
+                    entryIndex: raw.entryIndex,
+                    text: raw.text,
+                    separator: separator
+                )
+            )
+        }
+        return segments
+    }
+
+    private func shouldInsertSpace(between left: String, and right: String) -> Bool {
+        guard let leftLast = left.last, let rightFirst = right.first else { return false }
+        if leftLast.isWhitespace || rightFirst.isWhitespace { return false }
+
+        let noSpaceBefore: Set<Character> = [".", ",", ";", ":", "!", "?", ")", "]", "}", "'"]
+        if noSpaceBefore.contains(rightFirst) { return false }
+
+        let noSpaceAfter: Set<Character> = ["(", "[", "{", "-"]
+        if noSpaceAfter.contains(leftLast) { return false }
+
+        return true
     }
 
     // MARK: - Helpers

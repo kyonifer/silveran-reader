@@ -128,7 +128,7 @@ struct TVPlayerView: View {
                         alignment: .center
                     )
 
-                if viewModel.isLoadingPosition || viewModel.allChapterLines.isEmpty {
+                if viewModel.isLoadingPosition || viewModel.chapterParagraphs.isEmpty {
                     ProgressView()
                         .scaleEffect(2)
                         .tint(.white)
@@ -251,14 +251,13 @@ struct TVPlayerView: View {
         ScrollViewReader { proxy in
             ScrollView(showsIndicators: false) {
                 LazyVStack(alignment: .leading, spacing: 24) {
-                    ForEach(viewModel.allChapterLines) { line in
-                        Text(line.text)
+                    ForEach(viewModel.chapterParagraphs) { paragraph in
+                        paragraphText(paragraph)
                             .font(.system(size: subtitleFontSize))
                             .fontDesign(fontDesign)
-                            .foregroundStyle(.white.opacity(line.index == viewModel.currentEntryIndex ? 1 : 0.35))
                             .multilineTextAlignment(.leading)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .id(line.index)
+                            .id(paragraph.index)
                     }
                 }
                 .padding(.vertical, 300)
@@ -273,7 +272,7 @@ struct TVPlayerView: View {
                     scrollToCurrent(proxy, animated: true)
                 }
             }
-            .onChange(of: viewModel.allChapterLines.count) { _, _ in
+            .onChange(of: viewModel.chapterParagraphs.count) { _, _ in
                 forceInstantScroll = true
                 DispatchQueue.main.async {
                     scrollToCurrent(proxy, animated: false, consumeForce: false)
@@ -285,6 +284,17 @@ struct TVPlayerView: View {
         .offset(x: showControls ? -160 : 0)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .animation(.easeInOut(duration: 0.3), value: showControls)
+    }
+
+    private func paragraphText(_ paragraph: SMILTextPlaybackViewModel.ChapterParagraph) -> Text {
+        var text = Text("")
+        for segment in paragraph.segments {
+            let isActive = segment.entryIndex == viewModel.currentEntryIndex
+            let segmentText = Text(segment.text + segment.separator)
+                .foregroundStyle(.white.opacity(isActive ? 1 : 0.35))
+            text = text + segmentText
+        }
+        return text
     }
 
     private var fontDesign: Font.Design? {

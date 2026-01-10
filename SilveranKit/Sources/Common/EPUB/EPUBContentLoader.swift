@@ -11,6 +11,19 @@ public enum EPUBContentLoaderError: Error {
 
 public enum EPUBContentLoader {
 
+    public struct ElementTextExtraction: Sendable {
+        public let textById: [String: String]
+        public let paragraphKeyById: [String: String]
+
+        public init(
+            textById: [String: String],
+            paragraphKeyById: [String: String]
+        ) {
+            self.textById = textById
+            self.paragraphKeyById = paragraphKeyById
+        }
+    }
+
     /// Load full XHTML content for a section
     public static func loadSection(
         from epubURL: URL,
@@ -71,6 +84,31 @@ public enum EPUBContentLoader {
         }
     }
 
+    public static func extractElementsTextAndParagraphKeys(
+        from html: String,
+        elementIds: [String]
+    ) -> ElementTextExtraction {
+        do {
+            let doc = try SwiftSoup.parse(html)
+            var textById: [String: String] = [:]
+            var paragraphKeyById: [String: String] = [:]
+            for elementId in Set(elementIds) {
+                guard let element = try doc.getElementById(elementId) else { continue }
+                let text = try element.text()
+                if !text.isEmpty {
+                    textById[elementId] = text
+                }
+                paragraphKeyById[elementId] = paragraphKey(for: element)
+            }
+            return ElementTextExtraction(
+                textById: textById,
+                paragraphKeyById: paragraphKeyById
+            )
+        } catch {
+            return ElementTextExtraction(textById: [:], paragraphKeyById: [:])
+        }
+    }
+
     /// Get plain text for a specific element
     public static func getElementText(
         from epubURL: URL,
@@ -85,6 +123,109 @@ public enum EPUBContentLoader {
     }
 
     // MARK: - Private
+
+    private static let paragraphBlockTags: Set<String> = [
+        "p",
+        "li",
+        "blockquote",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "pre",
+        "dt",
+        "dd",
+        "figcaption",
+        "address",
+    ]
+
+    private static let inlineTags: Set<String> = [
+        "a",
+        "abbr",
+        "b",
+        "bdi",
+        "bdo",
+        "br",
+        "cite",
+        "code",
+        "data",
+        "dfn",
+        "em",
+        "i",
+        "img",
+        "input",
+        "kbd",
+        "label",
+        "mark",
+        "q",
+        "rp",
+        "rt",
+        "ruby",
+        "s",
+        "samp",
+        "small",
+        "span",
+        "strong",
+        "sub",
+        "sup",
+        "time",
+        "u",
+        "var",
+        "wbr",
+    ]
+
+    private static func paragraphKey(for element: Element) -> String {
+        if let key = paragraphKeyByBlockTag(for: element) {
+            return key
+        }
+        if let key = paragraphKeyByNonInlineAncestor(for: element) {
+            return key
+        }
+        if let selector = try? element.cssSelector() {
+            return selector
+        }
+        return (try? element.tagName()) ?? "unknown"
+    }
+
+    private static func paragraphKeyByBlockTag(for element: Element) -> String? {
+        var current: Element? = element
+        while let node = current {
+            let tag = (try? node.tagName())?.lowercased() ?? ""
+            if paragraphBlockTags.contains(tag) {
+                let id = (try? node.id()) ?? ""
+                if !id.isEmpty {
+                    return "\(tag)#\(id)"
+                }
+                if let selector = try? node.cssSelector() {
+                    return selector
+                }
+                return tag
+            }
+            current = node.parent()
+        }
+        return nil
+    }
+
+    private static func paragraphKeyByNonInlineAncestor(for element: Element) -> String? {
+        var current: Element? = element
+        while let node = current {
+            let tag = (try? node.tagName())?.lowercased() ?? ""
+            if !inlineTags.contains(tag) {
+                if let selector = try? node.cssSelector() {
+                    return selector
+                }
+                let id = (try? node.id()) ?? ""
+                if !id.isEmpty {
+                    return "\(tag)#\(id)"
+                }
+                return tag
+            }
+            current = node.parent()
+        }
+        return nil
+    }
 
     private static func extractFile(from archive: Archive, path: String) throws -> Data {
         let pathsToTry = [
