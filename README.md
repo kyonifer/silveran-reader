@@ -9,7 +9,7 @@ A book reading app for ebooks, audiobooks, and readaloud books, with tight [Stor
 ## Implemented Features
 
 - Support for ebooks, audiobooks, and readaloud books
-- iOS, macOS, CarPlay and Apple Watch support
+- iOS, macOS, tvOS, CarPlay and Apple Watch support
 - Playback readaloud books with audio-text sync (with mid-sentence page flips)
 - Storyteller server integration (optional)
 - Customizable playback speed (0.75x - 10x)
@@ -40,6 +40,12 @@ A book reading app for ebooks, audiobooks, and readaloud books, with tight [Stor
 | Main | Library | Player | Readaloud |
 |------|---------|--------|-----------|
 | ![Main](https://raw.githubusercontent.com/kyonifer/s-r-assets/screenshots/screenshots/watch_main.png) | ![Library](https://raw.githubusercontent.com/kyonifer/s-r-assets/screenshots/screenshots/watch_library.png) | ![Player](https://raw.githubusercontent.com/kyonifer/s-r-assets/screenshots/screenshots/watch_player.png) | ![Readaloud](https://raw.githubusercontent.com/kyonifer/s-r-assets/screenshots/screenshots/watch_readaloud.png) |
+
+### tvOS
+
+| Library | Reader |
+|---------|--------|
+| ![Library](https://raw.githubusercontent.com/kyonifer/s-r-assets/screenshots/screenshots/tvos_library.png) | ![Book 1](https://raw.githubusercontent.com/kyonifer/s-r-assets/screenshots/screenshots/tvos_book1.png) |
 
 ## Design Goals
 
