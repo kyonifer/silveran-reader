@@ -327,7 +327,7 @@ public enum LocationCondition: String, Codable, Hashable, Sendable, CaseIterable
         switch self {
             case .downloaded: return "Downloaded"
             case .serverOnly: return "Server Only"
-            case .localFiles: return "Local Files"
+            case .localFiles: return "Folder Source"
         }
     }
 }

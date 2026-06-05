@@ -407,9 +407,6 @@ public struct LibraryView: View {
                 let sourceName =
                     mediaViewModel.bookSources.first(where: { $0.id == sourceID })?.name
                     ?? "Book Source"
-                let books = mediaViewModel.library.bookMetaData
-                    .filter { $0.sourceID == sourceID }
-                    .sorted { $0.title.articleStrippedCompare($1.title) == .orderedAscending }
                 MediaGridView(
                     title: sourceName,
                     searchText: searchText,
@@ -423,9 +420,11 @@ public struct LibraryView: View {
                     },
                     initialNarrationFilterOption: .both,
                     scrollPosition: nil,
-                    filteredItems: books,
                     showAddBookButton: true,
                     addBookSourceID: sourceID,
+                    sourceFilterID: sourceID,
+                    sourceFilterName: sourceName,
+                    emptyStateMessage: "Use Add Book to add files to this source.",
                 )
                 .id(item.content.stableIdentifier)
             case .smartShelves:

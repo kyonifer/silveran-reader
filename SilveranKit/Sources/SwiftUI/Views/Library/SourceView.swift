@@ -290,9 +290,10 @@ extension SourceView {
                                     minimumTileWidth: 50,
                                     initialNarrationFilterOption: .both,
                                     scrollPosition: nil,
-                                    filteredItems: group.books,
                                     showAddBookButton: true,
                                     addBookSourceID: group.id,
+                                    sourceFilterID: group.id,
+                                    sourceFilterName: group.name,
                                 )
                             },
                             toolbarContent: {
@@ -393,7 +394,6 @@ extension SourceView {
     ) -> some View {
         let source = sourceRecord(for: sourceID)
         let sourceName = source?.name ?? "Unknown Source"
-        let books = booksBySourceID()[sourceID] ?? []
         #if os(iOS)
         MediaGridView(
             title: sourceName,
@@ -407,9 +407,10 @@ extension SourceView {
             initialNarrationFilterOption: .both,
             scrollPosition: nil,
             initialSelectedItem: initialSelectedItem,
-            filteredItems: books,
             showAddBookButton: true,
             addBookSourceID: sourceID,
+            sourceFilterID: sourceID,
+            sourceFilterName: sourceName,
         ).navigationTitle(sourceName)
         #else
         MediaGridView(
@@ -423,9 +424,10 @@ extension SourceView {
             initialNarrationFilterOption: .both,
             scrollPosition: nil,
             initialSelectedItem: initialSelectedItem,
-            filteredItems: books,
             showAddBookButton: true,
             addBookSourceID: sourceID,
+            sourceFilterID: sourceID,
+            sourceFilterName: sourceName,
         ).navigationTitle(sourceName)
         #endif
     }

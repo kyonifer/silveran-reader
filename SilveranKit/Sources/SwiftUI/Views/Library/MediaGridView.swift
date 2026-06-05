@@ -73,6 +73,7 @@ struct MediaGridView: View {
     typealias SortOption = MediaGridSortOption
     typealias FormatFilterOption = MediaGridFormatFilterOption
     typealias LocationFilterOption = MediaGridLocationFilterOption
+    typealias ContextFilters = MediaGridContextFilters
 
     public struct ColumnBreakpoint: Hashable {
         public let columns: Int
@@ -98,6 +99,7 @@ struct MediaGridView: View {
     let publicationYearFilter: String?
     let ratingFilter: String?
     let statusFilter: String?
+    let contextFilters: ContextFilters
     let defaultSort: String?
     let tableContext: String
     let preferredTileWidth: CGFloat
@@ -115,6 +117,7 @@ struct MediaGridView: View {
     let filteredItems: [BookMetadata]?
     let showAddBookButton: Bool
     let addBookSourceID: BookSourceID?
+    let emptyStateMessage: String
 
     #if os(macOS)
     // Workaround for macOS Sequoia bug where parent view's onTapGesture fires after card tap
@@ -137,6 +140,7 @@ struct MediaGridView: View {
     @State private var selectedRating: String? = nil
     @State private var selectedStatus: String? = nil
     @State private var selectedLocation: LocationFilterOption = .all
+    @State private var selectedSourceID: BookSourceID? = nil
     @State private var shouldEnsureActiveItemVisible: Bool = false
     @State private var hasHandledInitialSelection: Bool = false
     @AppStorage private var showSourceBadge: Bool
@@ -340,6 +344,10 @@ struct MediaGridView: View {
         filteredItems: [BookMetadata]? = nil,
         showAddBookButton: Bool = false,
         addBookSourceID: BookSourceID? = nil,
+        sourceFilterID: BookSourceID? = nil,
+        sourceFilterName: String? = nil,
+        emptyStateMessage: String =
+            "Add a local folder or Storyteller server in Settings > Book Sources, then use Add Book to add files.",
     ) {
         _layoutStyleRaw = AppStorage(
             wrappedValue: LibraryLayoutStyle.grid.rawValue,
@@ -378,6 +386,20 @@ struct MediaGridView: View {
         self.publicationYearFilter = publicationYearFilter
         self.ratingFilter = ratingFilter
         self.statusFilter = statusFilter
+        self.contextFilters = ContextFilters(
+            tag: tagFilter,
+            series: seriesFilter,
+            collection: collectionFilter,
+            author: authorFilter,
+            narrator: narratorFilter,
+            translator: translatorFilter,
+            publicationYear: publicationYearFilter,
+            rating: ratingFilter,
+            status: statusFilter,
+            location: initialLocationFilter == .all ? nil : initialLocationFilter,
+            sourceID: sourceFilterID,
+            sourceName: sourceFilterName,
+        )
         self.defaultSort = defaultSort
         self.tableContext = tableContext
         self.preferredTileWidth = preferredTileWidth
@@ -401,16 +423,16 @@ struct MediaGridView: View {
         _selectedFormatFilter = State(
             initialValue: MediaGridView.mapNarrationToFormatFilter(initialNarrationFilterOption)
         )
-        _selectedTag = State(initialValue: tagFilter)
-        _selectedSeries = State(initialValue: seriesFilter)
-        _selectedCollection = State(initialValue: collectionFilter)
-        _selectedAuthor = State(initialValue: authorFilter)
-        _selectedNarrator = State(initialValue: narratorFilter)
-        _selectedTranslator = State(initialValue: translatorFilter)
-        _selectedPublicationYear = State(initialValue: publicationYearFilter)
-        _selectedRating = State(initialValue: ratingFilter)
-        _selectedStatus = State(initialValue: statusFilter)
-        _selectedLocation = State(initialValue: initialLocationFilter)
+        _selectedTag = State(initialValue: nil)
+        _selectedSeries = State(initialValue: nil)
+        _selectedCollection = State(initialValue: nil)
+        _selectedAuthor = State(initialValue: nil)
+        _selectedNarrator = State(initialValue: nil)
+        _selectedTranslator = State(initialValue: nil)
+        _selectedPublicationYear = State(initialValue: nil)
+        _selectedRating = State(initialValue: nil)
+        _selectedStatus = State(initialValue: nil)
+        _selectedLocation = State(initialValue: .all)
 
         let defaultSortRaw: String
         if let defaultSort, SortOption(rawValue: defaultSort) != nil {
@@ -432,6 +454,7 @@ struct MediaGridView: View {
         self.filteredItems = filteredItems
         self.showAddBookButton = showAddBookButton
         self.addBookSourceID = addBookSourceID
+        self.emptyStateMessage = emptyStateMessage
     }
 
     private static func defaultColumnBreakpoints(preferredTileWidth: CGFloat) -> [ColumnBreakpoint]
@@ -739,6 +762,7 @@ struct MediaGridView: View {
                 selectedSeries: selectedSeries,
                 selectedStatus: selectedStatus,
                 selectedLocation: selectedLocation,
+                selectedSourceID: selectedSourceID,
                 selectedNarrator: selectedNarrator,
                 selectedAuthor: selectedAuthor,
                 selectedTranslator: selectedTranslator,
@@ -831,7 +855,8 @@ struct MediaGridView: View {
     }
 
     private var hasActiveFilters: Bool {
-        selectedFormatFilter != .all
+        hasContextFilters
+            || selectedFormatFilter != .all
             || selectedTag != nil
             || selectedSeries != nil
             || selectedAuthor != nil
@@ -841,6 +866,21 @@ struct MediaGridView: View {
             || selectedRating != nil
             || selectedStatus != nil
             || selectedLocation != .all
+            || selectedSourceID != nil
+    }
+
+    private var hasContextFilters: Bool {
+        contextFilters.tag != nil
+            || contextFilters.series != nil
+            || contextFilters.collection != nil
+            || contextFilters.author != nil
+            || contextFilters.narrator != nil
+            || contextFilters.translator != nil
+            || contextFilters.publicationYear != nil
+            || contextFilters.rating != nil
+            || contextFilters.status != nil
+            || contextFilters.location != nil
+            || contextFilters.sourceID != nil
     }
 
     private var tableHeader: some View {
@@ -867,6 +907,8 @@ struct MediaGridView: View {
                 selectedRating: $selectedRating,
                 selectedStatus: $selectedStatus,
                 selectedLocation: $selectedLocation,
+                selectedSourceID: $selectedSourceID,
+                contextFilters: contextFilters,
                 layoutStyle: Binding(
                     get: { layoutStyle },
                     set: { layoutStyleRaw = $0.rawValue },
@@ -891,6 +933,7 @@ struct MediaGridView: View {
                 availablePublicationYears: cachedAvailablePublicationYears,
                 availableRatings: cachedAvailableRatings,
                 availableStatuses: cachedAvailableStatuses,
+                availableSources: mediaViewModel.bookSources,
                 filtersSummaryText: cachedFiltersSummary,
                 showLayoutOption: true,
                 showSortOption: false,
@@ -914,9 +957,7 @@ struct MediaGridView: View {
             Text("No media is available here yet!")
                 .font(.title)
                 .foregroundStyle(.secondary)
-            Text(
-                "Add a local folder or Storyteller server in Settings > Book Sources, then use Add Book to add files."
-            )
+            Text(emptyStateMessage)
             .font(.body)
             .foregroundStyle(.tertiary)
             .multilineTextAlignment(.center)
@@ -940,6 +981,8 @@ struct MediaGridView: View {
             selectedRating: $selectedRating,
             selectedStatus: $selectedStatus,
             selectedLocation: $selectedLocation,
+            selectedSourceID: $selectedSourceID,
+            contextFilters: contextFilters,
             layoutStyle: Binding(
                 get: { layoutStyle },
                 set: { layoutStyleRaw = $0.rawValue },
@@ -964,6 +1007,7 @@ struct MediaGridView: View {
             availablePublicationYears: cachedAvailablePublicationYears,
             availableRatings: cachedAvailableRatings,
             availableStatuses: cachedAvailableStatuses,
+            availableSources: mediaViewModel.bookSources,
             filtersSummaryText: cachedFiltersSummary,
             showLayoutOption: true,
             onAddBook: addBookAction,
@@ -1096,9 +1140,7 @@ struct MediaGridView: View {
                         .foregroundStyle(.tertiary)
                         .multilineTextAlignment(.center)
                     #else
-                    Text(
-                        "Add a local folder or Storyteller server in Settings > Book Sources, then use Add Book to add files."
-                    )
+                    Text(emptyStateMessage)
                     .font(.body)
                     .foregroundStyle(.tertiary)
                     .multilineTextAlignment(.center)
@@ -1248,6 +1290,7 @@ struct MediaGridView: View {
                 selectedSeries: selectedSeries,
                 selectedStatus: selectedStatus,
                 selectedLocation: selectedLocation,
+                selectedSourceID: selectedSourceID,
                 selectedNarrator: selectedNarrator,
                 selectedAuthor: selectedAuthor,
                 selectedTranslator: selectedTranslator,
@@ -1506,7 +1549,7 @@ struct MediaGridView: View {
         let generation = renderRequestGeneration
         let request = MediaGridRenderRequest(
             mediaKind: mediaKind,
-            baseTagFilter: tagFilter,
+            contextFilters: contextFilters,
             selectedFormatFilter: selectedFormatFilter,
             selectedTag: selectedTag,
             selectedSeries: selectedSeries,
@@ -1518,6 +1561,8 @@ struct MediaGridView: View {
             selectedRating: selectedRating,
             selectedStatus: selectedStatus,
             selectedLocation: selectedLocation,
+            selectedSourceID: selectedSourceID,
+            selectedSourceName: sourceName(for: selectedSourceID),
             searchText: searchText,
             sortOption: selectedSortOption,
             filteredItems: filteredItems,
@@ -1547,6 +1592,11 @@ struct MediaGridView: View {
                 "[PerfTrace][MediaGridView] renderSnapshot title='\(title)' display=\(snapshot.displayItems.count) filters=\(includeFilterOptions) elapsedMs=\(String(format: "%.1f", elapsed))"
             )
         }
+    }
+
+    private func sourceName(for sourceID: BookSourceID?) -> String? {
+        guard let sourceID else { return nil }
+        return mediaViewModel.bookSources.first(where: { $0.id == sourceID })?.name
     }
 
     private func scrollToActiveItem(using proxy: ScrollViewProxy) {
@@ -1599,6 +1649,7 @@ private struct FilterChangeModifier: ViewModifier {
     let selectedSeries: String?
     let selectedStatus: String?
     let selectedLocation: MediaGridView.LocationFilterOption
+    let selectedSourceID: BookSourceID?
     let selectedNarrator: String?
     let selectedAuthor: String?
     let selectedTranslator: String?
@@ -1620,6 +1671,7 @@ private struct FilterChangeModifier: ViewModifier {
             .onChange(of: selectedSeries) { _, _ in onFilterChanged() }
             .onChange(of: selectedStatus) { _, _ in onFilterChanged() }
             .onChange(of: selectedLocation) { _, _ in onFilterChanged() }
+            .onChange(of: selectedSourceID) { _, _ in onFilterChanged() }
             .onChange(of: selectedNarrator) { _, _ in onFilterChanged() }
             .onChange(of: selectedAuthor) { _, _ in onFilterChanged() }
             .onChange(of: selectedTranslator) { _, _ in onFilterChanged() }

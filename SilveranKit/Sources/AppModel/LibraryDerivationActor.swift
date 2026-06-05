@@ -295,7 +295,7 @@ public enum MediaGridLocationFilterOption: String, CaseIterable, Identifiable, S
             case .all: "All Locations"
             case .downloaded: "Downloaded"
             case .serverOnly: "Server Only"
-            case .localFiles: "Local Files"
+            case .localFiles: "Folder Source"
         }
     }
 
@@ -304,7 +304,7 @@ public enum MediaGridLocationFilterOption: String, CaseIterable, Identifiable, S
             case .all: "All"
             case .downloaded: "Downloaded"
             case .serverOnly: "Server Only"
-            case .localFiles: "Local Files"
+            case .localFiles: "Folder Source"
         }
     }
 
@@ -373,7 +373,7 @@ public struct SmartShelfBooksInput: Sendable {
 
 public struct MediaGridRenderRequest: Sendable {
     public var mediaKind: MediaKind
-    public var baseTagFilter: String?
+    public var contextFilters: MediaGridContextFilters
     public var selectedFormatFilter: MediaGridFormatFilterOption
     public var selectedTag: String?
     public var selectedSeries: String?
@@ -385,6 +385,8 @@ public struct MediaGridRenderRequest: Sendable {
     public var selectedRating: String?
     public var selectedStatus: String?
     public var selectedLocation: MediaGridLocationFilterOption
+    public var selectedSourceID: BookSourceID?
+    public var selectedSourceName: String?
     public var searchText: String
     public var sortOption: MediaGridSortOption
     public var filteredItems: [BookMetadata]?
@@ -392,7 +394,7 @@ public struct MediaGridRenderRequest: Sendable {
 
     public init(
         mediaKind: MediaKind,
-        baseTagFilter: String?,
+        contextFilters: MediaGridContextFilters = MediaGridContextFilters(),
         selectedFormatFilter: MediaGridFormatFilterOption,
         selectedTag: String?,
         selectedSeries: String?,
@@ -404,13 +406,15 @@ public struct MediaGridRenderRequest: Sendable {
         selectedRating: String?,
         selectedStatus: String?,
         selectedLocation: MediaGridLocationFilterOption,
+        selectedSourceID: BookSourceID?,
+        selectedSourceName: String?,
         searchText: String,
         sortOption: MediaGridSortOption,
         filteredItems: [BookMetadata]?,
         includeFilterOptions: Bool,
     ) {
         self.mediaKind = mediaKind
-        self.baseTagFilter = baseTagFilter
+        self.contextFilters = contextFilters
         self.selectedFormatFilter = selectedFormatFilter
         self.selectedTag = selectedTag
         self.selectedSeries = selectedSeries
@@ -422,10 +426,55 @@ public struct MediaGridRenderRequest: Sendable {
         self.selectedRating = selectedRating
         self.selectedStatus = selectedStatus
         self.selectedLocation = selectedLocation
+        self.selectedSourceID = selectedSourceID
+        self.selectedSourceName = selectedSourceName
         self.searchText = searchText
         self.sortOption = sortOption
         self.filteredItems = filteredItems
         self.includeFilterOptions = includeFilterOptions
+    }
+}
+
+public struct MediaGridContextFilters: Sendable, Equatable {
+    public var tag: String?
+    public var series: String?
+    public var collection: String?
+    public var author: String?
+    public var narrator: String?
+    public var translator: String?
+    public var publicationYear: String?
+    public var rating: String?
+    public var status: String?
+    public var location: MediaGridLocationFilterOption?
+    public var sourceID: BookSourceID?
+    public var sourceName: String?
+
+    public init(
+        tag: String? = nil,
+        series: String? = nil,
+        collection: String? = nil,
+        author: String? = nil,
+        narrator: String? = nil,
+        translator: String? = nil,
+        publicationYear: String? = nil,
+        rating: String? = nil,
+        status: String? = nil,
+        location: MediaGridLocationFilterOption? = nil,
+        sourceID: BookSourceID? = nil,
+        sourceName: String? = nil,
+    ) {
+        self.tag = tag
+        self.series = series
+        self.collection = collection
+        self.author = author
+        self.narrator = narrator
+        self.translator = translator
+        self.publicationYear = publicationYear
+        self.rating = rating
+        self.status = status
+        self.location = location
+        self.sourceID = sourceID
+        self.sourceName = sourceName
     }
 }
 
@@ -614,12 +663,12 @@ public actor LibraryDerivationActor {
         var primary = items(
             metadata,
             for: request.mediaKind,
-            tagFilter: request.baseTagFilter,
+            contextFilters: request.contextFilters,
         )
         if request.selectedFormatFilter.includesAudiobookOnlyItems {
             primary = merge(
                 primary,
-                with: items(metadata, for: .audiobook, tagFilter: request.baseTagFilter),
+                with: items(metadata, for: .audiobook, contextFilters: request.contextFilters),
             )
         }
         return primary
@@ -633,27 +682,53 @@ public actor LibraryDerivationActor {
             return filteredItems
         }
         if request.mediaKind == .audiobook {
-            return items(metadata, for: .audiobook, tagFilter: request.baseTagFilter)
+            return items(metadata, for: .audiobook, contextFilters: request.contextFilters)
         }
         return merge(
-            items(metadata, for: request.mediaKind, tagFilter: request.baseTagFilter),
-            with: items(metadata, for: .audiobook, tagFilter: request.baseTagFilter),
+            items(metadata, for: request.mediaKind, contextFilters: request.contextFilters),
+            with: items(metadata, for: .audiobook, contextFilters: request.contextFilters),
         )
     }
 
     private func items(
         _ metadata: [BookMetadata],
         for kind: MediaKind,
-        tagFilter: String?,
+        contextFilters: MediaGridContextFilters,
     ) -> [BookMetadata] {
-        var base = metadata.filter { metadataMatchesKind($0, kind: kind) }
-        if let tagFilter, !tagFilter.isEmpty {
-            let target = tagFilter.lowercased()
-            base = base.filter { item in
-                item.tagNames.contains(where: { $0.lowercased() == target })
-            }
+        let base = metadata.filter { metadataMatchesKind($0, kind: kind) }
+        return applyContextFilters(contextFilters, to: base)
+    }
+
+    private func applyContextFilters(
+        _ context: MediaGridContextFilters,
+        to items: [BookMetadata],
+    ) -> [BookMetadata] {
+        var filtered = items
+        if let tag = context.tag { filtered = filtered.filter { $0.matchesTag(tag) } }
+        if let series = context.series { filtered = filtered.filter { $0.matchesSeries(series) } }
+        if let collection = context.collection {
+            filtered = filtered.filter { $0.matchesCollection(collection) }
         }
-        return base
+        if let author = context.author { filtered = filtered.filter { $0.matchesAuthor(author) } }
+        if let narrator = context.narrator {
+            filtered = filtered.filter { $0.matchesNarrator(narrator) }
+        }
+        if let translator = context.translator {
+            filtered = filtered.filter { $0.matchesTranslator(translator) }
+        }
+        if let year = context.publicationYear {
+            filtered = filtered.filter { $0.matchesPublicationYear(year) }
+        }
+        if let rating = context.rating {
+            filtered = filtered.filter { $0.matchesRating(rating) }
+        }
+        if let status = context.status {
+            filtered = filtered.filter { $0.matchesStatus(status) }
+        }
+        if let sourceID = context.sourceID {
+            filtered = filtered.filter { $0.sourceID == sourceID }
+        }
+        return filtered
     }
 
     private func merge(_ primary: [BookMetadata], with supplemental: [BookMetadata])
@@ -725,8 +800,11 @@ public actor LibraryDerivationActor {
         if let status = request.selectedStatus {
             filtered = filtered.filter { $0.matchesStatus(status) }
         }
+        if let selectedSourceID = request.selectedSourceID {
+            filtered = filtered.filter { $0.sourceID == selectedSourceID }
+        }
 
-        switch request.selectedLocation {
+        switch request.contextFilters.location ?? request.selectedLocation {
             case .all:
                 break
             case .downloaded:
@@ -778,7 +856,10 @@ public actor LibraryDerivationActor {
     }
 
     private func filtersSummary(for request: MediaGridRenderRequest) -> String {
-        var parts = [request.selectedFormatFilter.shortLabel]
+        var parts: [String] = []
+        if request.selectedFormatFilter != .all {
+            parts.append(request.selectedFormatFilter.shortLabel)
+        }
         if let status = request.selectedStatus { parts.append(status) }
         if let tag = request.selectedTag { parts.append(tag) }
         if let series = request.selectedSeries { parts.append(series) }
@@ -789,10 +870,36 @@ public actor LibraryDerivationActor {
         if let rating = request.selectedRating {
             parts.append(rating == "Unrated" ? "Unrated" : "\(rating) Stars")
         }
-        if request.selectedLocation != .all {
+        appendContextFilterSummaries(request.contextFilters, to: &parts)
+        if request.contextFilters.location == nil, request.selectedLocation != .all {
             parts.append(request.selectedLocation.shortLabel)
         }
+        if let sourceName = request.selectedSourceName {
+            parts.append(sourceName)
+        }
+        if parts.isEmpty {
+            parts.append(request.selectedFormatFilter.shortLabel)
+        }
         return parts.joined(separator: " • ")
+    }
+
+    private func appendContextFilterSummaries(
+        _ context: MediaGridContextFilters,
+        to parts: inout [String],
+    ) {
+        if let tag = context.tag { parts.append(tag) }
+        if let series = context.series { parts.append(series) }
+        if let collection = context.collection { parts.append(collection) }
+        if let author = context.author { parts.append(author) }
+        if let narrator = context.narrator { parts.append(narrator) }
+        if let translator = context.translator { parts.append(translator) }
+        if let year = context.publicationYear { parts.append(year) }
+        if let rating = context.rating {
+            parts.append(rating == "Unrated" ? "Unrated" : "\(rating) Stars")
+        }
+        if let status = context.status { parts.append(status) }
+        if let location = context.location, location != .all { parts.append(location.shortLabel) }
+        if let sourceName = context.sourceName { parts.append(sourceName) }
     }
 
     private func availableTags(from catalog: [BookMetadata]) -> [String] {
