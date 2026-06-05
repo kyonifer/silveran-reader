@@ -10,6 +10,9 @@ public struct StorytellerServerSettingsView: View {
     @State private var sourceURLs: [BookSourceID: String] = [:]
     @State private var isLoading = false
     @State private var showingAddServer = false
+    #if os(macOS)
+    @State private var editingSource: BookSourceRecord?
+    #endif
 
     #if os(macOS)
     @Environment(\.openWindow) private var openWindow
@@ -36,24 +39,22 @@ public struct StorytellerServerSettingsView: View {
                     }
                 } else {
                     ForEach(sources) { source in
+                        #if os(macOS)
+                        Button {
+                            editingSource = source
+                        } label: {
+                            sourceRow(for: source)
+                        }
+                        .buttonStyle(.plain)
+                        #else
                         NavigationLink {
                             BookSourceEditorView(source: source) {
                                 await loadSources()
                             }
                         } label: {
-                            Label {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(source.name)
-                                    Text(sourceDetail(for: source))
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-                                        .truncationMode(.middle)
-                                }
-                            } icon: {
-                                Image(systemName: iconName(for: source.kind))
-                            }
+                            sourceRow(for: source)
                         }
+                        #endif
                     }
                 }
 
@@ -87,6 +88,18 @@ public struct StorytellerServerSettingsView: View {
                 }
             }
         }
+        #if os(macOS)
+        .sheet(item: $editingSource) { source in
+            NavigationStack {
+                BookSourceEditorView(source: source) {
+                    await loadSources()
+                    await MainActor.run {
+                        editingSource = nil
+                    }
+                }
+            }
+        }
+        #endif
     }
 
     private func loadSources() async {
@@ -109,6 +122,29 @@ public struct StorytellerServerSettingsView: View {
 
     private var addFilesHelpButton: some View {
         AddFilesHelpButton(title: "How do I add files to these sources?")
+    }
+
+    private func sourceRow(for source: BookSourceRecord) -> some View {
+        Label {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(source.name)
+                    Text(sourceDetail(for: source))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                Spacer()
+                #if os(macOS)
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                #endif
+            }
+        } icon: {
+            Image(systemName: iconName(for: source.kind))
+        }
     }
 
     private func sourceDetail(for source: BookSourceRecord) -> String {
@@ -297,6 +333,15 @@ private struct BookSourceEditorView: View {
                     }
                     .disabled(!canSave)
 
+                    if isExistingSource && kind == .storyteller {
+                        Button("Test Connection") {
+                            Task {
+                                await testConnection()
+                            }
+                        }
+                        .disabled(isLoading || !canSave)
+                    }
+
                     Spacer()
 
                     connectionStatusView
@@ -353,6 +398,15 @@ private struct BookSourceEditorView: View {
                     }
                 }
             }
+            #if os(macOS)
+            if isExistingSource {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") {
+                        dismiss()
+                    }
+                }
+            }
+            #endif
         }
         .confirmationDialog(
             removeConfirmationTitle,
@@ -380,7 +434,7 @@ private struct BookSourceEditorView: View {
     private var primaryActionTitle: String {
         switch kind {
             case .storyteller:
-                return isExistingSource ? "Save Credentials and Connect" : "Add and Connect"
+                return isExistingSource ? "Save Credentials" : "Add Server"
             case .localFolder:
                 return isExistingSource ? "Save Folder Source" : "Add Folder Source"
         }
@@ -500,7 +554,7 @@ private struct BookSourceEditorView: View {
     private func saveSource() async {
         await MainActor.run {
             isLoading = true
-            connectionStatus = .testing
+            connectionStatus = .notTested
         }
 
         let configuration = BookSourceConfiguration(
@@ -528,7 +582,7 @@ private struct BookSourceEditorView: View {
             await MainActor.run {
                 hasSavedCredentials = true
                 isLoading = false
-                connectionStatus = kind == .storyteller ? .success : .notTested
+                connectionStatus = .notTested
                 originalFolderPath = folderPath
                 originalFolderBookmarkData = folderBookmarkData
             }
@@ -537,6 +591,27 @@ private struct BookSourceEditorView: View {
             await MainActor.run {
                 isLoading = false
                 connectionStatus = .failure(message)
+            }
+        }
+    }
+
+    private func testConnection() async {
+        guard let sourceID else { return }
+
+        await MainActor.run {
+            isLoading = true
+            connectionStatus = .testing
+        }
+
+        let success = await BookServiceActor.shared.testBookSourceConnection(sourceID: sourceID)
+
+        await MainActor.run {
+            isLoading = false
+            if success {
+                hasSavedCredentials = true
+                connectionStatus = .success
+            } else {
+                connectionStatus = .failure("Could not connect to this server.")
             }
         }
     }

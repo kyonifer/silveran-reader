@@ -233,7 +233,7 @@ public actor BookServiceActor {
                 let actor = StorytellerActor(sourceRecord: record)
                 sourcesByID[record.id] = actor
 
-                guard await actor.setLogin(
+                guard await actor.configureCredentials(
                     baseURL: serverURL,
                     username: username,
                     password: password,
@@ -313,7 +313,7 @@ public actor BookServiceActor {
                     sourcesByID[sourceID] = actor
                 }
 
-                guard await actor.setLogin(
+                guard await actor.configureCredentials(
                     baseURL: serverURL,
                     username: username,
                     password: password,
@@ -333,18 +333,6 @@ public actor BookServiceActor {
                 }
 
                 await upsertSourceRecord(updatedRecord)
-                if let metadata = await actor.fetchLibraryInformation() {
-                    let stamped = metadata.map { book in
-                        var stamped = book
-                        stamped.sourceID = stamped.sourceID ?? sourceID
-                        stamped.source = updatedRecord.name
-                        return stamped
-                    }
-                    try? await LocalMediaActor.shared.updateSourceCacheMetadata(
-                        stamped,
-                        replacingSourceID: sourceID,
-                    )
-                }
             case .localFolder:
                 guard updatedRecord.storagePath != nil else { return false }
                 if let storagePath = updatedRecord.storagePath {
@@ -369,6 +357,23 @@ public actor BookServiceActor {
                 }
         }
         return true
+    }
+
+    public func testBookSourceConnection(sourceID: BookSourceID) async -> Bool {
+        await ensureSourceRegistryLoaded()
+        guard
+            sourceRecords.contains(where: { $0.id == sourceID }),
+            let credentials = try? await AuthenticationActor.shared.loadCredentials(sourceID: sourceID),
+            let actor = await storytellerActor(for: sourceID)
+        else {
+            return false
+        }
+
+        return await actor.setLogin(
+            baseURL: credentials.url,
+            username: credentials.username,
+            password: credentials.password,
+        )
     }
 
     public func removeBookSource(
