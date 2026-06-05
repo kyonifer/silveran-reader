@@ -145,6 +145,8 @@ public struct StorytellerServerSettingsView: View {
         } icon: {
             Image(systemName: iconName(for: source.kind))
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
     }
 
     private func sourceDetail(for source: BookSourceRecord) -> String {
@@ -240,7 +242,12 @@ private struct BookSourceEditorView: View {
 
                 switch kind {
                     case .storyteller:
-                        TextField("Server URL", text: $serverURL)
+                        TextField(
+                            "Server URL",
+                            text: $serverURL,
+                            prompt: Text(verbatim: "https://my.example.com")
+                                .foregroundStyle(.secondary),
+                        )
                             .textContentType(.URL)
                             .autocorrectionDisabled()
                             #if os(iOS)
@@ -294,20 +301,22 @@ private struct BookSourceEditorView: View {
                             }
 
                             #if os(macOS)
-                            Button {
-                                revealFolderInFinder()
-                            } label: {
-                                Image(systemName: "folder")
+                            if isExistingSource {
+                                Button {
+                                    revealFolderInFinder()
+                                } label: {
+                                    Image(systemName: "magnifyingglass")
+                                }
+                                .buttonStyle(.borderless)
+                                .help("Show in Finder")
+                                .disabled(folderPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                             }
-                            .buttonStyle(.borderless)
-                            .help("Show in Finder")
-                            .disabled(folderPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                             #endif
 
                             Button {
                                 showingFolderImporter = true
                             } label: {
-                                Image(systemName: "pencil")
+                                Image(systemName: isExistingSource ? "pencil" : "folder")
                             }
                             .buttonStyle(.borderless)
                             .help("Choose folder")
@@ -325,6 +334,25 @@ private struct BookSourceEditorView: View {
             }
 
             Section {
+                #if os(iOS)
+                actionRowButton(
+                    title: primaryActionTitle,
+                    isDisabled: !canSave,
+                    status: saveStatusIcon,
+                ) {
+                    await saveSource()
+                }
+
+                if isExistingSource && kind == .storyteller {
+                    actionRowButton(
+                        title: "Test Connection",
+                        isDisabled: isLoading || !canSave,
+                        status: connectionStatusIcon,
+                    ) {
+                        await testConnection()
+                    }
+                }
+                #else
                 HStack {
                     Button(primaryActionTitle) {
                         Task {
@@ -344,8 +372,11 @@ private struct BookSourceEditorView: View {
 
                     Spacer()
 
-                    connectionStatusView
+                    if shouldShowConnectionStatus {
+                        connectionStatusView
+                    }
                 }
+                #endif
 
                 if isExistingSource {
                     Button(role: .destructive) {
@@ -408,11 +439,7 @@ private struct BookSourceEditorView: View {
             }
             #endif
         }
-        .confirmationDialog(
-            removeConfirmationTitle,
-            isPresented: $showRemoveDataConfirmation,
-            titleVisibility: .visible,
-        ) {
+        .alert(removeConfirmationTitle, isPresented: $showRemoveDataConfirmation) {
             Button(removeActionTitle, role: .destructive) {
                 Task {
                     await removeSource()
@@ -469,18 +496,64 @@ private struct BookSourceEditorView: View {
         }
     }
 
+    private var shouldShowConnectionStatus: Bool {
+        connectionStatus != .notTested
+    }
+
+    @ViewBuilder
+    private func actionRowButton(
+        title: String,
+        isDisabled: Bool,
+        status: some View,
+        action: @escaping () async -> Void,
+    ) -> some View {
+        Button {
+            Task {
+                await action()
+            }
+        } label: {
+            HStack {
+                Text(title)
+                Spacer()
+                status
+            }
+            .contentShape(Rectangle())
+        }
+        .disabled(isDisabled)
+    }
+
+    @ViewBuilder
+    private var saveStatusIcon: some View {
+        if isLoading {
+            EmptyView()
+        } else if hasSavedCredentials {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+        }
+    }
+
+    @ViewBuilder
+    private var connectionStatusIcon: some View {
+        switch connectionStatus {
+            case .notTested:
+                EmptyView()
+            case .testing:
+                ProgressView()
+                    .controlSize(.small)
+            case .success:
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+            case .failure:
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.red)
+        }
+    }
+
     @ViewBuilder
     private var connectionStatusView: some View {
         switch connectionStatus {
             case .notTested:
-                if hasSavedCredentials {
-                    HStack {
-                        Image(systemName: "checkmark.circle")
-                            .foregroundStyle(.secondary)
-                        Text("Saved")
-                            .foregroundStyle(.secondary)
-                    }
-                }
+                EmptyView()
             case .testing:
                 ProgressView()
                     .controlSize(.small)

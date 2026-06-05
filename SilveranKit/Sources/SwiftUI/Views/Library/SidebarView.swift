@@ -1,6 +1,10 @@
 import SwiftUI
 
 #if os(macOS)
+import AppKit
+#endif
+
+#if os(macOS)
 private struct DebouncedSearchField: View {
     @Binding var searchText: String
     @State private var localText: String = ""
@@ -580,13 +584,7 @@ struct SidebarView: View {
                 #endif
                 connectionIndicator(for: mediaViewModel.connectionStatus)
             } else if case .bookSource(let sourceID) = item.content {
-                let count = mediaViewModel.library.bookMetaData.filter { $0.sourceID == sourceID }.count
-                if count > 0 {
-                    Text("\(count)")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                }
+                bookSourceTrailingContent(sourceID: sourceID)
             } else {
                 let count = mediaViewModel.badgeCount(for: item.content)
                 if count > 0 {
@@ -603,6 +601,34 @@ struct SidebarView: View {
         }
         .contextMenu { sidebarRowContextMenu(for: item, isPinned: isPinned) }
         #endif
+    }
+
+    @ViewBuilder
+    private func bookSourceTrailingContent(sourceID: BookSourceID) -> some View {
+        let count = mediaViewModel.library.bookMetaData.filter { $0.sourceID == sourceID }.count
+        #if os(macOS)
+        if let source = mediaViewModel.bookSources.first(where: { $0.id == sourceID }),
+            source.kind == .localFolder,
+            let storagePath = source.storagePath?.trimmingCharacters(in: .whitespacesAndNewlines),
+            !storagePath.isEmpty
+        {
+            Button {
+                openFolderSourceInFinder(path: storagePath)
+            } label: {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 10))
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(.secondary)
+            .help("Show in Finder")
+        }
+        #endif
+        if count > 0 {
+            Text("\(count)")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+        }
     }
 
     #if os(macOS)
@@ -678,6 +704,13 @@ struct SidebarView: View {
     #endif
 
     #if os(macOS)
+    private func openFolderSourceInFinder(path: String) {
+        let url = URL(fileURLWithPath: path, isDirectory: true)
+        NSWorkspace.shared.open(url)
+        NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.finder")
+            .first?.activate()
+    }
+
     @ViewBuilder
     private func pinButton(for item: SidebarItemDescription, isPinned: Bool) -> some View {
         if item.id.hasPrefix("pin.") && !isPinned {
