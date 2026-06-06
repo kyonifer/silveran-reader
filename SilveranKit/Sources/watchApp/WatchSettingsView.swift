@@ -8,8 +8,10 @@ struct WatchSettingsView: View {
     @State private var serverURL: String = ""
     @State private var username: String = ""
     @State private var password: String = ""
+    @State private var sourceName: String = BookSourceKind.storyteller.defaultName
     @State private var storytellerSources: [BookSourceRecord] = []
     @State private var selectedSourceID: BookSourceID?
+    @State private var isAddingSource = false
     @State private var isConnecting = false
     @State private var connectionStatus: ConnectionStatus = .disconnected
     @State private var isSyncingFromPhone = false
@@ -21,34 +23,19 @@ struct WatchSettingsView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Storyteller Server")
-                        .font(.headline)
-
-                    if storytellerSources.count > 1 {
-                        sourcePicker
-                    }
-
-                    statusSection
-
-                    if hasCredentials {
-                        credentialActions
-                    } else {
-                        setupActions
-                    }
-
-                    if showManualEntry {
-                        manualEntrySection
-                    }
-                }
+                content
                 .padding(.horizontal)
             }
-            .navigationTitle("Server")
+            .navigationTitle(isEditingSource ? (isAddingSource ? "Add Server" : "Edit Server") : "Servers")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") {
-                        dismiss()
+                    Button(isEditingSource ? "Back" : "Done") {
+                        if isEditingSource {
+                            cancelEditingSource()
+                        } else {
+                            dismiss()
+                        }
                     }
                 }
             }
@@ -63,11 +50,98 @@ struct WatchSettingsView: View {
                     }
                 }
             } message: {
-                Text("This will clear your login credentials.")
+                Text("This will remove the server and its cached local data from this watch.")
             }
         }
         .task {
             await loadExistingCredentials()
+        }
+    }
+
+    private var isEditingSource: Bool {
+        isAddingSource || showManualEntry
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if isEditingSource {
+            editorContent
+        } else {
+            sourceListContent
+        }
+    }
+
+    private var sourceListContent: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Storyteller Servers")
+                .font(.headline)
+
+            if storytellerSources.isEmpty {
+                Text("No servers configured.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(storytellerSources) { source in
+                    Button {
+                        Task {
+                            await openSource(source)
+                        }
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "server.rack")
+                                .font(.caption2)
+                            Text(source.name)
+                                .font(.caption2)
+                                .lineLimit(2)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                    .controlSize(.small)
+                }
+            }
+
+            Button {
+                startAddingSource()
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "plus")
+                        .font(.caption2)
+                    Text("Add Server")
+                        .font(.caption2)
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .controlSize(.small)
+        }
+    }
+
+    private var editorContent: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(isAddingSource ? "Add Storyteller Server" : sourceName)
+                .font(.headline)
+
+            if !isAddingSource {
+                statusSection
+            }
+
+            syncFromPhoneButton
+
+            manualEntrySection
+
+            if !isAddingSource {
+                Button(role: .destructive) {
+                    showRemoveConfirmation = true
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "trash")
+                            .font(.caption2)
+                        Text("Remove Server")
+                            .font(.caption2)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .controlSize(.small)
+            }
         }
     }
 
@@ -98,20 +172,6 @@ struct WatchSettingsView: View {
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
-    }
-
-    private var sourcePicker: some View {
-        Picker("Server", selection: $selectedSourceID) {
-            ForEach(storytellerSources) { source in
-                Text(source.name).tag(Optional(source.id))
-            }
-        }
-        .font(.caption2)
-        .onChange(of: selectedSourceID) {
-            Task {
-                await loadCredentialsForSelectedSource()
-            }
-        }
     }
 
     private var statusIcon: String {
@@ -153,102 +213,27 @@ struct WatchSettingsView: View {
         }
     }
 
-    private var setupActions: some View {
-        VStack(spacing: 8) {
-            if WatchSessionManager.shared.isPhoneReachable {
-                Button {
-                    syncFromPhone()
-                } label: {
-                    HStack(spacing: 4) {
-                        if isSyncingFromPhone {
-                            ProgressView()
-                                .controlSize(.small)
-                        } else {
-                            Image(systemName: "iphone")
-                                .font(.caption2)
-                        }
-                        Text(isSyncingFromPhone ? "Syncing..." : "Sync Login from iPhone")
+    @ViewBuilder
+    private var syncFromPhoneButton: some View {
+        if WatchSessionManager.shared.isPhoneReachable {
+            Button {
+                syncFromPhone()
+            } label: {
+                HStack(spacing: 4) {
+                    if isSyncingFromPhone {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Image(systemName: "iphone")
                             .font(.caption2)
                     }
-                    .frame(maxWidth: .infinity)
-                }
-                .controlSize(.small)
-                .disabled(isSyncingFromPhone)
-            }
-
-            Button {
-                withAnimation {
-                    showManualEntry = true
-                }
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "keyboard")
-                        .font(.caption2)
-                    Text("Enter Login Manually")
+                    Text(isSyncingFromPhone ? "Syncing..." : "Sync Login from iPhone")
                         .font(.caption2)
                 }
                 .frame(maxWidth: .infinity)
             }
             .controlSize(.small)
-            .tint(.secondary)
-        }
-    }
-
-    private var credentialActions: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Credentials")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-
-            if WatchSessionManager.shared.isPhoneReachable {
-                Button {
-                    syncFromPhone()
-                } label: {
-                    HStack(spacing: 4) {
-                        if isSyncingFromPhone {
-                            ProgressView()
-                                .controlSize(.small)
-                        } else {
-                            Image(systemName: "arrow.triangle.2.circlepath")
-                                .font(.caption2)
-                        }
-                        Text(isSyncingFromPhone ? "Syncing..." : "Re-sync from iPhone")
-                            .font(.caption2)
-                    }
-                    .frame(maxWidth: .infinity)
-                }
-                .controlSize(.small)
-                .disabled(isSyncingFromPhone)
-            }
-
-            Button {
-                withAnimation {
-                    showManualEntry = true
-                }
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "pencil")
-                        .font(.caption2)
-                    Text("Edit Manually")
-                        .font(.caption2)
-                }
-                .frame(maxWidth: .infinity)
-            }
-            .controlSize(.small)
-            .tint(.secondary)
-
-            Button(role: .destructive) {
-                showRemoveConfirmation = true
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "trash")
-                        .font(.caption2)
-                    Text("Remove Server")
-                        .font(.caption2)
-                }
-                .frame(maxWidth: .infinity)
-            }
-            .controlSize(.small)
+            .disabled(isSyncingFromPhone)
         }
     }
 
@@ -263,6 +248,10 @@ struct WatchSettingsView: View {
                 .textContentType(.URL)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
+                .font(.caption2)
+
+            TextField("Name", text: $sourceName)
+                .textContentType(.name)
                 .font(.caption2)
 
             TextField("Username", text: $username)
@@ -285,7 +274,7 @@ struct WatchSettingsView: View {
                         ProgressView()
                             .controlSize(.small)
                     }
-                    Text(isConnecting ? "Connecting..." : "Connect")
+                    Text(isConnecting ? "Connecting..." : (isAddingSource ? "Add Server" : "Save and Connect"))
                         .font(.caption2)
                 }
                 .frame(maxWidth: .infinity)
@@ -298,16 +287,33 @@ struct WatchSettingsView: View {
     }
 
     private func loadExistingCredentials() async {
+        let previousSelection = selectedSourceID
         storytellerSources = await BookServiceActor.shared.bookSources
             .filter { $0.kind == .storyteller }
-        if selectedSourceID == nil || !storytellerSources.contains(where: { $0.id == selectedSourceID }) {
+        if isEditingSource {
+            return
+        }
+        if let previousSelection,
+            storytellerSources.contains(where: { $0.id == previousSelection })
+        {
+            selectedSourceID = previousSelection
+        } else if selectedSourceID == nil || !storytellerSources.contains(where: { $0.id == selectedSourceID }) {
             selectedSourceID = storytellerSources.first?.id
         }
         await loadCredentialsForSelectedSource()
     }
 
+    private func openSource(_ source: BookSourceRecord) async {
+        selectedSourceID = source.id
+        showManualEntry = true
+        await loadCredentialsForSelectedSource()
+        showManualEntry = true
+    }
+
     private func loadCredentialsForSelectedSource() async {
+        isAddingSource = false
         guard let selectedSourceID else {
+            sourceName = BookSourceKind.storyteller.defaultName
             serverURL = ""
             username = ""
             password = ""
@@ -315,6 +321,9 @@ struct WatchSettingsView: View {
             connectionStatus = .disconnected
             return
         }
+
+        sourceName = storytellerSources.first { $0.id == selectedSourceID }?.name
+            ?? BookSourceKind.storyteller.defaultName
 
         do {
             if let credentials = try await AuthenticationActor.shared.loadCredentials(
@@ -338,6 +347,28 @@ struct WatchSettingsView: View {
             )
         } catch {
             debugLog("[WatchSettingsView] Failed to load credentials: \(error)")
+        }
+    }
+
+    private func startAddingSource() {
+        isAddingSource = true
+        selectedSourceID = nil
+        sourceName = BookSourceKind.storyteller.defaultName
+        serverURL = ""
+        username = ""
+        password = ""
+        hasCredentials = false
+        connectionStatus = .disconnected
+        errorMessage = nil
+        showManualEntry = true
+    }
+
+    private func cancelEditingSource() {
+        isAddingSource = false
+        showManualEntry = false
+        errorMessage = nil
+        Task {
+            await loadExistingCredentials()
         }
     }
 
@@ -375,22 +406,9 @@ struct WatchSettingsView: View {
         errorMessage = nil
 
         do {
-            guard let selectedSourceID else {
-                connectionStatus = .error("No server selected")
-                errorMessage = "No server selected"
-                isConnecting = false
-                return
-            }
-
-            try await AuthenticationActor.shared.saveCredentials(
-                url: serverURL,
-                username: username,
-                password: password,
-                sourceID: selectedSourceID,
-            )
-
+            let sourceID = try await saveCurrentSource()
             let success = await BookServiceActor.shared.setLogin(
-                sourceID: selectedSourceID,
+                sourceID: sourceID,
                 baseURL: serverURL,
                 username: username,
                 password: password,
@@ -402,7 +420,8 @@ struct WatchSettingsView: View {
                 showManualEntry = false
             } else {
                 connectionStatus = .error("Login failed")
-                errorMessage = "Check credentials"
+                hasCredentials = true
+                errorMessage = "Saved, but could not connect"
             }
         } catch {
             connectionStatus = .error("Save failed")
@@ -414,19 +433,74 @@ struct WatchSettingsView: View {
 
     private func removeServer() async {
         guard let selectedSourceID else { return }
-        do {
-            try await AuthenticationActor.shared.deleteCredentials(sourceID: selectedSourceID)
-            _ = await BookServiceActor.shared.logout(sourceID: selectedSourceID)
-
+        let removed = await BookServiceActor.shared.removeBookSource(id: selectedSourceID)
+        if removed {
+            self.selectedSourceID = nil
             serverURL = ""
             username = ""
             password = ""
+            sourceName = BookSourceKind.storyteller.defaultName
             hasCredentials = false
             connectionStatus = .disconnected
             showManualEntry = false
             errorMessage = nil
-        } catch {
+            await loadExistingCredentials()
+        } else {
             errorMessage = "Failed to remove"
+        }
+    }
+
+    private func saveCurrentSource() async throws -> BookSourceID {
+        if isAddingSource || selectedSourceID == nil {
+            guard let record = await BookServiceActor.shared.createBookSource(
+                BookSourceConfiguration(
+                    kind: .storyteller,
+                    name: sourceName,
+                    serverURL: serverURL,
+                    username: username,
+                    password: password,
+                ),
+            ) else {
+                throw WatchSettingsError.saveFailed
+            }
+            selectedSourceID = record.id
+            isAddingSource = false
+            await loadExistingCredentials()
+            return record.id
+        }
+
+        guard let selectedSourceID else {
+            throw WatchSettingsError.noSourceSelected
+        }
+
+        let saved = await BookServiceActor.shared.updateBookSource(
+            id: selectedSourceID,
+            configuration: BookSourceConfiguration(
+                kind: .storyteller,
+                name: sourceName,
+                serverURL: serverURL,
+                username: username,
+                password: password,
+            ),
+        )
+        guard saved else {
+            throw WatchSettingsError.saveFailed
+        }
+        await loadExistingCredentials()
+        return selectedSourceID
+    }
+
+    private enum WatchSettingsError: LocalizedError {
+        case noSourceSelected
+        case saveFailed
+
+        var errorDescription: String? {
+            switch self {
+                case .noSourceSelected:
+                    return "No server selected"
+                case .saveFailed:
+                    return "Failed to save server"
+            }
         }
     }
 }

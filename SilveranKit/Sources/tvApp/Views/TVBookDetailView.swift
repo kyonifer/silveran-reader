@@ -150,7 +150,7 @@ struct TVBookDetailView: View {
         let progress = mediaViewModel.downloadProgressFraction(for: book, category: .synced)
 
         return VStack(alignment: .leading, spacing: 18) {
-            HStack(spacing: 20) {
+            HStack(spacing: 18) {
                 primaryReadaloudButton(isDownloaded: isDownloaded, isDownloading: isDownloading)
 
                 if isDownloaded {
@@ -158,17 +158,19 @@ struct TVBookDetailView: View {
                         mediaViewModel.deleteDownload(for: book, category: .synced)
                     } label: {
                         Label("Delete", systemImage: "trash")
-                            .foregroundStyle(.red)
-                            .frame(width: 190)
+                            .frame(width: 236)
                     }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.red)
                 } else if isDownloading {
                     Button {
                         mediaViewModel.cancelDownload(for: book, category: .synced)
                     } label: {
                         Label("Cancel", systemImage: "xmark")
-                            .foregroundStyle(.red)
-                            .frame(width: 190)
+                            .frame(width: 236)
                     }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.red)
                 }
             }
             .frame(height: 74, alignment: .leading)
@@ -186,41 +188,51 @@ struct TVBookDetailView: View {
                     navigateToPlayer = true
                 } label: {
                     Label("Play", systemImage: "play.fill")
-                        .frame(width: 190)
-                        .foregroundStyle(.primary)
+                        .frame(width: 236)
                 }
             } else if isDownloading {
-                Label("Downloading", systemImage: "arrow.down.circle")
-                    .frame(width: 190)
-                    .padding(.vertical, 22)
-                    .foregroundStyle(.white.opacity(0.72))
-                    .background(.white.opacity(0.10), in: Capsule())
+                Button {} label: {
+                    Label("Downloading", systemImage: "arrow.down.circle")
+                        .frame(width: 236)
+                }
+                .disabled(true)
             } else {
                 Button {
                     mediaViewModel.startDownload(for: book, category: .synced)
                 } label: {
                     Label("Download", systemImage: "arrow.down.circle")
-                        .frame(width: 190)
-                        .foregroundStyle(.primary)
+                        .frame(width: 236)
                 }
             }
         }
+        .buttonStyle(.bordered)
     }
 
     private func downloadProgressView(progress: Double?) -> some View {
         let fraction = min(max(progress ?? 0, 0), 1)
 
-        return HStack(spacing: 16) {
-            ProgressView(value: fraction)
-                .frame(width: 330)
-                .tint(.white)
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Download Progress")
+                    .font(.subheadline)
+                    .foregroundStyle(.white.opacity(0.64))
 
-            Text("\(Int(fraction * 100))%")
-                .font(.headline.monospacedDigit())
-                .foregroundStyle(.white.opacity(0.82))
-                .frame(width: 54, alignment: .trailing)
+                Spacer(minLength: 24)
+
+                Text("\(Int(fraction * 100))%")
+                    .font(.headline.monospacedDigit())
+                    .foregroundStyle(.white.opacity(0.82))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .frame(width: 80, alignment: .trailing)
+            }
+            .frame(width: 500)
+
+            ProgressView(value: fraction)
+                .frame(width: 500)
+                .tint(.white)
         }
-        .frame(width: 420, alignment: .leading)
+        .frame(width: 500, alignment: .leading)
     }
 
     private var cleanedDescription: String? {
