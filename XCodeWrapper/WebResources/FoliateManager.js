@@ -148,6 +148,8 @@ class FoliateManager {
   #lastSpanHighlightedElement = null;
   #lastSpanHighlightedColor = null;
   #singleColumnMode = false;
+  #scrollingMode = false;
+  #hasAudioNarration = false;
   #enableMarginClickNavigation = true;
   #lastRelocateRange = null;
   #highlightedElement = null;
@@ -205,6 +207,10 @@ class FoliateManager {
           }
         }, { capture: true });
 
+        doc.addEventListener("keydown", (event) => {
+          this.#handleKeyDown(event);
+        }, { capture: true });
+
         doc.addEventListener("mousedown", () => {
           isDragging = false;
         });
@@ -258,6 +264,25 @@ class FoliateManager {
     debugLog("FoliateManager", "Event listeners attached");
   }
 
+  #handleKeyDown(event) {
+    if (!this.#scrollingMode || !this.#hasAudioNarration) return;
+    if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
+    if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+
+    const target = event.target;
+    const tagName = target?.tagName?.toLowerCase?.();
+    if (target?.isContentEditable || tagName === "input" || tagName === "textarea" || tagName === "select") {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    window.webkit?.messageHandlers?.SentenceSkip?.postMessage({
+      direction: event.key === "ArrowUp" ? "previous" : "next",
+    });
+  }
+
   #reportRelocate(detail) {
     debugLog("trace", "[FM2] Relocate event");
 
@@ -272,8 +297,9 @@ class FoliateManager {
     debugLog("trace", "[FM2] Stored relocate range:", this.#lastRelocateRange ? "available" : "null");
 
     const sectionIndex = detail.section?.current;
-    const rawPage = this.#view?.renderer?.page;
-    const rawPages = this.#view?.renderer?.pages;
+    const isScrolled = this.#view?.renderer?.scrolled === true;
+    const rawPage = isScrolled ? null : this.#view?.renderer?.page;
+    const rawPages = isScrolled ? null : this.#view?.renderer?.pages;
 
     const textPages = typeof rawPages === 'number' && Number.isFinite(rawPages) && rawPages > 0
         ? Math.max(1, Math.round(rawPages - 2))
@@ -314,6 +340,8 @@ class FoliateManager {
       fraction: bookFraction,
       chapterFraction: chapterFraction,
       title: detail.tocItem?.label || null,
+      flow: isScrolled ? "scrolled" : "paginated",
+      reason: detail.reason || null,
     };
 
     window.webkit?.messageHandlers?.Relocated?.postMessage(payload);
@@ -581,6 +609,12 @@ class FoliateManager {
     if (styles.singleColumnMode !== undefined && styles.singleColumnMode !== null) {
       this.#singleColumnMode = styles.singleColumnMode;
     }
+    if (styles.scrollingMode !== undefined && styles.scrollingMode !== null) {
+      this.#scrollingMode = styles.scrollingMode;
+    }
+    if (styles.hasAudioNarration !== undefined && styles.hasAudioNarration !== null) {
+      this.#hasAudioNarration = styles.hasAudioNarration;
+    }
     if (styles.enableMarginClickNavigation !== undefined && styles.enableMarginClickNavigation !== null) {
       this.#enableMarginClickNavigation = styles.enableMarginClickNavigation;
     }
@@ -627,7 +661,11 @@ class FoliateManager {
       }),
     );
 
-    const columnCount = this.#singleColumnMode ? "1" : "2";
+    const flow = this.#scrollingMode ? "scrolled" : "paginated";
+    this.#view.renderer.setAttribute("flow", flow);
+    debugLog("FoliateManager", `Set flow to ${flow}`);
+
+    const columnCount = (this.#singleColumnMode || this.#scrollingMode) ? "1" : "2";
     this.#view.renderer.setAttribute("max-column-count", columnCount);
     debugLog("FoliateManager", `Set max-column-count to ${columnCount}`);
 
@@ -649,7 +687,7 @@ class FoliateManager {
   #updateMaxInlineSize() {
     if (!this.#view?.renderer) return;
 
-    if (this.#singleColumnMode) {
+    if (this.#singleColumnMode || this.#scrollingMode) {
       this.#view.renderer.setAttribute("max-inline-size", `${window.innerWidth}px`);
     } else {
       this.#view.renderer.setAttribute("max-inline-size", `${Math.floor(window.innerWidth / 2)}px`);

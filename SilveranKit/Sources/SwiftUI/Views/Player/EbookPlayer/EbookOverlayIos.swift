@@ -17,6 +17,8 @@ struct EbookOverlayIos: View {
     let totalPages: Int?
     let isPlaying: Bool
     let hasAudioNarration: Bool
+    let scrollingMode: Bool
+    let backgroundColor: Color
     let positionAtTop: Bool
     let onSkipBackward: () -> Void
     let onTogglePlaying: () -> Void
@@ -29,6 +31,10 @@ struct EbookOverlayIos: View {
     private var hasBookStatsToDisplay: Bool {
         (showProgress && bookFraction != nil)
             || (showPageNumber && currentPage != nil && totalPages != nil && totalPages! > 0)
+    }
+
+    private var hasOverlayContent: Bool {
+        hasBookStatsToDisplay || hasTimeStatsToDisplay || hasAudioNarration
     }
 
     var body: some View {
@@ -54,6 +60,13 @@ struct EbookOverlayIos: View {
             }
             .padding(.horizontal, 38)
             .padding(.top, 16)
+            .padding(.bottom, 8)
+            .frame(maxWidth: .infinity)
+            .background(alignment: .top) {
+                if scrollingMode && hasOverlayContent {
+                    backgroundColor.ignoresSafeArea(edges: .top)
+                }
+            }
 
             Spacer()
         }
@@ -130,6 +143,13 @@ struct EbookOverlayIos: View {
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 20)
+            .padding(.top, 8)
+            .frame(maxWidth: .infinity)
+            .background(alignment: .bottom) {
+                if scrollingMode && hasOverlayContent {
+                    backgroundColor.ignoresSafeArea(edges: .bottom)
+                }
+            }
         }
         .ignoresSafeArea(.all)
     }

@@ -176,6 +176,7 @@ public struct SettingsView: View {
                     customCSS: .some(newValue.reading.customCSS),
                     enableMarginClickNavigation: newValue.reading.enableMarginClickNavigation,
                     singleColumnMode: newValue.reading.singleColumnMode,
+                    scrollingMode: newValue.reading.scrollingMode,
                     defaultPlaybackSpeed: newValue.playback.defaultPlaybackSpeed,
                     enableReadingBar: newValue.readingBar.enabled,
                     showPlayerControls: newValue.readingBar.showPlayerControls,
@@ -316,6 +317,7 @@ extension SettingsView {
         config.reading.foregroundColor = nil
         config.reading.enableMarginClickNavigation = kDefaultEnableMarginClickNavigation
         config.reading.singleColumnMode = false
+        config.reading.scrollingMode = kDefaultScrollingMode
         config.reading.customCSS = nil
         config.playback.defaultPlaybackSpeed = kDefaultPlaybackSpeed
     }
@@ -665,10 +667,15 @@ private struct MacReaderSettingsView: View {
                 }
 
                 GridRow {
-                    label("Single Column")
-                    Toggle("", isOn: $reading.singleColumnMode)
-                        .labelsHidden()
-                        .frame(width: 200, alignment: .leading)
+                    label("")
+                    HStack(spacing: 48) {
+                        Toggle("Single Column", isOn: singleColumnBinding)
+                            .frame(width: 180, alignment: .leading)
+                            .disabled(reading.scrollingMode)
+
+                        Toggle("Scrolling Mode", isOn: $reading.scrollingMode)
+                            .frame(width: 240, alignment: .leading)
+                    }
                 }
 
                 GridRow {
@@ -844,6 +851,13 @@ private struct MacReaderSettingsView: View {
         Text(text)
             .frame(width: labelWidth, alignment: .trailing)
             .foregroundStyle(.secondary)
+    }
+
+    private var singleColumnBinding: Binding<Bool> {
+        Binding(
+            get: { reading.singleColumnMode || reading.scrollingMode },
+            set: { reading.singleColumnMode = $0 },
+        )
     }
 
     @ViewBuilder

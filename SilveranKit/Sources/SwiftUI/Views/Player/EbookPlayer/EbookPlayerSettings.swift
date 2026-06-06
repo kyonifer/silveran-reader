@@ -3,6 +3,7 @@ import UniformTypeIdentifiers
 
 struct EbookPlayerSettings: View {
     @Bindable var settingsVM: SettingsViewModel
+    let hasAudioNarration: Bool
     @Environment(\.colorScheme) private var colorScheme
     #if os(macOS)
     @Environment(\.openSettings) private var openSettings
@@ -80,6 +81,13 @@ struct EbookPlayerSettings: View {
                 step: 1,
                 formatter: { "\(Int($0))%" },
             )
+
+            Divider()
+
+            Toggle("Scrolling Mode", isOn: $settingsVM.scrollingMode)
+                .onChange(of: settingsVM.scrollingMode) { _, _ in
+                    settingsVM.save()
+                }
 
             Divider()
 
@@ -190,8 +198,14 @@ struct EbookPlayerSettings: View {
                 }
             }
 
-            Toggle("Single Column", isOn: $settingsVM.singleColumnMode)
+            Toggle("Single Column", isOn: singleColumnBinding)
                 .onChange(of: settingsVM.singleColumnMode) { _, _ in
+                    settingsVM.save()
+                }
+                .disabled(settingsVM.scrollingMode)
+
+            Toggle("Scrolling Mode", isOn: $settingsVM.scrollingMode)
+                .onChange(of: settingsVM.scrollingMode) { _, _ in
                     settingsVM.save()
                 }
 
@@ -341,6 +355,7 @@ struct EbookPlayerSettings: View {
         settingsVM.wordSpacing = kDefaultWordSpacing
         settingsVM.letterSpacing = kDefaultLetterSpacing
         settingsVM.enableMarginClickNavigation = kDefaultEnableMarginClickNavigation
+        settingsVM.scrollingMode = kDefaultScrollingMode
         settingsVM.enableReadingBar = kDefaultReadingBarEnabled
         settingsVM.showProgressBar = kDefaultShowProgressBar
         settingsVM.showProgress = kDefaultShowProgress
@@ -363,6 +378,13 @@ struct EbookPlayerSettings: View {
 
     private func isCustomFont(_ fontFamily: String) -> Bool {
         !["System Default", "serif", "sans-serif", "monospace"].contains(fontFamily)
+    }
+
+    private var singleColumnBinding: Binding<Bool> {
+        Binding(
+            get: { settingsVM.singleColumnMode || settingsVM.scrollingMode },
+            set: { settingsVM.singleColumnMode = $0 },
+        )
     }
 }
 

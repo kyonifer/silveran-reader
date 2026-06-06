@@ -419,6 +419,8 @@ public struct EbookPlayerView: View {
                     totalPages: viewModel.progressManager?.chapterTotalPages,
                     isPlaying: viewModel.mediaOverlayManager?.isPlaying ?? false,
                     hasAudioNarration: viewModel.hasAudioNarration,
+                    scrollingMode: viewModel.settingsVM.scrollingMode,
+                    backgroundColor: readerBackgroundColor,
                     positionAtTop: alwaysShowMini,
                     onSkipBackward: {
                         viewModel.handlePrevSentence()

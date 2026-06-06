@@ -13,6 +13,7 @@ public let kDefaultLetterSpacing: Double = 0
 public let kDefaultHighlightThickness: Double = 1.0
 public let kDefaultEnableMarginClickNavigation = true
 public let kDefaultSingleColumnMode = true
+public let kDefaultScrollingMode = false
 
 // MARK: - Highlight Colors
 

@@ -18,6 +18,8 @@ struct RelocatedMessage: Codable {
     let fraction: Double?
     let chapterFraction: Double?
     let title: String?
+    let flow: String?
+    let reason: String?
 }
 
 /// Sent from JS when book structure is ready after opening a book
@@ -40,6 +42,11 @@ struct OverlayToggledMessage: Codable {
 
 /// Sent when user clicks in margin zone to navigate - routed through EPM like arrow keys
 struct MarginClickNavMessage: Codable {
+    let direction: String
+}
+
+/// Sent when WebView-owned key handling should skip readaloud sentences
+struct SentenceSkipMessage: Codable {
     let direction: String
 }
 

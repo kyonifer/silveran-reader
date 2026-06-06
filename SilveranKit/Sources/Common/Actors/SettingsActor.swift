@@ -58,6 +58,7 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
         public var customCSS: String?
         public var enableMarginClickNavigation: Bool
         public var singleColumnMode: Bool
+        public var scrollingMode: Bool
         public var userHighlightColor1: String
         public var userHighlightColor2: String
         public var userHighlightColor3: String
@@ -90,6 +91,7 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
             customCSS: String? = nil,
             enableMarginClickNavigation: Bool = kDefaultEnableMarginClickNavigation,
             singleColumnMode: Bool? = nil,
+            scrollingMode: Bool = kDefaultScrollingMode,
             userHighlightColor1: String = kDefaultUserHighlightColor1,
             userHighlightColor2: String = kDefaultUserHighlightColor2,
             userHighlightColor3: String = kDefaultUserHighlightColor3,
@@ -125,6 +127,7 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
             self.singleColumnMode = singleColumnMode ?? kDefaultSingleColumnMode
             self.customCSS = customCSS
             self.enableMarginClickNavigation = enableMarginClickNavigation
+            self.scrollingMode = scrollingMode
             self.userHighlightColor1 = userHighlightColor1
             self.userHighlightColor2 = userHighlightColor2
             self.userHighlightColor3 = userHighlightColor3
@@ -145,6 +148,7 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
 
         public init(from decoder: Decoder) throws {
             let container = try? decoder.container(keyedBy: CodingKeys.self)
+            let legacyContainer = try? decoder.container(keyedBy: LegacyCodingKeys.self)
             fontSize = (try? container?.decode(Double.self, forKey: .fontSize)) ?? kDefaultFontSize
             fontFamily =
                 (try? container?.decode(String.self, forKey: .fontFamily)) ?? kDefaultFontFamily
@@ -180,6 +184,10 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
             singleColumnMode =
                 (try? container?.decode(Bool.self, forKey: .singleColumnMode))
                 ?? kDefaultSingleColumnMode
+            scrollingMode =
+                (try? container?.decode(Bool.self, forKey: .scrollingMode))
+                ?? (try? legacyContainer?.decode(Bool.self, forKey: .readaloudScrollingMode))
+                ?? kDefaultScrollingMode
             userHighlightColor1 =
                 (try? container?.decode(String.self, forKey: .userHighlightColor1))
                 ?? kDefaultUserHighlightColor1
@@ -221,7 +229,6 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
                 ?? kDefaultUserHighlightMode
 
             // Migrate from old readaloudHighlightUnderline boolean to new mode value
-            let legacyContainer = try? decoder.container(keyedBy: LegacyCodingKeys.self)
             let legacyUnderline =
                 (try? legacyContainer?.decode(Bool.self, forKey: .readaloudHighlightUnderline))
                 ?? false
@@ -252,6 +259,7 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
             case wordSpacing, letterSpacing, highlightColor, highlightThickness
             case backgroundColor, foregroundColor
             case customCSS, enableMarginClickNavigation, singleColumnMode
+            case scrollingMode
             case userHighlightColor1, userHighlightColor2, userHighlightColor3
             case userHighlightColor4, userHighlightColor5, userHighlightColor6
             case userHighlightLabel1, userHighlightLabel2, userHighlightLabel3
@@ -261,7 +269,7 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
         }
 
         private enum LegacyCodingKeys: String, CodingKey {
-            case readaloudHighlightUnderline, tvBackgroundStyle
+            case readaloudHighlightUnderline, tvBackgroundStyle, readaloudScrollingMode
         }
 
         public struct TVReaderAppearance: Codable, Equatable, Sendable {
@@ -710,6 +718,7 @@ public actor SettingsActor {
         customCSS: String?? = nil,
         enableMarginClickNavigation: Bool? = nil,
         singleColumnMode: Bool? = nil,
+        scrollingMode: Bool? = nil,
         defaultPlaybackSpeed: Double? = nil,
         defaultVolume: Double? = nil,
         statsExpanded: Bool? = nil,
@@ -775,6 +784,9 @@ public actor SettingsActor {
             updated.reading.enableMarginClickNavigation = enableMarginClickNavigation
         }
         if let singleColumnMode { updated.reading.singleColumnMode = singleColumnMode }
+        if let scrollingMode {
+            updated.reading.scrollingMode = scrollingMode
+        }
         if let defaultPlaybackSpeed { updated.playback.defaultPlaybackSpeed = defaultPlaybackSpeed }
         if let defaultVolume { updated.playback.defaultVolume = defaultVolume }
         if let statsExpanded { updated.playback.statsExpanded = statsExpanded }

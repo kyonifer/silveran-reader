@@ -38,6 +38,15 @@ struct EbookPlayerTopToolbar: View {
         return isLightColor(hex: bgHex) ? .black : .white
     }
 
+    private var toolbarBackgroundColor: Color {
+        if let bgColor = settingsVM.backgroundColor, let color = Color(hex: bgColor) {
+            return color
+        }
+        return colorScheme == .dark
+            ? Color(hex: kDefaultBackgroundColorDark) ?? .black
+            : Color(hex: kDefaultBackgroundColorLight) ?? .white
+    }
+
     private func isLightColor(hex: String) -> Bool {
         guard let color = Color(hex: hex),
             let components = UIColor(color).cgColor.components,
@@ -139,6 +148,7 @@ struct EbookPlayerTopToolbar: View {
                             ScrollView {
                                 EbookPlayerSettings(
                                     settingsVM: settingsVM,
+                                    hasAudioNarration: hasAudioNarration,
                                     onDismiss: nil,
                                 )
                                 .padding()
@@ -173,7 +183,13 @@ struct EbookPlayerTopToolbar: View {
             .padding(.horizontal, 8)
             .frame(height: 44)
             .background(
-                Color.black.opacity(0.001)
+                Group {
+                    if settingsVM.scrollingMode {
+                        toolbarBackgroundColor.ignoresSafeArea(edges: .top)
+                    } else {
+                        Color.black.opacity(0.001)
+                    }
+                }
             )
 
             Spacer()

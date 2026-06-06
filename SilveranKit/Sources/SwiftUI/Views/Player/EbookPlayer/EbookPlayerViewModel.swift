@@ -771,12 +771,14 @@ class EbookPlayerViewModel {
                         manager.setPlaybackRate(self.settingsVM.defaultPlaybackSpeed)
                         self.mediaOverlayManager = manager
                         self.hasAudioNarration = true
+                        self.styleManager?.setReadaloudModeAvailable(true)
                         self.progressManager?.mediaOverlayManager = manager
                         manager.progressManager = self.progressManager
                     } else {
                         debugLog("[EbookPlayerViewModel] Book has no media overlay")
                         self.mediaOverlayManager = nil
                         self.hasAudioNarration = false
+                        self.styleManager?.setReadaloudModeAvailable(false)
                         self.progressManager?.mediaOverlayManager = nil
                     }
 
@@ -826,6 +828,17 @@ class EbookPlayerViewModel {
                     self.progressManager?.handleUserNavLeft()
                 } else {
                     self.progressManager?.handleUserNavRight()
+                }
+            }
+        }
+
+        bridge.onSentenceSkip = { [weak self] message in
+            guard let self else { return }
+            Task { @MainActor in
+                if message.direction == "previous" {
+                    self.handlePrevSentence()
+                } else {
+                    self.handleNextSentence()
                 }
             }
         }

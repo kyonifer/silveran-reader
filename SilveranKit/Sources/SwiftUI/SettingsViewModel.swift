@@ -23,6 +23,7 @@ public final class SettingsViewModel {
     public var customCSS: String? = nil
     public var enableMarginClickNavigation: Bool = kDefaultEnableMarginClickNavigation
     public var singleColumnMode: Bool = kDefaultSingleColumnMode
+    public var scrollingMode: Bool = kDefaultScrollingMode
 
     public var defaultPlaybackSpeed: Double = kDefaultPlaybackSpeed
     public var defaultVolume: Double = kDefaultVolume
@@ -156,6 +157,7 @@ public final class SettingsViewModel {
         customCSS = config.reading.customCSS
         enableMarginClickNavigation = config.reading.enableMarginClickNavigation
         singleColumnMode = config.reading.singleColumnMode
+        scrollingMode = config.reading.scrollingMode
 
         defaultPlaybackSpeed = config.playback.defaultPlaybackSpeed
         defaultVolume = config.playback.defaultVolume
@@ -375,6 +377,7 @@ public final class SettingsViewModel {
             customCSS: .some(customCSS),
             enableMarginClickNavigation: enableMarginClickNavigation,
             singleColumnMode: singleColumnMode,
+            scrollingMode: scrollingMode,
             defaultPlaybackSpeed: defaultPlaybackSpeed,
             defaultVolume: defaultVolume,
             statsExpanded: statsExpanded,

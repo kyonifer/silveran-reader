@@ -30,6 +30,9 @@ class WebViewCommsBridge {
     /// Notifies when user clicks margin zone to navigate (routed through EPM)
     var onMarginClickNav: ((MarginClickNavMessage) -> Void)?
 
+    /// Notifies when WebView key handling requests sentence skip
+    var onSentenceSkip: ((SentenceSkipMessage) -> Void)?
+
     /// Notifies when user double-clicks text to seek audio (or initial position)
     var onMediaOverlaySeek: ((MediaOverlaySeekMessage) -> Void)?
 
@@ -103,6 +106,11 @@ class WebViewCommsBridge {
     func sendSwiftMarginClickNav(_ message: MarginClickNavMessage) {
         debugLog("[WebViewCommsBridge] sendSwiftMarginClickNav - direction: \(message.direction)")
         onMarginClickNav?(message)
+    }
+
+    func sendSwiftSentenceSkip(_ message: SentenceSkipMessage) {
+        debugLog("[WebViewCommsBridge] sendSwiftSentenceSkip - direction: \(message.direction)")
+        onSentenceSkip?(message)
     }
 
     /// JS detected a media overlay seek event (double-click or initial position)
@@ -317,6 +325,8 @@ class WebViewCommsBridge {
         foregroundColor: String?,
         customCSS: String?,
         singleColumnMode: Bool,
+        scrollingMode: Bool,
+        hasAudioNarration: Bool,
         enableMarginClickNavigation: Bool,
         userHighlightMode: String,
         readaloudHighlightMode: String,
@@ -337,6 +347,8 @@ class WebViewCommsBridge {
             "highlightColor": highlightColor,
             "highlightThickness": highlightThickness,
             "singleColumnMode": singleColumnMode,
+            "scrollingMode": scrollingMode,
+            "hasAudioNarration": hasAudioNarration,
             "enableMarginClickNavigation": enableMarginClickNavigation,
             "userHighlightMode": userHighlightMode,
             "readaloudHighlightMode": readaloudHighlightMode,

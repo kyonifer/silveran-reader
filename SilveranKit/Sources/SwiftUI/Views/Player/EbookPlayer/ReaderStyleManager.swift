@@ -9,6 +9,7 @@ class ReaderStyleManager {
     private var colorScheme: ColorScheme = .light
     private var styleUpdateTask: Task<Void, Never>?
     private var fontFaceCSS: String = ""
+    private var hasAudioNarration = false
     @ObservationIgnored private var fontObserverID: UUID?
 
     init(settingsVM: SettingsViewModel, bridge: WebViewCommsBridge) {
@@ -51,6 +52,12 @@ class ReaderStyleManager {
         self.bridge = bridge
     }
 
+    func setReadaloudModeAvailable(_ available: Bool) {
+        guard hasAudioNarration != available else { return }
+        hasAudioNarration = available
+        scheduleStyleUpdate()
+    }
+
     func sendInitialStyles(colorScheme scheme: ColorScheme) {
         colorScheme = scheme
         Task { @MainActor in
@@ -73,6 +80,7 @@ class ReaderStyleManager {
             _ = settingsVM.foregroundColor
             _ = settingsVM.customCSS
             _ = settingsVM.singleColumnMode
+            _ = settingsVM.scrollingMode
             _ = settingsVM.enableMarginClickNavigation
             _ = settingsVM.userHighlightMode
             _ = settingsVM.readaloudHighlightMode
@@ -139,6 +147,8 @@ class ReaderStyleManager {
             foregroundColor: effectiveForegroundColor,
             customCSS: effectiveCustomCSS.isEmpty ? nil : effectiveCustomCSS,
             singleColumnMode: settingsVM.singleColumnMode,
+            scrollingMode: settingsVM.scrollingMode,
+            hasAudioNarration: hasAudioNarration,
             enableMarginClickNavigation: settingsVM.enableMarginClickNavigation,
             userHighlightMode: settingsVM.userHighlightMode,
             readaloudHighlightMode: settingsVM.readaloudHighlightMode,

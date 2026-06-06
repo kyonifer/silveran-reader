@@ -59,6 +59,7 @@ class EbookProgressManager {
 
     /// When true, user is browsing freely without syncing progress (lockViewToAudio == false)
     private var isFreeBrowseMode: Bool { !settingsVM.lockViewToAudio }
+    private var isScrollingMode: Bool { settingsVM.scrollingMode }
 
     /// Initial reading position (typ. from server sync)
     private var initialLocator: BookLocator?
@@ -445,6 +446,11 @@ class EbookProgressManager {
             "[EPM] Received relocate event from JS: sectionIndex=\(message.sectionIndex?.description ?? "nil")"
         )
 
+        if message.flow == "scrolled" {
+            handleScrollingRelocated(message)
+            return
+        }
+
         var chapterTransitionResolved = false
 
         if let pendingChapter = pendingChapterTransition {
@@ -551,6 +557,37 @@ class EbookProgressManager {
             Task { @MainActor in
                 await mom.handleNaturalNavEvent(section: section, page: page, totalPages: total)
             }
+        }
+    }
+
+    private func handleScrollingRelocated(_ message: RelocatedMessage) {
+        pendingPageNav = nil
+        pendingSeekNav = nil
+        pendingChapterTransition = nil
+        pendingSwiftCommandFlipEchoes = 0
+        cancelUserNavFallback()
+
+        selectedChapterId = message.sectionIndex
+        updateBookProgress(fraction: message.fraction)
+        chapterCurrentPage = nil
+        chapterTotalPages = nil
+
+        if let chapterFraction = message.chapterFraction {
+            chapterSeekBarValue = max(0.0, min(1.0, chapterFraction))
+        } else {
+            updateChapterProgress(currentPage: nil, totalPages: nil)
+        }
+
+        let pendingReason = pendingUserNavSyncReason
+        let isUserScroll = message.reason == "scroll"
+
+        if isUserScroll || pendingReason != nil {
+            pendingUserNavSyncReason = nil
+            recordActivity()
+            scheduleDebouncedSync(
+                reason: pendingReason ?? .userDraggedSeekBar,
+                useFragment: false,
+            )
         }
     }
 
@@ -762,7 +799,7 @@ class EbookProgressManager {
 
         let previousChapterId = selectedChapterId
 
-        if !isFreeBrowseMode {
+        if !isFreeBrowseMode || isScrollingMode {
             pendingUserNavSyncReason = syncReason
         }
 
@@ -790,6 +827,19 @@ class EbookProgressManager {
 
     /// User pressed left arrow or swiped right (previous page)
     func handleUserNavLeft() {
+        if isScrollingMode {
+            pendingUserNavSyncReason = .userFlippedPage
+            Task { @MainActor in
+                do {
+                    try await commsBridge?.sendJsGoLeftCommand()
+                } catch {
+                    debugLog("[EPM] Failed to send scrolling left nav: \(error)")
+                    pendingUserNavSyncReason = nil
+                }
+            }
+            return
+        }
+
         // Swift-triggered nav queues immediately; a PageFlipped echo may follow.
         if queuePageNav(direction: .left, source: "left-nav") {
             pendingSwiftCommandFlipEchoes += 1
@@ -808,6 +858,19 @@ class EbookProgressManager {
 
     /// User pressed right arrow or swiped left (next page)
     func handleUserNavRight() {
+        if isScrollingMode {
+            pendingUserNavSyncReason = .userFlippedPage
+            Task { @MainActor in
+                do {
+                    try await commsBridge?.sendJsGoRightCommand()
+                } catch {
+                    debugLog("[EPM] Failed to send scrolling right nav: \(error)")
+                    pendingUserNavSyncReason = nil
+                }
+            }
+            return
+        }
+
         // Swift-triggered nav queues immediately; a PageFlipped echo may follow.
         if queuePageNav(direction: .right, source: "right-nav") {
             pendingSwiftCommandFlipEchoes += 1
@@ -879,7 +942,7 @@ class EbookProgressManager {
             )
         }
 
-        if !isFreeBrowseMode {
+        if !isFreeBrowseMode || isScrollingMode {
             pendingUserNavSyncReason = .userSelectedChapter
         }
 
@@ -919,7 +982,11 @@ class EbookProgressManager {
             return
         }
 
-        queueSeekNav(sectionIndex: currentChapterIndex)
+        if isScrollingMode {
+            pendingUserNavSyncReason = .userDraggedSeekBar
+        } else {
+            queueSeekNav(sectionIndex: currentChapterIndex)
+        }
 
         Task { @MainActor in
             do {
