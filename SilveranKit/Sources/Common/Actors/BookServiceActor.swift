@@ -7,6 +7,11 @@ import FoundationNetworking
 @globalActor
 public actor BookServiceActor {
     public static let shared = BookServiceActor()
+    private static let folderSourceStatuses: [BookStatus] = [
+        BookStatus(uuid: "folder-status-to-read", name: "To read", isDefault: true),
+        BookStatus(uuid: "folder-status-reading", name: "Reading"),
+        BookStatus(uuid: "folder-status-read", name: "Read"),
+    ]
 
     private var sourceRecords: [BookSourceRecord]
     private var sourcesByID: [BookSourceID: any BookSourceActor]
@@ -662,6 +667,9 @@ public actor BookServiceActor {
     public func getAvailableStatuses() async -> [BookStatus] {
         await ensureSourceRegistryLoaded()
         var statusesByKey: [String: BookStatus] = [:]
+        for status in Self.folderSourceStatuses {
+            statusesByKey[status.uuid ?? status.name.lowercased()] = status
+        }
         for storyteller in storytellerActors() {
             for status in await storyteller.getAvailableStatuses() {
                 statusesByKey[status.uuid ?? status.name.lowercased()] = status
@@ -673,8 +681,14 @@ public actor BookServiceActor {
     }
 
     public func getAvailableStatuses(sourceID: BookSourceID) async -> [BookStatus] {
-        guard let storyteller = await storytellerActor(for: sourceID) else { return [] }
-        return await storyteller.getAvailableStatuses()
+        await ensureSourceRegistryLoaded()
+        if let storyteller = sourceActor(for: sourceID) as? StorytellerActor {
+            return await storyteller.getAvailableStatuses()
+        }
+        if sourceActor(for: sourceID) is FolderSourceActor {
+            return Self.folderSourceStatuses
+        }
+        return []
     }
 
     public func updateStatus(
@@ -682,7 +696,33 @@ public actor BookServiceActor {
         sourceID: BookSourceID?,
         toStatusNamed statusName: String,
     ) async -> Bool {
-        guard let storyteller = await storytellerActor(for: sourceID) else { return false }
+        await ensureSourceRegistryLoaded()
+        guard let resolvedSourceID = resolveExplicitSourceID(sourceID),
+            let source = sourceActor(for: resolvedSourceID)
+        else {
+            return false
+        }
+        if let folder = source as? FolderSourceActor {
+            guard
+                let status = Self.folderSourceStatuses.first(where: {
+                    $0.name.caseInsensitiveCompare(statusName) == .orderedSame
+                })
+            else {
+                return false
+            }
+            let success = await folder.updateStatus(
+                forBooks: bookIds,
+                to: status,
+            )
+            if success, let metadata = await folder.fetchLibraryInformation() {
+                try? await LocalMediaActor.shared.updateSourceCacheMetadata(
+                    metadata,
+                    replacingSourceID: resolvedSourceID,
+                )
+            }
+            return success
+        }
+        guard let storyteller = source as? StorytellerActor else { return false }
         return await storyteller.updateStatus(forBooks: bookIds, toStatusNamed: statusName)
     }
 

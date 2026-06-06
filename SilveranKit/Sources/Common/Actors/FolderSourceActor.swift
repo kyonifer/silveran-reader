@@ -87,6 +87,42 @@ public actor FolderSourceActor: BookSourceActor {
         return metadata.first(where: { $0.uuid == bookId })?.position
     }
 
+    public func updateStatus(forBooks bookIds: [String], to status: BookStatus) async -> Bool {
+        guard !bookIds.isEmpty else { return false }
+        do {
+            let resolved = try await resolvedFolderURL()
+            defer { resolved.stopAccessing?() }
+
+            if metadataCache.isEmpty {
+                _ = try await scanLibrary(in: resolved.url)
+            }
+
+            var latestMetadata = try await savedMetadata(in: resolved.url)
+            var updatedAny = false
+            for bookId in bookIds {
+                guard let index = latestMetadata.firstIndex(where: { $0.uuid == bookId }) else {
+                    continue
+                }
+                latestMetadata[index] = metadata(
+                    latestMetadata[index],
+                    status: status,
+                )
+                updatedAny = true
+            }
+
+            guard updatedAny else { return false }
+            try await filesystem.saveFolderSourceLibraryMetadata(
+                latestMetadata,
+                in: resolved.url,
+            )
+            metadataCache = latestMetadata
+            return true
+        } catch {
+            debugLog("[FolderSourceActor] Failed to save status: \(error)")
+            return false
+        }
+    }
+
     public func copyMediaToTemporaryFile(
         for bookID: String,
         category: LocalMediaCategory,
@@ -677,30 +713,25 @@ public actor FolderSourceActor: BookSourceActor {
             _ = try await scanLibrary(in: resolved.url)
         }
 
-        guard let index = metadataCache.firstIndex(where: { $0.uuid == bookId }) else {
+        var latestMetadata = try await savedMetadata(in: resolved.url)
+        guard let latestIndex = latestMetadata.firstIndex(where: { $0.uuid == bookId }) else {
             return
         }
-        let existing = metadataCache[index]
-        let existingTimestamp = existing.position?.timestamp ?? 0
-        guard timestamp > existingTimestamp else { return }
+        let latest = latestMetadata[latestIndex]
+        let latestTimestamp = latest.position?.timestamp ?? 0
+        guard timestamp > latestTimestamp else { return }
 
         let updatedAtString = Date(timeIntervalSince1970: timestamp / 1000).ISO8601Format()
         let newPosition = BookReadingPosition(
-            uuid: existing.position?.uuid,
+            uuid: latest.position?.uuid,
             locator: locator,
             timestamp: timestamp,
-            createdAt: existing.position?.createdAt,
+            createdAt: latest.position?.createdAt,
             updatedAt: updatedAtString,
         )
-        var updatedMetadata = mergedBookMetadata(
-            scanned: existing,
-            saved: existing,
-            position: newPosition,
-        )
-        updatedMetadata.sourceID = sourceRecordValue.id
-        updatedMetadata.source = sourceRecordValue.name
-        metadataCache[index] = updatedMetadata
-        try await filesystem.saveFolderSourceLibraryMetadata(metadataCache, in: resolved.url)
+        latestMetadata[latestIndex] = metadata(latest, position: newPosition)
+        metadataCache = latestMetadata
+        try await filesystem.saveFolderSourceLibraryMetadata(latestMetadata, in: resolved.url)
     }
 
     private func removeMetadata(bookID: String) async throws {
@@ -820,6 +851,41 @@ public actor FolderSourceActor: BookSourceActor {
             .joined(separator: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return sanitized.isEmpty ? "Book" : sanitized
+    }
+
+    private func metadata(
+        _ existing: BookMetadata,
+        status: BookStatus? = nil,
+        position: BookReadingPosition? = nil,
+    ) -> BookMetadata {
+        var updated = BookMetadata(
+            uuid: existing.uuid,
+            title: existing.title,
+            subtitle: existing.subtitle,
+            description: existing.description,
+            language: existing.language,
+            createdAt: existing.createdAt,
+            updatedAt: existing.updatedAt,
+            publicationDate: existing.publicationDate,
+            authors: existing.authors,
+            narrators: existing.narrators,
+            creators: existing.creators,
+            series: existing.series,
+            tags: existing.tags,
+            collections: existing.collections,
+            ebook: existing.ebook,
+            audiobook: existing.audiobook,
+            readaloud: existing.readaloud,
+            status: status ?? existing.status,
+            position: position ?? existing.position,
+            rating: existing.rating,
+        )
+        updated.alignedAt = existing.alignedAt
+        updated.alignedByStorytellerVersion = existing.alignedByStorytellerVersion
+        updated.alignedWith = existing.alignedWith
+        updated.sourceID = sourceRecordValue.id
+        updated.source = sourceRecordValue.name
+        return updated
     }
 
     private func mergedBookMetadata(
