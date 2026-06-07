@@ -406,6 +406,16 @@ public struct BookLocator: Codable, Sendable, Hashable {
         public let partialCfi: String?
         public let domRange: DomRange?
 
+        enum CodingKeys: String, CodingKey {
+            case fragments
+            case progression
+            case position
+            case totalProgression
+            case cssSelector
+            case partialCfi
+            case domRange
+        }
+
         public init(
             fragments: [String]?,
             progression: Double?,
@@ -422,6 +432,17 @@ public struct BookLocator: Codable, Sendable, Hashable {
             self.cssSelector = cssSelector
             self.partialCfi = partialCfi
             self.domRange = domRange
+        }
+
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            fragments = try? container.decodeIfPresent([String].self, forKey: .fragments)
+            progression = container.decodeLenient(Double.self, forKey: .progression)
+            position = container.decodeLenient(Int.self, forKey: .position)
+            totalProgression = container.decodeLenient(Double.self, forKey: .totalProgression)
+            cssSelector = container.decodeLenient(String.self, forKey: .cssSelector)
+            partialCfi = container.decodeLenient(String.self, forKey: .partialCfi)
+            domRange = try? container.decodeIfPresent(DomRange.self, forKey: .domRange)
         }
     }
 
@@ -443,12 +464,29 @@ public struct BookLocator: Codable, Sendable, Hashable {
     public let locations: Locations?
     public let text: Text?
 
+    enum CodingKeys: String, CodingKey {
+        case href
+        case type
+        case title
+        case locations
+        case text
+    }
+
     public init(href: String, type: String, title: String?, locations: Locations?, text: Text?) {
         self.href = href
         self.type = type
         self.title = title
         self.locations = locations
         self.text = text
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        href = try container.decode(String.self, forKey: .href)
+        type = try container.decode(String.self, forKey: .type)
+        title = container.decodeLenient(String.self, forKey: .title)
+        locations = try? container.decodeIfPresent(Locations.self, forKey: .locations)
+        text = try? container.decodeIfPresent(Text.self, forKey: .text)
     }
 }
 
@@ -458,6 +496,14 @@ public struct BookReadingPosition: Codable, Sendable, Hashable {
     public let timestamp: Double?
     public let createdAt: String?
     public let updatedAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case uuid
+        case locator
+        case timestamp
+        case createdAt
+        case updatedAt
+    }
 
     public init(
         uuid: String?,
@@ -471,6 +517,15 @@ public struct BookReadingPosition: Codable, Sendable, Hashable {
         self.timestamp = timestamp
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        uuid = container.decodeLenient(String.self, forKey: .uuid)
+        locator = try? container.decodeIfPresent(BookLocator.self, forKey: .locator)
+        timestamp = container.decodeLenient(Double.self, forKey: .timestamp)
+        createdAt = container.decodeLenient(String.self, forKey: .createdAt)
+        updatedAt = container.decodeLenient(String.self, forKey: .updatedAt)
     }
 }
 

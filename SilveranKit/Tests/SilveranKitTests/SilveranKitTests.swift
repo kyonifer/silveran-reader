@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 
 @testable import SilveranKitCommon
@@ -42,4 +43,64 @@ import Testing
 
     #expect(book.sortablePublicationYear == "1950")
     #expect(condition.matches(book, progress: 0))
+}
+
+@Test func malformedLocatorFragmentsDecodeAsNoFragments() throws {
+    let data = """
+        {
+          "uuid": "position-1",
+          "timestamp": 1710000000000,
+          "locator": {
+            "href": "OEBPS/xhtml/30_Chapter_23_Resurrecti.xhtml",
+            "type": "application/xhtml+xml",
+            "locations": {
+              "fragments": [
+                {
+                  "0": "c",
+                  "1": "h",
+                  "2": "a",
+                  "3": "p"
+                }
+              ],
+              "progression": 0.42,
+              "totalProgression": 0.68
+            }
+          }
+        }
+        """.data(using: .utf8)!
+
+    let position = try JSONDecoder().decode(BookReadingPosition.self, from: data)
+
+    #expect(position.locator?.href == "OEBPS/xhtml/30_Chapter_23_Resurrecti.xhtml")
+    #expect(position.locator?.locations?.fragments == nil)
+    #expect(position.locator?.locations?.progression == 0.42)
+    #expect(position.locator?.locations?.totalProgression == 0.68)
+}
+
+@Test func malformedLocatorDoesNotDropLibraryBook() throws {
+    let data = """
+        [
+          {
+            "uuid": "book-1",
+            "title": "Still Visible",
+            "position": {
+              "uuid": "position-1",
+              "timestamp": 1710000000000,
+              "locator": {
+                "href": { "unexpected": "object" },
+                "type": "application/xhtml+xml",
+                "locations": {
+                  "totalProgression": 0.68
+                }
+              }
+            }
+          }
+        ]
+        """.data(using: .utf8)!
+
+    let books = try JSONDecoder().decode(LenientArrayWrapper<BookMetadata>.self, from: data).values
+
+    #expect(books.count == 1)
+    #expect(books.first?.title == "Still Visible")
+    #expect(books.first?.position?.locator == nil)
 }
