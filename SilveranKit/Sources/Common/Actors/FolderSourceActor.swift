@@ -235,10 +235,12 @@ public actor FolderSourceActor: BookSourceActor {
             effectiveCategory = category
         }
 
-        let bookFolder = resolved.url.appendingPathComponent(
-            folderName(title: bookName, uuid: metadata.uuid),
-            isDirectory: true,
-        )
+        let bookFolder =
+            existingBookFolder(for: metadata.uuid)
+            ?? resolved.url.appendingPathComponent(
+                folderName(title: bookName, uuid: metadata.uuid),
+                isDirectory: true,
+            )
         let destinationDirectory = bookFolder.appendingPathComponent(
             effectiveCategory.rawValue,
             isDirectory: true,
@@ -266,6 +268,37 @@ public actor FolderSourceActor: BookSourceActor {
 
         _ = try await scanLibrary(in: resolved.url)
         return destinationURL
+    }
+
+    public func replaceMedia(
+        from sourceFileURL: URL,
+        category: LocalMediaCategory,
+        bookName: String,
+        bookUUID: String,
+    ) async throws -> URL {
+        if pathCache[bookUUID] == nil {
+            _ = await fetchLibraryInformation()
+        }
+
+        let resolved = try await resolvedFolderURL()
+        defer { resolved.stopAccessing?() }
+
+        if let destinationDirectory = existingCategoryDirectory(
+            for: bookUUID,
+            category: category,
+        ) {
+            let fm = FileManager.default
+            if fm.fileExists(atPath: destinationDirectory.path) {
+                try fm.removeItem(at: destinationDirectory)
+            }
+        }
+
+        return try await importMedia(
+            from: sourceFileURL,
+            category: category,
+            bookName: bookName,
+            bookUUID: bookUUID,
+        )
     }
 
     public func importAudiobookFiles(
@@ -322,10 +355,12 @@ public actor FolderSourceActor: BookSourceActor {
         metadata.sourceID = sourceRecordValue.id
         metadata.source = sourceRecordValue.name
 
-        let bookFolder = resolved.url.appendingPathComponent(
-            folderName(title: bookName, uuid: metadata.uuid),
-            isDirectory: true,
-        )
+        let bookFolder =
+            existingBookFolder(for: metadata.uuid)
+            ?? resolved.url.appendingPathComponent(
+                folderName(title: bookName, uuid: metadata.uuid),
+                isDirectory: true,
+            )
         let destinationDirectory = bookFolder.appendingPathComponent(
             LocalMediaCategory.audio.rawValue,
             isDirectory: true,
@@ -377,6 +412,29 @@ public actor FolderSourceActor: BookSourceActor {
             try FileManager.default.removeItem(at: bookFolder)
         }
         try await removeMetadata(bookID: bookID)
+    }
+
+    public func deleteMedia(
+        _ bookID: String,
+        category: LocalMediaCategory,
+    ) async throws {
+        if pathCache[bookID] == nil {
+            _ = await fetchLibraryInformation()
+        }
+        guard let destinationDirectory = existingCategoryDirectory(
+            for: bookID,
+            category: category,
+        ) else {
+            return
+        }
+
+        if FileManager.default.fileExists(atPath: destinationDirectory.path) {
+            try FileManager.default.removeItem(at: destinationDirectory)
+        }
+
+        let resolved = try await resolvedFolderURL()
+        defer { resolved.stopAccessing?() }
+        _ = try await scanLibrary(in: resolved.url)
     }
 
     private func scanLibrary() async throws -> LocalLibraryManager.ScanResult {
@@ -442,6 +500,29 @@ public actor FolderSourceActor: BookSourceActor {
         }
 
         return []
+    }
+
+    private func existingBookFolder(for bookID: String) -> URL? {
+        guard let paths = pathCache[bookID] else { return nil }
+        let mediaPath = paths.ebookPath ?? paths.audioPath ?? paths.syncedPath
+        return mediaPath?.deletingLastPathComponent().deletingLastPathComponent()
+    }
+
+    private func existingCategoryDirectory(
+        for bookID: String,
+        category: LocalMediaCategory,
+    ) -> URL? {
+        guard let paths = pathCache[bookID] else { return nil }
+        let mediaPath: URL?
+        switch category {
+            case .ebook:
+                mediaPath = paths.ebookPath
+            case .audio:
+                mediaPath = paths.audioPath
+            case .synced:
+                mediaPath = paths.syncedPath
+        }
+        return mediaPath?.deletingLastPathComponent()
     }
 
     private func extractImportMetadata(
@@ -674,15 +755,28 @@ public actor FolderSourceActor: BookSourceActor {
             else {
                 continue
             }
+            let relativePath = try audiobookArchiveEntryPath(
+                for: file,
+                relativeTo: packageDirectory,
+            )
             try archive.addEntry(
-                with: file.path(percentEncoded: false)
-                    .replacingOccurrences(
-                        of: packageDirectory.path(percentEncoded: false) + "/",
-                        with: "",
-                    ),
+                with: relativePath,
                 relativeTo: packageDirectory,
             )
         }
+    }
+
+    private func audiobookArchiveEntryPath(for file: URL, relativeTo packageDirectory: URL) throws
+        -> String
+    {
+        let baseComponents = packageDirectory.standardizedFileURL.pathComponents
+        let fileComponents = file.standardizedFileURL.pathComponents
+        guard fileComponents.count > baseComponents.count,
+            Array(fileComponents.prefix(baseComponents.count)) == baseComponents
+        else {
+            throw LocalMediaError.importFailed("Audiobook package file is outside its source folder")
+        }
+        return fileComponents.dropFirst(baseComponents.count).joined(separator: "/")
     }
 
     private func savedMetadataByFilename(_ metadata: [BookMetadata]) -> [String: BookMetadata] {

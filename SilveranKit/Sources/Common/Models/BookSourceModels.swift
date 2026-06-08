@@ -151,7 +151,7 @@ public extension BookSourceCapabilities {
             canEditMetadata: false,
             canManageMedia: true,
             canProcessReadaloud: false,
-            canUploadBooks: false,
+            canUploadBooks: true,
             canSyncProgress: true,
         )
     }

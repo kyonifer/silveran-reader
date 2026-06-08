@@ -34,6 +34,8 @@ struct CreateReadaloudRow: View {
     let item: BookMetadata
     @State private var isStartingAlignment = false
     @State private var isCancelingAlignment = false
+    @Environment(\.openWindow) private var openWindow
+    @Environment(MediaViewModel.self) private var mediaViewModel
 
     private var readaloudStatus: String? {
         item.readaloud?.status?.uppercased()
@@ -47,8 +49,22 @@ struct CreateReadaloudRow: View {
         readaloudStatus == "ERROR" || readaloudStatus == "STOPPED"
     }
 
+    private var canCreateOnServer: Bool {
+        mediaViewModel.isServerBook(item.id)
+    }
+
+    private var canCreateLocally: Bool {
+        mediaViewModel.isServerBook(item.id) || mediaViewModel.isLocalFolderBook(item.id)
+    }
+
+    private var hasAvailableActions: Bool {
+        canCreateOnServer || canCreateLocally
+    }
+
     var body: some View {
-        if isProcessingOrQueued {
+        if !hasAvailableActions {
+            EmptyView()
+        } else if isProcessingOrQueued {
             processingRow
         } else {
             menuRow
@@ -153,27 +169,37 @@ struct CreateReadaloudRow: View {
             }
 
             Menu {
-                Button {
-                    Task {
-                        isStartingAlignment = true
-                        _ = await BookServiceActor.shared.startAlignment(
-                            for: item.uuid,
-                            sourceID: item.sourceID,
-                            restart: isErrorOrStopped ? .full : .none,
-                        )
-                        await BookServiceActor.shared.fetchLibraryInformation()
-                        isStartingAlignment = false
+                if canCreateOnServer {
+                    Button {
+                        Task {
+                            isStartingAlignment = true
+                            _ = await BookServiceActor.shared.startAlignment(
+                                for: item.uuid,
+                                sourceID: item.sourceID,
+                                restart: isErrorOrStopped ? .full : .none,
+                            )
+                            await BookServiceActor.shared.fetchLibraryInformation()
+                            isStartingAlignment = false
+                        }
+                    } label: {
+                        Label("Create on Server", systemImage: "server.rack")
                     }
-                } label: {
-                    Label("Create on Server", systemImage: "server.rack")
+                    .disabled(isStartingAlignment)
                 }
-                .disabled(isStartingAlignment)
 
-                Button {
-                } label: {
-                    Label("Create Locally", systemImage: "desktopcomputer")
+                if canCreateLocally {
+                    Button {
+                        if let data = LocalReadaloudAlignmentLauncher.data(
+                            for: item,
+                            mediaViewModel: mediaViewModel,
+                        ) {
+                            openWindow(id: "ReadaloudGenerator", value: data)
+                        }
+                    } label: {
+                        Label("Create Locally", systemImage: "desktopcomputer")
+                    }
+                    .disabled(isStartingAlignment)
                 }
-                .disabled(true)
             } label: {
                 Color.clear
             }

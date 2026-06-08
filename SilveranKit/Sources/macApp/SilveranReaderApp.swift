@@ -144,8 +144,10 @@ struct SilveranReaderApp: App {
     }
 
     private var readaloudGeneratorScene: some Scene {
-        Window("Create Readaloud", id: "ReadaloudGenerator") {
-            ReadaloudGeneratorView()
+        WindowGroup("Create Readaloud", id: "ReadaloudGenerator", for: ReadaloudGeneratorData.self) {
+            data in
+            ReadaloudGeneratorView(initialData: data.wrappedValue)
+                .environment(mediaViewModel)
         }
         .windowResizability(.contentSize)
         .disableWindowRestoration()

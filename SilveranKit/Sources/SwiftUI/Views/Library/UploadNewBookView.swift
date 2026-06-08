@@ -143,7 +143,7 @@ public struct UploadNewBookView: View {
             }
             .padding()
         }
-        .frame(width: 500, height: 340)
+        .frame(width: 500, height: 440)
         .task {
             await loadSources()
         }

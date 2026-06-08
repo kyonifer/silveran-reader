@@ -1,5 +1,6 @@
 import Foundation
 import SilveranKitCommon
+import SilveranKitSwiftUI
 import StoryAlignCore
 import ZIPFoundation
 
@@ -79,6 +80,7 @@ public enum ReadaloudGeneratorState: Equatable {
 public enum ReadaloudGeneratorCompletion: Equatable {
     case saved(URL)
     case uploaded
+    case replaced(BookSourceID)
 }
 
 public enum WhisperModelSize: String, CaseIterable, Identifiable, Sendable {
@@ -129,7 +131,12 @@ public final class ReadaloudGeneratorViewModel {
     public var outputURL: URL?
     public var uploadAllToServer = false
     public var selectedUploadSourceID: BookSourceID?
-    public private(set) var storytellerSources: [BookSourceRecord] = []
+    public private(set) var sourceWorkflowBookTitle: String?
+    public private(set) var sourceWorkflowName: String?
+    public private(set) var sourceWorkflowKind: BookSourceKind?
+    public private(set) var uploadSources: [BookSourceRecord] = []
+    public private(set) var sourceOutputBookID: String?
+    public private(set) var isLoadingSourceInputs = false
     public var selectedModelSize: WhisperModelSize = .tiny
     public var customModelPath: URL?
     public var selectedGranularity: Granularity = .group
@@ -153,15 +160,55 @@ public final class ReadaloudGeneratorViewModel {
 
     public init() {}
 
-    public func loadStorytellerSources() async {
-        let sources = await BookServiceActor.shared.bookSources.filter { $0.kind == .storyteller }
-        storytellerSources = sources
+    public func loadUploadSources() async {
+        let sources = await BookServiceActor.shared.bookSources.filter {
+            $0.capabilities.canUploadBooks
+        }
+        uploadSources = sources
         selectedUploadSourceID = selectedUploadSourceID ?? sources.first?.id
     }
 
+    public func configure(with data: ReadaloudGeneratorData?) async {
+        guard let data else { return }
+        sourceOutputBookID = data.bookID
+        sourceWorkflowBookTitle = data.bookTitle
+        selectedUploadSourceID = data.sourceID
+        sourceWorkflowName = data.sourceName
+        sourceWorkflowKind = data.sourceKind
+        uploadAllToServer = data.destination == .source
+        epubURL = data.ebookURL
+        audioURL = data.audioURL
+        outputURL =
+            FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                readaloudFilename(for: data.ebookURL, fallbackTitle: data.bookTitle),
+                isDirectory: false,
+            )
+        if epubURL != nil {
+            loadChapters()
+        }
+    }
+
     public var canStart: Bool {
-        epubURL != nil && audioURL != nil && (uploadAllToServer || outputURL != nil)
+        epubURL != nil && audioURL != nil
+            && (uploadAllToServer ? selectedUploadSourceID != nil : outputURL != nil)
             && state != .processing
+            && !isLoadingSourceInputs
+    }
+
+    public var canAttemptStart: Bool {
+        if state == .processing || isLoadingSourceInputs {
+            return false
+        }
+        if epubURL == nil || audioURL == nil {
+            return false
+        }
+        return (uploadAllToServer ? selectedUploadSourceID != nil : outputURL != nil)
+            && isModelDownloaded
+    }
+
+    public var isMissingSourceWorkflowMedia: Bool {
+        sourceOutputBookID != nil && (epubURL == nil || audioURL == nil)
     }
 
     public var isModelDownloaded: Bool {
@@ -253,6 +300,8 @@ public final class ReadaloudGeneratorViewModel {
         let selectedSize = await self.selectedModelSize
         let builtInModelPath = await self.modelPath(for: selectedSize)
         let uploadAllToServer = await self.uploadAllToServer
+        let selectedUploadSourceID = await self.selectedUploadSourceID
+        let sourceOutputBookID = await self.sourceOutputBookID
         let modelPath: String? = customPath?.path ?? builtInModelPath
         let granularity = await self.selectedGranularity
         let expanding = await self.expandingHighlight
@@ -260,7 +309,13 @@ public final class ReadaloudGeneratorViewModel {
         let expScope = await self.expansionScope
         let expUnits = await self.expansionUnitCount
         let granularityExpansion: GranularityExpansion? =
-            expanding ? (expMode == .scope ? .scope(expScope) : .units(expUnits)) : nil
+            Self.granularityExpansion(
+                enabled: expanding,
+                mode: expMode,
+                scope: expScope,
+                units: expUnits,
+                granularity: granularity,
+            )
         let chapters = await self.availableChapters
         let startIdx = await self.startChapterIndex
         let endIdx = await self.endChapterIndex
@@ -332,18 +387,29 @@ public final class ReadaloudGeneratorViewModel {
             if uploadAllToServer {
                 await MainActor.run {
                     self.currentStage = .export
-                    self.currentMessage = "Uploading to server..."
+                    self.currentMessage = "Writing to source..."
                 }
 
-                let success = try await uploadGeneratedBook(
-                    epubURL: epubURL,
-                    audioURL: audioURL,
-                    readaloudURL: result.alignedEpubURL,
-                )
+                let success: Bool
+                if let sourceOutputBookID {
+                    success = try await replaceGeneratedReadaloud(
+                        readaloudURL: result.alignedEpubURL,
+                        bookID: sourceOutputBookID,
+                        sourceID: selectedUploadSourceID,
+                        filename: readaloudFilename(for: epubURL),
+                    )
+                } else {
+                    success = try await uploadGeneratedBook(
+                        epubURL: epubURL,
+                        audioURL: audioURL,
+                        readaloudURL: result.alignedEpubURL,
+                        sourceID: selectedUploadSourceID,
+                    )
+                }
                 guard success else {
                     await MainActor.run {
                         self.state = .error(
-                            "Upload failed. Your server may not support this feature yet. Please ensure you're running the latest server version."
+                            "Could not write the readaloud to the selected source."
                         )
                     }
                     return
@@ -352,7 +418,11 @@ public final class ReadaloudGeneratorViewModel {
                 let messages = logger.messages
                 await MainActor.run {
                     self.logMessages = messages
-                    self.state = .completed(.uploaded)
+                    if let selectedUploadSourceID, sourceOutputBookID != nil {
+                        self.state = .completed(.replaced(selectedUploadSourceID))
+                    } else {
+                        self.state = .completed(.uploaded)
+                    }
                 }
                 _ = await BookServiceActor.shared.fetchLibraryInformation()
             } else if let outputURL {
@@ -385,6 +455,7 @@ public final class ReadaloudGeneratorViewModel {
         epubURL: URL,
         audioURL: URL,
         readaloudURL: URL,
+        sourceID: BookSourceID?,
     ) async throws -> Bool {
         let ebookData = try Data(contentsOf: epubURL)
         let audiobookData = try Data(contentsOf: audioURL)
@@ -394,7 +465,7 @@ public final class ReadaloudGeneratorViewModel {
 
         return await BookServiceActor.shared.uploadBookAssets(
             bookUUID: UUID().uuidString,
-            sourceID: await MainActor.run { self.selectedUploadSourceID },
+            sourceID: sourceID,
             ebook: StorytellerUploadAsset(
                 format: .ebook,
                 filename: epubURL.lastPathComponent,
@@ -419,8 +490,73 @@ public final class ReadaloudGeneratorViewModel {
         )
     }
 
+    private nonisolated func replaceGeneratedReadaloud(
+        readaloudURL: URL,
+        bookID: String,
+        sourceID: BookSourceID?,
+        filename: String,
+    ) async throws -> Bool {
+        guard let sourceID else { return false }
+        let status = await BookServiceActor.shared.connectionStatus(sourceID: sourceID)
+        guard status == .connected else { return false }
+
+        let result = await BookServiceActor.shared.replaceBookAsset(
+            StorytellerUploadAsset(
+                format: .readaloud,
+                filename: filename,
+                data: try Data(contentsOf: readaloudURL),
+                contentType: "application/epub+zip",
+                relativePath: nil,
+            ),
+            bookUUID: bookID,
+            sourceID: sourceID,
+            replaceMetadata: false,
+        )
+        if case .success = result {
+            return true
+        }
+        return false
+    }
+
     private nonisolated func readaloudFilename(for epubURL: URL) -> String {
         "\(epubURL.deletingPathExtension().lastPathComponent)-readaloud.epub"
+    }
+
+    private nonisolated static func granularityExpansion(
+        enabled: Bool,
+        mode: ExpansionMode,
+        scope: Granularity,
+        units: Int,
+        granularity: Granularity,
+    ) -> GranularityExpansion? {
+        guard enabled, granularity != .sentence else { return nil }
+        switch mode {
+            case .scope:
+                return .scope(validExpansionScope(scope, for: granularity))
+            case .units:
+                return .units(units)
+        }
+    }
+
+    private nonisolated static func validExpansionScope(
+        _ scope: Granularity,
+        for granularity: Granularity,
+    ) -> Granularity {
+        switch granularity {
+            case .word, .group:
+                return scope == .phrase ? .phrase : .sentence
+            case .phrase, .segment:
+                return .sentence
+            case .sentence:
+                return .sentence
+        }
+    }
+
+    private nonisolated func readaloudFilename(for epubURL: URL?, fallbackTitle: String) -> String {
+        if let epubURL {
+            return readaloudFilename(for: epubURL)
+        }
+        return "\(fallbackTitle)-readaloud.epub"
     }
 
     private nonisolated func downloadModelFiles(for modelSize: WhisperModelSize) async {

@@ -1,4 +1,5 @@
 #if os(macOS)
+import AppKit
 import SwiftUI
 
 struct BookContextMenuContent: View {
@@ -27,6 +28,8 @@ struct BookContextMenuContent: View {
 
         deleteSection
 
+        alignSection
+
         if hasServerActions {
             Divider()
 
@@ -46,11 +49,41 @@ struct BookContextMenuContent: View {
         mediaViewModel.isServerBook(item.id)
     }
 
+    private var canAlignFromSource: Bool {
+        item.hasAvailableEbook && item.hasAvailableAudiobook
+            && (mediaViewModel.isServerBook(item.id) || mediaViewModel.isLocalFolderBook(item.id))
+    }
+
+    private var alignMenuTitle: String {
+        item.hasAvailableReadaloud ? "Realign" : "Align"
+    }
+
     private var hasProcessingActions: Bool {
         let status = item.readaloud?.status?.uppercased() ?? ""
         return status == "PROCESSING" || status == "QUEUED" || status == "ALIGNED"
             || status == "ERROR" || status == "STOPPED"
             || (item.hasAvailableEbook && item.hasAvailableAudiobook)
+    }
+
+    @ViewBuilder
+    private var alignSection: some View {
+        if canAlignFromSource {
+            Divider()
+
+            Button {
+                if let data = LocalReadaloudAlignmentLauncher.data(
+                    for: item,
+                    mediaViewModel: mediaViewModel,
+                ) {
+                    openWindow(
+                        id: "ReadaloudGenerator",
+                        value: data,
+                    )
+                }
+            } label: {
+                Label("\(alignMenuTitle) Locally", systemImage: "desktopcomputer")
+            }
+        }
     }
 
     @ViewBuilder
@@ -175,13 +208,53 @@ struct BookContextMenuContent: View {
         let ebookDownloaded = mediaViewModel.isCategoryDownloaded(.ebook, for: item)
         let audioDownloaded = mediaViewModel.isCategoryDownloaded(.audio, for: item)
         let syncedDownloaded = mediaViewModel.isCategoryDownloaded(.synced, for: item)
+        let isFolderBook = mediaViewModel.isLocalFolderBook(item.id)
 
-        if ebookDownloaded || audioDownloaded || syncedDownloaded {
+        if isFolderBook {
+            Divider()
+
+            Menu {
+                if item.hasAvailableEbook {
+                    Button(role: .destructive) {
+                        confirmDeleteSourceAsset(.ebook)
+                    } label: {
+                        Label("Delete Ebook", systemImage: "trash")
+                    }
+                }
+
+                if item.hasAvailableAudiobook {
+                    Button(role: .destructive) {
+                        confirmDeleteSourceAsset(.audiobook)
+                    } label: {
+                        Label("Delete Audiobook", systemImage: "trash")
+                    }
+                }
+
+                if item.hasAvailableReadaloud {
+                    Button(role: .destructive) {
+                        confirmDeleteSourceAsset(.readaloud)
+                    } label: {
+                        Label("Delete Readaloud", systemImage: "trash")
+                    }
+                }
+
+                Divider()
+
+                Button(role: .destructive) {
+                    confirmDeleteSourceBook()
+                } label: {
+                    Label("Delete All from Folder", systemImage: "trash")
+                        .foregroundStyle(.red)
+                }
+            } label: {
+                Label("Delete from Folder", systemImage: "trash")
+            }
+        } else if ebookDownloaded || audioDownloaded || syncedDownloaded {
             Divider()
 
             if ebookDownloaded {
                 Button(role: .destructive) {
-                    mediaViewModel.deleteDownload(for: item, category: .ebook)
+                    confirmDeleteLocalDownload(.ebook)
                 } label: {
                     Label("Delete Local Ebook", systemImage: "trash")
                 }
@@ -189,7 +262,7 @@ struct BookContextMenuContent: View {
 
             if audioDownloaded {
                 Button(role: .destructive) {
-                    mediaViewModel.deleteDownload(for: item, category: .audio)
+                    confirmDeleteLocalDownload(.audio)
                 } label: {
                     Label("Delete Local Audiobook", systemImage: "trash")
                 }
@@ -197,33 +270,108 @@ struct BookContextMenuContent: View {
 
             if syncedDownloaded {
                 Button(role: .destructive) {
-                    mediaViewModel.deleteDownload(for: item, category: .synced)
+                    confirmDeleteLocalDownload(.synced)
                 } label: {
                     Label("Delete Local Readaloud", systemImage: "trash")
                 }
             }
         }
+    }
 
-        if mediaViewModel.isLocalFolderBook(item.id) {
-            Divider()
+    private func confirmDeleteLocalDownload(_ category: LocalMediaCategory) {
+        let label = localMediaLabel(category)
+        guard confirmDestructiveAction(
+            title: "Delete Local \(label)?",
+            message: "This will remove the downloaded \(label.lowercased()) from this device.",
+            buttonTitle: "Delete",
+        ) else { return }
+        mediaViewModel.deleteDownload(for: item, category: category)
+    }
 
-            Button(role: .destructive) {
-                Task {
-                    let success = await mediaViewModel.deleteBookFromSource(item)
-                    mediaViewModel.showSyncNotification(
-                        SyncNotification(
-                            message: success
-                                ? "Deleted \(item.title) from folder source"
-                                : "Failed to delete \(item.title)",
-                            type: success ? .success : .error,
-                        )
-                    )
+    private func confirmDeleteSourceAsset(_ format: StorytellerBookFormat) {
+        let label = sourceAssetLabel(format)
+        guard confirmDestructiveAction(
+            title: "Delete \(label) from Folder?",
+            message: "This will permanently delete the \(label.lowercased()) file from the folder source. This cannot be undone.",
+            buttonTitle: "Delete",
+        ) else { return }
+        Task {
+            let result = await BookServiceActor.shared.deleteBookAsset(
+                item.id,
+                sourceID: item.sourceID,
+                type: format,
+            )
+            await mediaViewModel.refreshMetadata(source: "BookContextMenuContent.deleteSourceAsset")
+            let didDelete = {
+                if case StorytellerActor.DeleteAssetResult.success = result {
+                    return true
                 }
-            } label: {
-                Label("Delete Book from Folder", systemImage: "trash")
-                    .foregroundStyle(.red)
-            }
+                return false
+            }()
+            mediaViewModel.showSyncNotification(
+                SyncNotification(
+                    message: didDelete
+                        ? "Deleted \(label.lowercased()) from folder source"
+                        : "Failed to delete \(label.lowercased())",
+                    type: didDelete ? .success : .error,
+                )
+            )
         }
+    }
+
+    private func confirmDeleteSourceBook() {
+        guard confirmDestructiveAction(
+            title: "Delete All from Folder?",
+            message: "This will permanently delete \(item.title) and all its media from the folder source. This cannot be undone.",
+            buttonTitle: "Delete All",
+        ) else { return }
+        Task {
+            let success = await mediaViewModel.deleteBookFromSource(item)
+            mediaViewModel.showSyncNotification(
+                SyncNotification(
+                    message: success
+                        ? "Deleted \(item.title) from folder source"
+                        : "Failed to delete \(item.title)",
+                    type: success ? .success : .error,
+                )
+            )
+        }
+    }
+
+    private func localMediaLabel(_ category: LocalMediaCategory) -> String {
+        switch category {
+            case .ebook:
+                return "Ebook"
+            case .audio:
+                return "Audiobook"
+            case .synced:
+                return "Readaloud"
+        }
+    }
+
+    private func sourceAssetLabel(_ format: StorytellerBookFormat) -> String {
+        switch format {
+            case .ebook:
+                return "Ebook"
+            case .audiobook:
+                return "Audiobook"
+            case .readaloud:
+                return "Readaloud"
+        }
+    }
+
+    private func confirmDestructiveAction(
+        title: String,
+        message: String,
+        buttonTitle: String,
+    ) -> Bool {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = message
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: buttonTitle)
+        alert.addButton(withTitle: "Cancel")
+        return alert.runModal() == .alertFirstButtonReturn
     }
 
     @ViewBuilder

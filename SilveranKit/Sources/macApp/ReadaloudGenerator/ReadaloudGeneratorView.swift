@@ -1,4 +1,5 @@
 import AppKit
+import SilveranKitAppModel
 import StoryAlignCore
 import SwiftUI
 import UniformTypeIdentifiers
@@ -6,22 +7,41 @@ import UniformTypeIdentifiers
 public struct ReadaloudGeneratorView: View {
     @State private var viewModel = ReadaloudGeneratorViewModel()
     @Environment(\.dismiss) private var dismiss
+    @Environment(MediaViewModel.self) private var mediaViewModel
+    private let initialData: ReadaloudGeneratorData?
 
-    public init() {}
+    public init(initialData: ReadaloudGeneratorData? = nil) {
+        self.initialData = initialData
+    }
 
     public var body: some View {
         VStack(spacing: 0) {
             headerView
             Divider()
             ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    inputFilesSection
-                    modelSection
-                    optionsSection
-                    if !viewModel.availableChapters.isEmpty {
-                        chapterRangeSection
+                HStack(alignment: .top, spacing: 0) {
+                    VStack(alignment: .leading, spacing: 20) {
+                        if isSourceWorkflow {
+                            sourceBookSection
+                            sourceInputMediaSection
+                        } else {
+                            inputFilesSection
+                        }
+                        modelSection
+                        outputSection
                     }
-                    outputSection
+                    .frame(width: 360, alignment: .topLeading)
+
+                    Divider()
+                        .padding(.horizontal, 20)
+
+                    VStack(alignment: .leading, spacing: 20) {
+                        optionsSection
+                        if !viewModel.availableChapters.isEmpty {
+                            chapterRangeSection
+                        }
+                    }
+                    .frame(width: 360, alignment: .topLeading)
                 }
                 .padding(20)
             }
@@ -56,9 +76,10 @@ public struct ReadaloudGeneratorView: View {
             .foregroundStyle(.blue)
             .padding(.bottom, 12)
         }
-        .frame(width: 500, height: 750)
+        .frame(width: 820, height: 760)
         .task {
-            await viewModel.loadStorytellerSources()
+            await viewModel.loadUploadSources()
+            await viewModel.configure(with: initialData)
         }
     }
 
@@ -94,6 +115,31 @@ public struct ReadaloudGeneratorView: View {
                 allowedTypes: [UTType(filenameExtension: "m4b")!],
             ) { url in
                 viewModel.audioURL = url
+            }
+        }
+    }
+
+    private var sourceBookSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Book")
+                .font(.headline)
+
+            lockedSelectionRow(
+                iconName: "book.closed",
+                title: sourceWorkflowBookTitle,
+                detail: "In \(selectedSourceDisplayName)",
+            )
+        }
+    }
+
+    private var sourceInputMediaSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Input Media")
+                .font(.headline)
+
+            VStack(spacing: 8) {
+                sourceMediaStatusRow(category: .ebook, title: "EPUB", iconName: "book")
+                sourceMediaStatusRow(category: .audio, title: "Audiobook", iconName: "headphones")
             }
         }
     }
@@ -177,7 +223,7 @@ public struct ReadaloudGeneratorView: View {
                     Text("Sentence").tag(Granularity.sentence)
                 }
                 .labelsHidden()
-                .frame(width: 200)
+                .frame(maxWidth: .infinity)
             }
 
             Text(granularityDescription)
@@ -199,7 +245,7 @@ public struct ReadaloudGeneratorView: View {
                             Text("Fixed count").tag(ExpansionMode.units)
                         }
                         .labelsHidden()
-                        .frame(width: 150)
+                        .frame(maxWidth: .infinity)
                     }
 
                     if viewModel.expansionMode == .scope {
@@ -214,7 +260,7 @@ public struct ReadaloudGeneratorView: View {
                                 Text("Sentence").tag(Granularity.sentence)
                             }
                             .labelsHidden()
-                            .frame(width: 150)
+                            .frame(maxWidth: .infinity)
                         }
 
                         Text(expansionScopeDescription)
@@ -250,9 +296,10 @@ public struct ReadaloudGeneratorView: View {
             Text("Chapter Range")
                 .font(.headline)
 
-            HStack(spacing: 16) {
+            VStack(spacing: 10) {
                 HStack {
                     Text("Start:")
+                        .frame(width: 44, alignment: .leading)
                     Picker("", selection: $viewModel.startChapterIndex) {
                         Text("Beginning").tag(nil as Int?)
                         ForEach(viewModel.availableChapters.indices, id: \.self) { i in
@@ -265,6 +312,7 @@ public struct ReadaloudGeneratorView: View {
 
                 HStack {
                     Text("End:")
+                        .frame(width: 44, alignment: .leading)
                     Picker("", selection: $viewModel.endChapterIndex) {
                         Text("End").tag(nil as Int?)
                         ForEach(viewModel.availableChapters.indices, id: \.self) { i in
@@ -288,38 +336,294 @@ public struct ReadaloudGeneratorView: View {
         }
 
         return VStack(alignment: .leading, spacing: 12) {
-            Text("Output")
+            Text(isSourceWorkflow ? "Destination" : "Output")
                 .font(.headline)
 
-            Toggle("Upload them all to server", isOn: $viewModel.uploadAllToServer)
-                .disabled(viewModel.state == .processing)
+            if isSourceWorkflow {
+                lockedSelectionRow(
+                    iconName: selectedSourceKind == .storyteller ? "server.rack" : "folder",
+                    title: "Current book",
+                    detail: "Add readaloud to \(selectedSourceDisplayName)",
+                )
+                    .opacity(viewModel.uploadAllToServer ? 1 : 0.45)
 
-            if viewModel.uploadAllToServer {
-                Picker("Upload to:", selection: uploadSourceBinding) {
-                    ForEach(viewModel.storytellerSources) { source in
-                        Text(source.name).tag(source.id)
-                    }
+                Toggle("Save to folder instead", isOn: customFolderOverrideBinding)
+                    .disabled(viewModel.state == .processing)
+
+                if !viewModel.uploadAllToServer {
+                    folderPathRow(suggestedFilename: suggestedName)
                 }
-                .disabled(viewModel.state == .processing || viewModel.storytellerSources.isEmpty)
             } else {
-                filePickerRow(
-                    label: "Save to:",
-                    url: viewModel.outputURL,
-                    placeholder: "Select output location...",
-                    allowedTypes: [.epub],
-                    isSavePanel: true,
-                    suggestedFilename: suggestedName,
-                ) { url in
-                    viewModel.outputURL = url
+                Toggle(sourceOutputToggleLabel, isOn: $viewModel.uploadAllToServer)
+                    .disabled(viewModel.state == .processing)
+
+                if viewModel.uploadAllToServer {
+                    Picker("Source:", selection: uploadSourceBinding) {
+                        ForEach(viewModel.uploadSources) { source in
+                            Text(source.name).tag(source.id)
+                        }
+                    }
+                    .disabled(viewModel.state == .processing || viewModel.uploadSources.isEmpty)
+                } else {
+                    filePickerRow(
+                        label: "Save to:",
+                        url: viewModel.outputURL,
+                        placeholder: "Select output location...",
+                        allowedTypes: [.epub],
+                        isSavePanel: true,
+                        suggestedFilename: suggestedName,
+                    ) { url in
+                        viewModel.outputURL = url
+                    }
                 }
             }
         }
     }
 
+    private var isSourceWorkflow: Bool {
+        viewModel.sourceOutputBookID != nil
+    }
+
+    private var selectedSourceName: String {
+        if let sourceWorkflowName = viewModel.sourceWorkflowName {
+            return sourceWorkflowName
+        }
+        return viewModel.uploadSources.first { $0.id == viewModel.selectedUploadSourceID }?.name
+            ?? "source"
+    }
+
+    private var sourceWorkflowBookTitle: String {
+        viewModel.sourceWorkflowBookTitle ?? "Current book"
+    }
+
+    private var selectedSourceDisplayName: String {
+        switch selectedSourceKind {
+            case .localFolder:
+                return "\(selectedSourceName) folder"
+            case .storyteller:
+                return "\(selectedSourceName) server"
+            case nil:
+                return selectedSourceName
+        }
+    }
+
+    private var selectedSourceKind: BookSourceKind? {
+        if let sourceWorkflowKind = viewModel.sourceWorkflowKind {
+            return sourceWorkflowKind
+        }
+        return viewModel.uploadSources.first { $0.id == viewModel.selectedUploadSourceID }?.kind
+    }
+
+    private var customFolderOverrideBinding: Binding<Bool> {
+        Binding(
+            get: { !viewModel.uploadAllToServer },
+            set: { useCustomFolder in
+                viewModel.uploadAllToServer = !useCustomFolder
+                if useCustomFolder {
+                    viewModel.outputURL = nil
+                }
+            },
+        )
+    }
+
+    private var sourceWorkflowBook: BookMetadata? {
+        guard let bookID = viewModel.sourceOutputBookID else { return nil }
+        return mediaViewModel.library.bookMetaData.first { $0.id == bookID }
+    }
+
+    private func lockedSelectionRow(
+        iconName: String,
+        title: String,
+        detail: String,
+    ) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: iconName)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 22, height: 22)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(.primary)
+                    .lineLimit(2)
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 8)
+
+            Image(systemName: "lock.fill")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+                .help("Locked from the selected source")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(nsColor: .controlBackgroundColor).opacity(0.55))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color(nsColor: .separatorColor).opacity(0.55), lineWidth: 1),
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func sourceMediaStatusRow(
+        category: LocalMediaCategory,
+        title: String,
+        iconName: String,
+    ) -> some View {
+        let item = sourceWorkflowBook
+        let isDownloaded = item.map {
+            mediaViewModel.isCategoryDownloaded(category, for: $0)
+        } ?? (sourceMediaURL(for: category) != nil)
+        let isDownloading = item.map {
+            mediaViewModel.isCategoryDownloadInProgress(for: $0, category: category)
+        } ?? false
+        let progress = item.flatMap {
+            mediaViewModel.downloadProgressFraction(for: $0, category: category)
+        }
+
+        return HStack(spacing: 10) {
+            Image(systemName: iconName)
+                .foregroundStyle(.secondary)
+                .frame(width: 22, height: 22)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.body.weight(.medium))
+                Text(isDownloaded ? "Downloaded" : "Needed for local alignment")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer(minLength: 8)
+
+            if isDownloaded {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+                    .font(.title3)
+                    .help("\(title) downloaded")
+            } else if isDownloading {
+                ZStack {
+                    Circle()
+                        .stroke(Color.accentColor.opacity(0.25), lineWidth: 2)
+                    Circle()
+                        .trim(from: 0, to: CGFloat(progress ?? 0))
+                        .stroke(
+                            Color.accentColor,
+                            style: StrokeStyle(lineWidth: 2, lineCap: .round),
+                        )
+                        .rotationEffect(.degrees(-90))
+                }
+                .frame(width: 18, height: 18)
+                .help("Downloading \(title)")
+            } else {
+                Button {
+                    if let item {
+                        mediaViewModel.startDownload(for: item, category: category)
+                    }
+                } label: {
+                    Image(systemName: "arrow.down.circle")
+                        .foregroundStyle(.blue)
+                        .font(.title3)
+                }
+                .buttonStyle(.borderless)
+                .disabled(item == nil)
+                .help("Download \(title)")
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(nsColor: .controlBackgroundColor).opacity(0.35))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color(nsColor: .separatorColor).opacity(0.45), lineWidth: 1),
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func sourceMediaURL(for category: LocalMediaCategory) -> URL? {
+        switch category {
+            case .ebook:
+                return viewModel.epubURL
+            case .audio:
+                return viewModel.audioURL
+            case .synced:
+                return nil
+        }
+    }
+
+    private func folderPathRow(suggestedFilename: String?) -> some View {
+        HStack {
+            Text("Folder:")
+            TextField("Folder path", text: customOutputFolderBinding(suggestedFilename: suggestedFilename))
+                .textFieldStyle(.roundedBorder)
+
+            Button("Browse...") {
+                let panel = NSOpenPanel()
+                panel.allowsMultipleSelection = false
+                panel.canChooseDirectories = true
+                panel.canChooseFiles = false
+                if panel.runModal() == .OK, let url = panel.url {
+                    setOutputFolder(url, suggestedFilename: suggestedFilename)
+                }
+            }
+        }
+    }
+
+    private func customOutputFolderBinding(suggestedFilename: String?) -> Binding<String> {
+        Binding(
+            get: {
+                viewModel.outputURL?.deletingLastPathComponent().path ?? ""
+            },
+            set: { path in
+                let expandedPath = NSString(string: path).expandingTildeInPath
+                guard !expandedPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                else {
+                    viewModel.outputURL = nil
+                    return
+                }
+                setOutputFolder(
+                    URL(fileURLWithPath: expandedPath, isDirectory: true),
+                    suggestedFilename: suggestedFilename,
+                )
+            },
+        )
+    }
+
+    private func setOutputFolder(_ folderURL: URL, suggestedFilename: String?) {
+        viewModel.outputURL = folderURL.appendingPathComponent(
+            suggestedFilename ?? "readaloud.epub",
+            isDirectory: false,
+        )
+    }
+
+    private var sourceOutputToggleLabel: String {
+        let sourceKind = viewModel.uploadSources.first { $0.id == viewModel.selectedUploadSourceID }?
+            .kind
+        let sourceName =
+            switch sourceKind {
+                case .storyteller:
+                    "server"
+                case .localFolder:
+                    "folder source"
+                case nil:
+                    "source"
+            }
+        return viewModel.sourceOutputBookID == nil
+            ? "Automatically add to \(sourceName) when done"
+            : "Automatically update \(sourceName) when done"
+    }
+
     private var uploadSourceBinding: Binding<BookSourceID> {
         Binding(
             get: {
-                viewModel.selectedUploadSourceID ?? viewModel.storytellerSources.first?.id ?? ""
+                viewModel.selectedUploadSourceID ?? viewModel.uploadSources.first?.id ?? ""
             },
             set: { viewModel.selectedUploadSourceID = $0 },
         )
@@ -399,60 +703,155 @@ public struct ReadaloudGeneratorView: View {
             case .saved:
                 return "Readaloud created successfully!"
             case .uploaded:
-                return "Readaloud created and uploaded to the server."
+                return "Readaloud created and added to the selected source."
+            case .replaced:
+                return "Readaloud created and replaced in the selected source."
         }
     }
 
     private var footerView: some View {
-        let isDisabled = !viewModel.canStart || !viewModel.isModelDownloaded
+        let isDisabled = isCreateReadaloudDisabled
 
         return VStack(alignment: .trailing, spacing: 8) {
-            if isDisabled {
+            if case .completed = viewModel.state {
                 HStack {
                     Spacer()
-                    Text(disabledReason)
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                }
-            }
-            HStack {
-                Button("Cancel") {
-                    if case .processing = viewModel.state {
-                        viewModel.cancel()
-                    } else {
+                    Button("Close") {
                         dismiss()
                     }
+                    .keyboardShortcut(.defaultAction)
+                    .buttonStyle(.borderedProminent)
                 }
-                .keyboardShortcut(.cancelAction)
-
-                Spacer()
-
-                Button {
-                    viewModel.startAlignment()
-                } label: {
-                    Text("Create Readaloud")
-                        .foregroundStyle(
-                            isDisabled ? Color(nsColor: .disabledControlTextColor) : .white
-                        )
+            } else {
+                if isDisabled {
+                    HStack {
+                        Spacer()
+                        Text(disabledReason)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
                 }
-                .keyboardShortcut(.defaultAction)
-                .disabled(isDisabled)
-                .buttonStyle(.borderedProminent)
-                .tint(isDisabled ? Color(nsColor: .disabledControlTextColor) : .accentColor)
+                HStack {
+                    Button("Cancel") {
+                        if case .processing = viewModel.state {
+                            viewModel.cancel()
+                        } else {
+                            dismiss()
+                        }
+                    }
+                    .keyboardShortcut(.cancelAction)
+
+                    Spacer()
+
+                    Button {
+                        refreshSourceMediaInputs()
+                        if isSourceWorkflowMediaMissing || viewModel.isMissingSourceWorkflowMedia {
+                            showDownloadRequiredAlert()
+                        } else {
+                            viewModel.startAlignment()
+                        }
+                    } label: {
+                        Text("Create Readaloud")
+                            .foregroundStyle(
+                                isDisabled ? Color(nsColor: .disabledControlTextColor) : .white
+                            )
+                    }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(isDisabled)
+                    .buttonStyle(.borderedProminent)
+                    .tint(isDisabled ? Color(nsColor: .disabledControlTextColor) : .accentColor)
+                }
             }
         }
         .padding()
     }
 
+    private var isCreateReadaloudDisabled: Bool {
+        if case .processing = viewModel.state {
+            return true
+        }
+        if viewModel.isLoadingSourceInputs {
+            return true
+        }
+        if isSourceWorkflowMediaMissing {
+            return true
+        }
+        if viewModel.uploadAllToServer {
+            return viewModel.selectedUploadSourceID == nil || !viewModel.isModelDownloaded
+        }
+        return viewModel.outputURL == nil || !viewModel.isModelDownloaded
+    }
+
+    private var isSourceWorkflowMediaMissing: Bool {
+        guard isSourceWorkflow else {
+            return viewModel.epubURL == nil || viewModel.audioURL == nil
+        }
+        guard let item = sourceWorkflowBook else {
+            return viewModel.epubURL == nil || viewModel.audioURL == nil
+        }
+        return !mediaViewModel.isCategoryDownloaded(.ebook, for: item)
+            || !mediaViewModel.isCategoryDownloaded(.audio, for: item)
+    }
+
+    private func refreshSourceMediaInputs() {
+        guard let bookID = viewModel.sourceOutputBookID else { return }
+
+        let newEpubURL = mediaViewModel.localMediaPath(for: bookID, category: .ebook)
+        let newAudioURL = mediaViewModel.localMediaPath(for: bookID, category: .audio)
+            .flatMap(resolveSourceAudioURL)
+
+        let shouldReloadChapters = viewModel.epubURL == nil && newEpubURL != nil
+        viewModel.epubURL = newEpubURL
+        viewModel.audioURL = newAudioURL
+        if shouldReloadChapters {
+            viewModel.loadChapters()
+        }
+    }
+
+    private func resolveSourceAudioURL(_ url: URL) -> URL? {
+        guard url.lastPathComponent == "manifest.json" else { return url }
+
+        struct Manifest: Decodable {
+            let readingOrder: [ReadingOrderItem]
+        }
+
+        struct ReadingOrderItem: Decodable {
+            let href: String
+        }
+
+        do {
+            let data = try Data(contentsOf: url)
+            let manifest = try JSONDecoder().decode(Manifest.self, from: data)
+            guard let href = manifest.readingOrder.first?.href else { return nil }
+            let audioURL = url.deletingLastPathComponent().appendingPathComponent(href)
+            return FileManager.default.fileExists(atPath: audioURL.path) ? audioURL : nil
+        } catch {
+            debugLog("[ReadaloudGenerator] Failed to resolve source audiobook manifest: \(error)")
+            return nil
+        }
+    }
+
     private var disabledReason: String {
-        if viewModel.epubURL == nil {
-            return "Select an EPUB file"
+        if viewModel.isLoadingSourceInputs {
+            return "Loading source media..."
         }
-        if viewModel.audioURL == nil {
-            return "Select an audiobook file"
+        if isSourceWorkflowMediaMissing {
+            return "Download missing media from the Input Media section"
         }
-        if !viewModel.uploadAllToServer && viewModel.outputURL == nil {
-            return "Select output location"
+        if viewModel.uploadAllToServer {
+            if viewModel.selectedUploadSourceID == nil {
+                return "Select an output source"
+            }
+        } else if viewModel.outputURL == nil {
+            return isSourceWorkflow ? "Select output folder" : "Select output location"
+        }
+        if !isSourceWorkflow {
+            if viewModel.epubURL == nil {
+                return "Select an EPUB file"
+            }
+            if viewModel.audioURL == nil {
+                return "Select an audiobook file"
+            }
         }
         if !viewModel.isModelDownloaded {
             if viewModel.selectedModelSize == .custom {
@@ -464,6 +863,16 @@ public struct ReadaloudGeneratorView: View {
             return "Download the Whisper model first"
         }
         return ""
+    }
+
+    private func showDownloadRequiredAlert() {
+        let alert = NSAlert()
+        alert.messageText = "Download Media First"
+        alert.informativeText =
+            "Local alignment needs both the ebook and audiobook to be available locally. Use the download buttons in the Input Media section on the left, then try again."
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
     }
 
     private func filePickerRow(

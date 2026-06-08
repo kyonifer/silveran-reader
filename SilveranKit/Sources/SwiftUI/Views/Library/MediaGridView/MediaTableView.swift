@@ -165,6 +165,7 @@ struct MediaTableView: NSViewRepresentable {
     var onMetadataLinkClicked: ((MetadataLinkTarget) -> Void)?
     var onEditMetadata: (([String]) -> Void)?
     var onManageServerMedia: ((String) -> Void)?
+    var onCreateLocalReadaloud: ((ReadaloudGeneratorData) -> Void)?
 
     init(
         items: [BookMetadata],
@@ -183,6 +184,7 @@ struct MediaTableView: NSViewRepresentable {
         onMetadataLinkClicked: ((MetadataLinkTarget) -> Void)? = nil,
         onEditMetadata: (([String]) -> Void)? = nil,
         onManageServerMedia: ((String) -> Void)? = nil,
+        onCreateLocalReadaloud: ((ReadaloudGeneratorData) -> Void)? = nil,
     ) {
         self.items = items
         self.coverPreference = coverPreference
@@ -200,6 +202,7 @@ struct MediaTableView: NSViewRepresentable {
         self.onMetadataLinkClicked = onMetadataLinkClicked
         self.onEditMetadata = onEditMetadata
         self.onManageServerMedia = onManageServerMedia
+        self.onCreateLocalReadaloud = onCreateLocalReadaloud
     }
 
     func makeCoordinator() -> Coordinator {
@@ -1029,56 +1032,110 @@ struct MediaTableView: NSViewRepresentable {
             let ebookDownloaded = mediaViewModel.isCategoryDownloaded(.ebook, for: item)
             let audioDownloaded = mediaViewModel.isCategoryDownloaded(.audio, for: item)
             let syncedDownloaded = mediaViewModel.isCategoryDownloaded(.synced, for: item)
+            let isFolderBook = mediaViewModel.isLocalFolderBook(item.id)
 
-            if ebookDownloaded || audioDownloaded || syncedDownloaded {
+            if isFolderBook
+                && (item.hasAvailableEbook || item.hasAvailableAudiobook || item.hasAvailableReadaloud)
+            {
                 menu.addItem(.separator())
-            }
-
-            if ebookDownloaded {
+                let deleteMenu = NSMenu()
+                if item.hasAvailableEbook {
+                    deleteMenu.addItem(
+                        sourceDeleteItem(
+                            title: "Delete Ebook",
+                            action: #selector(deleteSourceEbook(_:)),
+                            item: item,
+                        )
+                    )
+                }
+                if item.hasAvailableAudiobook {
+                    deleteMenu.addItem(
+                        sourceDeleteItem(
+                            title: "Delete Audiobook",
+                            action: #selector(deleteSourceAudiobook(_:)),
+                            item: item,
+                        )
+                    )
+                }
+                if item.hasAvailableReadaloud {
+                    deleteMenu.addItem(
+                        sourceDeleteItem(
+                            title: "Delete Readaloud",
+                            action: #selector(deleteSourceReadaloud(_:)),
+                            item: item,
+                        )
+                    )
+                }
+                deleteMenu.addItem(.separator())
                 let del = NSMenuItem(
-                    title: "Delete Local Ebook",
-                    action: #selector(deleteLocalEbook(_:)),
-                    keyEquivalent: "",
-                )
-                del.target = self
-                del.representedObject = item
-                del.attributedTitle = NSAttributedString(
-                    string: "Delete Book from Folder",
-                    attributes: [.foregroundColor: NSColor.systemRed],
-                )
-                menu.addItem(del)
-            }
-            if audioDownloaded {
-                let del = NSMenuItem(
-                    title: "Delete Local Audiobook",
-                    action: #selector(deleteLocalAudiobook(_:)),
-                    keyEquivalent: "",
-                )
-                del.target = self
-                del.representedObject = item
-                menu.addItem(del)
-            }
-            if syncedDownloaded {
-                let del = NSMenuItem(
-                    title: "Delete Local Readaloud",
-                    action: #selector(deleteLocalReadaloud(_:)),
-                    keyEquivalent: "",
-                )
-                del.target = self
-                del.representedObject = item
-                menu.addItem(del)
-            }
-
-            if mediaViewModel.isLocalFolderBook(item.id) {
-                menu.addItem(.separator())
-                let del = NSMenuItem(
-                    title: "Delete Book from Folder",
+                    title: "Delete All from Folder",
                     action: #selector(deleteSourceBook(_:)),
                     keyEquivalent: "",
                 )
                 del.target = self
                 del.representedObject = item
-                menu.addItem(del)
+                del.attributedTitle = NSAttributedString(
+                    string: "Delete All from Folder",
+                    attributes: [.foregroundColor: NSColor.systemRed],
+                )
+                deleteMenu.addItem(del)
+
+                let deleteMenuItem = NSMenuItem(
+                    title: "Delete from Folder",
+                    action: nil,
+                    keyEquivalent: "",
+                )
+                deleteMenuItem.submenu = deleteMenu
+                menu.addItem(deleteMenuItem)
+            } else {
+                if ebookDownloaded || audioDownloaded || syncedDownloaded {
+                    menu.addItem(.separator())
+                }
+
+                if ebookDownloaded {
+                    let del = NSMenuItem(
+                        title: "Delete Local Ebook",
+                        action: #selector(deleteLocalEbook(_:)),
+                        keyEquivalent: "",
+                    )
+                    del.target = self
+                    del.representedObject = item
+                    menu.addItem(del)
+                }
+                if audioDownloaded {
+                    let del = NSMenuItem(
+                        title: "Delete Local Audiobook",
+                        action: #selector(deleteLocalAudiobook(_:)),
+                        keyEquivalent: "",
+                    )
+                    del.target = self
+                    del.representedObject = item
+                    menu.addItem(del)
+                }
+                if syncedDownloaded {
+                    let del = NSMenuItem(
+                        title: "Delete Local Readaloud",
+                        action: #selector(deleteLocalReadaloud(_:)),
+                        keyEquivalent: "",
+                    )
+                    del.target = self
+                    del.representedObject = item
+                    menu.addItem(del)
+                }
+            }
+
+            if item.hasAvailableEbook && item.hasAvailableAudiobook
+                && (mediaViewModel.isServerBook(item.id) || mediaViewModel.isLocalFolderBook(item.id))
+            {
+                menu.addItem(.separator())
+                let local = NSMenuItem(
+                    title: item.hasAvailableReadaloud ? "Realign Locally" : "Align Locally",
+                    action: #selector(createLocalReadaloud(_:)),
+                    keyEquivalent: "",
+                )
+                local.target = self
+                local.representedObject = item
+                menu.addItem(local)
             }
 
             let serverActions = NSMenu()
@@ -1229,9 +1286,21 @@ struct MediaTableView: NSViewRepresentable {
                 _ = await BookServiceActor.shared.startAlignment(
                     for: item.uuid,
                     sourceID: item.sourceID,
+                    restart: item.hasAvailableReadaloud ? .sync : .none,
                 )
                 await BookServiceActor.shared.fetchLibraryInformation()
             }
+        }
+
+        @objc private func createLocalReadaloud(_ sender: NSMenuItem) {
+            guard let item = sender.representedObject as? BookMetadata else { return }
+            guard
+                let data = LocalReadaloudAlignmentLauncher.data(
+                    for: item,
+                    mediaViewModel: mediaViewModel,
+                )
+            else { return }
+            parent.onCreateLocalReadaloud?(data)
         }
 
         @objc private func reprocessSync(_ sender: NSMenuItem) {
@@ -1299,21 +1368,53 @@ struct MediaTableView: NSViewRepresentable {
 
         @objc private func deleteLocalEbook(_ sender: NSMenuItem) {
             guard let item = sender.representedObject as? BookMetadata else { return }
+            guard confirmDestructiveAction(
+                title: "Delete Local Ebook?",
+                message: "This will remove the downloaded ebook from this device.",
+                buttonTitle: "Delete",
+            ) else { return }
             mediaViewModel.deleteDownload(for: item, category: .ebook)
         }
 
         @objc private func deleteLocalAudiobook(_ sender: NSMenuItem) {
             guard let item = sender.representedObject as? BookMetadata else { return }
+            guard confirmDestructiveAction(
+                title: "Delete Local Audiobook?",
+                message: "This will remove the downloaded audiobook from this device.",
+                buttonTitle: "Delete",
+            ) else { return }
             mediaViewModel.deleteDownload(for: item, category: .audio)
         }
 
         @objc private func deleteLocalReadaloud(_ sender: NSMenuItem) {
             guard let item = sender.representedObject as? BookMetadata else { return }
+            guard confirmDestructiveAction(
+                title: "Delete Local Readaloud?",
+                message: "This will remove the downloaded readaloud from this device.",
+                buttonTitle: "Delete",
+            ) else { return }
             mediaViewModel.deleteDownload(for: item, category: .synced)
+        }
+
+        @objc private func deleteSourceEbook(_ sender: NSMenuItem) {
+            deleteSourceAsset(sender, format: .ebook)
+        }
+
+        @objc private func deleteSourceAudiobook(_ sender: NSMenuItem) {
+            deleteSourceAsset(sender, format: .audiobook)
+        }
+
+        @objc private func deleteSourceReadaloud(_ sender: NSMenuItem) {
+            deleteSourceAsset(sender, format: .readaloud)
         }
 
         @objc private func deleteSourceBook(_ sender: NSMenuItem) {
             guard let item = sender.representedObject as? BookMetadata else { return }
+            guard confirmDestructiveAction(
+                title: "Delete All from Folder?",
+                message: "This will permanently delete \(item.title) and all its media from the folder source. This cannot be undone.",
+                buttonTitle: "Delete All",
+            ) else { return }
             Task {
                 let success = await mediaViewModel.deleteBookFromSource(item)
                 mediaViewModel.showSyncNotification(
@@ -1324,6 +1425,74 @@ struct MediaTableView: NSViewRepresentable {
                         type: success ? .success : .error,
                     )
                 )
+            }
+        }
+
+        private func deleteSourceAsset(_ sender: NSMenuItem, format: StorytellerBookFormat) {
+            guard let item = sender.representedObject as? BookMetadata else { return }
+            let label = sourceAssetLabel(format)
+            guard confirmDestructiveAction(
+                title: "Delete \(label) from Folder?",
+                message: "This will permanently delete the \(label.lowercased()) file from the folder source. This cannot be undone.",
+                buttonTitle: "Delete",
+            ) else { return }
+            Task {
+                let result = await BookServiceActor.shared.deleteBookAsset(
+                    item.id,
+                    sourceID: item.sourceID,
+                    type: format,
+                )
+                await mediaViewModel.refreshMetadata(source: "MediaTableView.deleteSourceAsset")
+                let didDelete = {
+                    if case StorytellerActor.DeleteAssetResult.success = result {
+                        return true
+                    }
+                    return false
+                }()
+                mediaViewModel.showSyncNotification(
+                    SyncNotification(
+                        message: didDelete
+                            ? "Deleted \(label.lowercased()) from folder source"
+                            : "Failed to delete \(label.lowercased())",
+                        type: didDelete ? .success : .error,
+                    )
+                )
+            }
+        }
+
+        private func sourceDeleteItem(
+            title: String,
+            action: Selector,
+            item: BookMetadata,
+        ) -> NSMenuItem {
+            let menuItem = NSMenuItem(title: title, action: action, keyEquivalent: "")
+            menuItem.target = self
+            menuItem.representedObject = item
+            return menuItem
+        }
+
+        private func confirmDestructiveAction(
+            title: String,
+            message: String,
+            buttonTitle: String,
+        ) -> Bool {
+            let alert = NSAlert()
+            alert.messageText = title
+            alert.informativeText = message
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: buttonTitle)
+            alert.addButton(withTitle: "Cancel")
+            return alert.runModal() == .alertFirstButtonReturn
+        }
+
+        private func sourceAssetLabel(_ format: StorytellerBookFormat) -> String {
+            switch format {
+                case .ebook:
+                    return "Ebook"
+                case .audiobook:
+                    return "Audiobook"
+                case .readaloud:
+                    return "Readaloud"
             }
         }
 

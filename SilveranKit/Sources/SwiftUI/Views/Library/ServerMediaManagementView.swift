@@ -14,6 +14,7 @@ public struct ServerMediaManagementData: Codable, Hashable {
 public struct ServerMediaManagementView: View {
     let bookId: String
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openWindow) private var openWindow
     @Environment(MediaViewModel.self) private var mediaViewModel
 
     @State private var isUploading = false
@@ -584,10 +585,16 @@ public struct ServerMediaManagementView: View {
             .disabled(isStartingAlignment || isBusy)
 
             Button {
+                if let data = LocalReadaloudAlignmentLauncher.data(
+                    for: item,
+                    mediaViewModel: mediaViewModel,
+                ) {
+                    openWindow(id: "ReadaloudGenerator", value: data)
+                }
             } label: {
                 Label("Create Locally", systemImage: "desktopcomputer")
             }
-            .disabled(true)
+            .disabled(isStartingAlignment || isBusy)
         } label: {
             if isStartingAlignment {
                 ProgressView()

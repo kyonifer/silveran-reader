@@ -724,6 +724,9 @@ struct MediaGridView: View {
                             value: ServerMediaManagementData(bookId: bookId),
                         )
                     },
+                    onCreateLocalReadaloud: { data in
+                        openWindow(id: "ReadaloudGenerator", value: data)
+                    },
                 )
                 .padding(.top, 8)
             }
