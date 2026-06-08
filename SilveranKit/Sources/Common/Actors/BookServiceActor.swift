@@ -748,12 +748,8 @@ public actor BookServiceActor {
             case .localFolder:
                 guard let folder = source as? FolderSourceActor else { return .failed }
                 do {
-                    let fileURL = try temporaryFileURL(for: asset)
-                    defer { try? FileManager.default.removeItem(at: fileURL) }
-                    try asset.data.write(to: fileURL, options: .atomic)
-                    _ = try await folder.replaceMedia(
-                        from: fileURL,
-                        category: localMediaCategory(for: asset.format),
+                    try await folder.replaceAsset(
+                        asset,
                         bookName: asset.filename,
                         bookUUID: bookUUID,
                     )
@@ -782,23 +778,20 @@ public actor BookServiceActor {
         readaloud: StorytellerUploadAsset?,
         sourceID: BookSourceID,
     ) async -> Bool {
-        let orderedAssets = [ebook].compactMap(\.self)
-            + audiobooks + [audiobook].compactMap(\.self)
-            + [readaloud].compactMap(\.self)
-        guard !orderedAssets.isEmpty else { return false }
+        let audiobookAssets = audiobooks + [audiobook].compactMap(\.self)
+        guard ebook != nil || !audiobookAssets.isEmpty || readaloud != nil else { return false }
 
         do {
-            for asset in orderedAssets {
-                let fileURL = try temporaryFileURL(for: asset)
-                defer { try? FileManager.default.removeItem(at: fileURL) }
-                try asset.data.write(to: fileURL, options: .atomic)
-                _ = try await folder.importMedia(
-                    from: fileURL,
-                    category: localMediaCategory(for: asset.format),
-                    bookName: asset.filename,
-                    bookUUID: bookUUID,
-                )
-            }
+            try await folder.importBookAssets(
+                bookUUID: bookUUID,
+                bookName: ebook?.filename
+                    ?? readaloud?.filename
+                    ?? audiobookAssets.first?.filename
+                    ?? "Book",
+                ebook: ebook,
+                audiobooks: audiobookAssets,
+                readaloud: readaloud,
+            )
             if let metadata = await folder.fetchLibraryInformation() {
                 try? await LocalMediaActor.shared.updateSourceCacheMetadata(
                     metadata,
@@ -810,19 +803,6 @@ public actor BookServiceActor {
             debugLog("[BookServiceActor] Failed to import assets to folder source: \(error)")
             return false
         }
-    }
-
-    private func temporaryFileURL(for asset: StorytellerUploadAsset) throws -> URL {
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("SilveranBookServiceUploads", isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let sanitizedFilename =
-            asset.filename.isEmpty ? "\(asset.format.rawValue).\(defaultExtension(for: asset))"
-            : asset.filename
-        return directory.appendingPathComponent(
-            "\(UUID().uuidString)-\(sanitizedFilename)",
-            isDirectory: false,
-        )
     }
 
     private func localMediaCategory(for format: StorytellerBookFormat) -> LocalMediaCategory {

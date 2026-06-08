@@ -110,11 +110,11 @@ public struct ReadaloudGeneratorView: View {
 
             filePickerRow(
                 label: "Audiobook:",
-                url: viewModel.audioURL,
-                placeholder: "Select M4B audiobook...",
-                allowedTypes: [UTType(filenameExtension: "m4b")!],
-            ) { url in
-                viewModel.audioURL = url
+                urls: viewModel.audioURLs,
+                placeholder: "Select audiobook files...",
+                allowedTypes: audioFileTypes,
+            ) { urls in
+                viewModel.audioURLs = urls
             }
         }
     }
@@ -552,7 +552,7 @@ public struct ReadaloudGeneratorView: View {
             case .ebook:
                 return viewModel.epubURL
             case .audio:
-                return viewModel.audioURL
+                return viewModel.audioURLs.first
             case .synced:
                 return nil
         }
@@ -776,6 +776,9 @@ public struct ReadaloudGeneratorView: View {
         if isSourceWorkflowMediaMissing {
             return true
         }
+        if !isSourceWorkflow && (viewModel.epubURL == nil || viewModel.audioURLs.isEmpty) {
+            return true
+        }
         if viewModel.uploadAllToServer {
             return viewModel.selectedUploadSourceID == nil || !viewModel.isModelDownloaded
         }
@@ -783,11 +786,9 @@ public struct ReadaloudGeneratorView: View {
     }
 
     private var isSourceWorkflowMediaMissing: Bool {
-        guard isSourceWorkflow else {
-            return viewModel.epubURL == nil || viewModel.audioURL == nil
-        }
+        guard isSourceWorkflow else { return false }
         guard let item = sourceWorkflowBook else {
-            return viewModel.epubURL == nil || viewModel.audioURL == nil
+            return viewModel.epubURL == nil || viewModel.audioURLs.isEmpty
         }
         return !mediaViewModel.isCategoryDownloaded(.ebook, for: item)
             || !mediaViewModel.isCategoryDownloaded(.audio, for: item)
@@ -797,19 +798,19 @@ public struct ReadaloudGeneratorView: View {
         guard let bookID = viewModel.sourceOutputBookID else { return }
 
         let newEpubURL = mediaViewModel.localMediaPath(for: bookID, category: .ebook)
-        let newAudioURL = mediaViewModel.localMediaPath(for: bookID, category: .audio)
-            .flatMap(resolveSourceAudioURL)
+        let newAudioURLs = mediaViewModel.localMediaPath(for: bookID, category: .audio)
+            .map(resolveSourceAudioURLs) ?? []
 
         let shouldReloadChapters = viewModel.epubURL == nil && newEpubURL != nil
         viewModel.epubURL = newEpubURL
-        viewModel.audioURL = newAudioURL
+        viewModel.audioURLs = newAudioURLs
         if shouldReloadChapters {
             viewModel.loadChapters()
         }
     }
 
-    private func resolveSourceAudioURL(_ url: URL) -> URL? {
-        guard url.lastPathComponent == "manifest.json" else { return url }
+    private func resolveSourceAudioURLs(_ url: URL) -> [URL] {
+        guard url.lastPathComponent == "manifest.json" else { return [url] }
 
         struct Manifest: Decodable {
             let readingOrder: [ReadingOrderItem]
@@ -822,12 +823,13 @@ public struct ReadaloudGeneratorView: View {
         do {
             let data = try Data(contentsOf: url)
             let manifest = try JSONDecoder().decode(Manifest.self, from: data)
-            guard let href = manifest.readingOrder.first?.href else { return nil }
-            let audioURL = url.deletingLastPathComponent().appendingPathComponent(href)
-            return FileManager.default.fileExists(atPath: audioURL.path) ? audioURL : nil
+            return manifest.readingOrder.compactMap { item in
+                let audioURL = url.deletingLastPathComponent().appendingPathComponent(item.href)
+                return FileManager.default.fileExists(atPath: audioURL.path) ? audioURL : nil
+            }
         } catch {
             debugLog("[ReadaloudGenerator] Failed to resolve source audiobook manifest: \(error)")
-            return nil
+            return []
         }
     }
 
@@ -849,7 +851,7 @@ public struct ReadaloudGeneratorView: View {
             if viewModel.epubURL == nil {
                 return "Select an EPUB file"
             }
-            if viewModel.audioURL == nil {
+            if viewModel.audioURLs.isEmpty {
                 return "Select an audiobook file"
             }
         }
@@ -913,5 +915,58 @@ public struct ReadaloudGeneratorView: View {
                 }
             }
         }
+    }
+
+    private func filePickerRow(
+        label: String,
+        urls: [URL],
+        placeholder: String,
+        allowedTypes: [UTType],
+        onSelect: @escaping ([URL]) -> Void,
+    ) -> some View {
+        HStack {
+            Text(label)
+
+            Text(audioSelectionLabel(for: urls, placeholder: placeholder))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .foregroundStyle(urls.isEmpty ? .secondary : .primary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+
+            Button("Browse...") {
+                let panel = NSOpenPanel()
+                panel.allowedContentTypes = allowedTypes
+                panel.allowsMultipleSelection = true
+                panel.canChooseDirectories = false
+                if panel.runModal() == .OK {
+                    onSelect(panel.urls)
+                }
+            }
+        }
+    }
+
+    private func audioSelectionLabel(for urls: [URL], placeholder: String) -> String {
+        switch urls.count {
+            case 0:
+                return placeholder
+            case 1:
+                return urls[0].lastPathComponent
+            default:
+                return "\(urls.count) audiobook files selected"
+        }
+    }
+
+    private var audioFileTypes: [UTType] {
+        [
+            UTType(filenameExtension: "m4b"),
+            UTType(filenameExtension: "m4a"),
+            .mp3,
+            UTType(filenameExtension: "flac"),
+            UTType(filenameExtension: "aac"),
+            UTType(filenameExtension: "ogg"),
+            UTType(filenameExtension: "opus"),
+            UTType(filenameExtension: "wav"),
+            .audio,
+        ].compactMap { $0 }
     }
 }

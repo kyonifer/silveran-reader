@@ -22,6 +22,7 @@ public struct UploadNewBookView: View {
     @State private var selectedReadaloudURL: URL?
     @State private var isUploading = false
     @State private var uploadProgress: String?
+    @State private var uploadProgressFraction: Double?
     @State private var uploadResult: UploadResult?
     @State private var bookUUID = UUID().uuidString
     @State private var bookSources: [BookSourceRecord] = []
@@ -115,8 +116,7 @@ public struct UploadNewBookView: View {
                 Spacer()
 
                 if isUploading {
-                    ProgressView()
-                        .controlSize(.small)
+                    progressCircle(progress: uploadProgressFraction ?? 0)
                     if let progress = uploadProgress {
                         Text(progress)
                             .foregroundStyle(.secondary)
@@ -241,6 +241,7 @@ public struct UploadNewBookView: View {
         selectedReadaloudURL = nil
         uploadResult = nil
         uploadProgress = nil
+        uploadProgressFraction = nil
         bookUUID = UUID().uuidString
     }
 
@@ -314,6 +315,7 @@ public struct UploadNewBookView: View {
         await MainActor.run {
             isUploading = true
             uploadProgress = "Preparing..."
+            uploadProgressFraction = 0.05
         }
 
         if source.kind == .localFolder {
@@ -327,7 +329,10 @@ public struct UploadNewBookView: View {
 
         do {
             if let url = selectedEbookURL {
-                await MainActor.run { uploadProgress = "Reading ebook..." }
+                await MainActor.run {
+                    uploadProgress = "Reading ebook..."
+                    uploadProgressFraction = 0.2
+                }
                 let data = try Data(contentsOf: url)
                 ebookAsset = StorytellerUploadAsset(
                     format: .ebook,
@@ -339,7 +344,10 @@ public struct UploadNewBookView: View {
             }
 
             if !selectedAudiobookURLs.isEmpty {
-                await MainActor.run { uploadProgress = "Reading audiobook..." }
+                await MainActor.run {
+                    uploadProgress = "Reading audiobook..."
+                    uploadProgressFraction = 0.4
+                }
                 audiobookAssets = try selectedAudiobookURLs.map { url in
                     StorytellerUploadAsset(
                         format: .audiobook,
@@ -352,7 +360,10 @@ public struct UploadNewBookView: View {
             }
 
             if let url = selectedReadaloudURL {
-                await MainActor.run { uploadProgress = "Reading readaloud..." }
+                await MainActor.run {
+                    uploadProgress = "Reading readaloud..."
+                    uploadProgressFraction = 0.6
+                }
                 let data = try Data(contentsOf: url)
                 readaloudAsset = StorytellerUploadAsset(
                     format: .readaloud,
@@ -363,7 +374,10 @@ public struct UploadNewBookView: View {
                 )
             }
 
-            await MainActor.run { uploadProgress = "Uploading..." }
+            await MainActor.run {
+                uploadProgress = "Uploading..."
+                uploadProgressFraction = 0.75
+            }
 
             let success = await BookServiceActor.shared.uploadBookAssets(
                 bookUUID: bookUUID,
@@ -376,6 +390,7 @@ public struct UploadNewBookView: View {
             await MainActor.run {
                 isUploading = false
                 uploadProgress = nil
+                uploadProgressFraction = success ? 1.0 : nil
                 uploadResult =
                     success
                     ? .success
@@ -388,6 +403,7 @@ public struct UploadNewBookView: View {
             await MainActor.run {
                 isUploading = false
                 uploadProgress = nil
+                uploadProgressFraction = nil
                 uploadResult = .failure("Failed to read files: \(error.localizedDescription)")
             }
             await BookServiceActor.shared.fetchLibraryInformation()
@@ -422,7 +438,10 @@ public struct UploadNewBookView: View {
 
         do {
             if let url = selectedEbookURL {
-                await MainActor.run { uploadProgress = "Copying ebook..." }
+                await MainActor.run {
+                    uploadProgress = "Copying ebook..."
+                    uploadProgressFraction = 0.25
+                }
                 _ = try await folderSource.importMedia(
                     from: url,
                     category: .ebook,
@@ -432,7 +451,10 @@ public struct UploadNewBookView: View {
             }
 
             if !selectedAudiobookURLs.isEmpty {
-                await MainActor.run { uploadProgress = "Copying audiobook..." }
+                await MainActor.run {
+                    uploadProgress = "Copying audiobook..."
+                    uploadProgressFraction = 0.5
+                }
                 _ = try await folderSource.importAudiobookFiles(
                     from: selectedAudiobookURLs,
                     bookName: importTitle,
@@ -441,7 +463,10 @@ public struct UploadNewBookView: View {
             }
 
             if let url = selectedReadaloudURL {
-                await MainActor.run { uploadProgress = "Copying readaloud..." }
+                await MainActor.run {
+                    uploadProgress = "Copying readaloud..."
+                    uploadProgressFraction = 0.75
+                }
                 _ = try await folderSource.importMedia(
                     from: url,
                     category: .synced,
@@ -454,15 +479,34 @@ public struct UploadNewBookView: View {
             await MainActor.run {
                 isUploading = false
                 uploadProgress = nil
+                uploadProgressFraction = 1.0
                 uploadResult = .success
             }
         } catch {
             await MainActor.run {
                 isUploading = false
                 uploadProgress = nil
+                uploadProgressFraction = nil
                 uploadResult = .failure("Failed to add files: \(error.localizedDescription)")
             }
         }
+    }
+
+    private func progressCircle(progress: Double) -> some View {
+        ZStack {
+            Circle()
+                .stroke(Color.accentColor.opacity(0.22), lineWidth: 3)
+            Circle()
+                .trim(from: 0, to: CGFloat(min(max(progress, 0), 1)))
+                .stroke(
+                    Color.accentColor,
+                    style: StrokeStyle(lineWidth: 3, lineCap: .round),
+                )
+                .rotationEffect(.degrees(-90))
+        }
+        .frame(width: 18, height: 18)
+        .accessibilityLabel("Upload progress")
+        .accessibilityValue("\(Int(progress * 100)) percent")
     }
 }
 #endif

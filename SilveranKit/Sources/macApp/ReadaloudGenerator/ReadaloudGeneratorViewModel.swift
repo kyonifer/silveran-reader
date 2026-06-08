@@ -127,7 +127,7 @@ public enum WhisperModelSize: String, CaseIterable, Identifiable, Sendable {
 @MainActor
 public final class ReadaloudGeneratorViewModel {
     public var epubURL: URL?
-    public var audioURL: URL?
+    public var audioURLs: [URL] = []
     public var outputURL: URL?
     public var uploadAllToServer = false
     public var selectedUploadSourceID: BookSourceID?
@@ -160,6 +160,11 @@ public final class ReadaloudGeneratorViewModel {
 
     public init() {}
 
+    public var audioURL: URL? {
+        get { audioURLs.first }
+        set { audioURLs = newValue.map { [$0] } ?? [] }
+    }
+
     public func loadUploadSources() async {
         let sources = await BookServiceActor.shared.bookSources.filter {
             $0.capabilities.canUploadBooks
@@ -177,7 +182,7 @@ public final class ReadaloudGeneratorViewModel {
         sourceWorkflowKind = data.sourceKind
         uploadAllToServer = data.destination == .source
         epubURL = data.ebookURL
-        audioURL = data.audioURL
+        audioURLs = data.audioURLs
         outputURL =
             FileManager.default.temporaryDirectory
             .appendingPathComponent(
@@ -190,7 +195,7 @@ public final class ReadaloudGeneratorViewModel {
     }
 
     public var canStart: Bool {
-        epubURL != nil && audioURL != nil
+        epubURL != nil && !audioURLs.isEmpty
             && (uploadAllToServer ? selectedUploadSourceID != nil : outputURL != nil)
             && state != .processing
             && !isLoadingSourceInputs
@@ -200,7 +205,7 @@ public final class ReadaloudGeneratorViewModel {
         if state == .processing || isLoadingSourceInputs {
             return false
         }
-        if epubURL == nil || audioURL == nil {
+        if epubURL == nil || audioURLs.isEmpty {
             return false
         }
         return (uploadAllToServer ? selectedUploadSourceID != nil : outputURL != nil)
@@ -208,7 +213,7 @@ public final class ReadaloudGeneratorViewModel {
     }
 
     public var isMissingSourceWorkflowMedia: Bool {
-        sourceOutputBookID != nil && (epubURL == nil || audioURL == nil)
+        sourceOutputBookID != nil && (epubURL == nil || audioURLs.isEmpty)
     }
 
     public var isModelDownloaded: Bool {
@@ -262,7 +267,8 @@ public final class ReadaloudGeneratorViewModel {
 
     public func startAlignment() {
         guard canStart else { return }
-        guard let epubURL, let audioURL else { return }
+        guard let epubURL, !audioURLs.isEmpty else { return }
+        let audioURLs = self.audioURLs
         let outputURL = uploadAllToServer ? nil : self.outputURL
         guard uploadAllToServer || outputURL != nil else { return }
 
@@ -273,7 +279,7 @@ public final class ReadaloudGeneratorViewModel {
 
         alignmentTask = Task.detached { [weak self] in
             guard let self else { return }
-            await self.runAlignment(epubURL: epubURL, audioURL: audioURL, outputURL: outputURL)
+            await self.runAlignment(epubURL: epubURL, audioURLs: audioURLs, outputURL: outputURL)
         }
     }
 
@@ -295,7 +301,7 @@ public final class ReadaloudGeneratorViewModel {
         }
     }
 
-    private nonisolated func runAlignment(epubURL: URL, audioURL: URL, outputURL: URL?) async {
+    private nonisolated func runAlignment(epubURL: URL, audioURLs: [URL], outputURL: URL?) async {
         let customPath = await self.customModelPath
         let selectedSize = await self.selectedModelSize
         let builtInModelPath = await self.modelPath(for: selectedSize)
@@ -334,11 +340,13 @@ public final class ReadaloudGeneratorViewModel {
 
         // Start accessing security-scoped resources for sandboxed app
         let epubAccess = epubURL.startAccessingSecurityScopedResource()
-        let audioAccess = audioURL.startAccessingSecurityScopedResource()
+        let audioAccesses = audioURLs.map { ($0, $0.startAccessingSecurityScopedResource()) }
         let outputAccess = outputURL?.startAccessingSecurityScopedResource() ?? false
         defer {
             if epubAccess { epubURL.stopAccessingSecurityScopedResource() }
-            if audioAccess { audioURL.stopAccessingSecurityScopedResource() }
+            for (url, accessed) in audioAccesses where accessed {
+                url.stopAccessingSecurityScopedResource()
+            }
             if outputAccess { outputURL?.stopAccessingSecurityScopedResource() }
         }
 
@@ -354,7 +362,7 @@ public final class ReadaloudGeneratorViewModel {
         do {
             let alignmentRequest = try AlignmentRequest(
                 epubURL: epubURL,
-                audioBookURLs: [audioURL],
+                audioBookURLs: audioURLs,
             )
             let alignmentConfig = AlignmentConfig(
                 audioLoaderType: .avfoundation,
@@ -401,7 +409,7 @@ public final class ReadaloudGeneratorViewModel {
                 } else {
                     success = try await uploadGeneratedBook(
                         epubURL: epubURL,
-                        audioURL: audioURL,
+                        audioURLs: audioURLs,
                         readaloudURL: result.alignedEpubURL,
                         sourceID: selectedUploadSourceID,
                     )
@@ -453,15 +461,21 @@ public final class ReadaloudGeneratorViewModel {
 
     private nonisolated func uploadGeneratedBook(
         epubURL: URL,
-        audioURL: URL,
+        audioURLs: [URL],
         readaloudURL: URL,
         sourceID: BookSourceID?,
     ) async throws -> Bool {
         let ebookData = try Data(contentsOf: epubURL)
-        let audiobookData = try Data(contentsOf: audioURL)
         let readaloudData = try Data(contentsOf: readaloudURL)
-        let audiobookContentType =
-            audioURL.pathExtension.lowercased() == "m4b" ? "audio/mp4" : "audio/mpeg"
+        let audiobookAssets = try audioURLs.map { audioURL in
+            StorytellerUploadAsset(
+                format: .audiobook,
+                filename: audioURL.lastPathComponent,
+                data: try Data(contentsOf: audioURL),
+                contentType: audioContentType(for: audioURL),
+                relativePath: nil,
+            )
+        }
 
         return await BookServiceActor.shared.uploadBookAssets(
             bookUUID: UUID().uuidString,
@@ -473,13 +487,7 @@ public final class ReadaloudGeneratorViewModel {
                 contentType: "application/epub+zip",
                 relativePath: nil,
             ),
-            audiobook: StorytellerUploadAsset(
-                format: .audiobook,
-                filename: audioURL.lastPathComponent,
-                data: audiobookData,
-                contentType: audiobookContentType,
-                relativePath: nil,
-            ),
+            audiobooks: audiobookAssets,
             readaloud: StorytellerUploadAsset(
                 format: .readaloud,
                 filename: readaloudFilename(for: epubURL),
@@ -488,6 +496,25 @@ public final class ReadaloudGeneratorViewModel {
                 relativePath: nil,
             ),
         )
+    }
+
+    private nonisolated func audioContentType(for url: URL) -> String {
+        switch url.pathExtension.lowercased() {
+            case "aac":
+                return "audio/aac"
+            case "flac":
+                return "audio/flac"
+            case "m4a", "m4b", "mp4":
+                return "audio/mp4"
+            case "ogg", "oga":
+                return "audio/ogg"
+            case "opus":
+                return "audio/opus"
+            case "wav":
+                return "audio/wav"
+            default:
+                return "audio/mpeg"
+        }
     }
 
     private nonisolated func replaceGeneratedReadaloud(

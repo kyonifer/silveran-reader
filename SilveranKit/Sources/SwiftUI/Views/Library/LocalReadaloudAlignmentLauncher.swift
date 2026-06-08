@@ -10,8 +10,8 @@ enum LocalReadaloudAlignmentLauncher {
         mediaViewModel: MediaViewModel,
     ) -> ReadaloudGeneratorData? {
         let ebookURL = mediaViewModel.localMediaPath(for: item.id, category: .ebook)
-        let audioURL = mediaViewModel.localMediaPath(for: item.id, category: .audio)
-            .flatMap(resolveAudioURL)
+        let audioURLs = mediaViewModel.localMediaPath(for: item.id, category: .audio)
+            .map(resolveAudioURLs) ?? []
 
         return ReadaloudGeneratorData(
             bookID: item.id,
@@ -23,12 +23,12 @@ enum LocalReadaloudAlignmentLauncher {
                 : (mediaViewModel.isServerBook(item.id) ? .storyteller : nil),
             destination: .source,
             ebookURL: ebookURL,
-            audioURL: audioURL,
+            audioURLs: audioURLs,
         )
     }
 
-    private static func resolveAudioURL(_ url: URL) -> URL? {
-        guard url.lastPathComponent == "manifest.json" else { return url }
+    private static func resolveAudioURLs(_ url: URL) -> [URL] {
+        guard url.lastPathComponent == "manifest.json" else { return [url] }
 
         struct Manifest: Decodable {
             let readingOrder: [ReadingOrderItem]
@@ -41,12 +41,13 @@ enum LocalReadaloudAlignmentLauncher {
         do {
             let data = try Data(contentsOf: url)
             let manifest = try JSONDecoder().decode(Manifest.self, from: data)
-            guard let href = manifest.readingOrder.first?.href else { return nil }
-            let audioURL = url.deletingLastPathComponent().appendingPathComponent(href)
-            return FileManager.default.fileExists(atPath: audioURL.path) ? audioURL : nil
+            return manifest.readingOrder.compactMap { item in
+                let audioURL = url.deletingLastPathComponent().appendingPathComponent(item.href)
+                return FileManager.default.fileExists(atPath: audioURL.path) ? audioURL : nil
+            }
         } catch {
             debugLog("[LocalReadaloudAlignmentLauncher] Failed to resolve audiobook manifest: \(error)")
-            return nil
+            return []
         }
     }
 

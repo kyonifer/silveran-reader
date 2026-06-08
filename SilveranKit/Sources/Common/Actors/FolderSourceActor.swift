@@ -372,15 +372,21 @@ public actor FolderSourceActor: BookSourceActor {
         }
         try await filesystem.ensureDirectoryExists(at: destinationDirectory)
 
+        var destinationURLs: [URL] = []
         for sourceURL in sourceFileURLs {
             let destinationURL = destinationDirectory.appendingPathComponent(
                 sourceURL.lastPathComponent,
                 isDirectory: false,
             )
             try fm.copyItem(at: sourceURL, to: destinationURL)
+            destinationURLs.append(destinationURL)
         }
 
-        try await writeAudiobookManifest(in: destinationDirectory, title: metadata.title)
+        try await writeAudiobookManifest(
+            in: destinationDirectory,
+            title: metadata.title,
+            audioFiles: destinationURLs,
+        )
         let manifestURL = destinationDirectory.appendingPathComponent(
             "manifest.json",
             isDirectory: false,
@@ -388,6 +394,115 @@ public actor FolderSourceActor: BookSourceActor {
 
         _ = try await scanLibrary(in: resolved.url)
         return manifestURL
+    }
+
+    public func importBookAssets(
+        bookUUID: String,
+        bookName: String,
+        ebook: StorytellerUploadAsset? = nil,
+        audiobooks: [StorytellerUploadAsset] = [],
+        readaloud: StorytellerUploadAsset? = nil,
+    ) async throws {
+        guard ebook != nil || !audiobooks.isEmpty || readaloud != nil else {
+            throw LocalMediaError.importFailed("No assets selected")
+        }
+
+        let resolved = try await resolvedFolderURL()
+        defer { resolved.stopAccessing?() }
+
+        let bookFolder =
+            existingBookFolder(for: bookUUID)
+            ?? resolved.url.appendingPathComponent(
+                folderName(title: bookName, uuid: bookUUID),
+                isDirectory: true,
+            )
+        try await filesystem.ensureDirectoryExists(at: bookFolder)
+
+        if let ebook {
+            _ = try await writeAsset(
+                ebook,
+                to: bookFolder.appendingPathComponent(LocalMediaCategory.ebook.rawValue),
+            )
+        }
+
+        if !audiobooks.isEmpty {
+            let audioDirectory = bookFolder.appendingPathComponent(
+                LocalMediaCategory.audio.rawValue,
+                isDirectory: true,
+            )
+            if FileManager.default.fileExists(atPath: audioDirectory.path) {
+                try FileManager.default.removeItem(at: audioDirectory)
+            }
+            try await filesystem.ensureDirectoryExists(at: audioDirectory)
+
+            var audioFiles: [URL] = []
+            var usedFilenames: Set<String> = []
+            for audiobook in audiobooks {
+                let destinationURL = try await writeAsset(
+                    audiobook,
+                    to: audioDirectory,
+                    usedFilenames: &usedFilenames,
+                )
+                audioFiles.append(destinationURL)
+            }
+
+            try await writeAudiobookManifest(
+                in: audioDirectory,
+                title: bookName,
+                audioFiles: audioFiles,
+            )
+        }
+
+        if let readaloud {
+            _ = try await writeAsset(
+                readaloud,
+                to: bookFolder.appendingPathComponent(LocalMediaCategory.synced.rawValue),
+            )
+        }
+
+        _ = try await scanLibrary(in: resolved.url)
+    }
+
+    public func replaceAsset(
+        _ asset: StorytellerUploadAsset,
+        bookName: String,
+        bookUUID: String,
+    ) async throws {
+        if pathCache[bookUUID] == nil {
+            _ = await fetchLibraryInformation()
+        }
+
+        let category = localMediaCategory(for: asset.format)
+        if let destinationDirectory = existingCategoryDirectory(
+            for: bookUUID,
+            category: category,
+        ) {
+            let fm = FileManager.default
+            if fm.fileExists(atPath: destinationDirectory.path) {
+                try fm.removeItem(at: destinationDirectory)
+            }
+        }
+
+        switch asset.format {
+            case .ebook:
+                try await importBookAssets(
+                    bookUUID: bookUUID,
+                    bookName: bookName,
+                    ebook: asset,
+                )
+            case .audiobook:
+                try await importBookAssets(
+                    bookUUID: bookUUID,
+                    bookName: bookName,
+                    audiobooks: [asset],
+                )
+            case .readaloud:
+                try await importBookAssets(
+                    bookUUID: bookUUID,
+                    bookName: bookName,
+                    readaloud: asset,
+                )
+        }
     }
 
     public func deleteBook(_ bookID: String) async throws {
@@ -625,8 +740,17 @@ public actor FolderSourceActor: BookSourceActor {
         }
     }
 
-    private func writeAudiobookManifest(in audioDirectory: URL, title: String) async throws {
-        let audioFiles = try audiobookMediaFiles(in: audioDirectory)
+    private func writeAudiobookManifest(
+        in audioDirectory: URL,
+        title: String,
+        audioFiles orderedAudioFiles: [URL]? = nil,
+    ) async throws {
+        let audioFiles: [URL]
+        if let orderedAudioFiles {
+            audioFiles = orderedAudioFiles
+        } else {
+            audioFiles = try audiobookMediaFiles(in: audioDirectory)
+        }
         guard !audioFiles.isEmpty else {
             throw LocalMediaError.missingAudiobookManifest
         }
@@ -679,6 +803,79 @@ public actor FolderSourceActor: BookSourceActor {
             to: audioDirectory.appendingPathComponent("manifest.json", isDirectory: false),
             options: .atomic,
         )
+    }
+
+    private func writeAsset(
+        _ asset: StorytellerUploadAsset,
+        to destinationDirectory: URL,
+        usedFilenames: inout Set<String>,
+    ) async throws -> URL {
+        try await filesystem.ensureDirectoryExists(at: destinationDirectory)
+        let filename = uniqueFilename(preferredFilename(for: asset), usedFilenames: &usedFilenames)
+        let destinationURL = destinationDirectory.appendingPathComponent(
+            filename,
+            isDirectory: false,
+        )
+        try asset.data.write(to: destinationURL, options: .atomic)
+        return destinationURL
+    }
+
+    private func writeAsset(
+        _ asset: StorytellerUploadAsset,
+        to destinationDirectory: URL,
+    ) async throws -> URL {
+        var usedFilenames: Set<String> = []
+        return try await writeAsset(asset, to: destinationDirectory, usedFilenames: &usedFilenames)
+    }
+
+    private func preferredFilename(for asset: StorytellerUploadAsset) -> String {
+        let fallback = "\(asset.format.rawValue).\(defaultExtension(for: asset))"
+        let filename = asset.filename.isEmpty ? fallback : asset.filename
+        let lastPathComponent = URL(fileURLWithPath: filename).lastPathComponent
+        return lastPathComponent.isEmpty ? fallback : lastPathComponent
+    }
+
+    private func uniqueFilename(_ filename: String, usedFilenames: inout Set<String>) -> String {
+        guard usedFilenames.contains(filename) else {
+            usedFilenames.insert(filename)
+            return filename
+        }
+
+        let url = URL(fileURLWithPath: filename)
+        let basename = url.deletingPathExtension().lastPathComponent
+        let pathExtension = url.pathExtension
+        var index = 2
+        while true {
+            let candidate =
+                pathExtension.isEmpty
+                ? "\(basename) \(index)"
+                : "\(basename) \(index).\(pathExtension)"
+            if !usedFilenames.contains(candidate) {
+                usedFilenames.insert(candidate)
+                return candidate
+            }
+            index += 1
+        }
+    }
+
+    private func localMediaCategory(for format: StorytellerBookFormat) -> LocalMediaCategory {
+        switch format {
+            case .ebook:
+                return .ebook
+            case .audiobook:
+                return .audio
+            case .readaloud:
+                return .synced
+        }
+    }
+
+    private func defaultExtension(for asset: StorytellerUploadAsset) -> String {
+        switch asset.format {
+            case .ebook, .readaloud:
+                return "epub"
+            case .audiobook:
+                return asset.contentType == "audio/mp4" ? "m4b" : "mp3"
+        }
     }
 
     private func audiobookMediaFiles(in audioDirectory: URL) throws -> [URL] {
