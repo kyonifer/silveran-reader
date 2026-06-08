@@ -430,7 +430,6 @@ public struct UploadNewBookView: View {
     }
 
     private func importIntoFolderSource(_ source: BookSourceRecord) async {
-        let folderSource = FolderSourceActor(sourceRecord: source)
         let importTitle = selectedEbookURL?.deletingPathExtension().lastPathComponent
             ?? selectedReadaloudURL?.deletingPathExtension().lastPathComponent
             ?? selectedAudiobookURLs.first?.deletingPathExtension().lastPathComponent
@@ -442,11 +441,12 @@ public struct UploadNewBookView: View {
                     uploadProgress = "Copying ebook..."
                     uploadProgressFraction = 0.25
                 }
-                _ = try await folderSource.importMedia(
+                _ = try await BookServiceActor.shared.importMediaIntoFolderSource(
                     from: url,
                     category: .ebook,
                     bookName: importTitle,
                     bookUUID: bookUUID,
+                    sourceID: source.id,
                 )
             }
 
@@ -455,10 +455,11 @@ public struct UploadNewBookView: View {
                     uploadProgress = "Copying audiobook..."
                     uploadProgressFraction = 0.5
                 }
-                _ = try await folderSource.importAudiobookFiles(
+                _ = try await BookServiceActor.shared.importAudiobookFilesIntoFolderSource(
                     from: selectedAudiobookURLs,
                     bookName: importTitle,
                     bookUUID: bookUUID,
+                    sourceID: source.id,
                 )
             }
 
@@ -467,11 +468,12 @@ public struct UploadNewBookView: View {
                     uploadProgress = "Copying readaloud..."
                     uploadProgressFraction = 0.75
                 }
-                _ = try await folderSource.importMedia(
+                _ = try await BookServiceActor.shared.importMediaIntoFolderSource(
                     from: url,
                     category: .synced,
                     bookName: importTitle,
                     bookUUID: bookUUID,
+                    sourceID: source.id,
                 )
             }
 

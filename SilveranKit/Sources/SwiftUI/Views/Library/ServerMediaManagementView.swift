@@ -187,6 +187,7 @@ public struct ServerMediaManagementView: View {
         let progress = mediaViewModel.downloadProgressFraction(for: item, category: category)
         let serverHasMedia = serverHasMedia(for: category, item: item)
         let isHovered = hoveredDownloadCategory == category
+        let hasCachedMedia = mediaViewModel.hasCachedMedia(category, for: item)
 
         LabeledContent(label) {
             HStack(spacing: 16) {
@@ -236,15 +237,17 @@ public struct ServerMediaManagementView: View {
 
                     Spacer()
 
-                    HStack(spacing: 12) {
-                        Button {
-                            mediaViewModel.deleteDownload(for: item, category: category)
-                        } label: {
-                            Image(systemName: "trash")
-                                .foregroundStyle(.red)
+                    if hasCachedMedia {
+                        HStack(spacing: 12) {
+                            Button {
+                                mediaViewModel.deleteDownload(for: item, category: category)
+                            } label: {
+                                Image(systemName: "trash")
+                                    .foregroundStyle(.red)
+                            }
+                            .buttonStyle(.plain)
+                            .help("Delete")
                         }
-                        .buttonStyle(.plain)
-                        .help("Delete")
                     }
                 } else if serverHasMedia {
                     HStack(spacing: 6) {
@@ -836,7 +839,7 @@ public struct ServerMediaManagementView: View {
         errorMessage = nil
 
         for category in [LocalMediaCategory.ebook, .audio, .synced] {
-            if mediaViewModel.isCategoryDownloaded(category, for: item) {
+            if mediaViewModel.hasCachedMedia(category, for: item) {
                 mediaViewModel.deleteDownload(for: item, category: category)
             }
         }

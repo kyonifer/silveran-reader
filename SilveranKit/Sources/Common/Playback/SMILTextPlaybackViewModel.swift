@@ -221,11 +221,13 @@ public final class SMILTextPlaybackViewModel: NSObject {
         hasUserProgress = false
         isLoadingPosition = true
 
-        epubURL = await LocalMediaActor.shared.mediaFilePath(
-            for: book.uuid,
-            category: .synced,
+        let preparedMedia = try? await BookServiceActor.shared.prepareEbookForReading(
+            bookID: book.uuid,
             sourceID: book.sourceID,
+            category: .synced,
+            forceExtract: true,
         )
+        epubURL = preparedMedia?.originalURL
 
         guard let url = epubURL, FileManager.default.fileExists(atPath: url.path) else {
             debugLog("[\(logPrefix)] EPUB file not found")

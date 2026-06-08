@@ -51,7 +51,7 @@ struct SilveranTVApp: App {
         debugLog("[TVApp] Sync on launch: synced=\(result.synced), failed=\(result.failed)")
 
         if let library = await BookServiceActor.shared.fetchLibraryInformation() {
-            try? await LocalMediaActor.shared.updateSourceCacheMetadata(library)
+            try? await BookServiceActor.shared.updateLibraryCacheMetadata(library)
             debugLog("[TVApp] Library metadata updated: \(library.count) books")
         }
     }

@@ -235,7 +235,9 @@ struct MediaItemCardTopTabsButtonOverlay: View {
             hoveredTab = hovering ? tab : nil
         }
         .contextMenu {
-            if status == .downloaded {
+            if status == .downloaded
+                && mediaViewModel.hasCachedMedia(tab.localMediaCategory, for: item)
+            {
                 Button(role: .destructive) {
                     deleteMedia(for: tab)
                 } label: {

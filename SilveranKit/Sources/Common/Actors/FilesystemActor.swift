@@ -15,11 +15,22 @@ public actor FilesystemActor {
 
     public func ensureLocalStorageDirectories() throws {
         try ensureDirectoryExists(at: sourceCacheRootDirectory())
+        try ensureDirectoryExists(at: derivedMediaRootDirectory())
     }
 
     public func sourceCacheRootDirectory() -> URL {
         applicationSupportBaseDirectory()
             .appendingPathComponent("SourceCache", isDirectory: true)
+    }
+
+    public func derivedMediaRootDirectory() -> URL {
+        applicationSupportBaseDirectory()
+            .appendingPathComponent("DerivedMedia", isDirectory: true)
+    }
+
+    public func epubExtractionRootDirectory() -> URL {
+        derivedMediaRootDirectory()
+            .appendingPathComponent("EPUBExtraction", isDirectory: true)
     }
 
     public func sourceCacheDirectory(sourceID: BookSourceID) -> URL {
@@ -891,6 +902,53 @@ public actor FilesystemActor {
         sizeThresholdMB: Int = 200,
         forceExtract: Bool = false,
     ) async throws -> URL {
+        try await extractEpubIfNeeded(
+            epubPath: epubPath,
+            extractedDir: epubPath.deletingLastPathComponent()
+                .appendingPathComponent("extracted", isDirectory: true),
+            sizeThresholdMB: sizeThresholdMB,
+            forceExtract: forceExtract,
+        )
+    }
+
+    public func prepareEpubForReading(
+        epubPath: URL,
+        sourceID: BookSourceID,
+        bookID: String,
+        category: LocalMediaCategory,
+        sizeThresholdMB: Int = 200,
+        forceExtract: Bool = false,
+    ) async throws -> (url: URL, isExtracted: Bool) {
+        let fm = FileManager.default
+        let fileSize = try fm.attributesOfItem(atPath: epubPath.path)[.size] as? Int ?? 0
+        let fileSizeMB = fileSize / (1024 * 1024)
+        let shouldExtract = forceExtract || fileSizeMB > sizeThresholdMB
+
+        guard shouldExtract else {
+            return (epubPath, false)
+        }
+
+        let extractionDir = derivedEpubExtractionDirectory(
+            epubPath: epubPath,
+            sourceID: sourceID,
+            bookID: bookID,
+            category: category,
+        )
+        let url = try await extractEpubIfNeeded(
+            epubPath: epubPath,
+            extractedDir: extractionDir,
+            sizeThresholdMB: sizeThresholdMB,
+            forceExtract: forceExtract,
+        )
+        return (url, true)
+    }
+
+    private func extractEpubIfNeeded(
+        epubPath: URL,
+        extractedDir: URL,
+        sizeThresholdMB: Int,
+        forceExtract: Bool,
+    ) async throws -> URL {
         let fm = FileManager.default
 
         let fileSize = try fm.attributesOfItem(atPath: epubPath.path)[.size] as? Int ?? 0
@@ -904,9 +962,6 @@ public actor FilesystemActor {
 
         let reason = forceExtract ? "native audio playback" : "large file (\(fileSizeMB)MB)"
         debugLog("[FilesystemActor] Extracting EPUB for \(reason)...")
-
-        let extractedDir = epubPath.deletingLastPathComponent()
-            .appendingPathComponent("extracted", isDirectory: true)
 
         let sizesFile = extractedDir.appendingPathComponent("_sizes.json")
         if fm.fileExists(atPath: extractedDir.path) {
@@ -973,6 +1028,29 @@ public actor FilesystemActor {
         )
 
         return URL(fileURLWithPath: extractedDir.path, isDirectory: true)
+    }
+
+    private func derivedEpubExtractionDirectory(
+        epubPath: URL,
+        sourceID: BookSourceID,
+        bookID: String,
+        category: LocalMediaCategory,
+    ) -> URL {
+        let fingerprint = fileFingerprint(for: epubPath)
+        return epubExtractionRootDirectory()
+            .appendingPathComponent(sanitizedPathComponent(from: sourceID), isDirectory: true)
+            .appendingPathComponent(sanitizedPathComponent(from: bookID), isDirectory: true)
+            .appendingPathComponent(category.rawValue, isDirectory: true)
+            .appendingPathComponent(fingerprint, isDirectory: true)
+            .appendingPathComponent("extracted", isDirectory: true)
+    }
+
+    private func fileFingerprint(for url: URL) -> String {
+        let attributes = (try? FileManager.default.attributesOfItem(atPath: url.path)) ?? [:]
+        let size = attributes[.size] as? UInt64 ?? 0
+        let modifiedAt = (attributes[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
+        let modifiedMilliseconds = Int64((modifiedAt * 1000).rounded())
+        return "\(size)-\(modifiedMilliseconds)"
     }
 
     public func extractAudioData(from epubPath: URL, audioPath: String) async throws -> Data {

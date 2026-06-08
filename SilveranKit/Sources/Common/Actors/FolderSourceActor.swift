@@ -12,6 +12,8 @@ public actor FolderSourceActor: BookSourceActor {
 
     private var metadataCache: [BookMetadata] = []
     private var pathCache: [String: MediaPaths] = [:]
+    private var activeFolderAccessURL: URL?
+    private var activeFolderAccessDidStart = false
 
     public init(
         sourceRecord: BookSourceRecord,
@@ -21,6 +23,12 @@ public actor FolderSourceActor: BookSourceActor {
         self.sourceRecordValue = sourceRecord
         self.filesystem = filesystem
         self.localLibrary = localLibrary
+    }
+
+    deinit {
+        if activeFolderAccessDidStart {
+            activeFolderAccessURL?.stopAccessingSecurityScopedResource()
+        }
     }
 
     public var sourceRecord: BookSourceRecord {
@@ -87,11 +95,72 @@ public actor FolderSourceActor: BookSourceActor {
         return metadata.first(where: { $0.uuid == bookId })?.position
     }
 
+    public func localMediaReference(
+        for bookID: String,
+        category: LocalMediaCategory,
+    ) async -> ResolvedLocalMedia? {
+        if pathCache[bookID] == nil {
+            _ = await fetchLibraryInformation()
+        }
+        do {
+            try await retainFolderAccessForResolvedMedia()
+        } catch {
+            debugLog("[FolderSourceActor] Failed to retain folder access: \(error)")
+            return nil
+        }
+        guard let paths = pathCache[bookID] else { return nil }
+        let url: URL?
+        switch category {
+            case .ebook:
+                url = paths.ebookPath
+            case .audio:
+                url = paths.audioPath
+            case .synced:
+                url = paths.syncedPath
+        }
+        guard let url, FileManager.default.fileExists(atPath: url.path) else {
+            return nil
+        }
+        return ResolvedLocalMedia(
+            bookID: bookID,
+            sourceID: sourceRecordValue.id,
+            category: category,
+            url: url,
+            kind: .source,
+        )
+    }
+
+    public func closeFolderAccess() {
+        if activeFolderAccessDidStart {
+            activeFolderAccessURL?.stopAccessingSecurityScopedResource()
+        }
+        activeFolderAccessURL = nil
+        activeFolderAccessDidStart = false
+    }
+
+    private func retainFolderAccessForResolvedMedia() async throws {
+        if let activeFolderAccessURL,
+            FileManager.default.fileExists(atPath: activeFolderAccessURL.path)
+        {
+            return
+        }
+
+        closeFolderAccess()
+
+        guard let resolved = sourceFolderURL(sourceRecordValue) else {
+            throw LocalMediaError.importFailed("Folder source has no storage location")
+        }
+
+        try await filesystem.ensureDirectoryExists(at: resolved.url)
+        activeFolderAccessURL = resolved.url
+        activeFolderAccessDidStart = resolved.didStartAccessing
+    }
+
     public func updateStatus(forBooks bookIds: [String], to status: BookStatus) async -> Bool {
         guard !bookIds.isEmpty else { return false }
         do {
             let resolved = try await resolvedFolderURL()
-            defer { resolved.stopAccessing?() }
+            defer { stopAccessing(resolved) }
 
             if metadataCache.isEmpty {
                 _ = try await scanLibrary(in: resolved.url)
@@ -143,7 +212,7 @@ public actor FolderSourceActor: BookSourceActor {
         guard let sourceURL else { return nil }
 
         let resolved = try await resolvedFolderURL()
-        defer { resolved.stopAccessing?() }
+        defer { stopAccessing(resolved) }
 
         let tempDirectory = FileManager.default.temporaryDirectory
             .appendingPathComponent("SilveranFolderSourceDownloads", isDirectory: true)
@@ -173,7 +242,7 @@ public actor FolderSourceActor: BookSourceActor {
 
     public func folderDirectory() async throws -> URL {
         let resolved = try await resolvedFolderURL()
-        resolved.stopAccessing?()
+        stopAccessing(resolved)
         return resolved.url
     }
 
@@ -191,7 +260,7 @@ public actor FolderSourceActor: BookSourceActor {
         }
 
         let resolved = try await resolvedFolderURL()
-        defer { resolved.stopAccessing?() }
+        defer { stopAccessing(resolved) }
 
         let extractedMetadata = try await extractImportMetadata(
             from: sourceFileURL,
@@ -281,7 +350,7 @@ public actor FolderSourceActor: BookSourceActor {
         }
 
         let resolved = try await resolvedFolderURL()
-        defer { resolved.stopAccessing?() }
+        defer { stopAccessing(resolved) }
 
         if let destinationDirectory = existingCategoryDirectory(
             for: bookUUID,
@@ -320,7 +389,7 @@ public actor FolderSourceActor: BookSourceActor {
         }
 
         let resolved = try await resolvedFolderURL()
-        defer { resolved.stopAccessing?() }
+        defer { stopAccessing(resolved) }
 
         let extractedMetadata = try await localLibrary.extractMetadata(
             from: firstSourceURL,
@@ -408,7 +477,7 @@ public actor FolderSourceActor: BookSourceActor {
         }
 
         let resolved = try await resolvedFolderURL()
-        defer { resolved.stopAccessing?() }
+        defer { stopAccessing(resolved) }
 
         let bookFolder =
             existingBookFolder(for: bookUUID)
@@ -548,13 +617,13 @@ public actor FolderSourceActor: BookSourceActor {
         }
 
         let resolved = try await resolvedFolderURL()
-        defer { resolved.stopAccessing?() }
+        defer { stopAccessing(resolved) }
         _ = try await scanLibrary(in: resolved.url)
     }
 
     private func scanLibrary() async throws -> LocalLibraryManager.ScanResult {
         let resolved = try await resolvedFolderURL()
-        defer { resolved.stopAccessing?() }
+        defer { stopAccessing(resolved) }
         return try await scanLibrary(in: resolved.url)
     }
 
@@ -998,7 +1067,7 @@ public actor FolderSourceActor: BookSourceActor {
         timestamp: Double,
     ) async throws {
         let resolved = try await resolvedFolderURL()
-        defer { resolved.stopAccessing?() }
+        defer { stopAccessing(resolved) }
 
         if metadataCache.isEmpty {
             _ = try await scanLibrary(in: resolved.url)
@@ -1027,7 +1096,7 @@ public actor FolderSourceActor: BookSourceActor {
 
     private func removeMetadata(bookID: String) async throws {
         let resolved = try await resolvedFolderURL()
-        defer { resolved.stopAccessing?() }
+        defer { stopAccessing(resolved) }
 
         metadataCache.removeAll { $0.uuid == bookID }
         pathCache.removeValue(forKey: bookID)
@@ -1063,7 +1132,7 @@ public actor FolderSourceActor: BookSourceActor {
 
     private func resolvedFolderURL() async throws -> (
         url: URL,
-        stopAccessing: (() -> Void)?
+        didStartAccessing: Bool
     ) {
         await SilveranMigrations.ensureMigrationsRan()
         if let resolved = sourceFolderURL(sourceRecordValue) {
@@ -1076,7 +1145,7 @@ public actor FolderSourceActor: BookSourceActor {
 
     private func sourceFolderURL(_ sourceRecord: BookSourceRecord) -> (
         url: URL,
-        stopAccessing: (() -> Void)?
+        didStartAccessing: Bool
     )? {
         #if os(macOS)
         if let bookmarkData = sourceRecord.storageBookmarkData {
@@ -1088,12 +1157,7 @@ public actor FolderSourceActor: BookSourceActor {
                 bookmarkDataIsStale: &stale,
             ) {
                 let didStartAccessing = url.startAccessingSecurityScopedResource()
-                return (
-                    url,
-                    didStartAccessing
-                        ? { url.stopAccessingSecurityScopedResource() }
-                        : nil
-                )
+                return (url, didStartAccessing)
             }
         }
         #elseif os(iOS)
@@ -1106,12 +1170,7 @@ public actor FolderSourceActor: BookSourceActor {
                 bookmarkDataIsStale: &stale,
             ) {
                 let didStartAccessing = url.startAccessingSecurityScopedResource()
-                return (
-                    url,
-                    didStartAccessing
-                        ? { url.stopAccessingSecurityScopedResource() }
-                        : nil
-                )
+                return (url, didStartAccessing)
             }
         }
         #endif
@@ -1119,7 +1178,13 @@ public actor FolderSourceActor: BookSourceActor {
         guard let storagePath = sourceRecord.storagePath, !storagePath.isEmpty else {
             return nil
         }
-        return (URL(fileURLWithPath: storagePath, isDirectory: true), nil)
+        return (URL(fileURLWithPath: storagePath, isDirectory: true), false)
+    }
+
+    private func stopAccessing(_ resolved: (url: URL, didStartAccessing: Bool)) {
+        if resolved.didStartAccessing {
+            resolved.url.stopAccessingSecurityScopedResource()
+        }
     }
 
     private func folderName(title: String, uuid: String) -> String {

@@ -149,16 +149,7 @@ struct iOSBookDetailView: View {
             toStatusNamed: statusName,
         )
 
-        if success {
-            if let newStatus = availableStatuses.first(where: {
-                $0.name == statusName
-            }) {
-                await LocalMediaActor.shared.updateBookStatus(
-                    bookId: item.uuid,
-                    status: newStatus,
-                )
-            }
-        } else {
+        if !success {
             selectedStatusName = currentItem.status?.name
         }
     }
@@ -617,7 +608,7 @@ private struct iOSMediaButton: View {
             }
         }
         .contextMenu {
-            if isDownloaded {
+            if isDownloaded && mediaViewModel.hasCachedMedia(option.category, for: item) {
                 Button(role: .destructive) {
                     mediaViewModel.deleteDownload(for: item, category: option.category)
                 } label: {
@@ -1003,16 +994,7 @@ private struct CompactStatusPicker: View {
             toStatusNamed: statusName,
         )
 
-        if success {
-            if let newStatus = availableStatuses.first(where: {
-                $0.name == statusName
-            }) {
-                await LocalMediaActor.shared.updateBookStatus(
-                    bookId: item.uuid,
-                    status: newStatus,
-                )
-            }
-        } else {
+        if !success {
             selectedStatusName = currentItem.status?.name
         }
     }
@@ -1159,15 +1141,7 @@ private struct StatusPickerView: View {
         )
 
         if success {
-            if let newStatus = availableStatuses.first(where: {
-                $0.name == statusName
-            }) {
-                await LocalMediaActor.shared.updateBookStatus(
-                    bookId: item.uuid,
-                    status: newStatus,
-                )
-                selectedStatusName = statusName
-            }
+            selectedStatusName = statusName
             dismiss()
         }
     }

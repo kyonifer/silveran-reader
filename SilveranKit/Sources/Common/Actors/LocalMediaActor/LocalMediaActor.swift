@@ -260,39 +260,6 @@ public actor LocalMediaActor: GlobalActor {
         // client-owned cache state.
     }
 
-    public func updateBookStatus(bookId: String, status: BookStatus) async {
-        guard let index = sourceCacheMetadata.firstIndex(where: { $0.uuid == bookId }) else {
-            return
-        }
-        let existing = sourceCacheMetadata[index]
-        var updatedMetadata = BookMetadata(
-            uuid: existing.uuid,
-            title: existing.title,
-            subtitle: existing.subtitle,
-            description: existing.description,
-            language: existing.language,
-            createdAt: existing.createdAt,
-            updatedAt: existing.updatedAt,
-            publicationDate: existing.publicationDate,
-            authors: existing.authors,
-            narrators: existing.narrators,
-            creators: existing.creators,
-            series: existing.series,
-            tags: existing.tags,
-            collections: existing.collections,
-            ebook: existing.ebook,
-            audiobook: existing.audiobook,
-            readaloud: existing.readaloud,
-            status: status,
-            position: existing.position,
-            rating: existing.rating,
-        )
-        updatedMetadata.sourceID = existing.sourceID
-        updatedMetadata.source = existing.source
-        sourceCacheMetadata[index] = updatedMetadata
-        await notifyObservers()
-    }
-
     public func scanForMedia() async throws {
         await SilveranMigrations.ensureMigrationsRan()
         try await filesystem.ensureLocalStorageDirectories()
@@ -437,20 +404,6 @@ public actor LocalMediaActor: GlobalActor {
             }
         }
         return paths
-    }
-
-    public func mediaDirectory(
-        for uuid: String,
-        category: LocalMediaCategory,
-        sourceID explicitSourceID: BookSourceID? = nil,
-    ) async -> URL? {
-        guard let sourceID = await cacheSourceID(for: uuid, explicitSourceID: explicitSourceID)
-        else { return nil }
-        return await filesystem.mediaDirectory(
-            for: uuid,
-            category: category,
-            sourceID: sourceID,
-        )
     }
 
     public func mediaFilePath(

@@ -1029,9 +1029,9 @@ struct MediaTableView: NSViewRepresentable {
             editMeta.target = self
             menu.addItem(editMeta)
 
-            let ebookDownloaded = mediaViewModel.isCategoryDownloaded(.ebook, for: item)
-            let audioDownloaded = mediaViewModel.isCategoryDownloaded(.audio, for: item)
-            let syncedDownloaded = mediaViewModel.isCategoryDownloaded(.synced, for: item)
+            let ebookCached = mediaViewModel.hasCachedMedia(.ebook, for: item)
+            let audioCached = mediaViewModel.hasCachedMedia(.audio, for: item)
+            let syncedCached = mediaViewModel.hasCachedMedia(.synced, for: item)
             let isFolderBook = mediaViewModel.isLocalFolderBook(item.id)
 
             if isFolderBook
@@ -1088,11 +1088,11 @@ struct MediaTableView: NSViewRepresentable {
                 deleteMenuItem.submenu = deleteMenu
                 menu.addItem(deleteMenuItem)
             } else {
-                if ebookDownloaded || audioDownloaded || syncedDownloaded {
+                if ebookCached || audioCached || syncedCached {
                     menu.addItem(.separator())
                 }
 
-                if ebookDownloaded {
+                if ebookCached {
                     let del = NSMenuItem(
                         title: "Delete Local Ebook",
                         action: #selector(deleteLocalEbook(_:)),
@@ -1102,7 +1102,7 @@ struct MediaTableView: NSViewRepresentable {
                     del.representedObject = item
                     menu.addItem(del)
                 }
-                if audioDownloaded {
+                if audioCached {
                     let del = NSMenuItem(
                         title: "Delete Local Audiobook",
                         action: #selector(deleteLocalAudiobook(_:)),
@@ -1112,7 +1112,7 @@ struct MediaTableView: NSViewRepresentable {
                     del.representedObject = item
                     menu.addItem(del)
                 }
-                if syncedDownloaded {
+                if syncedCached {
                     let del = NSMenuItem(
                         title: "Delete Local Readaloud",
                         action: #selector(deleteLocalReadaloud(_:)),
@@ -2842,7 +2842,7 @@ private struct MediaIndicatorCellContent: View {
             hoveredType = hovering ? type : nil
         }
         .contextMenu {
-            if status == .downloaded {
+            if status == .downloaded && mediaViewModel.hasCachedMedia(type.category, for: item) {
                 Button(role: .destructive) {
                     mediaViewModel.deleteDownload(for: item, category: type.category)
                 } label: {

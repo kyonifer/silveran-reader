@@ -389,31 +389,29 @@ class EbookPlayerViewModel {
                 debugLog("[EbookPlayerViewModel] Synced audio playback mode")
                 hasAudioNarration = true
             }
-            if let localPath = data.localMediaPath {
-                debugLog("[EbookPlayerViewModel] Local ebook file available")
-                let needsNativeAudio = data.category == .synced
-                nativeLoadingTask = Task { @MainActor in
-                    do {
-                        let processedPath = try await FilesystemActor.shared.extractEpubIfNeeded(
-                            epubPath: localPath,
-                            forceExtract: needsNativeAudio,
-                        )
-                        self.extractedEbookPath = processedPath
-                        debugLog(
-                            "[EbookPlayerViewModel] EPUB processed for loading: \(processedPath.path)"
-                        )
+            debugLog("[EbookPlayerViewModel] Preparing local ebook file")
+            let needsNativeAudio = data.category == .synced
+            nativeLoadingTask = Task { @MainActor in
+                do {
+                    let prepared = try await BookServiceActor.shared.prepareEbookForReading(
+                        bookID: data.metadata.uuid,
+                        sourceID: data.metadata.sourceID,
+                        category: data.category,
+                        forceExtract: needsNativeAudio,
+                    )
+                    self.extractedEbookPath = prepared.readerURL
+                    debugLog(
+                        "[EbookPlayerViewModel] EPUB prepared for loading: \(prepared.readerURL.path)"
+                    )
 
-                        if needsNativeAudio {
-                            await loadBookIntoActor(epubPath: localPath)
-                        } else {
-                            await parseNativeTocEntries(epubPath: localPath)
-                        }
-                    } catch {
-                        debugLog("[EbookPlayerViewModel] Failed to extract EPUB: \(error)")
+                    if needsNativeAudio {
+                        await loadBookIntoActor(epubPath: prepared.originalURL)
+                    } else {
+                        await parseNativeTocEntries(epubPath: prepared.originalURL)
                     }
+                } catch {
+                    debugLog("[EbookPlayerViewModel] Failed to prepare EPUB: \(error)")
                 }
-            } else {
-                debugLog("[EbookPlayerViewModel] No local ebook file found")
             }
 
             registerIncomingPositionObserver(bookId: data.metadata.uuid)

@@ -60,7 +60,7 @@ public final class CarPlayCoordinator {
 
     private func ensureLocalMediaScanned() async {
         do {
-            try await LocalMediaActor.shared.scanForMedia()
+            try await BookServiceActor.shared.scanLibraryCache()
             debugLog("[CarPlayCoordinator] Local media scan complete")
         } catch {
             debugLog("[CarPlayCoordinator] Failed to scan local media: \(error)")
@@ -68,7 +68,8 @@ public final class CarPlayCoordinator {
     }
 
     private func observeLocalMediaActor() async {
-        lmaObserverId = await LocalMediaActor.shared.addObserver { @MainActor [weak self] in
+        lmaObserverId = await BookServiceActor.shared.addLibraryCacheObserver {
+            @MainActor [weak self] in
             debugLog("[CarPlayCoordinator] Library updated, notifying CarPlay")
             self?.onLibraryUpdated?()
         }
@@ -161,17 +162,24 @@ public final class CarPlayCoordinator {
     // MARK: - Public API for CarPlay
 
     public func getDownloadedBooks(category: LocalMediaCategory) async -> [BookMetadata] {
-        let allMetadata = await LocalMediaActor.shared.libraryMetadata()
+        let snapshot = await BookServiceActor.shared.librarySnapshot(policy: .cachedOnly)
 
         var result: [BookMetadata] = []
-        for book in allMetadata {
-            let downloaded = await LocalMediaActor.shared.downloadedCategories(
-                for: book.uuid,
-                sourceID: book.sourceID,
-            )
-            if downloaded.contains(category) {
+        for book in snapshot.books {
+            guard let paths = snapshot.mediaPaths[book.uuid] else { continue }
+            let hasCategory =
+                switch category {
+                    case .ebook:
+                        paths.ebookPath != nil
+                    case .audio:
+                        paths.audioPath != nil
+                    case .synced:
+                        paths.syncedPath != nil
+                }
+
+            if hasCategory {
                 // If requesting audiobooks, skip books that also have readaloud (prefer readaloud)
-                if category == .audio && downloaded.contains(.synced) {
+                if category == .audio && paths.syncedPath != nil {
                     continue
                 }
                 result.append(book)
@@ -269,21 +277,21 @@ public final class CarPlayCoordinator {
         debugLog("[CarPlayCoordinator] loadAndPlayBook: \(metadata.title), category: \(category)")
 
         guard
-            let localPath = await LocalMediaActor.shared.mediaFilePath(
+            let localMedia = await BookServiceActor.shared.resolveLocalMedia(
                 for: metadata.uuid,
-                category: category,
                 sourceID: metadata.sourceID,
+                category: category,
             )
         else {
             debugLog("[CarPlayCoordinator] No local path for book \(metadata.uuid)")
             throw CarPlayError.noLocalPath
         }
-        debugLog("[CarPlayCoordinator] Found local path: \(localPath)")
+        debugLog("[CarPlayCoordinator] Found local path: \(localMedia.url)")
 
         if category == .audio {
-            try await loadM4BAudiobook(metadata: metadata, localPath: localPath)
+            try await loadM4BAudiobook(metadata: metadata, localPath: localMedia.url)
         } else {
-            try await loadSMILBook(metadata: metadata, localPath: localPath)
+            try await loadSMILBook(metadata: metadata)
         }
     }
 
@@ -359,7 +367,7 @@ public final class CarPlayCoordinator {
         try await AudiobookActor.shared.play()
     }
 
-    private func loadSMILBook(metadata: BookMetadata, localPath: URL) async throws {
+    private func loadSMILBook(metadata: BookMetadata) async throws {
         debugLog(
             "[CarPlayCoordinator] loadSMILBook start: carPlayConnected=\(isCarPlayConnected), playerViewActive=\(isPlayerViewActive)"
         )
@@ -373,13 +381,15 @@ public final class CarPlayCoordinator {
         currentAudiobookHref = nil
         wasPlaying = false
 
-        _ = try await FilesystemActor.shared.extractEpubIfNeeded(
-            epubPath: localPath,
+        let preparedMedia = try await BookServiceActor.shared.prepareEbookForReading(
+            bookID: metadata.uuid,
+            sourceID: metadata.sourceID,
+            category: .synced,
             forceExtract: true,
         )
 
         try await SMILPlayerActor.shared.loadBook(
-            epubPath: localPath,
+            epubPath: preparedMedia.originalURL,
             bookId: metadata.uuid,
             title: metadata.title,
             author: metadata.authors?.first?.name,

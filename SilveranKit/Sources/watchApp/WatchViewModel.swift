@@ -68,7 +68,7 @@ public final class WatchViewModel {
         }
 
         Task {
-            await LocalMediaActor.shared.addObserver { [weak self] in
+            await BookServiceActor.shared.addLibraryCacheObserver { [weak self] in
                 Task { @MainActor in
                     self?.loadBooks()
                 }
@@ -86,16 +86,9 @@ public final class WatchViewModel {
 
     func loadBooks() {
         Task {
-            let sourceBooks = await LocalMediaActor.shared.libraryMetadata()
-            var booksWithFiles: [BookMetadata] = []
-            for book in sourceBooks {
-                let path = await LocalMediaActor.shared.mediaFilePath(
-                    for: book.uuid,
-                    category: .synced,
-                )
-                if path != nil {
-                    booksWithFiles.append(book)
-                }
+            let snapshot = await BookServiceActor.shared.librarySnapshot(policy: .cachedOnly)
+            let booksWithFiles = snapshot.books.filter { book in
+                snapshot.mediaPaths[book.uuid]?.syncedPath != nil
             }
             await MainActor.run {
                 self.books = booksWithFiles
@@ -110,7 +103,11 @@ public final class WatchViewModel {
 
     func deleteBook(_ book: BookMetadata, category: LocalMediaCategory) {
         Task {
-            try? await LocalMediaActor.shared.deleteMedia(for: book.uuid, category: category)
+            try? await BookServiceActor.shared.deleteCachedMedia(
+                for: book.uuid,
+                sourceID: book.sourceID,
+                category: category,
+            )
         }
     }
 

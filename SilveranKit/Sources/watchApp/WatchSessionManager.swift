@@ -21,7 +21,7 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
 
     public func refreshCachedBooks() {
         Task {
-            let books = await LocalMediaActor.shared.libraryMetadata()
+            let books = await BookServiceActor.shared.librarySnapshot(policy: .cachedOnly).books
             cachedBookInfos = books.map { book in
                 WatchBookInfoResponse(
                     id: book.uuid,
@@ -120,7 +120,11 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
         let category: LocalMediaCategory = categoryString == "synced" ? .synced : .ebook
 
         Task {
-            try? await LocalMediaActor.shared.deleteMedia(for: uuid, category: category)
+            try? await BookServiceActor.shared.deleteCachedMedia(
+                for: uuid,
+                sourceID: nil,
+                category: category,
+            )
             refreshCachedBooks()
             await MainActor.run {
                 onBookDeleted?()
@@ -307,7 +311,7 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
 
             await mergeBookMetadataIntoLMA(bookMetadata)
 
-            try await LocalMediaActor.shared.importDownloadedFile(
+            try await BookServiceActor.shared.importDownloadedFileToCache(
                 from: tempURL,
                 metadata: bookMetadata,
                 category: category,
@@ -328,7 +332,7 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
             print("[WatchSessionManager] Skipping source-less metadata merge for \(book.title)")
             return
         }
-        var current = await LocalMediaActor.shared.libraryMetadata()
+        var current = await BookServiceActor.shared.librarySnapshot(policy: .cachedOnly).books
 
         if let idx = current.firstIndex(where: { $0.uuid == resolvedBook.uuid }) {
             if isNewer(resolvedBook, than: current[idx]) {
@@ -338,7 +342,7 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
             current.append(resolvedBook)
         }
 
-        try? await LocalMediaActor.shared.updateSourceCacheMetadata(current)
+        try? await BookServiceActor.shared.updateLibraryCacheMetadata(current)
     }
 
     private func isNewer(_ newBook: BookMetadata, than existingBook: BookMetadata) -> Bool {
@@ -405,7 +409,7 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
     }
 
     private func mergePhoneMetadataIntoLMA(_ phoneBooks: [BookMetadata]) async {
-        var current = await LocalMediaActor.shared.libraryMetadata()
+        var current = await BookServiceActor.shared.librarySnapshot(policy: .cachedOnly).books
 
         for phoneBook in phoneBooks {
             guard let resolvedPhoneBook = await metadataWithResolvedSourceID(
@@ -426,7 +430,7 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
             }
         }
 
-        try? await LocalMediaActor.shared.updateSourceCacheMetadata(current)
+        try? await BookServiceActor.shared.updateLibraryCacheMetadata(current)
     }
 
     private func metadataWithResolvedSourceID(
@@ -444,7 +448,7 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
         if let existingMetadata {
             current = existingMetadata
         } else {
-            current = await LocalMediaActor.shared.libraryMetadata()
+            current = await BookServiceActor.shared.librarySnapshot(policy: .cachedOnly).books
         }
         if let sourceID = current.first(where: { $0.uuid == metadata.uuid })?.sourceID {
             resolved.sourceID = sourceID

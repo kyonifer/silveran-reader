@@ -168,7 +168,7 @@ struct MediaItemCardView: View {
             }
         }()
 
-        if isDownloaded {
+        if isDownloaded && mediaViewModel.hasCachedMedia(category, for: item) {
             Button(role: .destructive) {
                 mediaViewModel.deleteDownload(for: item, category: category)
             } label: {

@@ -478,7 +478,7 @@ public actor DownloadManager {
         }
 
         if sourceRecord?.kind == .localFolder {
-            await beginFolderSourceImport(for: record, book: book, sourceRecord: sourceRecord)
+            await resolveFolderSourceMedia(for: record)
             return
         }
 
@@ -537,58 +537,26 @@ public actor DownloadManager {
         notifyObservers()
     }
 
-    private func beginFolderSourceImport(
-        for record: DownloadRecord,
-        book: BookMetadata?,
-        sourceRecord: BookSourceRecord?,
-    ) async {
-        guard let book else {
-            debugLog(
-                "[DownloadManager] Cannot import folder source media: no metadata for \(record.bookTitle)"
-            )
-            var updated = record
-            updated.state = .failed(error: "Missing book metadata", hasResumeData: false)
-            updated.lastUpdatedAt = Date()
-            downloads[record.id] = updated
-            await persistState()
-            notifyObservers()
-            return
-        }
-
+    private func resolveFolderSourceMedia(for record: DownloadRecord) async {
         var importing = record
         importing.state = .importing
         importing.lastUpdatedAt = Date()
         downloads[record.id] = importing
         notifyObservers()
 
-        do {
-            guard let sourceRecord else {
-                throw LocalMediaError.importFailed("Folder source is not configured")
-            }
-            let folderSource = FolderSourceActor(sourceRecord: sourceRecord)
-            guard
-                let copied = try await folderSource.copyMediaToTemporaryFile(
-                    for: record.bookId,
-                    category: record.category,
-                )
-            else {
-                throw LocalMediaError.importFailed("Source media is unavailable")
-            }
-
-            try await LocalMediaActor.shared.importDownloadedFile(
-                from: copied.url,
-                metadata: book,
-                category: record.category,
-                filename: copied.filename,
-                audioIsPackage: record.category == .audio,
-            )
-
+        if await BookServiceActor.shared.resolveLocalMedia(
+            for: record.bookId,
+            sourceID: record.sourceID,
+            category: record.category,
+        ) != nil {
             downloads.removeValue(forKey: record.id)
             await deleteResumeData(for: record.id)
-        } catch {
-            debugLog("[DownloadManager] Folder source import failed for \(record.bookTitle): \(error)")
+        } else {
+            debugLog(
+                "[DownloadManager] Folder source media unavailable for \(record.bookTitle) / \(record.category.rawValue)"
+            )
             var failed = record
-            failed.state = .failed(error: error.localizedDescription, hasResumeData: false)
+            failed.state = .failed(error: "Source media is unavailable", hasResumeData: false)
             failed.lastUpdatedAt = Date()
             downloads[record.id] = failed
         }

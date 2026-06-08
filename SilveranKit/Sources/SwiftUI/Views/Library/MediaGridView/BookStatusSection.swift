@@ -91,16 +91,7 @@ struct BookStatusSection: View {
             toStatusNamed: statusName,
         )
 
-        if success {
-            if let newStatus = availableStatuses.first(where: {
-                $0.name == statusName
-            }) {
-                await LocalMediaActor.shared.updateBookStatus(
-                    bookId: item.uuid,
-                    status: newStatus,
-                )
-            }
-        } else {
+        if !success {
             selectedStatusName = currentItem.status?.name
         }
     }

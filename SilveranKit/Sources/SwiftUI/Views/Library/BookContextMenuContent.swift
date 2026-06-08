@@ -205,9 +205,9 @@ struct BookContextMenuContent: View {
 
     @ViewBuilder
     private var deleteSection: some View {
-        let ebookDownloaded = mediaViewModel.isCategoryDownloaded(.ebook, for: item)
-        let audioDownloaded = mediaViewModel.isCategoryDownloaded(.audio, for: item)
-        let syncedDownloaded = mediaViewModel.isCategoryDownloaded(.synced, for: item)
+        let ebookCached = mediaViewModel.hasCachedMedia(.ebook, for: item)
+        let audioCached = mediaViewModel.hasCachedMedia(.audio, for: item)
+        let syncedCached = mediaViewModel.hasCachedMedia(.synced, for: item)
         let isFolderBook = mediaViewModel.isLocalFolderBook(item.id)
 
         if isFolderBook {
@@ -249,10 +249,10 @@ struct BookContextMenuContent: View {
             } label: {
                 Label("Delete from Folder", systemImage: "trash")
             }
-        } else if ebookDownloaded || audioDownloaded || syncedDownloaded {
+        } else if ebookCached || audioCached || syncedCached {
             Divider()
 
-            if ebookDownloaded {
+            if ebookCached {
                 Button(role: .destructive) {
                     confirmDeleteLocalDownload(.ebook)
                 } label: {
@@ -260,7 +260,7 @@ struct BookContextMenuContent: View {
                 }
             }
 
-            if audioDownloaded {
+            if audioCached {
                 Button(role: .destructive) {
                     confirmDeleteLocalDownload(.audio)
                 } label: {
@@ -268,7 +268,7 @@ struct BookContextMenuContent: View {
                 }
             }
 
-            if syncedDownloaded {
+            if syncedCached {
                 Button(role: .destructive) {
                     confirmDeleteLocalDownload(.synced)
                 } label: {

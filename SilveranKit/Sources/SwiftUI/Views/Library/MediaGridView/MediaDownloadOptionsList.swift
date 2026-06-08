@@ -350,6 +350,7 @@ struct MediaDownloadOptionRow: View {
 
     @ViewBuilder
     private var downloadedControls: some View {
+        let hasCachedMedia = mediaViewModel.hasCachedMedia(option.category, for: item)
         #if os(iOS)
         HStack(spacing: 8) {
             NavigationLink(value: makePlayerBookData()) {
@@ -387,18 +388,20 @@ struct MediaDownloadOptionRow: View {
             .buttonStyle(.plain)
             .accessibilityLabel(option.openTitle)
 
-            Button {
-                mediaViewModel.deleteDownload(for: item, category: option.category)
-            } label: {
-                Image(systemName: "trash.fill")
-                    .font(.system(size: 18))
-                    .foregroundStyle(.white)
-                    .frame(width: 44, height: 44)
-                    .background(Color.red)
-                    .clipShape(.rect(cornerRadius: 8))
+            if hasCachedMedia {
+                Button {
+                    mediaViewModel.deleteDownload(for: item, category: option.category)
+                } label: {
+                    Image(systemName: "trash.fill")
+                        .font(.system(size: 18))
+                        .foregroundStyle(.white)
+                        .frame(width: 44, height: 44)
+                        .background(Color.red)
+                        .clipShape(.rect(cornerRadius: 8))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(option.deleteTitle)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(option.deleteTitle)
         }
         #else
         HStack(spacing: 12) {
@@ -420,14 +423,16 @@ struct MediaDownloadOptionRow: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Show \(option.title) in Finder")
 
-            Button {
-                mediaViewModel.deleteDownload(for: item, category: option.category)
-            } label: {
-                Image(systemName: "trash")
-                    .imageScale(.large)
+            if hasCachedMedia {
+                Button {
+                    mediaViewModel.deleteDownload(for: item, category: option.category)
+                } label: {
+                    Image(systemName: "trash")
+                        .imageScale(.large)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(option.deleteTitle)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(option.deleteTitle)
         }
         #endif
     }

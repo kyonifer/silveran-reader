@@ -88,7 +88,7 @@ struct WatchLibraryView: View {
 
         var gotSourceMetadata = false
         if let library = await BookServiceActor.shared.fetchLibraryInformation() {
-            try? await LocalMediaActor.shared.updateSourceCacheMetadata(library)
+            try? await BookServiceActor.shared.updateLibraryCacheMetadata(library)
             gotSourceMetadata = true
         }
 

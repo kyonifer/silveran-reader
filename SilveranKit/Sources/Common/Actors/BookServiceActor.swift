@@ -31,9 +31,39 @@ public actor BookServiceActor {
         return nil
     }
 
+    private func closeFolderAccessIfNeeded(sourceID: BookSourceID) async {
+        guard let folder = sourcesByID[sourceID] as? FolderSourceActor else { return }
+        await folder.closeFolderAccess()
+    }
+
+    private func closeAllFolderAccess() async {
+        for source in sourcesByID.values {
+            guard let folder = source as? FolderSourceActor else { continue }
+            await folder.closeFolderAccess()
+        }
+    }
+
     private func storytellerActor(for sourceID: BookSourceID?) async -> StorytellerActor? {
         await ensureSourceRegistryLoaded()
         return sourceActor(for: sourceID) as? StorytellerActor
+    }
+
+    private func folderSourceActor(for sourceID: BookSourceID?) async -> FolderSourceActor? {
+        await ensureSourceRegistryLoaded()
+        guard let resolvedSourceID = resolveFolderSourceID(sourceID) else { return nil }
+        return sourceActor(for: resolvedSourceID) as? FolderSourceActor
+    }
+
+    private func resolveFolderSourceID(_ sourceID: BookSourceID?) -> BookSourceID? {
+        if let sourceID,
+            sourceRecords.contains(where: { $0.id == sourceID && $0.kind == .localFolder })
+        {
+            return sourceID
+        }
+        if sourceID != nil {
+            return nil
+        }
+        return sourceRecords.first(where: { $0.kind == .localFolder })?.id
     }
 
     private func resolveExplicitSourceID(_ sourceID: BookSourceID?) -> BookSourceID? {
@@ -266,6 +296,7 @@ public actor BookServiceActor {
                         sourceID: record.id,
                     )
                 }
+                await closeFolderAccessIfNeeded(sourceID: record.id)
                 sourcesByID[record.id] = FolderSourceActor(sourceRecord: record)
         }
 
@@ -314,6 +345,7 @@ public actor BookServiceActor {
                 if let existingActor = sourcesByID[sourceID] as? StorytellerActor {
                     actor = existingActor
                 } else {
+                    await closeFolderAccessIfNeeded(sourceID: sourceID)
                     actor = StorytellerActor(sourceRecord: updatedRecord)
                     sourcesByID[sourceID] = actor
                 }
@@ -352,6 +384,7 @@ public actor BookServiceActor {
                         sourceID: sourceID,
                     )
                 }
+                await closeFolderAccessIfNeeded(sourceID: sourceID)
                 sourcesByID[sourceID] = FolderSourceActor(sourceRecord: updatedRecord)
                 await upsertSourceRecord(updatedRecord)
                 if let metadata = await sourcesByID[sourceID]?.fetchLibraryInformation() {
@@ -393,6 +426,7 @@ public actor BookServiceActor {
         if let actor = sourcesByID[sourceID] as? StorytellerActor {
             _ = await actor.logout()
         }
+        await closeFolderAccessIfNeeded(sourceID: sourceID)
 
         do {
             try await AuthenticationActor.shared.deleteCredentials(sourceID: sourceID)
@@ -427,12 +461,15 @@ public actor BookServiceActor {
 
     public func registerSourceActor(_ source: any BookSourceActor) async {
         let record = await source.sourceRecord
+        await closeFolderAccessIfNeeded(sourceID: record.id)
         sourcesByID[record.id] = source
         await upsertSourceRecord(record)
     }
 
     public func reloadSourceRegistry() async {
         await SilveranMigrations.ensureMigrationsRan()
+        await closeAllFolderAccess()
+        sourcesByID.removeAll()
         sourceRegistryLoaded = false
         await ensureSourceRegistryLoaded()
     }
@@ -488,6 +525,199 @@ public actor BookServiceActor {
         return stamped
     }
 
+    public func librarySnapshot(policy: LibrarySnapshotPolicy = .cachedOnly) async
+        -> BookServiceLibrarySnapshot
+    {
+        await ensureSourceRegistryLoaded()
+
+        switch policy {
+            case .cachedOnly:
+                return await cachedLibrarySnapshot()
+            case .cachedThenRefresh:
+                let snapshot = await cachedLibrarySnapshot()
+                Task {
+                    _ = await self.fetchLibraryInformation()
+                }
+                return snapshot
+            case .refresh:
+                _ = await fetchLibraryInformation()
+                return await cachedLibrarySnapshot()
+        }
+    }
+
+    private func cachedLibrarySnapshot() async -> BookServiceLibrarySnapshot {
+        let metadata = await LocalMediaActor.shared.libraryMetadata()
+        return BookServiceLibrarySnapshot(
+            books: metadata,
+            mediaPaths: await resolvedLocalMediaPaths(for: metadata),
+            cachedMediaPaths: await LocalMediaActor.shared.cachedMediaPaths(for: metadata),
+            sources: sourceRecords,
+        )
+    }
+
+    public func addLibraryCacheObserver(
+        _ callback: @escaping @Sendable @MainActor () -> Void,
+    ) async -> UUID {
+        await LocalMediaActor.shared.addObserver(callback)
+    }
+
+    public func scanLibraryCache() async throws {
+        try await LocalMediaActor.shared.scanForMedia()
+    }
+
+    public func updateLibraryCacheMetadata(
+        _ metadata: [BookMetadata],
+        replacingSourceID sourceID: BookSourceID? = nil,
+    ) async throws {
+        try await LocalMediaActor.shared.updateSourceCacheMetadata(
+            metadata,
+            replacingSourceID: sourceID,
+        )
+    }
+
+    public func importDownloadedFileToCache(
+        from tempURL: URL,
+        metadata: BookMetadata,
+        category: LocalMediaCategory,
+        filename: String,
+        audioIsPackage: Bool = true,
+    ) async throws {
+        try await LocalMediaActor.shared.importDownloadedFile(
+            from: tempURL,
+            metadata: metadata,
+            category: category,
+            filename: filename,
+            audioIsPackage: audioIsPackage,
+        )
+    }
+
+    public func localFolderBooks(sourceID: BookSourceID? = nil) async -> [BookMetadata] {
+        await ensureSourceRegistryLoaded()
+        let folderRecords =
+            if let sourceID {
+                sourceRecords.filter { $0.id == sourceID && $0.kind == .localFolder }
+            } else {
+                sourceRecords.filter { $0.kind == .localFolder }
+            }
+
+        var metadata: [BookMetadata] = []
+        for record in folderRecords {
+            guard let folder = sourceActor(for: record.id) as? FolderSourceActor else { continue }
+            guard let sourceMetadata = await folder.fetchLibraryInformation() else { continue }
+            metadata.append(contentsOf: sourceMetadata)
+            try? await LocalMediaActor.shared.updateSourceCacheMetadata(
+                sourceMetadata,
+                replacingSourceID: record.id,
+            )
+        }
+        return metadata
+    }
+
+    public func folderSourceDirectory(sourceID: BookSourceID? = nil) async throws -> URL {
+        guard let folder = await folderSourceActor(for: sourceID) else {
+            throw LocalMediaError.importFailed("Folder source is not configured")
+        }
+        return try await folder.folderDirectory()
+    }
+
+    @discardableResult
+    public func importMediaIntoFolderSource(
+        from sourceFileURL: URL,
+        category: LocalMediaCategory,
+        bookName: String,
+        bookUUID: String? = nil,
+        sourceID: BookSourceID? = nil,
+    ) async throws -> URL {
+        await ensureSourceRegistryLoaded()
+        guard let resolvedSourceID = resolveFolderSourceID(sourceID),
+            let folder = await folderSourceActor(for: resolvedSourceID)
+        else {
+            throw LocalMediaError.importFailed("Folder source is not configured")
+        }
+
+        let url = try await folder.importMedia(
+            from: sourceFileURL,
+            category: category,
+            bookName: bookName,
+            bookUUID: bookUUID,
+        )
+        if let metadata = await folder.fetchLibraryInformation() {
+            try? await LocalMediaActor.shared.updateSourceCacheMetadata(
+                metadata,
+                replacingSourceID: resolvedSourceID,
+            )
+        }
+        return url
+    }
+
+    @discardableResult
+    public func importAudiobookFilesIntoFolderSource(
+        from sourceFileURLs: [URL],
+        bookName: String,
+        bookUUID: String? = nil,
+        sourceID: BookSourceID? = nil,
+    ) async throws -> URL {
+        await ensureSourceRegistryLoaded()
+        guard let resolvedSourceID = resolveFolderSourceID(sourceID),
+            let folder = await folderSourceActor(for: resolvedSourceID)
+        else {
+            throw LocalMediaError.importFailed("Folder source is not configured")
+        }
+
+        let url = try await folder.importAudiobookFiles(
+            from: sourceFileURLs,
+            bookName: bookName,
+            bookUUID: bookUUID,
+        )
+        if let metadata = await folder.fetchLibraryInformation() {
+            try? await LocalMediaActor.shared.updateSourceCacheMetadata(
+                metadata,
+                replacingSourceID: resolvedSourceID,
+            )
+        }
+        return url
+    }
+
+    public func localMediaDirectory(
+        for bookID: String,
+        sourceID: BookSourceID?,
+        category: LocalMediaCategory,
+    ) async -> URL? {
+        guard let media = await resolveLocalMedia(
+            for: bookID,
+            sourceID: sourceID,
+            category: category,
+        ) else {
+            return nil
+        }
+        return media.url.deletingLastPathComponent()
+    }
+
+    public func deleteCachedMedia(
+        for bookID: String,
+        sourceID: BookSourceID?,
+        category: LocalMediaCategory,
+    ) async throws {
+        await ensureSourceRegistryLoaded()
+        let resolvedSourceID = resolveExplicitSourceID(sourceID)
+        if let resolvedSourceID,
+            sourceRecords.first(where: { $0.id == resolvedSourceID })?.kind == .localFolder
+        {
+            try await LocalMediaActor.shared.deleteMedia(
+                for: bookID,
+                category: category,
+                sourceID: resolvedSourceID,
+            )
+            return
+        }
+
+        try await LocalMediaActor.shared.deleteMedia(
+            for: bookID,
+            category: category,
+            sourceID: resolvedSourceID,
+        )
+    }
+
     public func fetchCoverImage(
         for bookId: String,
         sourceID: BookSourceID,
@@ -523,6 +753,136 @@ public actor BookServiceActor {
     func fetchBookDetails(for bookId: String, sourceID: BookSourceID?) async -> BookMetadata? {
         guard let storyteller = await storytellerActor(for: sourceID) else { return nil }
         return await storyteller.fetchBookDetails(for: bookId)
+    }
+
+    public func resolveLocalMedia(
+        for bookID: String,
+        sourceID: BookSourceID?,
+        category: LocalMediaCategory,
+    ) async -> ResolvedLocalMedia? {
+        await ensureSourceRegistryLoaded()
+        let resolvedSourceID = resolveExplicitSourceID(sourceID)
+
+        if let cachedURL = await LocalMediaActor.shared.mediaFilePath(
+            for: bookID,
+            category: category,
+            sourceID: resolvedSourceID,
+        ), let resolvedSourceID {
+            return ResolvedLocalMedia(
+                bookID: bookID,
+                sourceID: resolvedSourceID,
+                category: category,
+                url: cachedURL,
+                kind: .cached,
+            )
+        }
+
+        guard let resolvedSourceID,
+            let folder = sourceActor(for: resolvedSourceID) as? FolderSourceActor
+        else {
+            return nil
+        }
+        return await folder.localMediaReference(for: bookID, category: category)
+    }
+
+    public func resolvedLocalMediaPaths(for metadata: [BookMetadata]) async -> [String: MediaPaths] {
+        await ensureSourceRegistryLoaded()
+        var pathsByBookID: [String: MediaPaths] = [:]
+        for book in metadata {
+            var paths = MediaPaths()
+            if let ebook = await resolveLocalMedia(
+                for: book.uuid,
+                sourceID: book.sourceID,
+                category: .ebook,
+            ) {
+                paths.ebookPath = ebook.url
+            }
+            if let audio = await resolveLocalMedia(
+                for: book.uuid,
+                sourceID: book.sourceID,
+                category: .audio,
+            ) {
+                paths.audioPath = audio.url
+            }
+            if let synced = await resolveLocalMedia(
+                for: book.uuid,
+                sourceID: book.sourceID,
+                category: .synced,
+            ) {
+                paths.syncedPath = synced.url
+            }
+            if paths.ebookPath != nil || paths.audioPath != nil || paths.syncedPath != nil {
+                pathsByBookID[book.uuid] = paths
+            }
+        }
+        return pathsByBookID
+    }
+
+    public func ensureLocalMediaAvailable(
+        for bookID: String,
+        sourceID: BookSourceID?,
+        category: LocalMediaCategory,
+    ) async -> LocalMediaAvailability {
+        if let media = await resolveLocalMedia(
+            for: bookID,
+            sourceID: sourceID,
+            category: category,
+        ) {
+            return .available(media)
+        }
+
+        await ensureSourceRegistryLoaded()
+        guard let resolvedSourceID = resolveExplicitSourceID(sourceID),
+            let source = sourceActor(for: resolvedSourceID)
+        else {
+            return .missing
+        }
+
+        if source is FolderSourceActor {
+            return .missing
+        }
+
+        switch await source.connectionStatus {
+            case .connected:
+                return .missing
+            case .connecting, .disconnected, .error:
+                return .offline
+        }
+    }
+
+    public func prepareEbookForReading(
+        bookID: String,
+        sourceID: BookSourceID?,
+        category: LocalMediaCategory,
+        forceExtract: Bool = false,
+    ) async throws -> PreparedEbookMedia {
+        guard
+            let resolved = await resolveLocalMedia(
+                for: bookID,
+                sourceID: sourceID,
+                category: category,
+            )
+        else {
+            throw LocalMediaError.importFailed("Local EPUB media is unavailable.")
+        }
+
+        let prepared = try await FilesystemActor.shared.prepareEpubForReading(
+            epubPath: resolved.url,
+            sourceID: resolved.sourceID,
+            bookID: resolved.bookID,
+            category: resolved.category,
+            forceExtract: forceExtract,
+        )
+
+        return PreparedEbookMedia(
+            bookID: resolved.bookID,
+            sourceID: resolved.sourceID,
+            category: resolved.category,
+            originalURL: resolved.url,
+            readerURL: prepared.url,
+            locationKind: resolved.kind,
+            isExtracted: prepared.isExtracted,
+        )
     }
 
     public func createAuthenticatedDownloadRequest(
@@ -884,7 +1244,11 @@ public actor BookServiceActor {
             return success
         }
         guard let storyteller = source as? StorytellerActor else { return false }
-        return await storyteller.updateStatus(forBooks: bookIds, toStatusNamed: statusName)
+        let success = await storyteller.updateStatus(forBooks: bookIds, toStatusNamed: statusName)
+        if success {
+            _ = await fetchLibraryInformation(sourceID: resolvedSourceID)
+        }
+        return success
     }
 
     public func fetchCollections(sourceID: BookSourceID) async -> [StorytellerCollection]? {
