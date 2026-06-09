@@ -1,5 +1,54 @@
 # Changelog
 
+## [0.1-dev]
+
+### Features
+
+#### General
+- Full metadata editor for Storyteller books.
+- Metadata import from Hardcover, including multiple editions/formats, edition-field review, tags, collections, ratings, audiobook length, and selectable import fields.
+- Cover import/search support from Hardcover and iTunes, with per-book cover selection and Storyteller cover upload/refresh handling.
+- MP3 audiobook support.
+- Support for multiple Storyteller servers and multiple local folder sources, including iCloud/shared folder workflows.
+- Local folders are now first-class book sources, improving local-file behavior across source-aware features like CarPlay.
+- Added a new scrolling mode for the ebook reader on macOS and iOS, including readaloud sentence tracking support
+- Added source-aware cached media handling for local folders and Storyteller-backed books, eliminating media duplicates
+- Added support for multi-file audio readaloud creation and alignment workflows
+- Add Book now targets a chosen book source and can add ebook, audiobook, and readaloud formats to either Storyteller or folder destinations.
+- Bulk import for folder sources, with scanning, grouping, skipped-file reporting, and a review step before import.
+- Performance improvements across the board, especially to grid view on large libraries
+- Source-aware library/sidebar views, including a Sources category and editable Media Sources sidebar entries that can be moved/renamed/hidden.
+- More table customization: alignment columns, creator-role columns, source badges, media columns, remembered column sizing/order, and reset-to-defaults behavior.
+- Local alignment controls from the library UI when ebook + audiobook are available.
+
+
+#### macOS
+- Added integrated readaloud generation options, including creating readalouds locally and automatically pushing to server
+- Added EPUB 2 to EPUB 3 conversion support for eligible books
+- Server media management actions for upload, delete, and replace flows.
+- Expanded book context menus across book views, including Show Book Information, Edit Metadata, Server Actions, folder-source deletion, local-download deletion, and alignment/reprocessing actions.
+
+
+#### iOS
+- Restores the last open book when resuming the app, so reading can continue immediately
+
+#### tvOS
+
+- Added tvOS reader display customization.
+- tvOS multi-source / multi-server settings updates.
+
+#### watchOS
+
+- watchOS multi-source / multi-server support updates, including settings and source-aware library/download handling.
+
+### Bug Fixes
+- Fixed EPUB scrolling layout so scrolled books use the full reader width instead of inheriting paginated column sizing
+- Fixed malformed locator payloads from sync so broken fragment data no longer drops otherwise usable reading positions
+- Fixed local-folder readaloud handling for multi-MP3 audiobook packages and generated manifest ordering
+- Fixed cached-media/readaloud workflow edge cases across local folders, Storyteller uploads, and alignment launch paths
+
+---
+
 ## [0.1-90]
 
 ### Bug Fixes
