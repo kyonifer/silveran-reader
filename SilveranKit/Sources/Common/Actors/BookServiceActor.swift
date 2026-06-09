@@ -404,7 +404,6 @@ public actor BookServiceActor {
                 await closeFolderAccessIfNeeded(sourceID: sourceID)
                 sourcesByID[sourceID] = FolderSourceActor(sourceRecord: updatedRecord)
                 await upsertSourceRecord(updatedRecord)
-                await notifyLibraryObservers()
         }
         return true
     }
@@ -453,6 +452,7 @@ public actor BookServiceActor {
         sourcesByID[sourceID] = nil
 
         try? await FilesystemActor.shared.saveBookSources(sourceRecords)
+        await notifyLibraryObservers()
         return true
     }
 
@@ -484,6 +484,7 @@ public actor BookServiceActor {
         sourcesByID.removeAll()
         sourceRegistryLoaded = false
         await ensureSourceRegistryLoaded()
+        await notifyLibraryObservers()
     }
 
     @discardableResult
@@ -1375,6 +1376,7 @@ public actor BookServiceActor {
         sourceRecords.replaceOrAppend(record)
 
         try? await FilesystemActor.shared.saveBookSources(sourceRecords)
+        await notifyLibraryObservers()
     }
 
     private func normalizedSourceName(_ name: String, fallback: String) -> String {

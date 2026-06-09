@@ -711,11 +711,7 @@ public final class ReadaloudGeneratorViewModel {
     }
 
     private func modelsDirectory() -> URL {
-        let appSupport = FileManager.default.urls(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask,
-        ).first!
-        return appSupport.appendingPathComponent("SilveranReader/WhisperModels")
+        FilesystemActor.shared.whisperModelsDirectory()
     }
 
     private func modelPath(for modelSize: WhisperModelSize) -> String? {

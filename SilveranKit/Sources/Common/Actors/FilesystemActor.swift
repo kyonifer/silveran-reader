@@ -54,13 +54,17 @@ public actor FilesystemActor {
             .appendingPathComponent("InternalFolderSource", isDirectory: true)
     }
 
-    public func internalFolderSourceDirectory(sourceID: BookSourceID) -> URL {
+    public func internalFolderSourceDirectory() -> URL {
         internalFolderSourceRootDirectory()
-            .appendingPathComponent(sanitizedPathComponent(from: sourceID), isDirectory: true)
+    }
+
+    public nonisolated func whisperModelsDirectory() -> URL {
+        applicationSupportBaseDirectory()
+            .appendingPathComponent("WhisperModels", isDirectory: true)
     }
 
     public func ensureInternalFolderSourceDirectory(sourceID: BookSourceID) throws -> URL {
-        let directory = internalFolderSourceDirectory(sourceID: sourceID)
+        let directory = internalFolderSourceDirectory()
         try ensureSourceIDMarker(in: directory, sourceID: sourceID)
         return directory
     }
@@ -509,8 +513,7 @@ public actor FilesystemActor {
     }
 
     public func saveCoverImage(uuid: String, data: Data, variant: String) throws {
-        let coversDir = applicationSupportBaseDirectory()
-            .appendingPathComponent("Covers", isDirectory: true)
+        let coversDir = coversCacheDirectory()
         try ensureDirectoryExists(at: coversDir)
 
         let filename = "\(uuid)_\(variant).dat"
@@ -519,8 +522,7 @@ public actor FilesystemActor {
     }
 
     public func loadCoverImage(uuid: String, variant: String) -> Data? {
-        let coversDir = applicationSupportBaseDirectory()
-            .appendingPathComponent("Covers", isDirectory: true)
+        let coversDir = coversCacheDirectory()
         let filename = "\(uuid)_\(variant).dat"
         let coverURL = coversDir.appendingPathComponent(filename, isDirectory: false)
         let fm = FileManager.default
@@ -533,8 +535,7 @@ public actor FilesystemActor {
     }
 
     public func removeAllCoverImages() throws {
-        let coversDir = applicationSupportBaseDirectory()
-            .appendingPathComponent("Covers", isDirectory: true)
+        let coversDir = coversCacheDirectory()
         let fm = FileManager.default
 
         if fm.fileExists(atPath: coversDir.path) {
@@ -543,8 +544,7 @@ public actor FilesystemActor {
     }
 
     public func removeCoverImages(uuid: String) throws {
-        let coversDir = applicationSupportBaseDirectory()
-            .appendingPathComponent("Covers", isDirectory: true)
+        let coversDir = coversCacheDirectory()
         let fm = FileManager.default
 
         guard
@@ -564,6 +564,11 @@ public actor FilesystemActor {
         {
             try fm.removeItem(at: url)
         }
+    }
+
+    private func coversCacheDirectory() -> URL {
+        applicationSupportBaseDirectory()
+            .appendingPathComponent("CoversCache", isDirectory: true)
     }
 
     public func removeSourceCacheBookData(
@@ -1271,7 +1276,7 @@ public actor FilesystemActor {
         return applicationSupportURL(relativePath: relativePath)
     }
 
-    private func applicationSupportBaseDirectory() -> URL {
+    private nonisolated func applicationSupportBaseDirectory() -> URL {
         let fm = FileManager.default
         let bundleID = Bundle.main.bundleIdentifier ?? "SilveranReader"
 

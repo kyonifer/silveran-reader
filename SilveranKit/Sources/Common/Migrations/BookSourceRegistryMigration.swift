@@ -38,7 +38,7 @@ extension FilesystemActor {
                 capabilities: .localFolder,
                 createdAt: now,
                 updatedAt: now,
-                storagePath: internalFolderSourceDirectory(sourceID: localFolderID).path,
+                storagePath: internalFolderSourceDirectory().path,
             ),
         ]
     }

@@ -7,10 +7,12 @@ import AVFoundation
 extension FilesystemActor {
     private static let sourceStorageLayoutMigrationID = "source-storage-layout-v2"
     private static let legacyM4BAudiobookMigrationID = "legacy-m4b-audiobook-manifests-v1"
+    private static let whisperModelStorageMigrationID = "whisper-model-storage-v1"
 
     func runStorageMigrations(for sources: [BookSourceRecord]) async throws {
         try runSourceStorageLayoutMigrationIfNeeded(for: sources)
         try await runLegacyM4BAudiobookMigrationIfNeeded(for: sources)
+        try runWhisperModelStorageMigrationIfNeeded()
     }
 
     private func runLegacyM4BAudiobookMigrationIfNeeded(
@@ -28,7 +30,7 @@ extension FilesystemActor {
                     if let storagePath = source.storagePath, !storagePath.isEmpty {
                         directory = URL(fileURLWithPath: storagePath, isDirectory: true)
                     } else {
-                        directory = internalFolderSourceDirectory(sourceID: source.id)
+                        directory = internalFolderSourceDirectory()
                     }
             }
 
@@ -78,13 +80,62 @@ extension FilesystemActor {
             try migrateLegacyRoot(
                 from: legacyLocalFolderRootDirectory(),
                 to: internalFolderSourceRootDirectory(),
-                defaultDestination: internalFolderSourceDirectory(sourceID: sourceID),
+                defaultDestination: internalFolderSourceDirectory(),
                 defaultSourceID: sourceID,
                 configuredSourceIDs: localFolderIDs,
             )
         }
 
+        try migrateCoverCacheDirectory()
         try writeMigrationSentinel(Self.sourceStorageLayoutMigrationID)
+    }
+
+    private func runWhisperModelStorageMigrationIfNeeded() throws {
+        guard !migrationSentinelExists(Self.whisperModelStorageMigrationID) else { return }
+
+        let appSupportDirectory = getConfigDirectory().deletingLastPathComponent()
+        let legacyDirectory = appSupportDirectory
+            .appendingPathComponent("SilveranReader", isDirectory: true)
+            .appendingPathComponent("WhisperModels", isDirectory: true)
+        let targetDirectory = whisperModelsDirectory()
+        let fm = FileManager.default
+
+        if fm.fileExists(atPath: legacyDirectory.path) {
+            if fm.fileExists(atPath: targetDirectory.path) {
+                try moveDirectoryContents(from: legacyDirectory, to: targetDirectory)
+                if (try? fm.contentsOfDirectory(atPath: legacyDirectory.path).isEmpty) == true {
+                    try? fm.removeItem(at: legacyDirectory)
+                }
+            } else {
+                try fm.moveItem(at: legacyDirectory, to: targetDirectory)
+            }
+        }
+
+        let legacyParent = legacyDirectory.deletingLastPathComponent()
+        if (try? fm.contentsOfDirectory(atPath: legacyParent.path).isEmpty) == true {
+            try? fm.removeItem(at: legacyParent)
+        }
+
+        try writeMigrationSentinel(Self.whisperModelStorageMigrationID)
+    }
+
+    private func migrateCoverCacheDirectory() throws {
+        let appSupportDirectory = getConfigDirectory().deletingLastPathComponent()
+        let legacyDirectory = appSupportDirectory
+            .appendingPathComponent("Covers", isDirectory: true)
+        let cacheDirectory = appSupportDirectory
+            .appendingPathComponent("CoversCache", isDirectory: true)
+        let fm = FileManager.default
+
+        guard fm.fileExists(atPath: legacyDirectory.path) else { return }
+        if fm.fileExists(atPath: cacheDirectory.path) {
+            try moveDirectoryContents(from: legacyDirectory, to: cacheDirectory)
+            if (try? fm.contentsOfDirectory(atPath: legacyDirectory.path).isEmpty) == true {
+                try? fm.removeItem(at: legacyDirectory)
+            }
+        } else {
+            try fm.moveItem(at: legacyDirectory, to: cacheDirectory)
+        }
     }
 
     private func migrateLegacyRoot(
@@ -152,11 +203,19 @@ extension FilesystemActor {
                 try? fm.removeItem(at: item)
                 continue
             }
-            if item.standardizedFileURL == destination.standardizedFileURL { continue }
 
             let isDirectory =
                 (try? item.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
+            if item.standardizedFileURL == destination.standardizedFileURL {
+                continue
+            }
             if isDirectory, try isSourceDirectory(item, configuredSourceIDs: configuredSourceIDs) {
+                if let markerID = try sourceIDMarker(in: item), markerID == sourceID {
+                    try moveDirectoryContents(from: item, to: destination)
+                    if (try? fm.contentsOfDirectory(atPath: item.path).isEmpty) == true {
+                        try? fm.removeItem(at: item)
+                    }
+                }
                 continue
             }
 
@@ -172,6 +231,34 @@ extension FilesystemActor {
                 continue
             }
 
+            try fm.moveItem(at: item, to: target)
+        }
+    }
+
+    private func moveDirectoryContents(from source: URL, to destination: URL) throws {
+        let fm = FileManager.default
+        try ensureDirectoryExists(at: destination)
+        guard fm.fileExists(atPath: source.path) else { return }
+
+        let contents = try fm.contentsOfDirectory(
+            at: source,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [],
+        )
+
+        for item in contents {
+            let target = destination.appendingPathComponent(
+                item.lastPathComponent,
+                isDirectory: item.hasDirectoryPath,
+            )
+            if fm.fileExists(atPath: target.path) {
+                if item.lastPathComponent == "library_metadata.json"
+                    || item.lastPathComponent == BookSourceRecord.sourceIDFilename
+                {
+                    try? fm.removeItem(at: item)
+                }
+                continue
+            }
             try fm.moveItem(at: item, to: target)
         }
     }
