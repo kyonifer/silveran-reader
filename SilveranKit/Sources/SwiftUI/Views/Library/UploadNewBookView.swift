@@ -234,7 +234,7 @@ public struct UploadNewBookView: View {
     }
 
     private var primaryActionTitle: String {
-        selectedSource?.kind == .localFolder ? "Add" : "Upload"
+        return selectedSource?.kind == .localFolder ? "Add" : "Upload"
     }
 
     private func resetForNewUpload() {

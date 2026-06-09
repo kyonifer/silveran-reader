@@ -53,6 +53,7 @@ struct SilveranReaderApp: App {
         mp3ToM4BConverterScene
         serverMediaManagementScene
         uploadNewBookScene
+        bulkImportFolderScene
         metadataEditorScene
         #endif
     }
@@ -196,6 +197,16 @@ struct SilveranReaderApp: App {
                 .environment(mediaViewModel)
         }
         .windowResizability(.contentSize)
+        .disableWindowRestoration()
+    }
+
+    private var bulkImportFolderScene: some Scene {
+        WindowGroup("Bulk Import", id: "BulkImportFolder", for: BulkImportFolderData.self) { data in
+            BulkImportFolderView(initialSourceID: data.wrappedValue?.sourceID)
+                .environment(mediaViewModel)
+        }
+        .defaultSize(width: 1080, height: 720)
+        .defaultPosition(.top)
         .disableWindowRestoration()
     }
 

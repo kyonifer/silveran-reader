@@ -941,6 +941,7 @@ struct MediaGridView: View {
                 showLayoutOption: true,
                 showSortOption: false,
                 onAddBook: addBookAction,
+                onBulkImport: bulkImportAction,
                 columnCustomization: $columnCustomization,
                 availableCreatorRoles: cachedAvailableCreatorRoles,
                 enabledCreatorRoles: $enabledCreatorRoles,
@@ -1014,6 +1015,7 @@ struct MediaGridView: View {
             filtersSummaryText: cachedFiltersSummary,
             showLayoutOption: true,
             onAddBook: addBookAction,
+            onBulkImport: bulkImportAction,
         )
     }
 
@@ -1024,6 +1026,25 @@ struct MediaGridView: View {
         }
         return {
             openWindow(id: "UploadNewBook", value: UploadNewBookData(sourceID: addBookSourceID))
+        }
+        #else
+        return nil
+        #endif
+    }
+
+    private var bulkImportAction: (() -> Void)? {
+        #if os(macOS)
+        guard showAddBookButton,
+            let addBookSourceID,
+            mediaViewModel.bookSources.first(where: { $0.id == addBookSourceID })?.kind == .localFolder
+        else {
+            return nil
+        }
+        return {
+            openWindow(
+                id: "BulkImportFolder",
+                value: BulkImportFolderData(sourceID: addBookSourceID),
+            )
         }
         #else
         return nil

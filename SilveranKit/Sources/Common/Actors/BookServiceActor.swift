@@ -724,6 +724,32 @@ public actor BookServiceActor {
         return url
     }
 
+    public func planBulkImportIntoFolderSource(from folderURL: URL) async
+        -> FolderSourceBulkImportPlan
+    {
+        await FolderSourceBulkImportPlanner().planImport(from: folderURL)
+    }
+
+    public func commitBulkImportIntoFolderSource(
+        _ plan: FolderSourceBulkImportPlan,
+        sourceID: BookSourceID? = nil,
+    ) async -> FolderSourceBulkImportCommitResult {
+        await ensureSourceRegistryLoaded()
+        guard let resolvedSourceID = resolveFolderSourceID(sourceID),
+            let folder = await folderSourceActor(for: resolvedSourceID)
+        else {
+            return FolderSourceBulkImportCommitResult(
+                importedCount: 0,
+                skippedCount: plan.groups.count,
+                failures: ["Folder source is not configured"],
+            )
+        }
+
+        let result = await folder.commitBulkImport(plan)
+        await notifyLibraryObservers()
+        return result
+    }
+
     public func localMediaDirectory(
         for bookID: String,
         sourceID: BookSourceID?,

@@ -60,6 +60,7 @@ struct SidebarView: View {
     @State private var hoveredItemId: String?
     #if os(macOS)
     @Environment(\.openSettings) private var openSettings
+    @Environment(\.openWindow) private var openWindow
     @State private var editingShelf: SmartShelf?
     @State private var editingBookSource: BookSourceRecord?
     @State private var showCustomizeSidebar: Bool = false
@@ -681,6 +682,16 @@ struct SidebarView: View {
         if let sourceID = item.id.bookSourceIDFromSidebarItemID,
             let source = mediaViewModel.bookSources.first(where: { $0.id == sourceID })
         {
+            if source.kind == .localFolder {
+                Button {
+                    openWindow(
+                        id: "BulkImportFolder",
+                        value: BulkImportFolderData(sourceID: sourceID),
+                    )
+                } label: {
+                    Label("Bulk Import...", systemImage: "folder.badge.plus")
+                }
+            }
             Button {
                 editingBookSource = source
             } label: {

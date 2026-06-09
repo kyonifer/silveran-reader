@@ -1068,15 +1068,20 @@ struct MediaTableView: NSViewRepresentable {
                     )
                 }
                 deleteMenu.addItem(.separator())
+                let sourceBookDeleteItems = selectedFolderSourceItems(fallback: item)
+                let deleteAllTitle =
+                    sourceBookDeleteItems.count > 1
+                    ? "Delete \(sourceBookDeleteItems.count) Selected Books"
+                    : "Delete All"
                 let del = NSMenuItem(
-                    title: "Delete All",
+                    title: deleteAllTitle,
                     action: #selector(deleteSourceBook(_:)),
                     keyEquivalent: "",
                 )
                 del.target = self
                 del.representedObject = item
                 del.attributedTitle = NSAttributedString(
-                    string: "Delete All",
+                    string: deleteAllTitle,
                     attributes: [.foregroundColor: NSColor.systemRed],
                 )
                 deleteMenu.addItem(del)
@@ -1418,25 +1423,84 @@ struct MediaTableView: NSViewRepresentable {
 
         @objc private func deleteSourceBook(_ sender: NSMenuItem) {
             guard let item = sender.representedObject as? BookMetadata else { return }
+            let itemsToDelete = selectedFolderSourceItems(fallback: item)
+            let isBulkDelete = itemsToDelete.count > 1
+            let title = isBulkDelete ? "\(itemsToDelete.count) selected books" : item.title
+            let buttonTitle = isBulkDelete ? "Delete \(itemsToDelete.count) Selected Books" : "Delete All"
             guard
                 confirmDestructiveAction(
                     title: "Delete All from Folder?",
                     message:
-                        "This will permanently delete \(item.title) and all its media from the folder source. This cannot be undone.",
-                    buttonTitle: "Delete All",
+                        "This will permanently delete \(title) and all media from the folder source. This cannot be undone.",
+                    buttonTitle: buttonTitle,
                 )
             else { return }
             Task {
-                let success = await mediaViewModel.deleteBookFromSource(item)
+                var deletedCount = 0
+                var failedCount = 0
+                for itemToDelete in itemsToDelete {
+                    let success = await mediaViewModel.deleteBookFromSource(itemToDelete)
+                    if success {
+                        deletedCount += 1
+                    } else {
+                        failedCount += 1
+                    }
+                }
+
+                let success = failedCount == 0
                 mediaViewModel.showSyncNotification(
                     SyncNotification(
-                        message: success
-                            ? "Deleted \(item.title) from folder source"
-                            : "Failed to delete \(item.title)",
+                        message: deleteSourceBookNotificationMessage(
+                            requestedCount: itemsToDelete.count,
+                            deletedCount: deletedCount,
+                            failedCount: failedCount,
+                            fallbackTitle: item.title,
+                        ),
                         type: success ? .success : .error,
                     )
                 )
             }
+        }
+
+        private func selectedFolderSourceItems(fallback item: BookMetadata) -> [BookMetadata] {
+            guard let tableView else { return [item] }
+            let selectedIndexes = tableView.selectedRowIndexes
+            let clickedRow = tableView.clickedRow
+            guard selectedIndexes.count > 1,
+                clickedRow >= 0,
+                selectedIndexes.contains(clickedRow)
+            else {
+                return [item]
+            }
+
+            let selectedItems = selectedIndexes.compactMap { index -> BookMetadata? in
+                guard index >= 0, index < items.count else { return nil }
+                let selectedItem = items[index]
+                return mediaViewModel.isLocalFolderBook(selectedItem.id) ? selectedItem : nil
+            }
+
+            return selectedItems.isEmpty ? [item] : selectedItems
+        }
+
+        private func deleteSourceBookNotificationMessage(
+            requestedCount: Int,
+            deletedCount: Int,
+            failedCount: Int,
+            fallbackTitle: String,
+        ) -> String {
+            guard requestedCount > 1 else {
+                return failedCount == 0
+                    ? "Deleted \(fallbackTitle) from folder source"
+                    : "Failed to delete \(fallbackTitle)"
+            }
+
+            if failedCount == 0 {
+                return "Deleted \(deletedCount) books from folder source"
+            }
+            if deletedCount == 0 {
+                return "Failed to delete \(failedCount) selected books"
+            }
+            return "Deleted \(deletedCount) books; \(failedCount) failed"
         }
 
         private func deleteSourceAsset(_ sender: NSMenuItem, format: StorytellerBookFormat) {

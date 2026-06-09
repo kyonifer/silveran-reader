@@ -533,6 +533,71 @@ public actor FolderSourceActor: BookSourceActor {
         _ = try await scanLibrary(in: resolved.url)
     }
 
+    public func commitBulkImport(_ plan: FolderSourceBulkImportPlan) async
+        -> FolderSourceBulkImportCommitResult
+    {
+        var importedCount = 0
+        var skippedCount = 0
+        var failures: [String] = []
+
+        for group in plan.groups {
+            guard group.isSelected else {
+                skippedCount += 1
+                continue
+            }
+
+            let title = group.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? "Untitled Book"
+                : group.title
+            let ebookAssets = group.assets.filter { $0.selectedRole == .ebook }
+            let readaloudAssets = group.assets.filter { $0.selectedRole == .readaloud }
+            let audiobookAssets = group.assets.filter { $0.selectedRole == .audiobook }
+
+            do {
+                if let ebook = ebookAssets.first {
+                    _ = try await importMedia(
+                        from: ebook.url,
+                        category: .ebook,
+                        bookName: title,
+                        bookUUID: group.bookUUID,
+                    )
+                }
+                if let readaloud = readaloudAssets.first {
+                    _ = try await importMedia(
+                        from: readaloud.url,
+                        category: .synced,
+                        bookName: title,
+                        bookUUID: group.bookUUID,
+                    )
+                }
+                if !audiobookAssets.isEmpty {
+                    _ = try await importAudiobookFiles(
+                        from: audiobookAssets.map(\.url).sorted {
+                            $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent)
+                                == .orderedAscending
+                        },
+                        bookName: title,
+                        bookUUID: group.bookUUID,
+                    )
+                }
+
+                if ebookAssets.isEmpty && readaloudAssets.isEmpty && audiobookAssets.isEmpty {
+                    skippedCount += 1
+                } else {
+                    importedCount += 1
+                }
+            } catch {
+                failures.append("\(title): \(error.localizedDescription)")
+            }
+        }
+
+        return FolderSourceBulkImportCommitResult(
+            importedCount: importedCount,
+            skippedCount: skippedCount,
+            failures: failures,
+        )
+    }
+
     public func replaceAsset(
         _ asset: StorytellerUploadAsset,
         bookName: String,

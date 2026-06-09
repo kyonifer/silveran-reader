@@ -15,6 +15,7 @@ struct SourceView: View {
     #endif
     #if os(macOS)
     var onEditMetadata: (([String]) -> Void)? = nil
+    @Environment(\.openWindow) private var openWindow
     #endif
     @Environment(MediaViewModel.self) private var mediaViewModel
     @State private var navigationPath = NavigationPath()
@@ -377,6 +378,17 @@ extension SourceView {
 
     @ViewBuilder
     private func categoryContextMenu(for group: CategoryGroup) -> some View {
+        if sourceRecord(for: group.id)?.kind == .localFolder {
+            Button {
+                openWindow(
+                    id: "BulkImportFolder",
+                    value: BulkImportFolderData(sourceID: group.id),
+                )
+            } label: {
+                Label("Bulk Import...", systemImage: "folder.badge.plus")
+            }
+        }
+
         if let onEditMetadata {
             CategoryGroupMetadataContextMenuContent(
                 group: group,
