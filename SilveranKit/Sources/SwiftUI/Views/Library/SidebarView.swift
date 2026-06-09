@@ -85,6 +85,16 @@ struct SidebarView: View {
         guard item.visible else { return nil }
         if item.id == SidebarConfigHelper.newPinLocationMarker { return nil }
 
+        if let sourceID = item.id.bookSourceIDFromSidebarItemID {
+            guard let source = mediaViewModel.bookSources.first(where: { $0.id == sourceID })
+            else { return nil }
+            var description = Self.sidebarItem(for: source)
+            if let alias = item.alias, !alias.isEmpty {
+                description.name = alias
+            }
+            return description
+        }
+
         if item.id.hasPrefix("pin.") {
             guard var description = resolvePin(id: item.id) else { return nil }
             if let alias = item.alias, !alias.isEmpty {
@@ -387,6 +397,7 @@ struct SidebarView: View {
             }
         }
         .onAppear {
+            syncBookSourcesIntoSidebarConfig()
             HomeSectionConfigHelper.syncWithPinnedItems(SidebarPinHelper.pinnedItemIds)
             homeSectionConfigJSON =
                 UserDefaults.standard.string(forKey: "home.sectionConfig") ?? "[]"
@@ -402,6 +413,7 @@ struct SidebarView: View {
             registerSidebarContents(config: config)
         }
         .onChange(of: mediaViewModel.bookSources) {
+            syncBookSourcesIntoSidebarConfig()
             registerSidebarContents(config: config)
         }
         #if !os(macOS)
@@ -467,17 +479,67 @@ struct SidebarView: View {
     }
 
     private func registerSidebarContents(config: [SidebarConfigGroup]) {
-        let contents = config.flatMap { group -> [SidebarContentKind] in
-            if group.name == "Media Sources" {
-                let sourceContents = mediaViewModel.bookSources.map {
-                    SidebarContentKind.bookSource($0.id)
-                }
-                let configuredContents = group.items.compactMap { resolveConfigItem($0)?.content }
-                return sourceContents + configuredContents
-            }
-            return group.items.compactMap { resolveConfigItem($0)?.content }
+        let configuredContents = config.flatMap { group in
+            group.items.compactMap { resolveConfigItem($0)?.content }
         }
+        let configuredSourceIDs = configuredBookSourceIDs(in: config)
+        let missingSourceContents = mediaViewModel.bookSources
+            .filter { !configuredSourceIDs.contains($0.id) }
+            .map { SidebarContentKind.bookSource($0.id) }
+        let contents = configuredContents + missingSourceContents
         mediaViewModel.updateVisibleSidebarContents(contents)
+    }
+
+    private func syncBookSourcesIntoSidebarConfig() {
+        let sources = mediaViewModel.bookSources
+        var config = SidebarConfigHelper.config
+        let sourceIDs = Set(sources.map(\.id))
+        var didChange = false
+
+        for groupIndex in config.indices {
+            let filteredItems = config[groupIndex].items.filter { item in
+                guard let sourceID = item.id.bookSourceIDFromSidebarItemID else { return true }
+                return sourceIDs.contains(sourceID)
+            }
+            if filteredItems.count != config[groupIndex].items.count {
+                config[groupIndex].items = filteredItems
+                didChange = true
+            }
+        }
+
+        let configuredSourceIDs = configuredBookSourceIDs(in: config)
+        let missingSources = sources.filter { !configuredSourceIDs.contains($0.id) }
+        if !missingSources.isEmpty {
+            if let mediaSourcesIndex = config.firstIndex(where: { $0.name == "Media Sources" }) {
+                config[mediaSourcesIndex].items.append(
+                    contentsOf: missingSources.map {
+                        SidebarConfigItem(id: "bookSource.\($0.id)", permanent: true)
+                    }
+                )
+            } else {
+                config.append(
+                    SidebarConfigGroup(
+                        name: "Media Sources",
+                        items: missingSources.map {
+                            SidebarConfigItem(id: "bookSource.\($0.id)", permanent: true)
+                        },
+                    )
+                )
+            }
+            didChange = true
+        }
+
+        if didChange {
+            SidebarConfigHelper.config = config
+        }
+    }
+
+    private func configuredBookSourceIDs(in config: [SidebarConfigGroup]) -> Set<BookSourceID> {
+        Set(
+            config
+                .flatMap(\.items)
+                .compactMap(\.id.bookSourceIDFromSidebarItemID)
+        )
     }
 
     // MARK: - Data-driven section rendering
@@ -514,8 +576,11 @@ struct SidebarView: View {
     private func resolvedItems(for group: SidebarConfigGroup) -> [SidebarItemDescription] {
         let configuredItems = group.items.compactMap { resolveConfigItem($0) }
         guard group.name == "Media Sources" else { return configuredItems }
-        let sourceItems = mediaViewModel.bookSources.map { Self.sidebarItem(for: $0) }
-        return sourceItems + configuredItems
+        let configuredSourceIDs = configuredBookSourceIDs(in: sidebarConfig)
+        let missingSourceItems = mediaViewModel.bookSources
+            .filter { !configuredSourceIDs.contains($0.id) }
+            .map { Self.sidebarItem(for: $0) }
+        return configuredItems + missingSourceItems
     }
 
     @ViewBuilder

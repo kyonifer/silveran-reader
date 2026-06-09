@@ -31,11 +31,15 @@ struct CustomizeSidebarView: View {
         .frame(width: 450, height: 600)
         .background(Color(nsColor: .controlBackgroundColor))
         .onAppear {
+            syncBookSourceItems()
             if showHomeSectionsOnAppear {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                     homePopoverVisible = true
                 }
             }
+        }
+        .onChange(of: mediaViewModel.bookSources) {
+            syncBookSourceItems()
         }
     }
 
@@ -167,6 +171,8 @@ struct CustomizeSidebarView: View {
     private func itemRow(item: SidebarConfigItem, groupIndex: Int, itemIndex: Int) -> some View {
         if item.id == SidebarConfigHelper.newPinLocationMarker {
             markerRow(groupIndex: groupIndex, itemIndex: itemIndex)
+        } else if item.id.hasPrefix("bookSource.") {
+            bookSourceItemRow(item: item, groupIndex: groupIndex, itemIndex: itemIndex)
         } else if item.id.hasPrefix("pin.") {
             pinItemRow(item: item, groupIndex: groupIndex, itemIndex: itemIndex)
         } else {
@@ -288,6 +294,91 @@ struct CustomizeSidebarView: View {
                     homeSectionsPopoverContent
                 }
             }
+
+            moveMenu(groupIndex: groupIndex, itemIndex: itemIndex)
+        }
+        .padding(.vertical, 4)
+        .padding(.horizontal, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(Color(nsColor: .controlBackgroundColor))
+        )
+    }
+
+    @ViewBuilder
+    private func bookSourceItemRow(item: SidebarConfigItem, groupIndex: Int, itemIndex: Int)
+        -> some View
+    {
+        HStack(spacing: 8) {
+            Image(systemName: "line.3.horizontal")
+                .foregroundStyle(.tertiary)
+                .font(.system(size: 12, weight: .bold))
+
+            visibilityButton(groupIndex: groupIndex, itemIndex: itemIndex, visible: item.visible)
+
+            let source = bookSource(for: item.id)
+
+            if editingItemId == item.id {
+                let defaultName = source?.name ?? "Book Source"
+                TextField(
+                    defaultName,
+                    text: Binding(
+                        get: { groups[groupIndex].items[itemIndex].alias ?? "" },
+                        set: { groups[groupIndex].items[itemIndex].alias = $0.isEmpty ? nil : $0 },
+                    ),
+                )
+                .textFieldStyle(.roundedBorder)
+                .font(.callout)
+                .focused($focusedItemId, equals: item.id)
+                .onSubmit {
+                    editingItemId = nil
+                    focusedItemId = nil
+                }
+
+                Button {
+                    editingItemId = nil
+                    focusedItemId = nil
+                } label: {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                }
+                .buttonStyle(.plain)
+            } else {
+                Image(systemName: source?.kind == .storyteller ? "server.rack" : "folder")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 16)
+
+                Text(displayName(for: item))
+                    .font(.callout)
+                    .foregroundStyle(item.visible ? .primary : .secondary)
+                    .strikethrough(!item.visible)
+
+                Button {
+                    editingItemId = item.id
+                    focusedItemId = item.id
+                } label: {
+                    Image(systemName: "pencil")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Rename")
+
+                if let alias = item.alias, !alias.isEmpty {
+                    Button {
+                        groups[groupIndex].items[itemIndex].alias = nil
+                    } label: {
+                        Image(systemName: "arrow.uturn.backward")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Revert to source name")
+                }
+            }
+
+            Spacer()
 
             moveMenu(groupIndex: groupIndex, itemIndex: itemIndex)
         }
@@ -497,6 +588,9 @@ struct CustomizeSidebarView: View {
         if let alias = item.alias, !alias.isEmpty {
             return alias
         }
+        if item.id.hasPrefix("bookSource.") {
+            return bookSource(for: item.id)?.name ?? "Book Source"
+        }
         if item.id.hasPrefix("pin.") {
             return resolveDefaultPinName(for: item.id)
         }
@@ -556,6 +650,60 @@ struct CustomizeSidebarView: View {
         }
         if id.hasPrefix("pin.smartShelf:") { return "sparkles.rectangle.stack" }
         return nil
+    }
+
+    private func syncBookSourceItems() {
+        let sources = mediaViewModel.bookSources
+        let sourceIDs = Set(sources.map(\.id))
+        var didChange = false
+
+        for groupIndex in groups.indices {
+            let filteredItems = groups[groupIndex].items.filter { item in
+                guard let sourceID = bookSourceID(from: item.id) else { return true }
+                return sourceIDs.contains(sourceID)
+            }
+            if filteredItems.count != groups[groupIndex].items.count {
+                groups[groupIndex].items = filteredItems
+                didChange = true
+            }
+        }
+
+        let configuredSourceIDs = Set(
+            groups
+                .flatMap(\.items)
+                .compactMap { bookSourceID(from: $0.id) }
+        )
+        let missingSources = sources.filter { !configuredSourceIDs.contains($0.id) }
+        guard !missingSources.isEmpty || didChange else { return }
+
+        if !missingSources.isEmpty {
+            if let mediaSourcesIndex = groups.firstIndex(where: { $0.name == "Media Sources" }) {
+                groups[mediaSourcesIndex].items.append(
+                    contentsOf: missingSources.map {
+                        SidebarConfigItem(id: "bookSource.\($0.id)", permanent: true)
+                    }
+                )
+            } else {
+                groups.append(
+                    SidebarConfigGroup(
+                        name: "Media Sources",
+                        items: missingSources.map {
+                            SidebarConfigItem(id: "bookSource.\($0.id)", permanent: true)
+                        },
+                    )
+                )
+            }
+        }
+    }
+
+    private func bookSource(for itemID: String) -> BookSourceRecord? {
+        guard let sourceID = bookSourceID(from: itemID) else { return nil }
+        return mediaViewModel.bookSources.first { $0.id == sourceID }
+    }
+
+    private func bookSourceID(from itemID: String) -> BookSourceID? {
+        guard itemID.hasPrefix("bookSource.") else { return nil }
+        return String(itemID.dropFirst("bookSource.".count))
     }
 
     private var footerBar: some View {
