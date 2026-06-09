@@ -637,35 +637,25 @@ public actor FolderSourceActor: BookSourceActor {
         )
 
         let savedMetadata = try await savedMetadata(in: folderURL)
-        let savedByFilename = savedMetadataByFilename(savedMetadata)
+        let savedByUUID = savedMetadataByUUID(savedMetadata)
         var mergedMetadata: [BookMetadata] = []
         var mergedPaths: [String: MediaPaths] = [:]
 
         for scanned in localScanResult.metadata {
-            let scannedFilepath =
-                scanned.ebook?.filepath ?? scanned.audiobook?.filepath
-                ?? scanned.readaloud?.filepath
+            var merged = mergeSavedState(
+                into: scanned,
+                saved: savedByUUID[scanned.uuid],
+            )
+            merged.sourceID = sourceRecordValue.id
+            merged.source = sourceRecordValue.name
+            mergedMetadata.append(merged)
 
-            if let filepath = scannedFilepath, let saved = savedByFilename[filepath] {
-                var merged = mergedBookMetadata(scanned: scanned, saved: saved)
-                merged.sourceID = sourceRecordValue.id
-                merged.source = sourceRecordValue.name
-                mergedMetadata.append(merged)
-
-                if let scannedPaths = localScanResult.paths[scanned.uuid] {
-                    mergedPaths[saved.uuid] = scannedPaths
-                }
-            } else {
-                var stamped = scanned
-                stamped.sourceID = sourceRecordValue.id
-                stamped.source = sourceRecordValue.name
-                mergedMetadata.append(stamped)
-                if let scannedPaths = localScanResult.paths[scanned.uuid] {
-                    mergedPaths[scanned.uuid] = scannedPaths
-                }
+            if let scannedPaths = localScanResult.paths[scanned.uuid] {
+                mergedPaths[scanned.uuid] = scannedPaths
             }
         }
 
+        logDuplicateFolderUUIDs(mergedMetadata, folderURL: folderURL)
         try await filesystem.saveFolderSourceLibraryMetadata(mergedMetadata, in: folderURL)
         metadataCache = mergedMetadata
         pathCache = mergedPaths
@@ -1045,20 +1035,46 @@ public actor FolderSourceActor: BookSourceActor {
         return fileComponents.dropFirst(baseComponents.count).joined(separator: "/")
     }
 
-    private func savedMetadataByFilename(_ metadata: [BookMetadata]) -> [String: BookMetadata] {
-        var savedByFilename: [String: BookMetadata] = [:]
+    private func savedMetadataByUUID(_ metadata: [BookMetadata]) -> [String: BookMetadata] {
+        var savedByUUID: [String: BookMetadata] = [:]
         for saved in metadata {
-            if let filepath = saved.ebook?.filepath {
-                savedByFilename[filepath] = saved
+            if savedByUUID[saved.uuid] != nil {
+                debugLog(
+                    "[FolderSourceActor] Duplicate saved metadata UUID \(saved.uuid) in \(sourceRecordValue.name)"
+                )
+                continue
             }
-            if let filepath = saved.audiobook?.filepath {
-                savedByFilename[filepath] = saved
-            }
-            if let filepath = saved.readaloud?.filepath {
-                savedByFilename[filepath] = saved
+            savedByUUID[saved.uuid] = saved
+        }
+        return savedByUUID
+    }
+
+    private func mergeSavedState(
+        into scanned: BookMetadata,
+        saved: BookMetadata?,
+    ) -> BookMetadata {
+        guard let saved else { return scanned }
+        return metadata(
+            scanned,
+            status: saved.status,
+            position: saved.position,
+        )
+    }
+
+    private func logDuplicateFolderUUIDs(_ metadata: [BookMetadata], folderURL: URL) {
+        var seen: Set<String> = []
+        var duplicates: Set<String> = []
+        for book in metadata {
+            if seen.contains(book.uuid) {
+                duplicates.insert(book.uuid)
+            } else {
+                seen.insert(book.uuid)
             }
         }
-        return savedByFilename
+        guard !duplicates.isEmpty else { return }
+        debugLog(
+            "[FolderSourceActor] Duplicate book UUIDs in folder source \(sourceRecordValue.name) at \(folderURL.path): \(duplicates.sorted().joined(separator: ", "))"
+        )
     }
 
     private func updateBookProgress(

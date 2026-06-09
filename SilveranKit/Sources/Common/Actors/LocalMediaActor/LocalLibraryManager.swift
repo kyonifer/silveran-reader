@@ -58,6 +58,7 @@ public final class LocalLibraryManager: Sendable {
         var allMetadata: [BookMetadata] = []
         var allPaths: [String: MediaPaths] = [:]
         var seenFiles: Set<String> = []
+        var seenBookFoldersByUUID: [String: String] = [:]
 
         for bookFolder in bookFolders {
             guard let values = try? bookFolder.resourceValues(forKeys: [.isDirectoryKey]),
@@ -68,6 +69,13 @@ public final class LocalLibraryManager: Sendable {
 
             let existingFolderUUID = uuidSuffix(fromFolderName: bookFolder.lastPathComponent)
             let bookUUID = existingFolderUUID ?? UUID().uuidString
+            if let existingFolder = seenBookFoldersByUUID[bookUUID] {
+                debugLog(
+                    "[LocalLibraryManager] Duplicate local folder book UUID \(bookUUID): '\(existingFolder)' and '\(bookFolder.lastPathComponent)'"
+                )
+            } else {
+                seenBookFoldersByUUID[bookUUID] = bookFolder.lastPathComponent
+            }
             var scannedFiles: [ScannedLocalFile] = []
 
             for category in LocalMediaCategory.allCases {

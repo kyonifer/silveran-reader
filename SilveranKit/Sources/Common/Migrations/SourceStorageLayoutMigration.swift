@@ -7,38 +7,10 @@ import AVFoundation
 extension FilesystemActor {
     private static let sourceStorageLayoutMigrationID = "source-storage-layout-v2"
     private static let legacyM4BAudiobookMigrationID = "legacy-m4b-audiobook-manifests-v1"
-    private static let folderSourceCacheCleanupMigrationID = "folder-source-cache-cleanup-v1"
 
     func runStorageMigrations(for sources: [BookSourceRecord]) async throws {
         try runSourceStorageLayoutMigrationIfNeeded(for: sources)
-        try runFolderSourceCacheCleanupMigrationIfNeeded(for: sources)
         try await runLegacyM4BAudiobookMigrationIfNeeded(for: sources)
-    }
-
-    private func runFolderSourceCacheCleanupMigrationIfNeeded(
-        for sources: [BookSourceRecord],
-    ) throws {
-        guard !migrationSentinelExists(Self.folderSourceCacheCleanupMigrationID) else { return }
-
-        let fm = FileManager.default
-        for source in sources where source.kind == .localFolder {
-            let cacheDirectory = sourceCacheDirectory(sourceID: source.id)
-            guard fm.fileExists(atPath: cacheDirectory.path) else { continue }
-
-            do {
-                try fm.removeItem(at: cacheDirectory)
-                debugLog(
-                    "[FilesystemActor] Removed stale SourceCache data for folder source \(source.id)"
-                )
-            } catch {
-                debugLog(
-                    "[FilesystemActor] Failed to remove stale SourceCache data for folder source \(source.id): \(error)"
-                )
-                throw error
-            }
-        }
-
-        try writeMigrationSentinel(Self.folderSourceCacheCleanupMigrationID)
     }
 
     private func runLegacyM4BAudiobookMigrationIfNeeded(

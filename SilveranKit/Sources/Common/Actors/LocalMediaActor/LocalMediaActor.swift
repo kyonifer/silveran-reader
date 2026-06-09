@@ -267,6 +267,7 @@ public actor LocalMediaActor: GlobalActor {
 
         var cachedMetadata: [BookMetadata] = []
         for source in bookSources {
+            guard source.kind != .localFolder else { continue }
             guard
                 let loadedMetadata = try await filesystem.loadSourceCacheLibraryMetadata(
                     sourceID: source.id,

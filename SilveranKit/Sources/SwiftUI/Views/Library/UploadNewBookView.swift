@@ -24,7 +24,6 @@ public struct UploadNewBookView: View {
     @State private var uploadProgress: String?
     @State private var uploadProgressFraction: Double?
     @State private var uploadResult: UploadResult?
-    @State private var bookUUID = UUID().uuidString
     @State private var bookSources: [BookSourceRecord] = []
     @State private var selectedSourceID: BookSourceID?
 
@@ -242,7 +241,6 @@ public struct UploadNewBookView: View {
         uploadResult = nil
         uploadProgress = nil
         uploadProgressFraction = nil
-        bookUUID = UUID().uuidString
     }
 
     private func loadSources() async {
@@ -310,17 +308,11 @@ public struct UploadNewBookView: View {
 
     private func uploadBook() async {
         guard hasAnyFileSelected, let sourceID = selectedSourceID else { return }
-        guard let source = bookSources.first(where: { $0.id == sourceID }) else { return }
 
         await MainActor.run {
             isUploading = true
             uploadProgress = "Preparing..."
             uploadProgressFraction = 0.05
-        }
-
-        if source.kind == .localFolder {
-            await importIntoFolderSource(source)
-            return
         }
 
         var ebookAsset: StorytellerUploadAsset?
@@ -379,8 +371,9 @@ public struct UploadNewBookView: View {
                 uploadProgressFraction = 0.75
             }
 
+            let uploadBookUUID = UUID().uuidString
             let success = await BookServiceActor.shared.uploadBookAssets(
-                bookUUID: bookUUID,
+                bookUUID: uploadBookUUID,
                 sourceID: sourceID,
                 ebook: ebookAsset,
                 audiobooks: audiobookAssets,
@@ -395,7 +388,7 @@ public struct UploadNewBookView: View {
                     success
                     ? .success
                     : .failure(
-                        "Upload failed. Your server may not support this feature yet. Please ensure you're running the latest server version."
+                        "Failed to add files to the selected source."
                     )
             }
             await BookServiceActor.shared.fetchLibraryInformation()
@@ -426,71 +419,6 @@ public struct UploadNewBookView: View {
                 return "audio/wav"
             default:
                 return "audio/mpeg"
-        }
-    }
-
-    private func importIntoFolderSource(_ source: BookSourceRecord) async {
-        let importTitle = selectedEbookURL?.deletingPathExtension().lastPathComponent
-            ?? selectedReadaloudURL?.deletingPathExtension().lastPathComponent
-            ?? selectedAudiobookURLs.first?.deletingPathExtension().lastPathComponent
-            ?? "Book"
-
-        do {
-            if let url = selectedEbookURL {
-                await MainActor.run {
-                    uploadProgress = "Copying ebook..."
-                    uploadProgressFraction = 0.25
-                }
-                _ = try await BookServiceActor.shared.importMediaIntoFolderSource(
-                    from: url,
-                    category: .ebook,
-                    bookName: importTitle,
-                    bookUUID: bookUUID,
-                    sourceID: source.id,
-                )
-            }
-
-            if !selectedAudiobookURLs.isEmpty {
-                await MainActor.run {
-                    uploadProgress = "Copying audiobook..."
-                    uploadProgressFraction = 0.5
-                }
-                _ = try await BookServiceActor.shared.importAudiobookFilesIntoFolderSource(
-                    from: selectedAudiobookURLs,
-                    bookName: importTitle,
-                    bookUUID: bookUUID,
-                    sourceID: source.id,
-                )
-            }
-
-            if let url = selectedReadaloudURL {
-                await MainActor.run {
-                    uploadProgress = "Copying readaloud..."
-                    uploadProgressFraction = 0.75
-                }
-                _ = try await BookServiceActor.shared.importMediaIntoFolderSource(
-                    from: url,
-                    category: .synced,
-                    bookName: importTitle,
-                    bookUUID: bookUUID,
-                    sourceID: source.id,
-                )
-            }
-
-            _ = await BookServiceActor.shared.fetchLibraryInformation(sourceID: source.id)
-            await MainActor.run {
-                isUploading = false
-                uploadProgress = nil
-                uploadProgressFraction = 1.0
-                uploadResult = .success
-            }
-        } catch {
-            await MainActor.run {
-                isUploading = false
-                uploadProgress = nil
-                uploadProgressFraction = nil
-                uploadResult = .failure("Failed to add files: \(error.localizedDescription)")
-            }
         }
     }
 

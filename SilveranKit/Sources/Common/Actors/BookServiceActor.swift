@@ -17,10 +17,27 @@ public actor BookServiceActor {
     private var sourcesByID: [BookSourceID: any BookSourceActor]
     private var sourceRegistryLoaded = false
     private var lastUpdateErrorsBySourceID: [BookSourceID: String] = [:]
+    private var libraryObservers: [UUID: @Sendable @MainActor () -> Void] = [:]
+    private var localMediaObserverID: UUID?
 
     public init() {
         self.sourceRecords = []
         self.sourcesByID = [:]
+    }
+
+    private func ensureLocalMediaObserver() async {
+        guard localMediaObserverID == nil else { return }
+        localMediaObserverID = await LocalMediaActor.shared.addObserver {
+            Task {
+                await BookServiceActor.shared.notifyLibraryObservers()
+            }
+        }
+    }
+
+    private func notifyLibraryObservers() async {
+        for (_, callback) in libraryObservers {
+            await callback()
+        }
     }
 
     private func sourceActor(for sourceID: BookSourceID?) -> (any BookSourceActor)? {
@@ -387,12 +404,7 @@ public actor BookServiceActor {
                 await closeFolderAccessIfNeeded(sourceID: sourceID)
                 sourcesByID[sourceID] = FolderSourceActor(sourceRecord: updatedRecord)
                 await upsertSourceRecord(updatedRecord)
-                if let metadata = await sourcesByID[sourceID]?.fetchLibraryInformation() {
-                    try? await LocalMediaActor.shared.updateSourceCacheMetadata(
-                        metadata,
-                        replacingSourceID: sourceID,
-                    )
-                }
+                await notifyLibraryObservers()
         }
         return true
     }
@@ -496,10 +508,12 @@ public actor BookServiceActor {
                 return stamped
             }
             metadata.append(contentsOf: stamped)
-            try? await LocalMediaActor.shared.updateSourceCacheMetadata(
-                stamped,
-                replacingSourceID: record.id,
-            )
+            if record.kind == .storyteller {
+                try? await LocalMediaActor.shared.updateSourceCacheMetadata(
+                    stamped,
+                    replacingSourceID: record.id,
+                )
+            }
         }
 
         guard sawSource else { return nil }
@@ -518,10 +532,12 @@ public actor BookServiceActor {
             stamped.source = stamped.source ?? sourceRecord?.name
             return stamped
         }
-        try? await LocalMediaActor.shared.updateSourceCacheMetadata(
-            stamped,
-            replacingSourceID: sourceID,
-        )
+        if sourceRecord?.kind == .storyteller {
+            try? await LocalMediaActor.shared.updateSourceCacheMetadata(
+                stamped,
+                replacingSourceID: sourceID,
+            )
+        }
         return stamped
     }
 
@@ -546,11 +562,17 @@ public actor BookServiceActor {
     }
 
     private func cachedLibrarySnapshot() async -> BookServiceLibrarySnapshot {
-        let metadata = await LocalMediaActor.shared.libraryMetadata()
+        let folderSourceIDs = Set(sourceRecords.filter { $0.kind == .localFolder }.map(\.id))
+        let cachedMetadata = await LocalMediaActor.shared.libraryMetadata()
+            .filter { book in
+                guard let sourceID = book.sourceID else { return true }
+                return !folderSourceIDs.contains(sourceID)
+            }
+        let metadata = cachedMetadata + (await localFolderBooks())
         return BookServiceLibrarySnapshot(
             books: metadata,
             mediaPaths: await resolvedLocalMediaPaths(for: metadata),
-            cachedMediaPaths: await LocalMediaActor.shared.cachedMediaPaths(for: metadata),
+            cachedMediaPaths: await LocalMediaActor.shared.cachedMediaPaths(for: cachedMetadata),
             sources: sourceRecords,
         )
     }
@@ -558,7 +580,14 @@ public actor BookServiceActor {
     public func addLibraryCacheObserver(
         _ callback: @escaping @Sendable @MainActor () -> Void,
     ) async -> UUID {
-        await LocalMediaActor.shared.addObserver(callback)
+        let id = UUID()
+        libraryObservers[id] = callback
+        await ensureLocalMediaObserver()
+        return id
+    }
+
+    public func removeLibraryCacheObserver(id: UUID) async {
+        libraryObservers.removeValue(forKey: id)
     }
 
     public func scanLibraryCache() async throws {
@@ -569,8 +598,18 @@ public actor BookServiceActor {
         _ metadata: [BookMetadata],
         replacingSourceID sourceID: BookSourceID? = nil,
     ) async throws {
+        await ensureSourceRegistryLoaded()
+        let folderSourceIDs = Set(sourceRecords.filter { $0.kind == .localFolder }.map(\.id))
+        if let sourceID, folderSourceIDs.contains(sourceID) {
+            await notifyLibraryObservers()
+            return
+        }
+        let cacheableMetadata = metadata.filter { book in
+            guard let sourceID = book.sourceID else { return true }
+            return !folderSourceIDs.contains(sourceID)
+        }
         try await LocalMediaActor.shared.updateSourceCacheMetadata(
-            metadata,
+            cacheableMetadata,
             replacingSourceID: sourceID,
         )
     }
@@ -604,11 +643,13 @@ public actor BookServiceActor {
         for record in folderRecords {
             guard let folder = sourceActor(for: record.id) as? FolderSourceActor else { continue }
             guard let sourceMetadata = await folder.fetchLibraryInformation() else { continue }
-            metadata.append(contentsOf: sourceMetadata)
-            try? await LocalMediaActor.shared.updateSourceCacheMetadata(
-                sourceMetadata,
-                replacingSourceID: record.id,
-            )
+            let stamped = sourceMetadata.map { book in
+                var stamped = book
+                stamped.sourceID = stamped.sourceID ?? record.id
+                stamped.source = stamped.source ?? record.name
+                return stamped
+            }
+            metadata.append(contentsOf: stamped)
         }
         return metadata
     }
@@ -641,12 +682,7 @@ public actor BookServiceActor {
             bookName: bookName,
             bookUUID: bookUUID,
         )
-        if let metadata = await folder.fetchLibraryInformation() {
-            try? await LocalMediaActor.shared.updateSourceCacheMetadata(
-                metadata,
-                replacingSourceID: resolvedSourceID,
-            )
-        }
+        await notifyLibraryObservers()
         return url
     }
 
@@ -669,12 +705,7 @@ public actor BookServiceActor {
             bookName: bookName,
             bookUUID: bookUUID,
         )
-        if let metadata = await folder.fetchLibraryInformation() {
-            try? await LocalMediaActor.shared.updateSourceCacheMetadata(
-                metadata,
-                replacingSourceID: resolvedSourceID,
-            )
-        }
+        await notifyLibraryObservers()
         return url
     }
 
@@ -947,12 +978,7 @@ public actor BookServiceActor {
                 guard let folder = source as? FolderSourceActor else { return false }
                 do {
                     try await folder.deleteBook(bookId)
-                    if let metadata = await folder.fetchLibraryInformation() {
-                        try? await LocalMediaActor.shared.updateSourceCacheMetadata(
-                            metadata,
-                            replacingSourceID: resolvedSourceID,
-                        )
-                    }
+                    await notifyLibraryObservers()
                     return true
                 } catch {
                     return false
@@ -992,14 +1018,11 @@ public actor BookServiceActor {
                     let previousMetadata = await folder.fetchLibraryInformation()?
                         .first(where: { $0.uuid == bookId })
                     try await folder.deleteMedia(bookId, category: localMediaCategory(for: type))
-                    if let metadata = await folder.fetchLibraryInformation() {
-                        try? await LocalMediaActor.shared.updateSourceCacheMetadata(
-                            metadata,
-                            replacingSourceID: resolvedSourceID,
-                        )
-                        if let updated = metadata.first(where: { $0.uuid == bookId }) {
-                            return .success(updated)
-                        }
+                    await notifyLibraryObservers()
+                    if let updated = await folder.fetchLibraryInformation()?
+                        .first(where: { $0.uuid == bookId })
+                    {
+                        return .success(updated)
                     }
                     if let previousMetadata {
                         return .success(previousMetadata)
@@ -1113,12 +1136,7 @@ public actor BookServiceActor {
                         bookName: asset.filename,
                         bookUUID: bookUUID,
                     )
-                    if let metadata = await folder.fetchLibraryInformation() {
-                        try? await LocalMediaActor.shared.updateSourceCacheMetadata(
-                            metadata,
-                            replacingSourceID: resolvedSourceID,
-                        )
-                    }
+                    await notifyLibraryObservers()
                     return .success
                 } catch {
                     debugLog("[BookServiceActor] Failed to replace folder source asset: \(error)")
@@ -1152,12 +1170,7 @@ public actor BookServiceActor {
                 audiobooks: audiobookAssets,
                 readaloud: readaloud,
             )
-            if let metadata = await folder.fetchLibraryInformation() {
-                try? await LocalMediaActor.shared.updateSourceCacheMetadata(
-                    metadata,
-                    replacingSourceID: sourceID,
-                )
-            }
+            await notifyLibraryObservers()
             return true
         } catch {
             debugLog("[BookServiceActor] Failed to import assets to folder source: \(error)")
@@ -1235,11 +1248,8 @@ public actor BookServiceActor {
                 forBooks: bookIds,
                 to: status,
             )
-            if success, let metadata = await folder.fetchLibraryInformation() {
-                try? await LocalMediaActor.shared.updateSourceCacheMetadata(
-                    metadata,
-                    replacingSourceID: resolvedSourceID,
-                )
+            if success {
+                await notifyLibraryObservers()
             }
             return success
         }
