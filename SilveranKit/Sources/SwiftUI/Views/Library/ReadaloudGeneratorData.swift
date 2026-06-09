@@ -77,7 +77,10 @@ public struct ReadaloudGeneratorData: Codable, Hashable, Sendable {
         sourceID = try container.decodeIfPresent(BookSourceID.self, forKey: .sourceID)
         sourceName = try container.decode(String.self, forKey: .sourceName)
         sourceKind = try container.decodeIfPresent(BookSourceKind.self, forKey: .sourceKind)
-        destination = try container.decode(ReadaloudGeneratorDestination.self, forKey: .destination)
+        destination = try container.decode(
+            ReadaloudGeneratorDestination.self,
+            forKey: .destination,
+        )
         ebookURL = try container.decodeIfPresent(URL.self, forKey: .ebookURL)
         if let decodedAudioURLs = try container.decodeIfPresent([URL].self, forKey: .audioURLs) {
             audioURLs = decodedAudioURLs

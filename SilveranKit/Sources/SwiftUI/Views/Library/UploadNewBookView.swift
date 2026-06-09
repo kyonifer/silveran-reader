@@ -136,7 +136,7 @@ public struct UploadNewBookView: View {
                 .buttonStyle(.borderedProminent)
                 .disabled(
                     isUploading || !hasAnyFileSelected || uploadResult != nil
-                        || selectedSourceID == nil,
+                        || selectedSourceID == nil
                 )
                 .keyboardShortcut(.defaultAction)
             }
@@ -201,10 +201,13 @@ public struct UploadNewBookView: View {
                 .frame(width: 80, alignment: .leading)
             Spacer()
             if !selectedURLs.isEmpty {
-                Text(selectedURLs.count == 1 ? selectedURLs[0].lastPathComponent : "\(selectedURLs.count) files")
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+                Text(
+                    selectedURLs.count == 1
+                        ? selectedURLs[0].lastPathComponent : "\(selectedURLs.count) files"
+                )
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
                 Button("Clear") {
                     onClear()
                 }

@@ -65,12 +65,13 @@ public final class TVSettingsViewModel {
             return
         }
 
-        sourceName = storytellerSources.first { $0.id == selectedSourceID }?.name
+        sourceName =
+            storytellerSources.first { $0.id == selectedSourceID }?.name
             ?? BookSourceKind.storyteller.defaultName
 
         do {
             if let credentials = try await AuthenticationActor.shared.loadCredentials(
-                sourceID: selectedSourceID,
+                sourceID: selectedSourceID
             ) {
                 serverURL = credentials.url
                 username = credentials.username
@@ -83,7 +84,7 @@ public final class TVSettingsViewModel {
                 hasSavedCredentials = false
             }
             connectionStatus = await BookServiceActor.shared.connectionStatus(
-                sourceID: selectedSourceID,
+                sourceID: selectedSourceID
             )
         } catch {
             debugLog("[TVSettingsViewModel] Failed to load credentials: \(error)")
@@ -115,15 +116,17 @@ public final class TVSettingsViewModel {
         connectionError = nil
 
         if isAddingSource || selectedSourceID == nil {
-            guard let record = await BookServiceActor.shared.createBookSource(
-                BookSourceConfiguration(
-                    kind: .storyteller,
-                    name: sourceName,
-                    serverURL: serverURL,
-                    username: username,
-                    password: password,
-                ),
-            ) else {
+            guard
+                let record = await BookServiceActor.shared.createBookSource(
+                    BookSourceConfiguration(
+                        kind: .storyteller,
+                        name: sourceName,
+                        serverURL: serverURL,
+                        username: username,
+                        password: password,
+                    )
+                )
+            else {
                 connectionStatus = .error("Save failed")
                 connectionError = "Failed to save server."
                 isSaving = false

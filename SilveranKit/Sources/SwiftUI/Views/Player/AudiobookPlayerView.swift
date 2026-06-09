@@ -109,7 +109,9 @@ public struct AudiobookPlayerView: View {
                     CarPlayCoordinator.shared.isPlayerViewActive = false
                 }
                 guard scenePhase == .active else {
-                    debugLog("[AudiobookPlayerView] Background disappear - preserving audio playback")
+                    debugLog(
+                        "[AudiobookPlayerView] Background disappear - preserving audio playback"
+                    )
                     return
                 }
                 #endif
@@ -168,17 +170,17 @@ public struct AudiobookPlayerView: View {
                 }
             }
             #if os(iOS)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        closeBook()
-                    } label: {
-                        Label("Library", systemImage: "chevron.left")
-                    }
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    closeBook()
+                } label: {
+                    Label("Library", systemImage: "chevron.left")
                 }
             }
-            .navigationBarBackButtonHidden(true)
-            #endif
+        }
+        .navigationBarBackButtonHidden(true)
+        #endif
     }
 
     #if os(iOS)

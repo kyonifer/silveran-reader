@@ -232,7 +232,7 @@ public actor ProgressSyncActor {
         for var pending in queueSnapshot {
             if !pending.syncedToStoryteller {
                 let sourceStatus = await BookServiceActor.shared.connectionStatus(
-                    sourceID: pending.sourceID,
+                    sourceID: pending.sourceID
                 )
                 guard sourceStatus == .connected else {
                     debugLog(
@@ -322,7 +322,7 @@ public actor ProgressSyncActor {
         if connectionStatus == .connected, let sourceID {
             debugLog("[PSA] fetchCurrentPosition: connected, refreshing from server")
             let _ = await BookServiceActor.shared.fetchLibraryInformation(
-                sourceID: sourceID,
+                sourceID: sourceID
             )
         }
 
@@ -638,7 +638,7 @@ public actor ProgressSyncActor {
         guard !downloadedBookIds.isEmpty else { return }
 
         let metadataByID = Dictionary(
-            uniqueKeysWithValues: sourceMetadata.map { ($0.uuid, $0) },
+            uniqueKeysWithValues: sourceMetadata.map { ($0.uuid, $0) }
         )
 
         for bookId in downloadedBookIds {

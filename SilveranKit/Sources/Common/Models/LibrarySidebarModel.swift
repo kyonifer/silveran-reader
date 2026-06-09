@@ -104,7 +104,7 @@ public class LibrarySidebarModel {
                         systemImage: "externaldrive",
                         badge: -1,
                         content: .storytellerServer,
-                    ),
+                    )
                 ],
             ),
         ]

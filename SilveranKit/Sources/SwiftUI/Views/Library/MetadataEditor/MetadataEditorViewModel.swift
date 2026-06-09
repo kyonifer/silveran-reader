@@ -857,7 +857,7 @@ final class MetadataEditorViewModel {
             } else {
                 saveResults[book.id] = false
                 let serverError = await BookServiceActor.shared.lastUpdateBookError(
-                    sourceID: sourceID(for: book),
+                    sourceID: sourceID(for: book)
                 )
                 saveError =
                     "\(book.displayTitle): \(serverError ?? "Unknown error")"
@@ -897,7 +897,7 @@ final class MetadataEditorViewModel {
         } else {
             saveResults[bookId] = false
             let serverError = await BookServiceActor.shared.lastUpdateBookError(
-                sourceID: sourceID(for: book),
+                sourceID: sourceID(for: book)
             )
             saveError =
                 "\(book.displayTitle): \(serverError ?? "Unknown error")"

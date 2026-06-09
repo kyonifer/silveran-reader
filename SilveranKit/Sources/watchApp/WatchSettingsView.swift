@@ -24,9 +24,11 @@ struct WatchSettingsView: View {
         NavigationStack {
             ScrollView {
                 content
-                .padding(.horizontal)
+                    .padding(.horizontal)
             }
-            .navigationTitle(isEditingSource ? (isAddingSource ? "Add Server" : "Edit Server") : "Servers")
+            .navigationTitle(
+                isEditingSource ? (isAddingSource ? "Add Server" : "Edit Server") : "Servers"
+            )
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -274,8 +276,11 @@ struct WatchSettingsView: View {
                         ProgressView()
                             .controlSize(.small)
                     }
-                    Text(isConnecting ? "Connecting..." : (isAddingSource ? "Add Server" : "Save and Connect"))
-                        .font(.caption2)
+                    Text(
+                        isConnecting
+                            ? "Connecting..." : (isAddingSource ? "Add Server" : "Save and Connect")
+                    )
+                    .font(.caption2)
                 }
                 .frame(maxWidth: .infinity)
             }
@@ -297,7 +302,9 @@ struct WatchSettingsView: View {
             storytellerSources.contains(where: { $0.id == previousSelection })
         {
             selectedSourceID = previousSelection
-        } else if selectedSourceID == nil || !storytellerSources.contains(where: { $0.id == selectedSourceID }) {
+        } else if selectedSourceID == nil
+            || !storytellerSources.contains(where: { $0.id == selectedSourceID })
+        {
             selectedSourceID = storytellerSources.first?.id
         }
         await loadCredentialsForSelectedSource()
@@ -322,12 +329,13 @@ struct WatchSettingsView: View {
             return
         }
 
-        sourceName = storytellerSources.first { $0.id == selectedSourceID }?.name
+        sourceName =
+            storytellerSources.first { $0.id == selectedSourceID }?.name
             ?? BookSourceKind.storyteller.defaultName
 
         do {
             if let credentials = try await AuthenticationActor.shared.loadCredentials(
-                sourceID: selectedSourceID,
+                sourceID: selectedSourceID
             ) {
                 serverURL = credentials.url
                 username = credentials.username
@@ -343,7 +351,7 @@ struct WatchSettingsView: View {
             }
 
             connectionStatus = await BookServiceActor.shared.connectionStatus(
-                sourceID: selectedSourceID,
+                sourceID: selectedSourceID
             )
         } catch {
             debugLog("[WatchSettingsView] Failed to load credentials: \(error)")
@@ -452,15 +460,17 @@ struct WatchSettingsView: View {
 
     private func saveCurrentSource() async throws -> BookSourceID {
         if isAddingSource || selectedSourceID == nil {
-            guard let record = await BookServiceActor.shared.createBookSource(
-                BookSourceConfiguration(
-                    kind: .storyteller,
-                    name: sourceName,
-                    serverURL: serverURL,
-                    username: username,
-                    password: password,
-                ),
-            ) else {
+            guard
+                let record = await BookServiceActor.shared.createBookSource(
+                    BookSourceConfiguration(
+                        kind: .storyteller,
+                        name: sourceName,
+                        serverURL: serverURL,
+                        username: username,
+                        password: password,
+                    )
+                )
+            else {
                 throw WatchSettingsError.saveFailed
             }
             selectedSourceID = record.id

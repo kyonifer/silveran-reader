@@ -103,7 +103,10 @@ public final class LocalLibraryManager: Sendable {
                     seenFiles.insert(fullPath)
 
                     do {
-                        let extracted = try await extractMetadata(from: fileURL, category: category)
+                        let extracted = try await extractMetadata(
+                            from: fileURL,
+                            category: category,
+                        )
                         let metadata = metadata(extracted, withUUID: bookUUID)
                         scannedFiles.append(
                             ScannedLocalFile(
@@ -138,7 +141,8 @@ public final class LocalLibraryManager: Sendable {
             for scanned in scannedFiles {
                 merge(scanned.metadata, into: &allMetadata)
 
-                let finalFileURL = effectiveBookFolder
+                let finalFileURL =
+                    effectiveBookFolder
                     .appendingPathComponent(scanned.category.rawValue, isDirectory: true)
                     .appendingPathComponent(scanned.fileURL.lastPathComponent, isDirectory: false)
                 var mediaPaths = allPaths[scanned.metadata.uuid] ?? MediaPaths()
@@ -257,7 +261,8 @@ public final class LocalLibraryManager: Sendable {
         let invalid = CharacterSet(charactersIn: "/\\?%*|\"<>:")
             .union(.newlines)
             .union(.controlCharacters)
-        let sanitized = input
+        let sanitized =
+            input
             .components(separatedBy: invalid)
             .joined(separator: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -522,7 +527,8 @@ public final class LocalLibraryManager: Sendable {
         let bookUUID = UUID().uuidString
         let data = try Data(contentsOf: manifestURL)
         let manifest = try JSONDecoder().decode(AudiobookManifestMetadata.self, from: data)
-        let title = manifest.metadata?.title
+        let title =
+            manifest.metadata?.title
             ?? manifestURL.deletingLastPathComponent().deletingLastPathComponent().lastPathComponent
 
         let audiobookAsset = BookAsset(

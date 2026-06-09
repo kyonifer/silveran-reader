@@ -153,7 +153,8 @@ public actor LocalMediaActor: GlobalActor {
         sourceCacheBookPaths = paths
 
         let positions = Dictionary(
-            uniqueKeysWithValues: nextMetadata.compactMap { book -> (String, BookReadingPosition)? in
+            uniqueKeysWithValues: nextMetadata.compactMap {
+                book -> (String, BookReadingPosition)? in
                 guard let pos = book.position else { return nil }
                 return (book.uuid, pos)
             }
@@ -270,7 +271,7 @@ public actor LocalMediaActor: GlobalActor {
             guard source.kind != .localFolder else { continue }
             guard
                 let loadedMetadata = try await filesystem.loadSourceCacheLibraryMetadata(
-                    sourceID: source.id,
+                    sourceID: source.id
                 )
             else { continue }
             let stampedMetadata = metadata(loadedMetadata, stampedWith: source.id)
@@ -457,8 +458,7 @@ public actor LocalMediaActor: GlobalActor {
         if let explicitSourceID {
             return explicitSourceID
         }
-        if let metadataSourceID = sourceCacheMetadata.first(where: { $0.uuid == uuid })?.sourceID
-        {
+        if let metadataSourceID = sourceCacheMetadata.first(where: { $0.uuid == uuid })?.sourceID {
             return metadataSourceID
         }
         return nil

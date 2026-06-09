@@ -149,13 +149,19 @@ private struct iOSRootView: View {
     private func restoredPlayerView(for bookData: PlayerBookData) -> some View {
         switch bookData.category {
             case .audio:
-                AudiobookPlayerView(bookData: bookData, onClose: {
-                    restoredPlayer = nil
-                })
+                AudiobookPlayerView(
+                    bookData: bookData,
+                    onClose: {
+                        restoredPlayer = nil
+                    },
+                )
             case .ebook, .synced:
-                EbookPlayerView(bookData: bookData, onClose: {
-                    restoredPlayer = nil
-                })
+                EbookPlayerView(
+                    bookData: bookData,
+                    onClose: {
+                        restoredPlayer = nil
+                    },
+                )
         }
     }
 }

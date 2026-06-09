@@ -297,10 +297,12 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
         }
 
         do {
-            guard let sourceAwareMetadata = await metadataWithResolvedSourceID(
-                bookMetadata,
-                manifestSourceID: manifest.sourceID,
-            ) else {
+            guard
+                let sourceAwareMetadata = await metadataWithResolvedSourceID(
+                    bookMetadata,
+                    manifestSourceID: manifest.sourceID,
+                )
+            else {
                 print(
                     "[WatchSessionManager] Refusing transferred book without sourceID: \(manifest.title)"
                 )
@@ -412,10 +414,12 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
         var current = await BookServiceActor.shared.librarySnapshot(policy: .cachedOnly).books
 
         for phoneBook in phoneBooks {
-            guard let resolvedPhoneBook = await metadataWithResolvedSourceID(
-                phoneBook,
-                existingMetadata: current,
-            ) else {
+            guard
+                let resolvedPhoneBook = await metadataWithResolvedSourceID(
+                    phoneBook,
+                    existingMetadata: current,
+                )
+            else {
                 print(
                     "[WatchSessionManager] Skipping source-less phone metadata for \(phoneBook.title)"
                 )

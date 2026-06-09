@@ -82,7 +82,7 @@ public actor StorytellerActor {
 
     public init(
         sourceRecord: BookSourceRecord,
-        session: URLSession? = nil
+        session: URLSession? = nil,
     ) {
         self.sourceRecordValue = sourceRecord
         let delegate = StorytellerDownloadDelegate()
@@ -400,11 +400,13 @@ public actor StorytellerActor {
         password: String,
     ) async -> Bool {
         await SilveranMigrations.ensureMigrationsRan()
-        guard await configureCredentials(
-            baseURL: baseURLString,
-            username: username,
-            password: password,
-        ) else {
+        guard
+            await configureCredentials(
+                baseURL: baseURLString,
+                username: username,
+                password: password,
+            )
+        else {
             return false
         }
         _ = try? await FilesystemActor.shared.loadOrCreateBookSources()

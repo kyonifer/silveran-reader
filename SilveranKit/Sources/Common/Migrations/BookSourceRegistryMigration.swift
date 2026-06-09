@@ -57,8 +57,8 @@ extension FilesystemActor {
                 isDirectory: false,
             )
             if let existing = try? String(contentsOf: markerURL, encoding: .utf8)
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-            !existing.isEmpty
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+                !existing.isEmpty
             {
                 return existing
             }
@@ -71,7 +71,9 @@ extension FilesystemActor {
         do {
             try writeMigrationSentinel(migrationID)
         } catch {
-            debugLog("[FilesystemActor] Failed to write migration sentinel \(migrationID): \(error)")
+            debugLog(
+                "[FilesystemActor] Failed to write migration sentinel \(migrationID): \(error)"
+            )
         }
     }
 
@@ -112,7 +114,10 @@ extension FilesystemActor {
     func legacySourceCacheDirectory(sourceID: BookSourceID?) -> URL {
         guard let sourceID else { return legacySourceCacheRootDirectory() }
         return legacySourceCacheRootDirectory()
-            .appendingPathComponent(migrationSanitizedPathComponent(from: sourceID), isDirectory: true)
+            .appendingPathComponent(
+                migrationSanitizedPathComponent(from: sourceID),
+                isDirectory: true,
+            )
     }
 
     func legacyLocalFolderRootDirectory() -> URL {
@@ -123,7 +128,10 @@ extension FilesystemActor {
     func legacyLocalFolderDirectory(sourceID: BookSourceID?) -> URL {
         guard let sourceID else { return legacyLocalFolderRootDirectory() }
         return legacyLocalFolderRootDirectory()
-            .appendingPathComponent(migrationSanitizedPathComponent(from: sourceID), isDirectory: true)
+            .appendingPathComponent(
+                migrationSanitizedPathComponent(from: sourceID),
+                isDirectory: true,
+            )
     }
 
     private func migrationApplicationSupportBaseDirectory() -> URL {

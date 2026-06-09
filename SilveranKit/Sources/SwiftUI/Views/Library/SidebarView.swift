@@ -310,7 +310,9 @@ struct SidebarView: View {
         return nil
     }
 
-    static func sidebarItem(for source: BookSourceRecord, pinned: Bool = false) -> SidebarItemDescription {
+    static func sidebarItem(for source: BookSourceRecord, pinned: Bool = false)
+        -> SidebarItemDescription
+    {
         SidebarItemDescription(
             id: pinned ? "pin.bookSource:\(source.id)" : "bookSource.\(source.id)",
             name: source.name,
@@ -466,7 +468,9 @@ struct SidebarView: View {
     private func registerSidebarContents(config: [SidebarConfigGroup]) {
         let contents = config.flatMap { group -> [SidebarContentKind] in
             if group.name == "Media Sources" {
-                let sourceContents = mediaViewModel.bookSources.map { SidebarContentKind.bookSource($0.id) }
+                let sourceContents = mediaViewModel.bookSources.map {
+                    SidebarContentKind.bookSource($0.id)
+                }
                 let configuredContents = group.items.compactMap { resolveConfigItem($0)?.content }
                 return sourceContents + configuredContents
             }
@@ -829,8 +833,8 @@ struct SidebarView: View {
     #endif
 }
 
-private extension String {
-    var bookSourceIDFromSidebarItemID: BookSourceID? {
+extension String {
+    fileprivate var bookSourceIDFromSidebarItemID: BookSourceID? {
         if hasPrefix("bookSource.") {
             return String(dropFirst("bookSource.".count))
         }

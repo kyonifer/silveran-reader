@@ -16,7 +16,7 @@ extension FilesystemActor {
     }
 
     private func runLegacyM4BAudiobookMigrationIfNeeded(
-        for sources: [BookSourceRecord],
+        for sources: [BookSourceRecord]
     ) async throws {
         guard !migrationSentinelExists(Self.legacyM4BAudiobookMigrationID) else { return }
 
@@ -52,7 +52,7 @@ extension FilesystemActor {
     }
 
     private func runSourceStorageLayoutMigrationIfNeeded(
-        for sources: [BookSourceRecord],
+        for sources: [BookSourceRecord]
     ) throws {
         guard !migrationSentinelExists(Self.sourceStorageLayoutMigrationID) else { return }
 
@@ -94,7 +94,8 @@ extension FilesystemActor {
         guard !migrationSentinelExists(Self.whisperModelStorageMigrationID) else { return }
 
         let appSupportDirectory = getConfigDirectory().deletingLastPathComponent()
-        let legacyDirectory = appSupportDirectory
+        let legacyDirectory =
+            appSupportDirectory
             .appendingPathComponent("SilveranReader", isDirectory: true)
             .appendingPathComponent("WhisperModels", isDirectory: true)
         let targetDirectory = whisperModelsDirectory()
@@ -121,9 +122,11 @@ extension FilesystemActor {
 
     private func migrateCoverCacheDirectory() throws {
         let appSupportDirectory = getConfigDirectory().deletingLastPathComponent()
-        let legacyDirectory = appSupportDirectory
+        let legacyDirectory =
+            appSupportDirectory
             .appendingPathComponent("Covers", isDirectory: true)
-        let cacheDirectory = appSupportDirectory
+        let cacheDirectory =
+            appSupportDirectory
             .appendingPathComponent("CoversCache", isDirectory: true)
         let fm = FileManager.default
 

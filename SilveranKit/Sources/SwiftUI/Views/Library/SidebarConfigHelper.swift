@@ -67,7 +67,9 @@ enum SidebarConfigHelper {
     private static func normalize(_ groups: [SidebarConfigGroup]) -> [SidebarConfigGroup] {
         groups.map { group in
             var normalized = group
-            normalized.items.removeAll { $0.id == "importLocalFile" || $0.id == "storytellerServer" }
+            normalized.items.removeAll {
+                $0.id == "importLocalFile" || $0.id == "storytellerServer"
+            }
             return normalized
         }
     }

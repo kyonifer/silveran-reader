@@ -253,7 +253,10 @@ public actor BookServiceActor {
         await ensureSourceRegistryLoaded()
 
         let now = ISO8601DateFormatter().string(from: Date())
-        let sourceID = await sourceIDForNewSource(kind: configuration.kind, configuredPath: configuration.storagePath)
+        let sourceID = await sourceIDForNewSource(
+            kind: configuration.kind,
+            configuredPath: configuration.storagePath,
+        )
         if sourceRecords.contains(where: { $0.id == sourceID }) {
             return nil
         }
@@ -264,7 +267,10 @@ public actor BookServiceActor {
         )
         let record = BookSourceRecord(
             id: sourceID,
-            name: normalizedSourceName(configuration.name, fallback: configuration.kind.defaultName),
+            name: normalizedSourceName(
+                configuration.name,
+                fallback: configuration.kind.defaultName,
+            ),
             kind: configuration.kind,
             capabilities: capabilities(for: configuration.kind),
             createdAt: now,
@@ -285,11 +291,13 @@ public actor BookServiceActor {
                 let actor = StorytellerActor(sourceRecord: record)
                 sourcesByID[record.id] = actor
 
-                guard await actor.configureCredentials(
-                    baseURL: serverURL,
-                    username: username,
-                    password: password,
-                ) else {
+                guard
+                    await actor.configureCredentials(
+                        baseURL: serverURL,
+                        username: username,
+                        password: password,
+                    )
+                else {
                     sourcesByID[record.id] = nil
                     return nil
                 }
@@ -367,11 +375,13 @@ public actor BookServiceActor {
                     sourcesByID[sourceID] = actor
                 }
 
-                guard await actor.configureCredentials(
-                    baseURL: serverURL,
-                    username: username,
-                    password: password,
-                ) else {
+                guard
+                    await actor.configureCredentials(
+                        baseURL: serverURL,
+                        username: username,
+                        password: password,
+                    )
+                else {
                     return false
                 }
 
@@ -391,7 +401,9 @@ public actor BookServiceActor {
                 guard updatedRecord.storagePath != nil else { return false }
                 if let storagePath = updatedRecord.storagePath {
                     let storageURL = URL(fileURLWithPath: storagePath, isDirectory: true)
-                    if let marker = try? await FilesystemActor.shared.sourceIDMarker(in: storageURL),
+                    if let marker = try? await FilesystemActor.shared.sourceIDMarker(
+                        in: storageURL
+                    ),
                         marker != sourceID
                     {
                         return false
@@ -412,7 +424,9 @@ public actor BookServiceActor {
         await ensureSourceRegistryLoaded()
         guard
             sourceRecords.contains(where: { $0.id == sourceID }),
-            let credentials = try? await AuthenticationActor.shared.loadCredentials(sourceID: sourceID),
+            let credentials = try? await AuthenticationActor.shared.loadCredentials(
+                sourceID: sourceID
+            ),
             let actor = await storytellerActor(for: sourceID)
         else {
             return false
@@ -463,7 +477,7 @@ public actor BookServiceActor {
     }
 
     public func checkBookUpdatePermission(
-        sourceID: BookSourceID? = nil,
+        sourceID: BookSourceID? = nil
     ) async -> StorytellerActor.PermissionCheckResult {
         guard let storyteller = await storytellerActor(for: sourceID) else {
             return .error("Not connected to server")
@@ -579,7 +593,7 @@ public actor BookServiceActor {
     }
 
     public func addLibraryCacheObserver(
-        _ callback: @escaping @Sendable @MainActor () -> Void,
+        _ callback: @escaping @Sendable @MainActor () -> Void
     ) async -> UUID {
         let id = UUID()
         libraryObservers[id] = callback
@@ -715,11 +729,13 @@ public actor BookServiceActor {
         sourceID: BookSourceID?,
         category: LocalMediaCategory,
     ) async -> URL? {
-        guard let media = await resolveLocalMedia(
-            for: bookID,
-            sourceID: sourceID,
-            category: category,
-        ) else {
+        guard
+            let media = await resolveLocalMedia(
+                for: bookID,
+                sourceID: sourceID,
+                category: category,
+            )
+        else {
             return nil
         }
         return media.url.deletingLastPathComponent()
@@ -817,7 +833,8 @@ public actor BookServiceActor {
         return await folder.localMediaReference(for: bookID, category: category)
     }
 
-    public func resolvedLocalMediaPaths(for metadata: [BookMetadata]) async -> [String: MediaPaths] {
+    public func resolvedLocalMediaPaths(for metadata: [BookMetadata]) async -> [String: MediaPaths]
+    {
         await ensureSourceRegistryLoaded()
         var pathsByBookID: [String: MediaPaths] = [:]
         for book in metadata {
@@ -942,11 +959,13 @@ public actor BookServiceActor {
             return nil
         }
 
-        guard var metadata = await storyteller.updateBook(
-            payload,
-            textCover: textCover,
-            audioCover: audioCover,
-        ) else {
+        guard
+            var metadata = await storyteller.updateBook(
+                payload,
+                textCover: textCover,
+                audioCover: audioCover,
+            )
+        else {
             lastUpdateErrorsBySourceID[resolvedSourceID] =
                 await storyteller.lastUpdateBookError ?? "Update failed"
             return nil
@@ -1344,7 +1363,7 @@ public actor BookServiceActor {
 
                     if !(await actor.isConfigured),
                         let credentials = try? await AuthenticationActor.shared.loadCredentials(
-                            sourceID: record.id,
+                            sourceID: record.id
                         )
                     {
                         _ = await actor.configureCredentials(

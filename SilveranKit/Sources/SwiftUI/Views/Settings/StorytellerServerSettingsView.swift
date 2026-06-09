@@ -261,19 +261,19 @@ struct BookSourceEditorView: View {
                             prompt: Text(verbatim: "https://my.example.com")
                                 .foregroundStyle(.secondary),
                         )
-                            .textContentType(.URL)
-                            .autocorrectionDisabled()
-                            #if os(iOS)
-                            .textInputAutocapitalization(.never)
-                            .keyboardType(.URL)
-                            #endif
-                            .help("e.g., https://storyteller.example.com")
+                        .textContentType(.URL)
+                        .autocorrectionDisabled()
+                        #if os(iOS)
+                        .textInputAutocapitalization(.never)
+                        .keyboardType(.URL)
+                        #endif
+                        .help("e.g., https://storyteller.example.com")
 
                         TextField("Username", text: $username)
                             .textContentType(.username)
                             .autocorrectionDisabled()
                             #if os(iOS)
-                            .textInputAutocapitalization(.never)
+                        .textInputAutocapitalization(.never)
                             #endif
 
                         HStack {
@@ -322,7 +322,10 @@ struct BookSourceEditorView: View {
                                 }
                                 .buttonStyle(.borderless)
                                 .help("Show in Finder")
-                                .disabled(folderPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                                .disabled(
+                                    folderPath.trimmingCharacters(in: .whitespacesAndNewlines)
+                                        .isEmpty
+                                )
                             }
                             #endif
 

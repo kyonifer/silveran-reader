@@ -476,7 +476,7 @@ public struct MetadataEditorView: View {
     private func loadAvailableStatusesIfNeeded() async {
         if let sourceID = viewModel.selectedBook?.originalMetadata.sourceID {
             viewModel.availableStatuses = await BookServiceActor.shared.getAvailableStatuses(
-                sourceID: sourceID,
+                sourceID: sourceID
             )
             return
         }

@@ -261,7 +261,10 @@ struct MediaGridSortAndFilterBar: View {
                             Button {
                                 selectedAuthor = nil
                             } label: {
-                                menuRowLabel(text: "All Authors", isSelected: selectedAuthor == nil)
+                                menuRowLabel(
+                                    text: "All Authors",
+                                    isSelected: selectedAuthor == nil,
+                                )
                             }
 
                             ForEach(authors, id: \.self) { authorName in

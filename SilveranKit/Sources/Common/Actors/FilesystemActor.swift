@@ -103,7 +103,8 @@ public actor FilesystemActor {
             bookName: bookName,
             uuidIdentifier: uuidIdentifier,
         )
-        return cacheDirectory
+        return
+            cacheDirectory
             .appendingPathComponent(folderName, isDirectory: true)
             .appendingPathComponent(category.rawValue, isDirectory: true)
     }
@@ -559,8 +560,8 @@ public actor FilesystemActor {
 
         let sanitizedUUID = sanitizedPathComponent(from: uuid)
         for url in contents
-            where url.lastPathComponent == "\(sanitizedUUID).dat"
-                || url.lastPathComponent.hasPrefix("\(sanitizedUUID)_")
+        where url.lastPathComponent == "\(sanitizedUUID).dat"
+            || url.lastPathComponent.hasPrefix("\(sanitizedUUID)_")
         {
             try fm.removeItem(at: url)
         }
@@ -860,7 +861,8 @@ public actor FilesystemActor {
         else { return }
 
         for sourceDirectory in sourceDirectories {
-            guard let sourceValues = try? sourceDirectory.resourceValues(forKeys: [.isDirectoryKey]),
+            guard
+                let sourceValues = try? sourceDirectory.resourceValues(forKeys: [.isDirectoryKey]),
                 sourceValues.isDirectory == true
             else { continue }
 
@@ -1242,7 +1244,9 @@ public actor FilesystemActor {
         guard path == basePath || path.hasPrefix(basePath + "/") else {
             return nil
         }
-        return String(path.dropFirst(basePath.count)).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        return String(path.dropFirst(basePath.count)).trimmingCharacters(
+            in: CharacterSet(charactersIn: "/")
+        )
     }
 
     public func applicationSupportURL(relativePath: String) -> URL {

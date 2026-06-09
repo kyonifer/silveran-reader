@@ -563,7 +563,7 @@ struct HomeView: View {
         let idsToCheck: [BookSourceID?] = sourceIDs.isEmpty ? [nil] : sourceIDs.map { $0 }
         for sourceID in idsToCheck {
             let result = await BookServiceActor.shared.checkBookUpdatePermission(
-                sourceID: sourceID,
+                sourceID: sourceID
             )
             if case .allowed = result {
                 continue
@@ -795,7 +795,9 @@ struct HomeView: View {
             switch item.content {
                 case .mediaGrid(let config):
                     matched = allBooks
-                    if let tag = config.tagFilter { matched = matched.filter { $0.matchesTag(tag) } }
+                    if let tag = config.tagFilter {
+                        matched = matched.filter { $0.matchesTag(tag) }
+                    }
                     if let series = config.seriesFilter {
                         matched = matched.filter { $0.matchesSeries(series) }
                     }

@@ -39,7 +39,7 @@ public enum SilveranMigrations {
     }
 
     private static func runBookSourceRegistryMigration(
-        using filesystem: FilesystemActor,
+        using filesystem: FilesystemActor
     ) async -> [BookSourceRecord] {
         do {
             if let sources = try await filesystem.loadBookSources(), !sources.isEmpty {
@@ -67,7 +67,7 @@ public enum SilveranMigrations {
     }
 
     private static func runPendingProgressQueueMigrations(
-        using filesystem: FilesystemActor,
+        using filesystem: FilesystemActor
     ) async {
         do {
             try await filesystem.runPendingProgressQueueMigrations()

@@ -475,7 +475,9 @@ public final class MediaViewModel {
         )
         cachedBookPaths = paths
         removableCachedBookPaths = snapshot.cachedMediaPaths
-        let sourceKindsByID = Dictionary(uniqueKeysWithValues: bookSources.map { ($0.id, $0.kind) })
+        let sourceKindsByID = Dictionary(
+            uniqueKeysWithValues: bookSources.map { ($0.id, $0.kind) }
+        )
         folderSourceBookIds = Set(
             libraryMetadata.filter { book in
                 sourceKindsByID[book.sourceID ?? ""] == .localFolder

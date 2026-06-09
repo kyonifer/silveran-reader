@@ -194,10 +194,14 @@ public enum MediaGridSortOption: String, CaseIterable, Identifiable, Sendable {
                 let result = rhsAuthor.localizedCaseInsensitiveCompare(lhsAuthor)
                 return result == .orderedSame ? lhs.title.articleStrippedCompare(rhs.title) : result
             case .progressHighToLow:
-                if lhs.progress == rhs.progress { return lhs.title.articleStrippedCompare(rhs.title) }
+                if lhs.progress == rhs.progress {
+                    return lhs.title.articleStrippedCompare(rhs.title)
+                }
                 return lhs.progress > rhs.progress ? .orderedAscending : .orderedDescending
             case .progressLowToHigh:
-                if lhs.progress == rhs.progress { return lhs.title.articleStrippedCompare(rhs.title) }
+                if lhs.progress == rhs.progress {
+                    return lhs.title.articleStrippedCompare(rhs.title)
+                }
                 return lhs.progress < rhs.progress ? .orderedAscending : .orderedDescending
             case .recentlyRead:
                 let lhsDate = lhs.position?.updatedAt ?? ""
@@ -572,7 +576,8 @@ public actor LibraryDerivationActor {
     {
         let request = input.request
         let baseItems = baseItems(for: request, metadata: input.metadata)
-        let catalog = request.includeFilterOptions
+        let catalog =
+            request.includeFilterOptions
             ? catalogItems(for: request, metadata: input.metadata)
             : []
         let locationInfo = locationInfo(
@@ -619,7 +624,7 @@ public actor LibraryDerivationActor {
         let smartShelfBooks = Dictionary(
             uniqueKeysWithValues: input.smartShelves.map { shelf in
                 (shelf.id, context.booksForShelf(shelf))
-            },
+            }
         )
 
         var groups = LibraryGroupSnapshot()
@@ -765,9 +770,9 @@ public actor LibraryDerivationActor {
                     MediaGridLocationInfo(
                         isDownloaded: hasDownloadedContent && !isLocal,
                         isLocalStandalone: isLocal,
-                    )
+                    ),
                 )
-            },
+            }
         )
     }
 
@@ -1660,12 +1665,12 @@ public actor LibraryDerivationActor {
         mutating func sourceGroups(_ kind: MediaKind) -> [LibraryNamedBooksGroup] {
             let sourceOrder = ["Storyteller", "Local Files", "Unknown"]
             return namedGroups(kind) { $0.source ?? "Unknown" }
-            .sorted { a, b in
-                let indexA = sourceOrder.firstIndex(of: a.name) ?? sourceOrder.count
-                let indexB = sourceOrder.firstIndex(of: b.name) ?? sourceOrder.count
-                if indexA != indexB { return indexA < indexB }
-                return a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending
-            }
+                .sorted { a, b in
+                    let indexA = sourceOrder.firstIndex(of: a.name) ?? sourceOrder.count
+                    let indexB = sourceOrder.firstIndex(of: b.name) ?? sourceOrder.count
+                    if indexA != indexB { return indexA < indexB }
+                    return a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending
+                }
         }
 
         private func namedGroups(

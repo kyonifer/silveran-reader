@@ -288,21 +288,26 @@ struct BookContextMenuContent: View {
 
     private func confirmDeleteLocalDownload(_ category: LocalMediaCategory) {
         let label = localMediaLabel(category)
-        guard confirmDestructiveAction(
-            title: "Delete Local \(label)?",
-            message: "This will remove the downloaded \(label.lowercased()) from this device.",
-            buttonTitle: "Delete",
-        ) else { return }
+        guard
+            confirmDestructiveAction(
+                title: "Delete Local \(label)?",
+                message: "This will remove the downloaded \(label.lowercased()) from this device.",
+                buttonTitle: "Delete",
+            )
+        else { return }
         mediaViewModel.deleteDownload(for: item, category: category)
     }
 
     private func confirmDeleteSourceAsset(_ format: StorytellerBookFormat) {
         let label = sourceAssetLabel(format)
-        guard confirmDestructiveAction(
-            title: "Delete \(label) from Folder?",
-            message: "This will permanently delete the \(label.lowercased()) file from the folder source. This cannot be undone.",
-            buttonTitle: "Delete",
-        ) else { return }
+        guard
+            confirmDestructiveAction(
+                title: "Delete \(label) from Folder?",
+                message:
+                    "This will permanently delete the \(label.lowercased()) file from the folder source. This cannot be undone.",
+                buttonTitle: "Delete",
+            )
+        else { return }
         Task {
             let result = await BookServiceActor.shared.deleteBookAsset(
                 item.id,
@@ -328,11 +333,14 @@ struct BookContextMenuContent: View {
     }
 
     private func confirmDeleteSourceBook() {
-        guard confirmDestructiveAction(
-            title: "Delete All from Folder?",
-            message: "This will permanently delete \(item.title) and all its media from the folder source. This cannot be undone.",
-            buttonTitle: "Delete All",
-        ) else { return }
+        guard
+            confirmDestructiveAction(
+                title: "Delete All from Folder?",
+                message:
+                    "This will permanently delete \(item.title) and all its media from the folder source. This cannot be undone.",
+                buttonTitle: "Delete All",
+            )
+        else { return }
         Task {
             let success = await mediaViewModel.deleteBookFromSource(item)
             mediaViewModel.showSyncNotification(

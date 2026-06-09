@@ -219,7 +219,8 @@ public actor FolderSourceActor: BookSourceActor {
         try await filesystem.ensureDirectoryExists(at: tempDirectory)
 
         let isAudiobook = category == .audio
-        let filename = isAudiobook
+        let filename =
+            isAudiobook
             ? "\(sourceURL.deletingLastPathComponent().deletingLastPathComponent().lastPathComponent).audiobook"
             : sourceURL.lastPathComponent
         let tempURL = tempDirectory.appendingPathComponent(
@@ -605,10 +606,12 @@ public actor FolderSourceActor: BookSourceActor {
         if pathCache[bookID] == nil {
             _ = await fetchLibraryInformation()
         }
-        guard let destinationDirectory = existingCategoryDirectory(
-            for: bookID,
-            category: category,
-        ) else {
+        guard
+            let destinationDirectory = existingCategoryDirectory(
+                for: bookID,
+                category: category,
+            )
+        else {
             return
         }
 
@@ -664,7 +667,8 @@ public actor FolderSourceActor: BookSourceActor {
     }
 
     private func savedMetadata(in folderURL: URL) async throws -> [BookMetadata] {
-        if let folderMetadata = try await filesystem.loadFolderSourceLibraryMetadata(in: folderURL) {
+        if let folderMetadata = try await filesystem.loadFolderSourceLibraryMetadata(in: folderURL)
+        {
             return folderMetadata.map { book in
                 var stamped = book
                 stamped.sourceID = sourceRecordValue.id
@@ -943,7 +947,8 @@ public actor FolderSourceActor: BookSourceActor {
             includingPropertiesForKeys: [.isDirectoryKey],
             options: [.skipsHiddenFiles],
         )
-        return contents
+        return
+            contents
             .filter { url in
                 guard url.lastPathComponent != "manifest.json",
                     (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) != true
@@ -1030,7 +1035,9 @@ public actor FolderSourceActor: BookSourceActor {
         guard fileComponents.count > baseComponents.count,
             Array(fileComponents.prefix(baseComponents.count)) == baseComponents
         else {
-            throw LocalMediaError.importFailed("Audiobook package file is outside its source folder")
+            throw LocalMediaError.importFailed(
+                "Audiobook package file is outside its source folder"
+            )
         }
         return fileComponents.dropFirst(baseComponents.count).joined(separator: "/")
     }
@@ -1218,7 +1225,8 @@ public actor FolderSourceActor: BookSourceActor {
         let invalid = CharacterSet(charactersIn: "/\\?%*|\"<>:")
             .union(.newlines)
             .union(.controlCharacters)
-        let sanitized = input
+        let sanitized =
+            input
             .components(separatedBy: invalid)
             .joined(separator: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)

@@ -1035,7 +1035,8 @@ struct MediaTableView: NSViewRepresentable {
             let isFolderBook = mediaViewModel.isLocalFolderBook(item.id)
 
             if isFolderBook
-                && (item.hasAvailableEbook || item.hasAvailableAudiobook || item.hasAvailableReadaloud)
+                && (item.hasAvailableEbook || item.hasAvailableAudiobook
+                    || item.hasAvailableReadaloud)
             {
                 menu.addItem(.separator())
                 let deleteMenu = NSMenu()
@@ -1125,7 +1126,8 @@ struct MediaTableView: NSViewRepresentable {
             }
 
             if item.hasAvailableEbook && item.hasAvailableAudiobook
-                && (mediaViewModel.isServerBook(item.id) || mediaViewModel.isLocalFolderBook(item.id))
+                && (mediaViewModel.isServerBook(item.id)
+                    || mediaViewModel.isLocalFolderBook(item.id))
             {
                 menu.addItem(.separator())
                 let local = NSMenuItem(
@@ -1368,31 +1370,37 @@ struct MediaTableView: NSViewRepresentable {
 
         @objc private func deleteLocalEbook(_ sender: NSMenuItem) {
             guard let item = sender.representedObject as? BookMetadata else { return }
-            guard confirmDestructiveAction(
-                title: "Delete Local Ebook?",
-                message: "This will remove the downloaded ebook from this device.",
-                buttonTitle: "Delete",
-            ) else { return }
+            guard
+                confirmDestructiveAction(
+                    title: "Delete Local Ebook?",
+                    message: "This will remove the downloaded ebook from this device.",
+                    buttonTitle: "Delete",
+                )
+            else { return }
             mediaViewModel.deleteDownload(for: item, category: .ebook)
         }
 
         @objc private func deleteLocalAudiobook(_ sender: NSMenuItem) {
             guard let item = sender.representedObject as? BookMetadata else { return }
-            guard confirmDestructiveAction(
-                title: "Delete Local Audiobook?",
-                message: "This will remove the downloaded audiobook from this device.",
-                buttonTitle: "Delete",
-            ) else { return }
+            guard
+                confirmDestructiveAction(
+                    title: "Delete Local Audiobook?",
+                    message: "This will remove the downloaded audiobook from this device.",
+                    buttonTitle: "Delete",
+                )
+            else { return }
             mediaViewModel.deleteDownload(for: item, category: .audio)
         }
 
         @objc private func deleteLocalReadaloud(_ sender: NSMenuItem) {
             guard let item = sender.representedObject as? BookMetadata else { return }
-            guard confirmDestructiveAction(
-                title: "Delete Local Readaloud?",
-                message: "This will remove the downloaded readaloud from this device.",
-                buttonTitle: "Delete",
-            ) else { return }
+            guard
+                confirmDestructiveAction(
+                    title: "Delete Local Readaloud?",
+                    message: "This will remove the downloaded readaloud from this device.",
+                    buttonTitle: "Delete",
+                )
+            else { return }
             mediaViewModel.deleteDownload(for: item, category: .synced)
         }
 
@@ -1410,11 +1418,14 @@ struct MediaTableView: NSViewRepresentable {
 
         @objc private func deleteSourceBook(_ sender: NSMenuItem) {
             guard let item = sender.representedObject as? BookMetadata else { return }
-            guard confirmDestructiveAction(
-                title: "Delete All from Folder?",
-                message: "This will permanently delete \(item.title) and all its media from the folder source. This cannot be undone.",
-                buttonTitle: "Delete All",
-            ) else { return }
+            guard
+                confirmDestructiveAction(
+                    title: "Delete All from Folder?",
+                    message:
+                        "This will permanently delete \(item.title) and all its media from the folder source. This cannot be undone.",
+                    buttonTitle: "Delete All",
+                )
+            else { return }
             Task {
                 let success = await mediaViewModel.deleteBookFromSource(item)
                 mediaViewModel.showSyncNotification(
@@ -1431,11 +1442,14 @@ struct MediaTableView: NSViewRepresentable {
         private func deleteSourceAsset(_ sender: NSMenuItem, format: StorytellerBookFormat) {
             guard let item = sender.representedObject as? BookMetadata else { return }
             let label = sourceAssetLabel(format)
-            guard confirmDestructiveAction(
-                title: "Delete \(label) from Folder?",
-                message: "This will permanently delete the \(label.lowercased()) file from the folder source. This cannot be undone.",
-                buttonTitle: "Delete",
-            ) else { return }
+            guard
+                confirmDestructiveAction(
+                    title: "Delete \(label) from Folder?",
+                    message:
+                        "This will permanently delete the \(label.lowercased()) file from the folder source. This cannot be undone.",
+                    buttonTitle: "Delete",
+                )
+            else { return }
             Task {
                 let result = await BookServiceActor.shared.deleteBookAsset(
                     item.id,

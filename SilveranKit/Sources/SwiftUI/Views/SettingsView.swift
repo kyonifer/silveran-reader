@@ -633,7 +633,7 @@ private struct MacGeneralSettingsView: View {
 private struct MacBookSourcesSettingsView: View {
     var body: some View {
         StorytellerServerSettingsView()
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 

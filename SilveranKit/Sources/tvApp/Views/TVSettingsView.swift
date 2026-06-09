@@ -146,7 +146,9 @@ struct TVSettingsView: View {
             }
 
         }
-        .navigationTitle(settingsViewModel.isAddingSource ? "Add Server" : settingsViewModel.sourceName)
+        .navigationTitle(
+            settingsViewModel.isAddingSource ? "Add Server" : settingsViewModel.sourceName
+        )
         .confirmationDialog(
             "Remove this server?",
             isPresented: $showRemoveConfirmation,
@@ -160,7 +162,9 @@ struct TVSettingsView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This will delete saved credentials, cached metadata, downloaded media, and covers for books from this server.")
+            Text(
+                "This will delete saved credentials, cached metadata, downloaded media, and covers for books from this server."
+            )
         }
     }
 

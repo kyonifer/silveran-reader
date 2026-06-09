@@ -961,9 +961,9 @@ struct MediaGridView: View {
                 .font(.title)
                 .foregroundStyle(.secondary)
             Text(emptyStateMessage)
-            .font(.body)
-            .foregroundStyle(.tertiary)
-            .multilineTextAlignment(.center)
+                .font(.body)
+                .foregroundStyle(.tertiary)
+                .multilineTextAlignment(.center)
         }
         .frame(maxWidth: 500)
         .frame(maxWidth: .infinity, alignment: .center)
@@ -1144,9 +1144,9 @@ struct MediaGridView: View {
                         .multilineTextAlignment(.center)
                     #else
                     Text(emptyStateMessage)
-                    .font(.body)
-                    .foregroundStyle(.tertiary)
-                    .multilineTextAlignment(.center)
+                        .font(.body)
+                        .foregroundStyle(.tertiary)
+                        .multilineTextAlignment(.center)
                     #endif
                 }
                 .frame(maxWidth: 500)
@@ -1459,7 +1459,7 @@ struct MediaGridView: View {
         let idsToCheck: [BookSourceID?] = sourceIDs.isEmpty ? [nil] : sourceIDs.map { $0 }
         for sourceID in idsToCheck {
             let result = await BookServiceActor.shared.checkBookUpdatePermission(
-                sourceID: sourceID,
+                sourceID: sourceID
             )
             if case .allowed = result {
                 continue

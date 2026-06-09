@@ -176,8 +176,8 @@ public struct BookServiceLibrarySnapshot: Sendable {
     }
 }
 
-public extension BookSourceKind {
-    var displayName: String {
+extension BookSourceKind {
+    public var displayName: String {
         switch self {
             case .storyteller:
                 return "Storyteller"
@@ -186,7 +186,7 @@ public extension BookSourceKind {
         }
     }
 
-    var defaultName: String {
+    public var defaultName: String {
         switch self {
             case .storyteller:
                 return "My Storyteller Server"
@@ -221,8 +221,8 @@ public protocol BookSourceActor: Actor {
     func fetchBookPosition(bookId: String) async -> BookReadingPosition?
 }
 
-public extension BookSourceCapabilities {
-    static var storyteller: BookSourceCapabilities {
+extension BookSourceCapabilities {
+    public static var storyteller: BookSourceCapabilities {
         BookSourceCapabilities(
             canEditMetadata: true,
             canManageMedia: true,
@@ -232,7 +232,7 @@ public extension BookSourceCapabilities {
         )
     }
 
-    static var localFolder: BookSourceCapabilities {
+    public static var localFolder: BookSourceCapabilities {
         BookSourceCapabilities(
             canEditMetadata: false,
             canManageMedia: true,

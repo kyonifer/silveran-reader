@@ -98,7 +98,10 @@ struct ImportLocalFileView: View {
 
     private func deleteLocalFile(_ book: BookMetadata) {
         Task {
-            let success = await BookServiceActor.shared.deleteBook(book.id, sourceID: book.sourceID)
+            let success = await BookServiceActor.shared.deleteBook(
+                book.id,
+                sourceID: book.sourceID,
+            )
             if success {
                 await refreshLocalFiles()
             } else {

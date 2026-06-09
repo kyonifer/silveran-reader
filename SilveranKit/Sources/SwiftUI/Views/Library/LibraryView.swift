@@ -591,7 +591,7 @@ public struct LibraryView: View {
         let idsToCheck: [BookSourceID?] = sourceIDs.isEmpty ? [nil] : sourceIDs.map { $0 }
         for sourceID in idsToCheck {
             let result = await BookServiceActor.shared.checkBookUpdatePermission(
-                sourceID: sourceID,
+                sourceID: sourceID
             )
             if case .allowed = result {
                 continue

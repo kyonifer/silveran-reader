@@ -345,7 +345,7 @@ public struct ReadaloudGeneratorView: View {
                     title: "Current book",
                     detail: "Add readaloud to \(selectedSourceDisplayName)",
                 )
-                    .opacity(viewModel.uploadAllToServer ? 1 : 0.45)
+                .opacity(viewModel.uploadAllToServer ? 1 : 0.45)
 
                 Toggle("Save to folder instead", isOn: customFolderOverrideBinding)
                     .disabled(viewModel.state == .processing)
@@ -466,7 +466,7 @@ public struct ReadaloudGeneratorView: View {
         .background(Color(nsColor: .controlBackgroundColor).opacity(0.55))
         .overlay(
             RoundedRectangle(cornerRadius: 8)
-                .stroke(Color(nsColor: .separatorColor).opacity(0.55), lineWidth: 1),
+                .stroke(Color(nsColor: .separatorColor).opacity(0.55), lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
@@ -477,12 +477,14 @@ public struct ReadaloudGeneratorView: View {
         iconName: String,
     ) -> some View {
         let item = sourceWorkflowBook
-        let isDownloaded = item.map {
-            mediaViewModel.isCategoryDownloaded(category, for: $0)
-        } ?? (sourceMediaURL(for: category) != nil)
-        let isDownloading = item.map {
-            mediaViewModel.isCategoryDownloadInProgress(for: $0, category: category)
-        } ?? false
+        let isDownloaded =
+            item.map {
+                mediaViewModel.isCategoryDownloaded(category, for: $0)
+            } ?? (sourceMediaURL(for: category) != nil)
+        let isDownloading =
+            item.map {
+                mediaViewModel.isCategoryDownloadInProgress(for: $0, category: category)
+            } ?? false
         let progress = item.flatMap {
             mediaViewModel.downloadProgressFraction(for: $0, category: category)
         }
@@ -542,7 +544,7 @@ public struct ReadaloudGeneratorView: View {
         .background(Color(nsColor: .controlBackgroundColor).opacity(0.35))
         .overlay(
             RoundedRectangle(cornerRadius: 8)
-                .stroke(Color(nsColor: .separatorColor).opacity(0.45), lineWidth: 1),
+                .stroke(Color(nsColor: .separatorColor).opacity(0.45), lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
@@ -561,8 +563,11 @@ public struct ReadaloudGeneratorView: View {
     private func folderPathRow(suggestedFilename: String?) -> some View {
         HStack {
             Text("Folder:")
-            TextField("Folder path", text: customOutputFolderBinding(suggestedFilename: suggestedFilename))
-                .textFieldStyle(.roundedBorder)
+            TextField(
+                "Folder path",
+                text: customOutputFolderBinding(suggestedFilename: suggestedFilename),
+            )
+            .textFieldStyle(.roundedBorder)
 
             Button("Browse...") {
                 let panel = NSOpenPanel()
@@ -604,8 +609,10 @@ public struct ReadaloudGeneratorView: View {
     }
 
     private var sourceOutputToggleLabel: String {
-        let sourceKind = viewModel.uploadSources.first { $0.id == viewModel.selectedUploadSourceID }?
-            .kind
+        let sourceKind = viewModel.uploadSources.first {
+            $0.id == viewModel.selectedUploadSourceID
+        }?
+        .kind
         let sourceName =
             switch sourceKind {
                 case .storyteller:
@@ -798,7 +805,8 @@ public struct ReadaloudGeneratorView: View {
         guard let bookID = viewModel.sourceOutputBookID else { return }
 
         let newEpubURL = mediaViewModel.localMediaPath(for: bookID, category: .ebook)
-        let newAudioURLs = mediaViewModel.localMediaPath(for: bookID, category: .audio)
+        let newAudioURLs =
+            mediaViewModel.localMediaPath(for: bookID, category: .audio)
             .map(resolveSourceAudioURLs) ?? []
 
         let shouldReloadChapters = viewModel.epubURL == nil && newEpubURL != nil

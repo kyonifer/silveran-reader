@@ -191,7 +191,8 @@ struct TVBookDetailView: View {
                         .frame(width: 236)
                 }
             } else if isDownloading {
-                Button {} label: {
+                Button {
+                } label: {
                     Label("Downloading", systemImage: "arrow.down.circle")
                         .frame(width: 236)
                 }

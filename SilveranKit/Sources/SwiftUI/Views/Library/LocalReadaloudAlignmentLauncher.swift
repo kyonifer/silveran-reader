@@ -10,7 +10,8 @@ enum LocalReadaloudAlignmentLauncher {
         mediaViewModel: MediaViewModel,
     ) -> ReadaloudGeneratorData? {
         let ebookURL = mediaViewModel.localMediaPath(for: item.id, category: .ebook)
-        let audioURLs = mediaViewModel.localMediaPath(for: item.id, category: .audio)
+        let audioURLs =
+            mediaViewModel.localMediaPath(for: item.id, category: .audio)
             .map(resolveAudioURLs) ?? []
 
         return ReadaloudGeneratorData(
@@ -46,7 +47,9 @@ enum LocalReadaloudAlignmentLauncher {
                 return FileManager.default.fileExists(atPath: audioURL.path) ? audioURL : nil
             }
         } catch {
-            debugLog("[LocalReadaloudAlignmentLauncher] Failed to resolve audiobook manifest: \(error)")
+            debugLog(
+                "[LocalReadaloudAlignmentLauncher] Failed to resolve audiobook manifest: \(error)"
+            )
             return []
         }
     }

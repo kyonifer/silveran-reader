@@ -738,7 +738,7 @@ extension AppleWatchActor: WCSessionDelegate {
                     do {
                         if let resolvedSourceID = await self.storytellerSourceID(for: sourceID),
                             let credentials = try await AuthenticationActor.shared.loadCredentials(
-                                sourceID: resolvedSourceID,
+                                sourceID: resolvedSourceID
                             )
                         {
                             sendableReply.reply([
