@@ -468,44 +468,75 @@ struct MetadataCoverImportView: View {
     }
 
     private func currentCoverPanel(scope: MetadataCoverScope) -> some View {
-        HStack(alignment: .center, spacing: 12) {
-            coverImageView(
-                data: replacementCover(scope: scope)?.data,
-                serverImage: currentServerCover(scope: scope),
-                aspectRatio: scope.aspectRatio,
-            )
-            .frame(width: currentCoverWidth(scope), height: currentCoverHeight(scope))
-            .metadataEditorBoundary(cornerRadius: 8)
+        let coverWidth = currentCoverWidth(scope)
+        let coverHeight = currentCoverHeight(scope)
 
-            VStack(alignment: .leading, spacing: 5) {
-                Text("Current Cover")
-                    .font(.subheadline.weight(.semibold))
-                Text(
-                    replacementCover(scope: scope) == nil
-                        ? "Storyteller cover" : "Replacement staged"
-                )
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                if let resolution = currentResolution(scope: scope) {
-                    Text(resolution)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                if let preview = currentPreview(scope: scope) {
-                    Button {
-                        previewingCover = preview
-                    } label: {
-                        Label("Preview", systemImage: "magnifyingglass")
+        return GeometryReader { geometry in
+            if geometry.size.width >= coverWidth + 180 {
+                let detailsLeading = (geometry.size.width / 2) + (coverWidth / 2) + 12
+
+                ZStack {
+                    currentCoverImage(scope: scope)
+                        .frame(width: coverWidth, height: coverHeight)
+
+                    HStack {
+                        Spacer()
+                            .frame(width: detailsLeading)
+                        currentCoverDetails(scope: scope)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Spacer(minLength: 0)
                     }
-                    .font(.caption)
-                    .buttonStyle(.borderless)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                HStack(alignment: .center, spacing: 12) {
+                    Spacer(minLength: 0)
+                    currentCoverImage(scope: scope)
+                        .frame(width: coverWidth, height: coverHeight)
+                    currentCoverDetails(scope: scope)
+                    Spacer(minLength: 0)
                 }
             }
-            Spacer()
         }
         .padding(10)
         .frame(height: 168, alignment: .center)
         .metadataEditorBoundary(cornerRadius: 8)
+    }
+
+    private func currentCoverImage(scope: MetadataCoverScope) -> some View {
+        coverImageView(
+            data: replacementCover(scope: scope)?.data,
+            serverImage: currentServerCover(scope: scope),
+            aspectRatio: scope.aspectRatio,
+        )
+        .metadataEditorBoundary(cornerRadius: 8)
+    }
+
+    private func currentCoverDetails(scope: MetadataCoverScope) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text("Current Cover")
+                .font(.subheadline.weight(.semibold))
+            Text(
+                replacementCover(scope: scope) == nil
+                    ? "Storyteller cover" : "Replacement staged"
+            )
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            if let resolution = currentResolution(scope: scope) {
+                Text(resolution)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if let preview = currentPreview(scope: scope) {
+                Button {
+                    previewingCover = preview
+                } label: {
+                    Label("Preview", systemImage: "magnifyingglass")
+                }
+                .font(.caption)
+                .buttonStyle(.borderless)
+            }
+        }
     }
 
     private func sourceColumn(source: MetadataCoverSource, scope: MetadataCoverScope) -> some View {

@@ -347,29 +347,13 @@ struct MediaTableRowView: View {
         } label: {
             ZStack {
                 if status.downloading {
-                    if isHovered {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 18))
-                            .foregroundStyle(color)
-                    } else if let progress = status.progress {
-                        ZStack {
-                            Circle()
-                                .stroke(color.opacity(0.3), lineWidth: 2)
-                            Circle()
-                                .trim(from: 0, to: progress)
-                                .stroke(color, lineWidth: 2)
-                                .rotationEffect(.degrees(-90))
-                            #if os(iOS)
-                            Image(systemName: "xmark")
-                                .font(.system(size: 8, weight: .bold))
-                                .foregroundStyle(color)
-                            #endif
-                        }
-                        .frame(width: 18, height: 18)
-                    } else {
-                        ProgressView()
-                            .controlSize(.small)
-                    }
+                    DownloadCancelProgressIcon(
+                        progress: status.progress,
+                        color: color,
+                        size: 18,
+                        lineWidth: 2,
+                        showsCancel: isHovered,
+                    )
                 } else if status.failed {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.system(size: 14))

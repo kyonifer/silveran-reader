@@ -328,6 +328,7 @@ public struct LibraryDerivationInput: Sendable {
     public var progress: [String: BookProgress]
     public var smartShelves: [SmartShelf]
     public var sidebarContents: [SidebarContentKind]
+    public var incompleteDownloadCount: Int
 
     public init(
         generation: Int,
@@ -339,6 +340,7 @@ public struct LibraryDerivationInput: Sendable {
         progress: [String: BookProgress],
         smartShelves: [SmartShelf],
         sidebarContents: [SidebarContentKind],
+        incompleteDownloadCount: Int = 0,
     ) {
         self.generation = generation
         self.deriveGroups = deriveGroups
@@ -349,6 +351,7 @@ public struct LibraryDerivationInput: Sendable {
         self.progress = progress
         self.smartShelves = smartShelves
         self.sidebarContents = sidebarContents
+        self.incompleteDownloadCount = incompleteDownloadCount
     }
 }
 
@@ -1064,9 +1067,10 @@ public actor LibraryDerivationActor {
 
         mutating func badgeCount(for content: SidebarContentKind) -> Int {
             switch content {
-                case .home, .placeholder, .currentlyDownloading, .importLocalFile,
-                    .storytellerServer:
+                case .home, .placeholder, .importLocalFile, .storytellerServer:
                     return 0
+                case .currentlyDownloading:
+                    return input.incompleteDownloadCount
                 case .mediaGrid(let config):
                     return mediaGridCount(config)
                 case .seriesView(let mediaKind):

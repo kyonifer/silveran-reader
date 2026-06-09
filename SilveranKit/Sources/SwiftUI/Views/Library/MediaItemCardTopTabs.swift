@@ -1,5 +1,40 @@
 import SwiftUI
 
+struct DownloadCancelProgressIcon: View {
+    let progress: Double?
+    let color: Color
+    let size: CGFloat
+    let lineWidth: CGFloat
+    let showsCancel: Bool
+
+    var body: some View {
+        ZStack {
+            if let progress {
+                Circle()
+                    .stroke(color.opacity(0.3), lineWidth: lineWidth)
+                Circle()
+                    .trim(from: 0, to: min(max(progress, 0), 1))
+                    .stroke(color, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+            } else {
+                ProgressView()
+                    .controlSize(.small)
+                    .tint(color)
+            }
+
+            if showsCancel {
+                Circle()
+                    .fill(Color.black.opacity(0.7))
+                    .frame(width: max(size - 8, 10), height: max(size - 8, 10))
+                Image(systemName: "xmark")
+                    .font(.system(size: max(size * 0.42, 8), weight: .bold))
+                    .foregroundStyle(color)
+            }
+        }
+        .frame(width: size, height: size)
+    }
+}
+
 struct MediaItemCardTopTabs: View {
     let item: BookMetadata
     let coverWidth: CGFloat
@@ -182,24 +217,13 @@ struct MediaItemCardTopTabsButtonOverlay: View {
             ZStack {
                 Group {
                     if case .downloading(let progress) = status {
-                        if isHovered {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 24))
-                        } else if let progress = progress {
-                            ZStack {
-                                Circle()
-                                    .stroke(statusColor.opacity(0.3), lineWidth: 2.5)
-                                Circle()
-                                    .trim(from: 0, to: progress)
-                                    .stroke(statusColor, lineWidth: 2.5)
-                                    .rotationEffect(.degrees(-90))
-                            }
-                            .frame(width: 24, height: 24)
-                        } else {
-                            ProgressView()
-                                .controlSize(.small)
-                                .tint(statusColor)
-                        }
+                        DownloadCancelProgressIcon(
+                            progress: progress,
+                            color: statusColor,
+                            size: 24,
+                            lineWidth: 2.5,
+                            showsCancel: isHovered,
+                        )
                     } else if isHovered && status == .availableNotDownloaded {
                         if hasConnectionError {
                             ZStack {

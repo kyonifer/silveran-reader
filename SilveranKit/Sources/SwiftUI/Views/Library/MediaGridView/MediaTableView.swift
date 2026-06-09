@@ -1068,14 +1068,14 @@ struct MediaTableView: NSViewRepresentable {
                 }
                 deleteMenu.addItem(.separator())
                 let del = NSMenuItem(
-                    title: "Delete All from Folder",
+                    title: "Delete All",
                     action: #selector(deleteSourceBook(_:)),
                     keyEquivalent: "",
                 )
                 del.target = self
                 del.representedObject = item
                 del.attributedTitle = NSAttributedString(
-                    string: "Delete All from Folder",
+                    string: "Delete All",
                     attributes: [.foregroundColor: NSColor.systemRed],
                 )
                 deleteMenu.addItem(del)
@@ -1468,6 +1468,10 @@ struct MediaTableView: NSViewRepresentable {
             let menuItem = NSMenuItem(title: title, action: action, keyEquivalent: "")
             menuItem.target = self
             menuItem.representedObject = item
+            menuItem.attributedTitle = NSAttributedString(
+                string: title,
+                attributes: [.foregroundColor: NSColor.systemRed],
+            )
             return menuItem
         }
 
@@ -2794,23 +2798,13 @@ private struct MediaIndicatorCellContent: View {
         } label: {
             ZStack {
                 if case .downloading(let progress) = status {
-                    if isHovered {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: iconSize))
-                    } else if let progress {
-                        ZStack {
-                            Circle()
-                                .stroke(status.color.opacity(0.3), lineWidth: 2.5)
-                            Circle()
-                                .trim(from: 0, to: progress)
-                                .stroke(status.color, lineWidth: 2.5)
-                                .rotationEffect(.degrees(-90))
-                        }
-                        .frame(width: iconSize, height: iconSize)
-                    } else {
-                        ProgressView()
-                            .controlSize(.small)
-                    }
+                    DownloadCancelProgressIcon(
+                        progress: progress,
+                        color: status.color,
+                        size: iconSize,
+                        lineWidth: 2.5,
+                        showsCancel: isHovered,
+                    )
                 } else if isHovered && status == .availableNotDownloaded {
                     if hasConnectionError {
                         Image(systemName: "exclamationmark.triangle.fill")

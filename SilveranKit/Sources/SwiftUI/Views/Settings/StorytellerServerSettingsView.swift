@@ -168,7 +168,7 @@ public struct StorytellerServerSettingsView: View {
     }
 }
 
-private struct BookSourceEditorView: View {
+struct BookSourceEditorView: View {
     let source: BookSourceRecord?
     let onSaved: () async -> Void
 
@@ -190,6 +190,19 @@ private struct BookSourceEditorView: View {
     @State private var showRemoveDataConfirmation = false
 
     @Environment(\.dismiss) private var dismiss
+
+    init(source: BookSourceRecord?, onSaved: @escaping () async -> Void) {
+        self.source = source
+        self.onSaved = onSaved
+
+        let initialKind = source?.kind ?? .storyteller
+        _kind = State(initialValue: initialKind)
+        _name = State(initialValue: source?.name ?? Self.defaultName(for: initialKind))
+        _folderPath = State(initialValue: source?.storagePath ?? "")
+        _folderBookmarkData = State(initialValue: source?.storageBookmarkData)
+        _originalFolderPath = State(initialValue: source?.storagePath ?? "")
+        _originalFolderBookmarkData = State(initialValue: source?.storageBookmarkData)
+    }
 
     private enum ConnectionTestStatus: Equatable {
         case notTested
@@ -333,8 +346,8 @@ private struct BookSourceEditorView: View {
                 }
             }
 
+            #if os(iOS)
             Section {
-                #if os(iOS)
                 actionRowButton(
                     title: primaryActionTitle,
                     isDisabled: !canSave,
@@ -352,31 +365,6 @@ private struct BookSourceEditorView: View {
                         await testConnection()
                     }
                 }
-                #else
-                HStack {
-                    Button(primaryActionTitle) {
-                        Task {
-                            await saveSource()
-                        }
-                    }
-                    .disabled(!canSave)
-
-                    if isExistingSource && kind == .storyteller {
-                        Button("Test Connection") {
-                            Task {
-                                await testConnection()
-                            }
-                        }
-                        .disabled(isLoading || !canSave)
-                    }
-
-                    Spacer()
-
-                    if shouldShowConnectionStatus {
-                        connectionStatusView
-                    }
-                }
-                #endif
 
                 if isExistingSource {
                     Button(role: .destructive) {
@@ -388,6 +376,7 @@ private struct BookSourceEditorView: View {
                     .disabled(isLoading)
                 }
             }
+            #endif
 
             if case .failure(let message) = connectionStatus {
                 Section {
@@ -417,22 +406,20 @@ private struct BookSourceEditorView: View {
         .modifier(SoftScrollEdgeModifier())
         .frame(maxWidth: 600)
         .frame(maxWidth: .infinity, alignment: .center)
+        #if os(macOS)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            macActionBar
+        }
+        #endif
         .navigationTitle(isExistingSource ? name : "Add Book Source")
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
         .toolbar {
+            #if os(iOS)
             if !isExistingSource {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
-                        dismiss()
-                    }
-                }
-            }
-            #if os(macOS)
-            if isExistingSource {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") {
                         dismiss()
                     }
                 }
@@ -453,6 +440,54 @@ private struct BookSourceEditorView: View {
             await loadExistingSource()
         }
     }
+
+    #if os(macOS)
+    private var macActionBar: some View {
+        VStack(spacing: 0) {
+            Divider()
+            HStack {
+                if isExistingSource {
+                    Button(role: .destructive) {
+                        showRemoveDataConfirmation = true
+                    } label: {
+                        Label(removeActionTitle, systemImage: "trash")
+                            .foregroundStyle(.red)
+                    }
+                    .disabled(isLoading)
+                }
+
+                if shouldShowConnectionStatus {
+                    connectionStatusView
+                }
+
+                Spacer()
+
+                Button(isExistingSource ? "Close" : "Cancel") {
+                    dismiss()
+                }
+
+                if isExistingSource && kind == .storyteller {
+                    Button("Test Connection") {
+                        Task {
+                            await testConnection()
+                        }
+                    }
+                    .disabled(isLoading || !canSave)
+                }
+
+                Button(primaryActionTitle) {
+                    Task {
+                        await saveSource()
+                    }
+                }
+                .disabled(!canSave)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+        }
+        .background(.bar)
+    }
+    #endif
 
     private var addFilesHelpButton: some View {
         AddFilesHelpButton(title: "How do I add files to this source?")
@@ -764,13 +799,17 @@ private struct BookSourceEditorView: View {
     }
     #endif
 
-    private func defaultName(for kind: BookSourceKind) -> String {
+    private static func defaultName(for kind: BookSourceKind) -> String {
         switch kind {
             case .storyteller:
                 return BookSourceKind.storyteller.defaultName
             case .localFolder:
                 return BookSourceKind.localFolder.defaultName
         }
+    }
+
+    private func defaultName(for kind: BookSourceKind) -> String {
+        Self.defaultName(for: kind)
     }
 }
 

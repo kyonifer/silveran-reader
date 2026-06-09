@@ -61,6 +61,7 @@ struct SidebarView: View {
     #if os(macOS)
     @Environment(\.openSettings) private var openSettings
     @State private var editingShelf: SmartShelf?
+    @State private var editingBookSource: BookSourceRecord?
     @State private var showCustomizeSidebar: Bool = false
     @State private var showCustomizeSidebarWithDashboard: Bool = false
     #endif
@@ -443,6 +444,16 @@ struct SidebarView: View {
                 Task { await mediaViewModel.saveSmartShelf(updatedShelf) }
             }
         }
+        .sheet(item: $editingBookSource) { source in
+            NavigationStack {
+                BookSourceEditorView(source: source) {
+                    await mediaViewModel.refreshMetadata(source: "SidebarView.editBookSource")
+                    await MainActor.run {
+                        editingBookSource = nil
+                    }
+                }
+            }
+        }
         .sheet(isPresented: $showCustomizeSidebar) {
             CustomizeSidebarView()
         }
@@ -660,6 +671,16 @@ struct SidebarView: View {
                 } label: {
                     Label("Delete Shelf", systemImage: "trash")
                 }
+            }
+        }
+
+        if let sourceID = item.id.bookSourceIDFromSidebarItemID,
+            let source = mediaViewModel.bookSources.first(where: { $0.id == sourceID })
+        {
+            Button {
+                editingBookSource = source
+            } label: {
+                Label("Edit Source...", systemImage: "pencil")
             }
         }
 

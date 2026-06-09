@@ -219,7 +219,9 @@ struct BookContextMenuContent: View {
                         confirmDeleteSourceAsset(.ebook)
                     } label: {
                         Label("Delete Ebook", systemImage: "trash")
+                            .foregroundStyle(.red)
                     }
+                    .tint(.red)
                 }
 
                 if item.hasAvailableAudiobook {
@@ -227,7 +229,9 @@ struct BookContextMenuContent: View {
                         confirmDeleteSourceAsset(.audiobook)
                     } label: {
                         Label("Delete Audiobook", systemImage: "trash")
+                            .foregroundStyle(.red)
                     }
+                    .tint(.red)
                 }
 
                 if item.hasAvailableReadaloud {
@@ -235,7 +239,9 @@ struct BookContextMenuContent: View {
                         confirmDeleteSourceAsset(.readaloud)
                     } label: {
                         Label("Delete Readaloud", systemImage: "trash")
+                            .foregroundStyle(.red)
                     }
+                    .tint(.red)
                 }
 
                 Divider()
@@ -243,12 +249,14 @@ struct BookContextMenuContent: View {
                 Button(role: .destructive) {
                     confirmDeleteSourceBook()
                 } label: {
-                    Label("Delete All from Folder", systemImage: "trash")
+                    Label("Delete All", systemImage: "trash")
                         .foregroundStyle(.red)
                 }
+                .tint(.red)
             } label: {
                 Label("Delete from Folder", systemImage: "trash")
             }
+            .tint(.red)
         } else if ebookCached || audioCached || syncedCached {
             Divider()
 

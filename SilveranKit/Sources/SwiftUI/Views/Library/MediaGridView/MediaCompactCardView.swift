@@ -366,24 +366,13 @@ struct MediaCompactCardView: View {
         } label: {
             ZStack {
                 if case .downloading(let progress) = status {
-                    if isTabHovered {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 24))
-                    } else if let progress = progress {
-                        ZStack {
-                            Circle()
-                                .stroke(color.opacity(0.3), lineWidth: 2.5)
-                            Circle()
-                                .trim(from: 0, to: progress)
-                                .stroke(color, lineWidth: 2.5)
-                                .rotationEffect(.degrees(-90))
-                        }
-                        .frame(width: 24, height: 24)
-                    } else {
-                        ProgressView()
-                            .controlSize(.small)
-                            .tint(color)
-                    }
+                    DownloadCancelProgressIcon(
+                        progress: progress,
+                        color: color,
+                        size: 24,
+                        lineWidth: 2.5,
+                        showsCancel: isTabHovered,
+                    )
                 } else if status == .failed {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.system(size: 18))

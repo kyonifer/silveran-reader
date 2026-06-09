@@ -118,6 +118,7 @@ public final class MediaViewModel {
     @ObservationIgnored private var downloadManagerObserverId: UUID?
     @ObservationIgnored private var cachedMediaObserverId: UUID?
     var downloadStatuses: [String: DownloadProgressState] = [:]
+    private var incompleteDownloadCount: Int = 0
     private var cachedBookPaths: [String: MediaPaths] = [:]
     private var removableCachedBookPaths: [String: MediaPaths] = [:]
     private var folderSourceBookIds: Set<String> = []
@@ -373,8 +374,10 @@ public final class MediaViewModel {
                 guard let self else { return }
                 self.applyDownloadRecords(records)
             }
+            let initialRecords = await DownloadManager.shared.incompleteDownloads
             await MainActor.run { [weak self] in
                 self?.downloadManagerObserverId = id
+                self?.applyDownloadRecords(initialRecords)
             }
         }
     }
@@ -405,6 +408,11 @@ public final class MediaViewModel {
             statuses[record.bookId] = state
         }
         downloadStatuses = statuses
+        let count = records.filter(\.isIncomplete).count
+        if incompleteDownloadCount != count {
+            incompleteDownloadCount = count
+            scheduleLibraryDerivation(reason: "downloadRecords")
+        }
     }
 
     public func refreshMetadata(source: String = "unknown") async {
@@ -579,6 +587,7 @@ public final class MediaViewModel {
             progress: bookProgressCache,
             smartShelves: smartShelves,
             sidebarContents: visibleSidebarContents,
+            incompleteDownloadCount: incompleteDownloadCount,
         )
         libraryDerivationTask?.cancel()
         debugLog(
