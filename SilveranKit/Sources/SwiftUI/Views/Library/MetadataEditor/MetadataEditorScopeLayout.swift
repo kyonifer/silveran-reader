@@ -1606,6 +1606,7 @@ struct ExpandedStringListEditor: View {
     let onChange: () -> Void
     @State private var draft = ""
     @State private var showsAutocomplete = false
+    @State private var selectedSuggestionIndex: Int?
     @FocusState private var draftIsFocused: Bool
 
     private var trimmedDraft: String {
@@ -1622,6 +1623,14 @@ struct ExpandedStringListEditor: View {
         }
     }
 
+    private var displayedSuggestions: [String] {
+        Array(availableSuggestions.prefix(10))
+    }
+
+    private var autocompleteHeight: CGFloat {
+        autocompletePopoverHeight(rowCount: displayedSuggestions.count)
+    }
+
     private var autocompleteIsPresented: Binding<Bool> {
         Binding(
             get: {
@@ -1631,6 +1640,7 @@ struct ExpandedStringListEditor: View {
             set: { isPresented in
                 if !isPresented {
                     showsAutocomplete = false
+                    selectedSuggestionIndex = nil
                 }
             },
         )
@@ -1666,13 +1676,15 @@ struct ExpandedStringListEditor: View {
                     TextField("Add \(placeholder.lowercased())", text: $draft)
                         .textFieldStyle(.plain)
                         .focused($draftIsFocused)
-                        .onSubmit { append(draft) }
+                        .onSubmit { submitDraft() }
                         .onChange(of: draftIsFocused) { _, isFocused in
                             if !isFocused {
                                 showsAutocomplete = false
+                                selectedSuggestionIndex = nil
                             }
                         }
                         .onChange(of: draft) { _, _ in
+                            selectedSuggestionIndex = nil
                             if draftIsFocused && !trimmedDraft.isEmpty {
                                 showsAutocomplete = true
                             } else {
@@ -1684,6 +1696,31 @@ struct ExpandedStringListEditor: View {
                         .popover(isPresented: autocompleteIsPresented, arrowEdge: .bottom) {
                             autocompleteSuggestions
                                 .metadataEditorCompactPopover()
+                        }
+                        .onKeyPress(.tab) {
+                            guard !trimmedDraft.isEmpty,
+                                let suggestion = selectedSuggestion ?? displayedSuggestions.first
+                            else {
+                                return .ignored
+                            }
+                            append(suggestion)
+                            return .handled
+                        }
+                        .onKeyPress(.upArrow) {
+                            guard !displayedSuggestions.isEmpty, !trimmedDraft.isEmpty else {
+                                return .ignored
+                            }
+                            showsAutocomplete = true
+                            moveSelection(delta: -1)
+                            return .handled
+                        }
+                        .onKeyPress(.downArrow) {
+                            guard !displayedSuggestions.isEmpty, !trimmedDraft.isEmpty else {
+                                return .ignored
+                            }
+                            showsAutocomplete = true
+                            moveSelection(delta: 1)
+                            return .handled
                         }
 
                     if !availableSuggestions.isEmpty {
@@ -1717,7 +1754,9 @@ struct ExpandedStringListEditor: View {
     private var autocompleteSuggestions: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 2) {
-                ForEach(Array(availableSuggestions.prefix(10)), id: \.self) { suggestion in
+                ForEach(Array(displayedSuggestions.enumerated()), id: \.element) {
+                    index,
+                    suggestion in
                     Button {
                         append(suggestion)
                         showsAutocomplete = false
@@ -1731,12 +1770,18 @@ struct ExpandedStringListEditor: View {
                     .buttonStyle(.plain)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 5)
+                    .background {
+                        if selectedSuggestionIndex == index {
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(Color.accentColor.opacity(0.18))
+                        }
+                    }
                     .contentShape(Rectangle())
                 }
             }
         }
         .frame(width: 224)
-        .frame(maxHeight: 220)
+        .frame(height: autocompleteHeight)
         .padding(8)
     }
 
@@ -1745,12 +1790,43 @@ struct ExpandedStringListEditor: View {
         guard !trimmed.isEmpty else {
             draft = ""
             showsAutocomplete = false
+            selectedSuggestionIndex = nil
             return
         }
         values.append(trimmed)
         draft = ""
         showsAutocomplete = false
+        selectedSuggestionIndex = nil
         onChange()
+    }
+
+    private func submitDraft() {
+        if let selectedSuggestion {
+            append(selectedSuggestion)
+        } else {
+            append(draft)
+        }
+    }
+
+    private var selectedSuggestion: String? {
+        guard let selectedSuggestionIndex,
+            displayedSuggestions.indices.contains(selectedSuggestionIndex)
+        else {
+            return nil
+        }
+        return displayedSuggestions[selectedSuggestionIndex]
+    }
+
+    private func moveSelection(delta: Int) {
+        guard !displayedSuggestions.isEmpty else {
+            selectedSuggestionIndex = nil
+            return
+        }
+        let currentIndex = selectedSuggestionIndex ?? (delta > 0 ? -1 : displayedSuggestions.count)
+        let nextIndex =
+            (currentIndex + delta + displayedSuggestions.count)
+            % displayedSuggestions.count
+        selectedSuggestionIndex = nextIndex
     }
 }
 
@@ -1761,6 +1837,7 @@ private struct CreatorNameAutocompleteField: View {
     let placeholder: String
     var onSubmit: (() -> Void)? = nil
     @State private var showsAutocomplete = false
+    @State private var selectedSuggestionIndex: Int?
     @FocusState private var isFocused: Bool
 
     private var trimmedName: String {
@@ -1779,6 +1856,14 @@ private struct CreatorNameAutocompleteField: View {
         }
     }
 
+    private var displayedSuggestions: [String] {
+        Array(filteredSuggestions.prefix(10))
+    }
+
+    private var autocompleteHeight: CGFloat {
+        autocompletePopoverHeight(rowCount: displayedSuggestions.count)
+    }
+
     private var autocompleteIsPresented: Binding<Bool> {
         Binding(
             get: {
@@ -1788,6 +1873,7 @@ private struct CreatorNameAutocompleteField: View {
             set: { isPresented in
                 if !isPresented {
                     showsAutocomplete = false
+                    selectedSuggestionIndex = nil
                 }
             },
         )
@@ -1799,15 +1885,16 @@ private struct CreatorNameAutocompleteField: View {
                 .textFieldStyle(.plain)
                 .focused($isFocused)
                 .onSubmit {
-                    showsAutocomplete = false
-                    onSubmit?()
+                    submitName()
                 }
                 .onChange(of: isFocused) { _, isFocused in
                     if !isFocused {
                         showsAutocomplete = false
+                        selectedSuggestionIndex = nil
                     }
                 }
                 .onChange(of: name) { _, _ in
+                    selectedSuggestionIndex = nil
                     if isFocused && !trimmedName.isEmpty {
                         showsAutocomplete = true
                     } else {
@@ -1818,6 +1905,31 @@ private struct CreatorNameAutocompleteField: View {
                 .popover(isPresented: autocompleteIsPresented, arrowEdge: .bottom) {
                     autocompleteSuggestions
                         .metadataEditorCompactPopover()
+                }
+                .onKeyPress(.tab) {
+                    guard !trimmedName.isEmpty,
+                        let suggestion = selectedSuggestion ?? displayedSuggestions.first
+                    else {
+                        return .ignored
+                    }
+                    selectSuggestion(suggestion)
+                    return .handled
+                }
+                .onKeyPress(.upArrow) {
+                    guard !displayedSuggestions.isEmpty, !trimmedName.isEmpty else {
+                        return .ignored
+                    }
+                    showsAutocomplete = true
+                    moveSelection(delta: -1)
+                    return .handled
+                }
+                .onKeyPress(.downArrow) {
+                    guard !displayedSuggestions.isEmpty, !trimmedName.isEmpty else {
+                        return .ignored
+                    }
+                    showsAutocomplete = true
+                    moveSelection(delta: 1)
+                    return .handled
                 }
 
             if hasSuggestions {
@@ -1839,7 +1951,9 @@ private struct CreatorNameAutocompleteField: View {
     private var autocompleteSuggestions: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 2) {
-                ForEach(Array(filteredSuggestions.prefix(10)), id: \.self) { suggestion in
+                ForEach(Array(displayedSuggestions.enumerated()), id: \.element) {
+                    index,
+                    suggestion in
                     Button {
                         selectSuggestion(suggestion)
                         showsAutocomplete = false
@@ -1853,18 +1967,55 @@ private struct CreatorNameAutocompleteField: View {
                     .buttonStyle(.plain)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 5)
+                    .background {
+                        if selectedSuggestionIndex == index {
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(Color.accentColor.opacity(0.18))
+                        }
+                    }
                     .contentShape(Rectangle())
                 }
             }
         }
         .frame(width: 224)
-        .frame(maxHeight: 220)
+        .frame(height: autocompleteHeight)
         .padding(8)
     }
 
     private func selectSuggestion(_ suggestion: String) {
         name = suggestion
         showsAutocomplete = false
+        selectedSuggestionIndex = nil
+    }
+
+    private func submitName() {
+        if let selectedSuggestion {
+            selectSuggestion(selectedSuggestion)
+        } else {
+            showsAutocomplete = false
+            onSubmit?()
+        }
+    }
+
+    private var selectedSuggestion: String? {
+        guard let selectedSuggestionIndex,
+            displayedSuggestions.indices.contains(selectedSuggestionIndex)
+        else {
+            return nil
+        }
+        return displayedSuggestions[selectedSuggestionIndex]
+    }
+
+    private func moveSelection(delta: Int) {
+        guard !displayedSuggestions.isEmpty else {
+            selectedSuggestionIndex = nil
+            return
+        }
+        let currentIndex = selectedSuggestionIndex ?? (delta > 0 ? -1 : displayedSuggestions.count)
+        let nextIndex =
+            (currentIndex + delta + displayedSuggestions.count)
+            % displayedSuggestions.count
+        selectedSuggestionIndex = nextIndex
     }
 }
 
@@ -2395,6 +2546,14 @@ private struct ScrollableStringPickerButton: View {
             }
         }
     }
+}
+
+private func autocompletePopoverHeight(rowCount: Int) -> CGFloat {
+    let rowHeight: CGFloat = 30
+    let verticalPadding: CGFloat = 16
+    let maxHeight: CGFloat = 220
+    let count = max(rowCount, 1)
+    return min(CGFloat(count) * rowHeight + verticalPadding, maxHeight)
 }
 
 private struct ScrollableSuggestionList: View {
