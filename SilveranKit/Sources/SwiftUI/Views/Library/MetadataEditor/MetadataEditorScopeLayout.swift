@@ -100,7 +100,11 @@ struct WorkMetadataLayout: View {
                     field: "authors",
                     suggestions: viewModel.libraryAuthorNames,
                 )
-                expandedStringListField("Narrator(s)", field: "narrators")
+                expandedStringListField(
+                    "Narrator(s)",
+                    field: "narrators",
+                    suggestions: viewModel.libraryNarratorNames,
+                )
                 creatorsField()
                 publicationDateField()
                 scalarField(
@@ -1265,10 +1269,17 @@ struct EditionMetadataLayout: View {
                     },
                 ),
                 placeholder: label,
-                suggestions: [],
+                suggestions: editionSuggestions(for: field),
                 onChange: { viewModel.markDirty(field: field, for: bookId) },
             )
             .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func editionSuggestions(for field: String) -> [String] {
+        switch field {
+            case "narrators": return viewModel.libraryNarratorNames
+            default: return []
         }
     }
 

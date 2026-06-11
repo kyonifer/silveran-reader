@@ -175,6 +175,7 @@ final class MetadataEditorViewModel {
     var itunesResultsByBookId: [String: [ITunesCoverResult]] = [:]
     var searchingItunesBookIds: Set<String> = []
     var libraryAuthorNames: [String] = []
+    var libraryNarratorNames: [String] = []
     var libraryTagNames: [String] = []
     var libraryCollections: [BookCollectionSummary] = []
     var libraryCollectionChoices: [CollectionChoice] = []
@@ -194,6 +195,7 @@ final class MetadataEditorViewModel {
 
     func addBooks(ids: [String], from library: BookLibrary) {
         updateLibraryAuthors(from: library)
+        updateLibraryNarrators(from: library)
         updateLibraryTags(from: library)
         updateLibraryCollections(from: library)
 
@@ -223,6 +225,24 @@ final class MetadataEditorViewModel {
             }
         }
         libraryAuthorNames = authorsByKey.values.sorted {
+            $0.localizedCaseInsensitiveCompare($1) == .orderedAscending
+        }
+    }
+
+    private func updateLibraryNarrators(from library: BookLibrary) {
+        var narratorsByKey: [String: String] = [:]
+        for book in library.bookMetaData {
+            for narrator in book.narrators ?? [] {
+                guard let name = narrator.name else { continue }
+                let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else { continue }
+                let key = trimmed.lowercased()
+                if narratorsByKey[key] == nil {
+                    narratorsByKey[key] = trimmed
+                }
+            }
+        }
+        libraryNarratorNames = narratorsByKey.values.sorted {
             $0.localizedCaseInsensitiveCompare($1) == .orderedAscending
         }
     }
