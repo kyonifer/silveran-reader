@@ -648,6 +648,7 @@ struct WorkMetadataLayout: View {
                         viewModel.books[index].creators = newValue
                     },
                 ),
+                suggestionsByRole: viewModel.libraryCreatorNamesByRole,
                 onChange: { viewModel.markDirty(field: "creators", for: bookId) },
             )
         }
@@ -1753,19 +1754,137 @@ struct ExpandedStringListEditor: View {
     }
 }
 
+private struct CreatorNameAutocompleteField: View {
+    @Binding var name: String
+    let role: String
+    let suggestions: [String]
+    let placeholder: String
+    var onSubmit: (() -> Void)? = nil
+    @State private var showsAutocomplete = false
+    @FocusState private var isFocused: Bool
+
+    private var trimmedName: String {
+        name.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var hasSuggestions: Bool {
+        !suggestions.isEmpty
+    }
+
+    private var filteredSuggestions: [String] {
+        let query = trimmedName.lowercased()
+        guard hasSuggestions else { return [] }
+        return suggestions.filter { suggestion in
+            query.isEmpty || suggestion.lowercased().hasPrefix(query)
+        }
+    }
+
+    private var autocompleteIsPresented: Binding<Bool> {
+        Binding(
+            get: {
+                showsAutocomplete && isFocused && !trimmedName.isEmpty
+                    && !filteredSuggestions.isEmpty
+            },
+            set: { isPresented in
+                if !isPresented {
+                    showsAutocomplete = false
+                }
+            },
+        )
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            TextField(placeholder, text: $name)
+                .textFieldStyle(.plain)
+                .focused($isFocused)
+                .onSubmit {
+                    showsAutocomplete = false
+                    onSubmit?()
+                }
+                .onChange(of: isFocused) { _, isFocused in
+                    if !isFocused {
+                        showsAutocomplete = false
+                    }
+                }
+                .onChange(of: name) { _, _ in
+                    if isFocused && !trimmedName.isEmpty {
+                        showsAutocomplete = true
+                    } else {
+                        showsAutocomplete = false
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .popover(isPresented: autocompleteIsPresented, arrowEdge: .bottom) {
+                    autocompleteSuggestions
+                        .metadataEditorCompactPopover()
+                }
+
+            if hasSuggestions {
+                ScrollableStringPickerButton(
+                    title: "Choose \(placeholder.lowercased())",
+                    systemImage: "text.badge.plus",
+                    values: suggestions,
+                    help: "Choose existing \(placeholder.lowercased()) for this role",
+                    onSelect: selectSuggestion,
+                )
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .metadataEditorAutocompleteExitCommand {
+            showsAutocomplete = false
+        }
+    }
+
+    private var autocompleteSuggestions: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 2) {
+                ForEach(Array(filteredSuggestions.prefix(10)), id: \.self) { suggestion in
+                    Button {
+                        selectSuggestion(suggestion)
+                        showsAutocomplete = false
+                        isFocused = true
+                    } label: {
+                        Text(suggestion)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .contentShape(Rectangle())
+                }
+            }
+        }
+        .frame(width: 224)
+        .frame(maxHeight: 220)
+        .padding(8)
+    }
+
+    private func selectSuggestion(_ suggestion: String) {
+        name = suggestion
+        showsAutocomplete = false
+    }
+}
+
 struct CreatorsExpandedEditor: View {
     @Binding var creators: [MetadataEditorViewModel.EditableCreator]
+    let suggestionsByRole: [String: [String]]
     let onChange: () -> Void
     @State private var draftName = ""
     @State private var draftRole = ""
-    @FocusState private var draftNameIsFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             ForEach(creators) { creator in
                 HStack(spacing: 8) {
-                    TextField("Creator name", text: creatorBinding(creator.id, \.name))
-                        .textFieldStyle(.plain)
+                    CreatorNameAutocompleteField(
+                        name: creatorBinding(creator.id, \.name),
+                        role: creator.role,
+                        suggestions: suggestions(for: creator.role, excluding: creator.id),
+                        placeholder: "Creator name",
+                    )
 
                     MarcRelatorRoleEditor(role: creatorBinding(creator.id, \.role))
                         .frame(width: 92)
@@ -1783,16 +1902,13 @@ struct CreatorsExpandedEditor: View {
             }
 
             HStack(spacing: 8) {
-                TextField("Add Creator", text: $draftName)
-                    .textFieldStyle(.plain)
-                    .focused($draftNameIsFocused)
-                    .onSubmit { appendDraftCreator() }
-                    .onChange(of: draftNameIsFocused) { _, isFocused in
-                        if !isFocused {
-                            appendDraftCreator()
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                CreatorNameAutocompleteField(
+                    name: $draftName,
+                    role: draftRole,
+                    suggestions: suggestions(for: draftRole),
+                    placeholder: "Add Creator",
+                    onSubmit: appendDraftCreator,
+                )
 
                 MarcRelatorRoleEditor(role: $draftRole)
                     .frame(width: 92)
@@ -1810,6 +1926,54 @@ struct CreatorsExpandedEditor: View {
         }
         .padding(8)
         .metadataEditorBoundary()
+    }
+
+    private func suggestions(for role: String, excluding creatorId: UUID? = nil) -> [String] {
+        let roleKey = MetadataEditorViewModel.creatorRoleSuggestionKey(role)
+        let suggestions =
+            if roleKey.isEmpty {
+                allOtherCreatorSuggestions()
+            } else {
+                suggestionsByRole[roleKey] ?? []
+            }
+        guard !suggestions.isEmpty else { return [] }
+        let existingNames = Set(
+            creators.compactMap { creator -> String? in
+                guard creator.id != creatorId else {
+                    return nil
+                }
+                let creatorRoleKey = MetadataEditorViewModel.creatorRoleSuggestionKey(creator.role)
+                if roleKey.isEmpty {
+                    guard !MetadataEditorViewModel.isAuthorOrNarratorCreatorRole(creatorRoleKey)
+                    else { return nil }
+                } else {
+                    guard creatorRoleKey == roleKey else { return nil }
+                }
+                let name = creator.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                return name.isEmpty ? nil : name.lowercased()
+            }
+        )
+        return suggestions.filter { !existingNames.contains($0.lowercased()) }
+    }
+
+    private func allOtherCreatorSuggestions() -> [String] {
+        var namesByKey: [String: String] = [:]
+        for (roleKey, suggestions) in suggestionsByRole {
+            guard !MetadataEditorViewModel.isAuthorOrNarratorCreatorRole(roleKey) else {
+                continue
+            }
+            for suggestion in suggestions {
+                let trimmed = suggestion.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else { continue }
+                let nameKey = trimmed.lowercased()
+                if namesByKey[nameKey] == nil {
+                    namesByKey[nameKey] = trimmed
+                }
+            }
+        }
+        return namesByKey.values.sorted {
+            $0.localizedCaseInsensitiveCompare($1) == .orderedAscending
+        }
     }
 
     private func appendDraftCreator() {

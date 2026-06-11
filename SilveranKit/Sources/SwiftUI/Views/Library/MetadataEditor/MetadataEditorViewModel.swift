@@ -176,6 +176,7 @@ final class MetadataEditorViewModel {
     var searchingItunesBookIds: Set<String> = []
     var libraryAuthorNames: [String] = []
     var libraryNarratorNames: [String] = []
+    var libraryCreatorNamesByRole: [String: [String]] = [:]
     var libraryTagNames: [String] = []
     var libraryCollections: [BookCollectionSummary] = []
     var libraryCollectionChoices: [CollectionChoice] = []
@@ -196,6 +197,7 @@ final class MetadataEditorViewModel {
     func addBooks(ids: [String], from library: BookLibrary) {
         updateLibraryAuthors(from: library)
         updateLibraryNarrators(from: library)
+        updateLibraryCreators(from: library)
         updateLibraryTags(from: library)
         updateLibraryCollections(from: library)
 
@@ -245,6 +247,44 @@ final class MetadataEditorViewModel {
         libraryNarratorNames = narratorsByKey.values.sorted {
             $0.localizedCaseInsensitiveCompare($1) == .orderedAscending
         }
+    }
+
+    private func updateLibraryCreators(from library: BookLibrary) {
+        var namesByRole: [String: [String: String]] = [:]
+        for book in library.bookMetaData {
+            for creator in book.creators ?? [] {
+                guard let name = creator.name else { continue }
+                let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmedName.isEmpty else { continue }
+
+                let roleKey = Self.creatorRoleSuggestionKey(creator.role ?? "")
+                guard !roleKey.isEmpty else { continue }
+
+                let nameKey = trimmedName.lowercased()
+                if namesByRole[roleKey] == nil {
+                    namesByRole[roleKey] = [:]
+                }
+                if namesByRole[roleKey]?[nameKey] == nil {
+                    namesByRole[roleKey]?[nameKey] = trimmedName
+                }
+            }
+        }
+
+        libraryCreatorNamesByRole = namesByRole.mapValues { names in
+            names.values.sorted {
+                $0.localizedCaseInsensitiveCompare($1) == .orderedAscending
+            }
+        }
+    }
+
+    static func creatorRoleSuggestionKey(_ role: String) -> String {
+        let trimmed = role.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != "Role" else { return "" }
+        return trimmed.lowercased()
+    }
+
+    static func isAuthorOrNarratorCreatorRole(_ roleKey: String) -> Bool {
+        roleKey == "author" || roleKey == "narrator"
     }
 
     private func updateLibraryTags(from library: BookLibrary) {
