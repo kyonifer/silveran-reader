@@ -1604,16 +1604,35 @@ struct ExpandedStringListEditor: View {
     var suggestions: [String] = []
     let onChange: () -> Void
     @State private var draft = ""
+    @State private var showsAutocomplete = false
     @FocusState private var draftIsFocused: Bool
+
+    private var trimmedDraft: String {
+        draft.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 
     private var availableSuggestions: [String] {
         let existing = Set(values.map { $0.lowercased() })
-        let query = draft.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let query = trimmedDraft.lowercased()
         return suggestions.filter { suggestion in
             let lowercasedSuggestion = suggestion.lowercased()
             return !existing.contains(lowercasedSuggestion)
                 && (query.isEmpty || lowercasedSuggestion.hasPrefix(query))
         }
+    }
+
+    private var autocompleteIsPresented: Binding<Bool> {
+        Binding(
+            get: {
+                showsAutocomplete && draftIsFocused && !trimmedDraft.isEmpty
+                    && !availableSuggestions.isEmpty
+            },
+            set: { isPresented in
+                if !isPresented {
+                    showsAutocomplete = false
+                }
+            },
+        )
     }
 
     var body: some View {
@@ -1649,11 +1668,22 @@ struct ExpandedStringListEditor: View {
                         .onSubmit { append(draft) }
                         .onChange(of: draftIsFocused) { _, isFocused in
                             if !isFocused {
-                                append(draft)
+                                showsAutocomplete = false
+                            }
+                        }
+                        .onChange(of: draft) { _, _ in
+                            if draftIsFocused && !trimmedDraft.isEmpty {
+                                showsAutocomplete = true
+                            } else {
+                                showsAutocomplete = false
                             }
                         }
                         .frame(minWidth: 160)
                         .fixedSize(horizontal: true, vertical: false)
+                        .popover(isPresented: autocompleteIsPresented, arrowEdge: .bottom) {
+                            autocompleteSuggestions
+                                .metadataEditorCompactPopover()
+                        }
 
                     if !availableSuggestions.isEmpty {
                         ScrollableStringPickerButton(
@@ -1674,17 +1704,51 @@ struct ExpandedStringListEditor: View {
                     .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
                 .fullTextPill()
+                .metadataEditorAutocompleteExitCommand {
+                    showsAutocomplete = false
+                }
             }
         }
         .padding(8)
         .metadataEditorBoundary()
     }
 
+    private var autocompleteSuggestions: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 2) {
+                ForEach(Array(availableSuggestions.prefix(10)), id: \.self) { suggestion in
+                    Button {
+                        append(suggestion)
+                        showsAutocomplete = false
+                        draftIsFocused = true
+                    } label: {
+                        Text(suggestion)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .contentShape(Rectangle())
+                }
+            }
+        }
+        .frame(width: 224)
+        .frame(maxHeight: 220)
+        .padding(8)
+    }
+
     private func append(_ rawValue: String) {
         let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
+        guard !trimmed.isEmpty else {
+            draft = ""
+            showsAutocomplete = false
+            return
+        }
         values.append(trimmed)
         draft = ""
+        showsAutocomplete = false
         onChange()
     }
 }
@@ -2504,5 +2568,16 @@ extension View {
                 Capsule()
                     .stroke(Color.secondary.opacity(0.28), lineWidth: 0.75)
             }
+    }
+
+    @ViewBuilder
+    fileprivate func metadataEditorAutocompleteExitCommand(_ action: @escaping () -> Void)
+        -> some View
+    {
+        #if os(macOS)
+        self.onExitCommand(perform: action)
+        #else
+        self
+        #endif
     }
 }
