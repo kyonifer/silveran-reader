@@ -100,6 +100,7 @@ struct WorkMetadataLayout: View {
                     field: "authors",
                     suggestions: viewModel.libraryAuthorNames,
                 )
+                expandedStringListField("Narrator(s)", field: "narrators")
                 creatorsField()
                 publicationDateField()
                 scalarField(

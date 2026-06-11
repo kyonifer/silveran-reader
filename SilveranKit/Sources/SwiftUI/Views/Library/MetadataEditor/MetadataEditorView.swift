@@ -11,6 +11,7 @@ public struct MetadataEditorView: View {
     @State private var viewModel = MetadataEditorViewModel()
     @State private var selectedScope: MetadataEditorScope = .work
     @State private var selectedCoverScope: MetadataCoverScope = .audiobook
+    @State private var showsEditionScopes = false
     @AppStorage("metadataEditor.hideWarning") private var hideWarning = false
     @State private var showWarning = true
     @State private var showHardcoverImportSheet = false
@@ -41,44 +42,53 @@ public struct MetadataEditorView: View {
     }
 
     public var body: some View {
-        VStack(spacing: 0) {
-            if showWarning && !hideWarning {
-                warningBanner
-            }
+        ZStack {
+            VStack(spacing: 0) {
+                if showWarning && !hideWarning {
+                    warningBanner
+                }
 
-            #if os(iOS)
-            if isCompactIOS {
-                sectionContent
-            } else {
+                #if os(iOS)
+                if isCompactIOS {
+                    sectionContent
+                } else {
+                    NavigationSplitView(columnVisibility: $columnVisibility) {
+                        bookSidebar
+                    } detail: {
+                        sectionContent
+                            .clipped()
+                    }
+                    .navigationSplitViewStyle(.balanced)
+                }
+                #else
                 NavigationSplitView(columnVisibility: $columnVisibility) {
                     bookSidebar
                 } detail: {
                     sectionContent
+                        .frame(minWidth: 460)
                         .clipped()
                 }
                 .navigationSplitViewStyle(.balanced)
-            }
-            #else
-            NavigationSplitView(columnVisibility: $columnVisibility) {
-                bookSidebar
-            } detail: {
-                sectionContent
-                    .frame(minWidth: 460)
-                    .clipped()
-            }
-            .navigationSplitViewStyle(.balanced)
-            #endif
+                #endif
 
-            #if os(iOS)
-            if !isCompactIOS || viewModel.selectedBookId != nil {
+                #if os(iOS)
+                if !isCompactIOS || viewModel.selectedBookId != nil {
+                    Divider()
+                    bottomBar
+                }
+                #else
                 Divider()
                 bottomBar
+                #endif
             }
-            #else
-            Divider()
-            bottomBar
-            #endif
         }
+        .contentShape(Rectangle())
+        .simultaneousGesture(
+            TapGesture(count: 5)
+                .onEnded {
+                    showsEditionScopes = true
+                }
+        )
         #if os(macOS)
         .frame(minWidth: 700, minHeight: 560)
         #else
@@ -459,6 +469,7 @@ public struct MetadataEditorView: View {
             viewModel: viewModel,
             selectedScope: $selectedScope,
             selectedCoverScope: $selectedCoverScope,
+            showsEditionScopes: showsEditionScopes,
             openHardcoverImport: { showHardcoverImportSheet = true },
             revertCurrentBook: {
                 pendingRevertBookId = viewModel.selectedBookId
