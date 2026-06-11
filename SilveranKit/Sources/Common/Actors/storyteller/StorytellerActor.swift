@@ -368,12 +368,12 @@ public actor StorytellerActor {
         }
     }
 
-    private func recordNetworkSuccess() async {
+    private func recordNetworkSuccess(notifyWhenAlreadyConnected: Bool = true) async {
         lastNetworkOpSucceeded = true
         resetReconnectBackoff()
         if connectionStatus != .connected {
             await updateConnectionStatus(.connected)
-        } else {
+        } else if notifyWhenAlreadyConnected {
             await observers?()
         }
     }
@@ -2874,6 +2874,14 @@ public actor StorytellerActor {
                 session: urlSession,
                 allowedStatusCodes: allowedStatuses,
             )
+
+            // A 404 from the slim positions endpoint means the server has no saved
+            // position for this book yet. The progress poller can hit this path
+            // repeatedly, so keep it out of the generic failure logger.
+            if response.statusCode == 404 {
+                await recordNetworkSuccess(notifyWhenAlreadyConnected: false)
+                return nil
+            }
 
             guard
                 case .success = evaluateResponse(
