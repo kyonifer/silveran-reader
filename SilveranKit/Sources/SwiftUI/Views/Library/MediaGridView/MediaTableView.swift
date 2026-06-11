@@ -1426,7 +1426,8 @@ struct MediaTableView: NSViewRepresentable {
             let itemsToDelete = selectedFolderSourceItems(fallback: item)
             let isBulkDelete = itemsToDelete.count > 1
             let title = isBulkDelete ? "\(itemsToDelete.count) selected books" : item.title
-            let buttonTitle = isBulkDelete ? "Delete \(itemsToDelete.count) Selected Books" : "Delete All"
+            let buttonTitle =
+                isBulkDelete ? "Delete \(itemsToDelete.count) Selected Books" : "Delete All"
             guard
                 confirmDestructiveAction(
                     title: "Delete All from Folder?",

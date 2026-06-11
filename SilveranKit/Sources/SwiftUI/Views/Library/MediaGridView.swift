@@ -1036,7 +1036,8 @@ struct MediaGridView: View {
         #if os(macOS)
         guard showAddBookButton,
             let addBookSourceID,
-            mediaViewModel.bookSources.first(where: { $0.id == addBookSourceID })?.kind == .localFolder
+            mediaViewModel.bookSources.first(where: { $0.id == addBookSourceID })?.kind
+                == .localFolder
         else {
             return nil
         }

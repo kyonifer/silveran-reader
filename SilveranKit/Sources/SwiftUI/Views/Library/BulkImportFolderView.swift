@@ -125,11 +125,11 @@ public struct BulkImportFolderView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-            Button("Choose...") {
-                selectImportFolder()
+                Button("Choose...") {
+                    selectImportFolder()
+                }
+                .disabled(isScanning || isImporting)
             }
-            .disabled(isScanning || isImporting)
-        }
         } footer: {
             Text(
                 "Put related ebook, readaloud, and audiobook files in the same folder and use shared names when possible. Silveran detects readaloud EPUBs from media overlays and marks ambiguous matches for review."
@@ -416,7 +416,8 @@ private struct BulkImportReviewView: View {
 
         let asset = groups[groupIndex].assets.remove(at: assetIndex)
         let title = asset.detectedTitle?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let fallbackTitle = URL(fileURLWithPath: asset.filename).deletingPathExtension().lastPathComponent
+        let fallbackTitle = URL(fileURLWithPath: asset.filename).deletingPathExtension()
+            .lastPathComponent
         let newGroup = FolderSourceBulkImportGroup(
             title: title?.isEmpty == false ? title! : fallbackTitle,
             isSelected: groups[groupIndex].isSelected,
@@ -608,7 +609,12 @@ private struct BulkImportAssetAssignmentRow: View {
                     HStack(spacing: 8) {
                         Text("Detected: \(asset.detectedRole.displayName)")
                         if let fileSize = asset.fileSize {
-                            Text(ByteCountFormatter.string(fromByteCount: fileSize, countStyle: .file))
+                            Text(
+                                ByteCountFormatter.string(
+                                    fromByteCount: fileSize,
+                                    countStyle: .file,
+                                )
+                            )
                         }
                     }
                     .font(.caption)

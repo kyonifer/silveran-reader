@@ -36,10 +36,18 @@ public struct FolderSourceBulkImportPlanner: Sendable {
             let relativePath = self.relativePath(for: fileURL, root: root)
             let ext = fileURL.pathExtension.lowercased()
             if ext == "epub" {
-                let candidate = await epubCandidate(fileURL, root: root, relativePath: relativePath)
+                let candidate = await epubCandidate(
+                    fileURL,
+                    root: root,
+                    relativePath: relativePath,
+                )
                 candidates.append(candidate)
             } else if Self.audioExtensions.contains(ext) {
-                let candidate = await audioCandidate(fileURL, root: root, relativePath: relativePath)
+                let candidate = await audioCandidate(
+                    fileURL,
+                    root: root,
+                    relativePath: relativePath,
+                )
                 candidates.append(candidate)
             } else if fileURL.lastPathComponent == "manifest.json" {
                 skippedFiles.append(
@@ -91,8 +99,11 @@ public struct FolderSourceBulkImportPlanner: Sendable {
         var warnings: [String] = []
 
         do {
-            title = try await localLibrary.extractMetadata(from: fileURL, category: role.localMediaCategory ?? .ebook)
-                .title
+            title = try await localLibrary.extractMetadata(
+                from: fileURL,
+                category: role.localMediaCategory ?? .ebook,
+            )
+            .title
         } catch {
             warnings.append("Could not read EPUB metadata")
         }
@@ -114,7 +125,8 @@ public struct FolderSourceBulkImportPlanner: Sendable {
         )
     }
 
-    private func audioCandidate(_ fileURL: URL, root: URL, relativePath: String) async -> Candidate {
+    private func audioCandidate(_ fileURL: URL, root: URL, relativePath: String) async -> Candidate
+    {
         var title: String?
         var warnings: [String] = []
 
@@ -141,8 +153,12 @@ public struct FolderSourceBulkImportPlanner: Sendable {
         )
     }
 
-    private func makeGroups(from candidates: [Candidate], root: URL) -> [FolderSourceBulkImportGroup] {
-        let byDirectory = Dictionary(grouping: candidates) { $0.groupingDirectory.standardizedFileURL.path }
+    private func makeGroups(from candidates: [Candidate], root: URL)
+        -> [FolderSourceBulkImportGroup]
+    {
+        let byDirectory = Dictionary(grouping: candidates) {
+            $0.groupingDirectory.standardizedFileURL.path
+        }
         var groups: [FolderSourceBulkImportGroup] = []
 
         for directoryPath in byDirectory.keys.sorted(by: localizedPathCompare) {
@@ -160,10 +176,13 @@ public struct FolderSourceBulkImportPlanner: Sendable {
         root _: URL,
     ) -> [FolderSourceBulkImportGroup] {
         let sorted = candidates.sorted {
-            $0.asset.relativePath.localizedStandardCompare($1.asset.relativePath) == .orderedAscending
+            $0.asset.relativePath.localizedStandardCompare($1.asset.relativePath)
+                == .orderedAscending
         }
-        let epubCount = sorted.filter { $0.asset.detectedRole == .ebook || $0.asset.detectedRole == .readaloud }
-            .count
+        let epubCount = sorted.filter {
+            $0.asset.detectedRole == .ebook || $0.asset.detectedRole == .readaloud
+        }
+        .count
         let audioCount = sorted.filter { $0.asset.detectedRole == .audiobook }.count
 
         if audioCount == 1 && epubCount <= 2 {

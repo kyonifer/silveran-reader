@@ -546,7 +546,8 @@ public actor FolderSourceActor: BookSourceActor {
                 continue
             }
 
-            let title = group.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            let title =
+                group.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 ? "Untitled Book"
                 : group.title
             let ebookAssets = group.assets.filter { $0.selectedRole == .ebook }
