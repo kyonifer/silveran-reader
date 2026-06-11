@@ -890,7 +890,7 @@ final class MetadataEditorViewModel {
         return payload
     }
 
-    func saveAll(mediaViewModel: MediaViewModel) async {
+    func saveAll(mediaViewModel _: MediaViewModel) async {
         isSaving = true
         saveError = nil
         saveResults = [:]
@@ -909,11 +909,6 @@ final class MetadataEditorViewModel {
                         books[index].replacementAudiobookCover = nil
                     }
                 }
-                await refreshSavedCovers(
-                    result: result,
-                    metadata: updatedMetadata,
-                    mediaViewModel: mediaViewModel,
-                )
             } else {
                 saveResults[book.id] = false
                 let serverError = await BookServiceActor.shared.lastUpdateBookError(
@@ -924,11 +919,10 @@ final class MetadataEditorViewModel {
             }
         }
 
-        await BookServiceActor.shared.fetchLibraryInformation()
         isSaving = false
     }
 
-    func saveSingle(_ bookId: String, mediaViewModel: MediaViewModel) async {
+    func saveSingle(_ bookId: String, mediaViewModel _: MediaViewModel) async {
         guard let book = books.first(where: { $0.id == bookId }),
             book.hasDirtyFields
         else { return }
@@ -949,11 +943,6 @@ final class MetadataEditorViewModel {
                     books[index].replacementAudiobookCover = nil
                 }
             }
-            await refreshSavedCovers(
-                result: result,
-                metadata: updatedMetadata,
-                mediaViewModel: mediaViewModel,
-            )
         } else {
             saveResults[bookId] = false
             let serverError = await BookServiceActor.shared.lastUpdateBookError(
@@ -963,7 +952,6 @@ final class MetadataEditorViewModel {
                 "\(book.displayTitle): \(serverError ?? "Unknown error")"
         }
 
-        await BookServiceActor.shared.fetchLibraryInformation()
         isSaving = false
     }
 
@@ -1003,21 +991,6 @@ final class MetadataEditorViewModel {
 
     private func sourceID(forBookID bookId: String) -> BookSourceID? {
         books.first(where: { $0.id == bookId })?.originalMetadata.sourceID
-    }
-
-    private func refreshSavedCovers(
-        result: SaveBookResult,
-        metadata: BookMetadata,
-        mediaViewModel: MediaViewModel,
-    ) async {
-        guard result.coversSaved else { return }
-
-        if metadata.hasAvailableEbook {
-            await mediaViewModel.refreshCover(for: metadata, variant: .standard)
-        }
-        if metadata.hasAvailableAudiobook {
-            await mediaViewModel.refreshCover(for: metadata, variant: .audioSquare)
-        }
     }
 
     // MARK: - Hardcover Import

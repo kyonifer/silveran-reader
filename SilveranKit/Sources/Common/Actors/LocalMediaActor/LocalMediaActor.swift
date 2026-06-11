@@ -164,6 +164,41 @@ public actor LocalMediaActor: GlobalActor {
         await notifyObservers()
     }
 
+    public func updateSourceCacheBookMetadata(
+        _ metadata: BookMetadata,
+        sourceID: BookSourceID,
+    ) async throws {
+        await SilveranMigrations.ensureMigrationsRan()
+        _ = try await filesystem.loadOrCreateBookSources()
+        await ensureSourceCacheLoaded()
+
+        var stamped = metadata
+        stamped.sourceID = stamped.sourceID ?? sourceID
+
+        sourceCacheMetadata.removeAll {
+            $0.uuid == stamped.uuid && $0.sourceID == sourceID
+        }
+        sourceCacheMetadata.append(stamped)
+        sourceCacheLoaded = true
+
+        let grouped = metadataBySourceID(sourceCacheMetadata)
+        if let sourceMetadata = grouped[sourceID] {
+            try await filesystem.saveSourceCacheLibraryMetadata(
+                sourceMetadata,
+                sourceID: sourceID,
+            )
+        } else {
+            try await filesystem.saveSourceCacheLibraryMetadata([], sourceID: sourceID)
+        }
+
+        sourceCacheBookPaths[stamped.uuid] = await scanBookPaths(
+            for: stamped.uuid,
+            sourceID: sourceID,
+        )
+
+        await notifyObservers()
+    }
+
     public func libraryMetadata() async -> [BookMetadata] {
         await ensureSourceCacheLoaded()
         return sourceCacheMetadata

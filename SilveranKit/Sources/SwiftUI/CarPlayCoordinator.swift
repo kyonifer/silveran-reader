@@ -191,17 +191,11 @@ public final class CarPlayCoordinator {
 
     public func getCoverImage(for bookId: String) async -> UIImage? {
         // Try audioSquare first (preferred for CarPlay - square covers)
-        if let data = await FilesystemActor.shared.loadCoverImage(
-            uuid: bookId,
-            variant: "audioSquare",
-        ) {
+        if let data = await BookServiceActor.shared.cachedCoverData(for: bookId, audio: true) {
             return UIImage(data: data)
         }
         // Fall back to standard cover
-        if let data = await FilesystemActor.shared.loadCoverImage(
-            uuid: bookId,
-            variant: "standard",
-        ) {
+        if let data = await BookServiceActor.shared.cachedCoverData(for: bookId, audio: false) {
             return UIImage(data: data)
         }
         // Last resort: extract from local file (for standalone imports)

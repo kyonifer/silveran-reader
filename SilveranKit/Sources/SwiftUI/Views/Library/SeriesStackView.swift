@@ -258,17 +258,6 @@ struct SeriesStackView: View {
     }
 
     private func resolveCoverVariant(for item: BookMetadata) -> MediaViewModel.CoverVariant {
-        switch coverPreference {
-            case .preferEbook, .storytellerDouble:
-                if item.hasAvailableEbook {
-                    return .standard
-                }
-                return item.hasAvailableAudiobook ? .audioSquare : .standard
-            case .preferAudiobook:
-                if item.hasAvailableAudiobook || item.isAudiobookOnly {
-                    return .audioSquare
-                }
-                return .standard
-        }
+        mediaViewModel.coverVariant(for: item, preference: coverPreference)
     }
 }

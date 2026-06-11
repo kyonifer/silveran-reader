@@ -49,19 +49,26 @@ struct MediaCompactCardView: View {
 
     private var isDoubleCover: Bool {
         coverPreference == .storytellerDouble
-            && item.hasAvailableEbook && item.hasAvailableAudiobook
     }
 
     private var cardContent: some View {
         let coverVariant = resolveCoverVariant(for: item)
         let aspectRatio = coverPreference.preferredContainerAspectRatio
         let coverState = mediaViewModel.coverState(for: item, variant: coverVariant)
+        let fallbackVariant: MediaViewModel.CoverVariant =
+            coverVariant == .standard ? .audioSquare : .standard
+        let fallbackState = mediaViewModel.coverState(for: item, variant: fallbackVariant)
+        let displayImage = coverState.image ?? fallbackState.image
+        let standardCoverState = mediaViewModel.coverState(for: item, variant: .standard)
+        let audioCoverState = mediaViewModel.coverState(for: item, variant: .audioSquare)
+        let shouldRenderDoubleCover =
+            isDoubleCover && standardCoverState.image != nil && audioCoverState.image != nil
         let placeholderColor = Color(white: 0.2)
         let progress = mediaViewModel.progress(for: item.id)
 
         return VStack(spacing: 0) {
             Group {
-                if isDoubleCover {
+                if shouldRenderDoubleCover {
                     DoubleCoverView(
                         item: item,
                         placeholderColor: placeholderColor,
@@ -73,10 +80,10 @@ struct MediaCompactCardView: View {
                     .frame(width: tileSize, height: tileSize / aspectRatio)
                 } else {
                     ZStack {
-                        if coverState.image == nil {
+                        if displayImage == nil {
                             placeholderColor
                         }
-                        if let image = coverState.image {
+                        if let image = displayImage {
                             image
                                 .resizable()
                                 .interpolation(.high)
@@ -176,9 +183,11 @@ struct MediaCompactCardView: View {
         #endif
         .task(id: coverVariant) {
             mediaViewModel.ensureCoverLoaded(for: item, variant: coverVariant)
+            mediaViewModel.ensureCoverLoaded(for: item, variant: fallbackVariant)
         }
         .onDisappear {
             mediaViewModel.cancelCoverLoad(for: item, variant: coverVariant)
+            mediaViewModel.cancelCoverLoad(for: item, variant: fallbackVariant)
         }
     }
 
@@ -263,18 +272,7 @@ struct MediaCompactCardView: View {
     #endif
 
     private func resolveCoverVariant(for item: BookMetadata) -> MediaViewModel.CoverVariant {
-        switch coverPreference {
-            case .preferEbook, .storytellerDouble:
-                if item.hasAvailableEbook {
-                    return .standard
-                }
-                return item.hasAvailableAudiobook ? .audioSquare : .standard
-            case .preferAudiobook:
-                if item.hasAvailableAudiobook || item.isAudiobookOnly {
-                    return .audioSquare
-                }
-                return .standard
-        }
+        mediaViewModel.coverVariant(for: item, preference: coverPreference)
     }
 
     #if os(macOS)

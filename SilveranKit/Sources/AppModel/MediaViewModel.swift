@@ -755,8 +755,12 @@ public final class MediaViewModel {
             "[PerfTrace][MediaViewModel] applyLibraryMetadata after prune elapsedMs=\(String(format: "%.1f", pruneElapsed)) coverStates=\(coverStates.count) missingCovers=\(missingCoverKeys.count) activeCoverTasks=\(coverTasks.count)"
         )
 
+        let storytellerSourceIDs = Set(
+            bookSources.filter { $0.kind == .storyteller }.map(\.id)
+        )
         let changedStorytellerBooks = metadata.filter { book in
-            guard book.source == "Storyteller",
+            guard let sourceID = book.sourceID,
+                storytellerSourceIDs.contains(sourceID),
                 let previous = previousMetadataByID[book.id],
                 previous.updatedAt != book.updatedAt
             else { return false }
@@ -764,6 +768,9 @@ public final class MediaViewModel {
         }
 
         if !changedStorytellerBooks.isEmpty {
+            debugLog(
+                "[MetadataCoverRefresh] MediaVM applyLibraryMetadata changed books=\(changedStorytellerBooks.map(\.id))"
+            )
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 for book in changedStorytellerBooks {
@@ -1848,6 +1855,21 @@ public final class MediaViewModel {
         return .standard
     }
 
+    public func coverVariant(for item: BookMetadata, preference: CoverPreference) -> CoverVariant {
+        switch preference {
+            case .preferEbook, .storytellerDouble:
+                if item.hasAvailableEbook {
+                    return .standard
+                }
+                return item.hasAvailableAudiobook ? .audioSquare : .standard
+            case .preferAudiobook:
+                if item.hasAvailableAudiobook || item.isAudiobookOnly {
+                    return .audioSquare
+                }
+                return .standard
+        }
+    }
+
     public func coverImage(for item: BookMetadata, variant overrideVariant: CoverVariant? = nil)
         -> Image?
     {
@@ -2157,53 +2179,33 @@ public final class MediaViewModel {
         variant: CoverVariant,
         isConnected: Bool,
     ) async -> CoverLoadResult {
-        let variantString = variant == .standard ? "standard" : "audioSquare"
-        if let data = await FilesystemActor.shared.loadCoverImage(
-            uuid: item.id,
-            variant: variantString,
-        ) {
-            guard let payload = makeCoverPayload(from: data) else {
+        let params = variant.requestParameters
+        let response = await BookServiceActor.shared.loadCover(
+            for: item.id,
+            sourceID: item.sourceID,
+            audio: params.audio,
+            width: params.width,
+            height: params.height,
+            version: item.updatedAt,
+            allowNetwork: isConnected,
+            policy: .cachedThenFetch,
+        )
+        switch response {
+            case .cached(let data):
+                guard let payload = makeCoverPayload(from: data) else {
+                    return .missing
+                }
+                return .found(payload, persist: false)
+            case .fetched(let cover):
+                guard let payload = makeCoverPayload(from: cover.data) else {
+                    return .missing
+                }
+                return .found(payload, persist: true)
+            case .missing:
                 return .missing
-            }
-            return .found(
-                payload,
-                persist: false,
-            )
+            case .skippedOffline:
+                return .skipped
         }
-
-        if await BookServiceActor.shared.sourceKind(for: item.sourceID) == .localFolder {
-            guard let sourceID = item.sourceID,
-                let cover = await BookServiceActor.shared.fetchCoverImage(
-                    for: item.id,
-                    sourceID: sourceID,
-                    audio: false,
-                    width: nil,
-                    height: nil,
-                    version: nil,
-                    ifNoneMatch: nil,
-                    ifModifiedSince: nil,
-                )
-            else {
-                return .missing
-            }
-            guard let payload = makeCoverPayload(from: cover.data) else {
-                return .missing
-            }
-            return .found(
-                payload,
-                persist: true,
-            )
-        }
-
-        guard isConnected else { return .skipped }
-        guard let cover = await Self.fetchStorytellerCoverOffMain(for: item, variant: variant)
-        else {
-            return .missing
-        }
-        guard let payload = makeCoverPayload(from: cover.data) else {
-            return .missing
-        }
-        return .found(payload, persist: true)
     }
 
     public func refreshCover(
@@ -2212,6 +2214,9 @@ public final class MediaViewModel {
     ) async {
         let variant = overrideVariant ?? coverVariant(for: item)
         let key = coverKey(for: item, variant: variant)
+        debugLog(
+            "[MetadataCoverRefresh] MediaVM refreshCover start bookID=\(item.id) variant=\(variant) updatedAt=\(item.updatedAt ?? "nil") connectionStatus=\(connectionStatus)"
+        )
         pendingCoverRequests.removeValue(forKey: key)
         coverTasks[key]?.cancel()
         coverTasks[key] = nil
@@ -2220,21 +2225,51 @@ public final class MediaViewModel {
         missingCoverKeys.remove(key)
 
         guard connectionStatus == .connected else {
+            debugLog(
+                "[MetadataCoverRefresh] MediaVM refreshCover skipped disconnected bookID=\(item.id) variant=\(variant) hadExistingImage=\(hadExistingImage)"
+            )
             if !hadExistingImage {
                 ensureCoverLoaded(for: item, variant: variant)
             }
             return
         }
 
-        let cover = await fetchStorytellerCover(for: item, variant: variant)
+        let params = variant.requestParameters
+        let response = await BookServiceActor.shared.loadCover(
+            for: item.id,
+            sourceID: item.sourceID,
+            audio: params.audio,
+            width: params.width,
+            height: params.height,
+            version: item.updatedAt,
+            allowNetwork: true,
+            policy: .forceRefresh,
+        )
+        var cover: BookCover?
+        if case .fetched(let fetched) = response {
+            cover = fetched
+        }
         if let cover {
+            debugLog(
+                "[MetadataCoverRefresh] MediaVM refreshCover received cover bookID=\(item.id) variant=\(variant) bytes=\(cover.data.count) contentType=\(cover.contentType ?? "nil")"
+            )
             if let payload = Self.makeCoverPayload(from: cover.data) {
                 registerCover(payload, for: item, variant: variant)
             } else if !hadExistingImage {
+                debugLog(
+                    "[MetadataCoverRefresh] MediaVM refreshCover invalid payload bookID=\(item.id) variant=\(variant)"
+                )
                 registerCover(nil, for: item, variant: variant)
             }
         } else if !hadExistingImage {
+            debugLog(
+                "[MetadataCoverRefresh] MediaVM refreshCover missing cover bookID=\(item.id) variant=\(variant)"
+            )
             registerCover(nil, for: item, variant: variant)
+        } else {
+            debugLog(
+                "[MetadataCoverRefresh] MediaVM refreshCover nil but preserving existing image bookID=\(item.id) variant=\(variant)"
+            )
         }
     }
 
@@ -2247,11 +2282,16 @@ public final class MediaViewModel {
         coverRequestFlushTask = nil
         coverTasks.removeAll()
         uncancellableCoverKeys.removeAll()
-        coverStates.removeAll()
+        for state in coverStates.values {
+            state.image = nil
+            #if canImport(AppKit)
+            state.nsImage = nil
+            #endif
+        }
         missingCoverKeys.removeAll()
 
         do {
-            try await FilesystemActor.shared.removeAllCoverImages()
+            try await BookServiceActor.shared.removeAllCachedCovers()
             debugLog("[MediaViewModel] Deleted local cover cache.")
             return true
         } catch {
@@ -2260,48 +2300,45 @@ public final class MediaViewModel {
         }
     }
 
-    private func fetchStorytellerCover(
-        for item: BookMetadata,
-        variant: CoverVariant,
-    ) async -> BookCover? {
-        await Self.fetchStorytellerCoverOffMain(for: item, variant: variant)
-    }
-
-    private static nonisolated func fetchStorytellerCoverOffMain(
-        for item: BookMetadata,
-        variant: CoverVariant,
-    ) async -> BookCover? {
-        guard let sourceID = item.sourceID else { return nil }
-
-        let params = variant.requestParameters
-        if let cover = await BookServiceActor.shared.fetchCoverImage(
-            for: item.id,
-            sourceID: sourceID,
-            audio: params.audio,
-            width: params.width,
-            height: params.height,
-            version: item.updatedAt,
-        ) {
-            return cover
+    public func invalidateCoverCache(
+        for bookID: String,
+        variants: [CoverVariant] = [.standard, .audioSquare],
+    ) async {
+        debugLog(
+            "[MetadataCoverRefresh] MediaVM invalidateCoverCache start bookID=\(bookID) variants=\(variants)"
+        )
+        for variant in variants {
+            let key = CoverKey(id: bookID, variant: variant)
+            pendingCoverRequests.removeValue(forKey: key)
+            coverTasks[key]?.cancel()
+            coverTasks[key] = nil
+            uncancellableCoverKeys.remove(key)
+            if let state = coverStates[key] {
+                debugLog(
+                    "[MetadataCoverRefresh] MediaVM invalidateCoverCache clearing state bookID=\(bookID) variant=\(variant) stateObject=\(ObjectIdentifier(state))"
+                )
+                state.image = nil
+                #if canImport(AppKit)
+                state.nsImage = nil
+                #endif
+            } else {
+                debugLog(
+                    "[MetadataCoverRefresh] MediaVM invalidateCoverCache no existing state bookID=\(bookID) variant=\(variant)"
+                )
+            }
+            missingCoverKeys.remove(key)
         }
 
-        debugLog(
-            "[MediaViewModel] Sized cover fetch returned nil for '\(item.title)' (\(item.id)), variant=\(variant), size=\(params.width)x\(params.height), updatedAt=\(item.updatedAt ?? "nil"). Falling back to raw cover."
-        )
-
-        let cover = await BookServiceActor.shared.fetchCoverImage(
-            for: item.id,
-            sourceID: sourceID,
-            audio: params.audio,
-            width: nil,
-            height: nil,
-        )
-        if cover == nil {
+        do {
+            try await BookServiceActor.shared.invalidateCachedCovers(for: bookID)
             debugLog(
-                "[MediaViewModel] Raw cover fetch returned nil for '\(item.title)' (\(item.id)), variant=\(variant), updatedAt=\(item.updatedAt ?? "nil")."
+                "[MetadataCoverRefresh] MediaVM invalidateCoverCache removed filesystem covers bookID=\(bookID)"
+            )
+        } catch {
+            debugLog(
+                "[MetadataCoverRefresh] MediaVM invalidateCoverCache failed bookID=\(bookID) error=\(error)"
             )
         }
-        return cover
     }
 
     private func registerCover(
@@ -2317,6 +2354,9 @@ public final class MediaViewModel {
         guard let payload else {
             debugLog(
                 "[MediaViewModel] Registering missing cover for '\(item.title)' (\(item.id)), variant=\(variant)."
+            )
+            debugLog(
+                "[MetadataCoverRefresh] MediaVM registerCover missing bookID=\(item.id) variant=\(variant) stateObject=\(ObjectIdentifier(state))"
             )
             missingCoverKeys.insert(key)
             state.image = nil
@@ -2337,15 +2377,18 @@ public final class MediaViewModel {
         state.image = Image(decorative: cgImage, scale: 1, orientation: .up)
         #endif
 
+        debugLog(
+            "[MetadataCoverRefresh] MediaVM registerCover image bookID=\(item.id) variant=\(variant) stateObject=\(ObjectIdentifier(state)) pixels=\(cgImage.width)x\(cgImage.height) persist=\(persist)"
+        )
+
         missingCoverKeys.remove(key)
 
         guard persist else { return }
         Task {
-            let variantString = variant == .standard ? "standard" : "audioSquare"
-            try? await FilesystemActor.shared.saveCoverImage(
-                uuid: item.id,
+            await BookServiceActor.shared.persistCachedCover(
+                bookID: item.id,
+                audio: variant.requestParameters.audio,
                 data: payload.data,
-                variant: variantString,
             )
         }
     }
@@ -2354,12 +2397,8 @@ public final class MediaViewModel {
         CoverKey(id: item.id, variant: variant)
     }
 
-    private func coverVariantsToLoad(for book: BookMetadata) -> [CoverVariant] {
-        var variantsToLoad: [CoverVariant] = [coverVariant(for: book)]
-        if book.hasAvailableAudiobook && !variantsToLoad.contains(.audioSquare) {
-            variantsToLoad.append(.audioSquare)
-        }
-        return variantsToLoad
+    private func coverVariantsToLoad(for _: BookMetadata) -> [CoverVariant] {
+        [.standard, .audioSquare]
     }
 
     private static nonisolated func makeCoverPayload(from data: Data) -> CoverImagePayload? {

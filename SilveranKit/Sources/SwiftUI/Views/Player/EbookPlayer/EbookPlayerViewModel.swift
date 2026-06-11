@@ -518,9 +518,9 @@ class EbookPlayerViewModel {
 
             #if os(iOS)
             if let metadata = bookData?.metadata {
-                if let coverData = await FilesystemActor.shared.loadCoverImage(
-                    uuid: metadata.uuid,
-                    variant: "standard",
+                if let coverData = await BookServiceActor.shared.cachedCoverData(
+                    for: metadata.uuid,
+                    audio: false,
                 ) {
                     if let image = UIImage(data: coverData) {
                         await SMILPlayerActor.shared.setCoverImage(image)
@@ -685,9 +685,9 @@ class EbookPlayerViewModel {
             progressManager?.bookAuthor = metadata.authors?.first?.name
 
             Task {
-                if let coverData = await FilesystemActor.shared.loadCoverImage(
-                    uuid: metadata.uuid,
-                    variant: "standard",
+                if let coverData = await BookServiceActor.shared.cachedCoverData(
+                    for: metadata.uuid,
+                    audio: false,
                 ) {
                     await MainActor.run {
                         let base64 = coverData.base64EncodedString()

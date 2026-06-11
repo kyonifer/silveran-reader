@@ -504,9 +504,14 @@ struct MetadataCoverImportView: View {
     }
 
     private func currentCoverImage(scope: MetadataCoverScope) -> some View {
-        coverImageView(
-            data: replacementCover(scope: scope)?.data,
-            serverImage: currentServerCover(scope: scope),
+        let replacement = replacementCover(scope: scope)
+        let serverImage = currentServerCover(scope: scope)
+        debugLog(
+            "[MetadataCoverRefresh] CoverImport currentCoverImage bookID=\(bookId) scope=\(scope.rawValue) variant=\(scope.variant) replacement=\(replacement != nil) serverImage=\(serverImage != nil)"
+        )
+        return coverImageView(
+            data: replacement?.data,
+            serverImage: serverImage,
             aspectRatio: scope.aspectRatio,
         )
         .metadataEditorBoundary(cornerRadius: 8)
@@ -1232,16 +1237,35 @@ struct MetadataCoverImportView: View {
 
     private func currentServerCover(scope: MetadataCoverScope) -> Image? {
         guard let metadata = book?.originalMetadata else { return nil }
-        return mediaViewModel.coverImage(for: metadata, variant: scope.variant)
+        let state = mediaViewModel.coverState(for: metadata, variant: scope.variant)
+        #if canImport(AppKit)
+        let nsImageSize =
+            state.nsImage.map { "\(Int($0.size.width))x\(Int($0.size.height))" } ?? "nil"
+        #else
+        let nsImageSize = "unavailable"
+        #endif
+        debugLog(
+            "[MetadataCoverRefresh] CoverImport currentServerCover bookID=\(metadata.id) scope=\(scope.rawValue) variant=\(scope.variant) stateObject=\(ObjectIdentifier(state)) image=\(state.image != nil) nsImage=\(nsImageSize)"
+        )
+        return state.image
     }
 
     private func currentPreview(scope: MetadataCoverScope) -> PreviewCover? {
         if let data = replacementCover(scope: scope)?.data {
+            debugLog(
+                "[MetadataCoverRefresh] CoverImport currentPreview replacement bookID=\(bookId) scope=\(scope.rawValue) bytes=\(data.count)"
+            )
             return .data(data, scopeTitle(scope))
         }
         if let image = currentServerCover(scope: scope) {
+            debugLog(
+                "[MetadataCoverRefresh] CoverImport currentPreview serverImage bookID=\(bookId) scope=\(scope.rawValue)"
+            )
             return .image(image, scopeTitle(scope))
         }
+        debugLog(
+            "[MetadataCoverRefresh] CoverImport currentPreview nil bookID=\(bookId) scope=\(scope.rawValue)"
+        )
         return nil
     }
 

@@ -157,6 +157,41 @@ public enum LibrarySnapshotPolicy: Sendable, Hashable {
     case refresh
 }
 
+public enum BookRefreshPolicy: Sendable, Hashable {
+    case cachedOnly
+    case refresh
+    case forceRefresh
+}
+
+public enum BookRefreshSource: Sendable, Hashable {
+    case cache
+    case source
+}
+
+public enum CoverLoadPolicy: Sendable, Hashable {
+    case cachedThenFetch
+    case forceRefresh
+}
+
+public enum CoverLoadResponse: Sendable {
+    case cached(Data)
+    case fetched(BookCover)
+    case missing
+    case skippedOffline
+}
+
+public struct BookRefreshResult: Sendable, Hashable {
+    public let book: BookMetadata?
+    public let source: BookRefreshSource
+    public let error: String?
+
+    public init(book: BookMetadata?, source: BookRefreshSource, error: String? = nil) {
+        self.book = book
+        self.source = source
+        self.error = error
+    }
+}
+
 public struct BookServiceLibrarySnapshot: Sendable {
     public let books: [BookMetadata]
     public let mediaPaths: [String: MediaPaths]

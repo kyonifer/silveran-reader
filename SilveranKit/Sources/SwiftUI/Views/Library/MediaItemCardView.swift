@@ -310,19 +310,22 @@ struct MediaItemCardView: View {
 
     private var isDoubleCover: Bool {
         coverPreference == .storytellerDouble
-            && item.hasAvailableEbook && item.hasAvailableAudiobook
     }
 
     private var cardContent: some View {
         let placeholderColor = Color(white: 0.2)
         let coverVariant = resolveCoverVariant(for: item)
         let containerAspectRatio: CGFloat = coverPreference.preferredContainerAspectRatio
+        let standardCoverState = mediaViewModel.coverState(for: item, variant: .standard)
+        let audioCoverState = mediaViewModel.coverState(for: item, variant: .audioSquare)
+        let shouldRenderDoubleCover =
+            isDoubleCover && standardCoverState.image != nil && audioCoverState.image != nil
 
         return VStack(alignment: .leading, spacing: 0) {
             ZStack(alignment: .top) {
                 VStack(spacing: 0) {
                     Spacer(minLength: 0)
-                    if isDoubleCover {
+                    if shouldRenderDoubleCover {
                         DoubleCoverView(
                             item: item,
                             placeholderColor: placeholderColor,
@@ -366,7 +369,7 @@ struct MediaItemCardView: View {
                     }
                 }
                 .overlay(alignment: .topTrailing) {
-                    if showAudioIndicator && !isDoubleCover {
+                    if showAudioIndicator && !shouldRenderDoubleCover {
                         AudioIndicatorBadge(item: item, coverVariant: coverVariant)
                             .padding(.trailing, 4)
                             .padding(.top, 4)
@@ -488,18 +491,7 @@ struct MediaItemCardView: View {
     }
 
     private func resolveCoverVariant(for item: BookMetadata) -> MediaViewModel.CoverVariant {
-        switch coverPreference {
-            case .preferEbook, .storytellerDouble:
-                if item.hasAvailableEbook {
-                    return .standard
-                }
-                return item.hasAvailableAudiobook ? .audioSquare : .standard
-            case .preferAudiobook:
-                if item.hasAvailableAudiobook || item.isAudiobookOnly {
-                    return .audioSquare
-                }
-                return .standard
-        }
+        mediaViewModel.coverVariant(for: item, preference: coverPreference)
     }
 }
 
@@ -546,12 +538,15 @@ private struct MediaItemCoverImage: View {
 
     var body: some View {
         let coverState = mediaViewModel.coverState(for: item, variant: variant)
+        let fallbackVariant: MediaViewModel.CoverVariant = variant == .standard ? .audioSquare : .standard
+        let fallbackState = mediaViewModel.coverState(for: item, variant: fallbackVariant)
+        let displayImage = coverState.image ?? fallbackState.image
 
         ZStack {
-            if coverState.image == nil {
+            if displayImage == nil {
                 placeholderColor
             }
-            if let image = coverState.image {
+            if let image = displayImage {
                 image
                     .resizable()
                     .interpolation(.high)
@@ -560,24 +555,39 @@ private struct MediaItemCoverImage: View {
                     .transition(.opacity.combined(with: .scale))
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: coverState.image != nil)
+        .animation(.easeInOut(duration: 0.2), value: displayImage != nil)
         .task(id: taskIdentifier) {
-            debugCoverLog("task imageLoaded=\(coverState.image != nil)")
+            debugCoverLog(
+                "task imageLoaded=\(coverState.image != nil) fallbackLoaded=\(fallbackState.image != nil)"
+            )
             mediaViewModel.ensureCoverLoaded(
                 for: item,
                 variant: variant,
                 debugSource: debugContext,
             )
+            mediaViewModel.ensureCoverLoaded(
+                for: item,
+                variant: fallbackVariant,
+                debugSource: debugContext,
+            )
         }
         .onAppear {
-            debugCoverLog("appear imageLoaded=\(coverState.image != nil)")
+            debugCoverLog(
+                "appear imageLoaded=\(coverState.image != nil) fallbackLoaded=\(fallbackState.image != nil)"
+            )
         }
         .onChange(of: coverState.image != nil) { _, loaded in
             debugCoverLog("imageLoaded changed=\(loaded)")
         }
+        .onChange(of: fallbackState.image != nil) { _, loaded in
+            debugCoverLog("fallbackLoaded changed=\(loaded)")
+        }
         .onDisappear {
-            debugCoverLog("disappear imageLoaded=\(coverState.image != nil)")
+            debugCoverLog(
+                "disappear imageLoaded=\(coverState.image != nil) fallbackLoaded=\(fallbackState.image != nil)"
+            )
             mediaViewModel.cancelCoverLoad(for: item, variant: variant)
+            mediaViewModel.cancelCoverLoad(for: item, variant: fallbackVariant)
         }
     }
 
@@ -688,40 +698,42 @@ struct DoubleCoverView: View {
         #endif
 
         ZStack {
-            coverImage(state: audioState)
-                .frame(width: audioSize, height: audioSize)
-                .clipShape(RoundedRectangle(cornerRadius: cornerRadius * 0.8, style: .continuous))
-                .stableCoverRendering()
-                .scaleEffect(audioScale)
-                .offset(x: audioXOffset)
-                .zIndex(audioZ)
-                #if os(macOS)
-            .onHover { hovering in
-                audioHoverTask?.cancel()
-                if hovering {
-                    audioHoverTask = Task { @MainActor in
-                        try? await Task.sleep(for: .milliseconds(250))
-                        guard !Task.isCancelled else { return }
-                        withAnimation(.easeInOut(duration: 0.25)) {
-                            swapPhase = .slidingOut
-                            isSwapping = true
-                        }
-                        try? await Task.sleep(for: .milliseconds(250))
-                        guard !Task.isCancelled else { return }
-                        withAnimation(.easeInOut(duration: 0.25)) {
-                            swapPhase = .swapped
+            if ebookState.image != nil && audioState.image != nil {
+                coverImage(state: audioState)
+                    .frame(width: audioSize, height: audioSize)
+                    .clipShape(RoundedRectangle(cornerRadius: cornerRadius * 0.8, style: .continuous))
+                    .stableCoverRendering()
+                    .scaleEffect(audioScale)
+                    .offset(x: audioXOffset)
+                    .zIndex(audioZ)
+                    #if os(macOS)
+                    .onHover { hovering in
+                        audioHoverTask?.cancel()
+                        if hovering {
+                            audioHoverTask = Task { @MainActor in
+                                try? await Task.sleep(for: .milliseconds(250))
+                                guard !Task.isCancelled else { return }
+                                withAnimation(.easeInOut(duration: 0.25)) {
+                                    swapPhase = .slidingOut
+                                    isSwapping = true
+                                }
+                                try? await Task.sleep(for: .milliseconds(250))
+                                guard !Task.isCancelled else { return }
+                                withAnimation(.easeInOut(duration: 0.25)) {
+                                    swapPhase = .swapped
+                                }
+                            }
                         }
                     }
-                }
-            }
-                #endif
+                    #endif
 
-            coverImage(state: ebookState)
-                .frame(width: scaledWidth, height: ebookHeight)
-                .clipShape(RoundedRectangle(cornerRadius: cornerRadius * 0.8, style: .continuous))
-                .stableCoverRendering()
-                .offset(x: ebookXOffset)
-                .zIndex(ebookZ)
+                coverImage(state: ebookState)
+                    .frame(width: scaledWidth, height: ebookHeight)
+                    .clipShape(RoundedRectangle(cornerRadius: cornerRadius * 0.8, style: .continuous))
+                    .stableCoverRendering()
+                    .offset(x: ebookXOffset)
+                    .zIndex(ebookZ)
+            }
         }
         .frame(width: coverWidth, height: containerHeight)
         #if os(macOS)
@@ -774,9 +786,9 @@ struct DoubleCoverView: View {
     }
 
     private func debugCoverLog(_ message: String) {
-        guard let debugContext else { return }
+        let context = debugContext ?? "library"
         debugLog(
-            "[CoverPerf][\(debugContext)] doubleView \(message) title='\(item.title)' id=\(item.id)"
+            "[MetadataCoverRefresh] doubleCover[\(context)] \(message) title='\(item.title)' id=\(item.id)"
         )
     }
 

@@ -828,7 +828,7 @@ struct EditionMetadataLayout: View {
 
     private var currentServerCover: Image? {
         originalMetadata.flatMap {
-            mediaViewModel.coverImage(for: $0, variant: scope.coverScope.variant)
+            mediaViewModel.coverState(for: $0, variant: scope.coverScope.variant).image
         }
     }
 
@@ -1358,11 +1358,8 @@ struct EditionMetadataLayout: View {
 
     private func loadScopedCover() {
         guard let originalMetadata else { return }
-        mediaViewModel.ensureCoverLoaded(for: originalMetadata, variant: scope.coverScope.variant)
-        if originalMetadata.hasAvailableEbook && originalMetadata.hasAvailableAudiobook {
-            mediaViewModel.ensureCoverLoaded(for: originalMetadata, variant: .standard)
-            mediaViewModel.ensureCoverLoaded(for: originalMetadata, variant: .audioSquare)
-        }
+        mediaViewModel.ensureCoverLoaded(for: originalMetadata, variant: .standard)
+        mediaViewModel.ensureCoverLoaded(for: originalMetadata, variant: .audioSquare)
     }
 
     private func handleCoverPick(_ result: Result<URL, Error>) {

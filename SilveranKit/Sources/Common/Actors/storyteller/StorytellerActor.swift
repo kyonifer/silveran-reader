@@ -705,6 +705,9 @@ public actor StorytellerActor {
         if let version = Self.coverVersionQueryValue(from: version) {
             queryParameters["v"] = version
         }
+        debugLog(
+            "[MetadataCoverRefresh] StorytellerActor fetchCoverImage request bookID=\(bookId) audio=\(audio) width=\(width.map(String.init) ?? "nil") height=\(height.map(String.init) ?? "nil") versionInput=\(version ?? "nil") query=\(queryParameters)"
+        )
 
         var headers: [String: String] = [
             "Accept": "image/*",
@@ -741,6 +744,9 @@ public actor StorytellerActor {
             }
 
             let httpResponse = response.response
+            debugLog(
+                "[MetadataCoverRefresh] StorytellerActor fetchCoverImage response bookID=\(bookId) status=\(response.statusCode) bytes=\(response.data.count) etag=\(httpResponse.value(forHTTPHeaderField: "Etag") ?? "nil") lastModified=\(httpResponse.value(forHTTPHeaderField: "Last-Modified") ?? "nil") cacheControl=\(httpResponse.value(forHTTPHeaderField: "Cache-Control") ?? "nil")"
+            )
             return BookCover(
                 data: response.data,
                 contentType: httpResponse.value(forHTTPHeaderField: "Content-Type"),
@@ -752,6 +758,9 @@ public actor StorytellerActor {
                 ),
             )
         } catch {
+            debugLog(
+                "[MetadataCoverRefresh] StorytellerActor fetchCoverImage error bookID=\(bookId) error=\(error)"
+            )
             logStorytellerError("fetchCoverImage", error: error)
             return nil
         }
@@ -933,7 +942,11 @@ public actor StorytellerActor {
             }
 
             do {
-                return try decoder.decode(BookMetadata.self, from: response.data)
+                let metadata = try decoder.decode(BookMetadata.self, from: response.data)
+                debugLog(
+                    "[MetadataCoverRefresh] StorytellerActor fetchBookDetails success bookID=\(bookId) updatedAt=\(metadata.updatedAt ?? "nil")"
+                )
+                return metadata
             } catch {
                 debugLog("[StorytellerActor] DECODE ERROR in fetchBookDetails for book \(bookId):")
                 debugLog("[StorytellerActor] Error: \(error)")
@@ -943,6 +956,9 @@ public actor StorytellerActor {
                 throw error
             }
         } catch {
+            debugLog(
+                "[MetadataCoverRefresh] StorytellerActor fetchBookDetails error bookID=\(bookId) error=\(error)"
+            )
             logStorytellerError("fetchBookDetails", error: error)
             return nil
         }

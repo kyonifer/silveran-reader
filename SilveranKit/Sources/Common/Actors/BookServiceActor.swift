@@ -556,6 +556,92 @@ public actor BookServiceActor {
         return stamped
     }
 
+    public func refreshBookFromSource(
+        bookID: String,
+        sourceID: BookSourceID?,
+        policy: BookRefreshPolicy = .refresh,
+    ) async -> BookRefreshResult {
+        await ensureSourceRegistryLoaded()
+        debugLog(
+            "[MetadataCoverRefresh] BSA refreshBookFromSource start bookID=\(bookID) sourceID=\(sourceID ?? "nil") policy=\(policy)"
+        )
+        guard let resolvedSourceID = resolveExplicitSourceID(sourceID),
+            let source = sourceActor(for: resolvedSourceID)
+        else {
+            debugLog(
+                "[MetadataCoverRefresh] BSA refreshBookFromSource missing source bookID=\(bookID) sourceID=\(sourceID ?? "nil")"
+            )
+            return BookRefreshResult(
+                book: nil,
+                source: .cache,
+                error: "Book metadata is missing source ID.",
+            )
+        }
+
+        let cachedBook = await cachedBookMetadata(bookID: bookID, sourceID: resolvedSourceID)
+        debugLog(
+            "[MetadataCoverRefresh] BSA cached book bookID=\(bookID) found=\(cachedBook != nil) cachedUpdatedAt=\(cachedBook?.updatedAt ?? "nil")"
+        )
+        guard policy != .cachedOnly else {
+            return BookRefreshResult(book: cachedBook, source: .cache)
+        }
+
+        let sourceRecord = sourceRecords.first { $0.id == resolvedSourceID }
+        if policy == .forceRefresh, let storyteller = source as? StorytellerActor {
+            debugLog(
+                "[MetadataCoverRefresh] BSA fetching Storyteller book details bookID=\(bookID) sourceID=\(resolvedSourceID)"
+            )
+            guard var refreshed = await storyteller.fetchBookDetails(for: bookID) else {
+                debugLog(
+                    "[MetadataCoverRefresh] BSA Storyteller book details failed bookID=\(bookID) returningCache=\(cachedBook != nil)"
+                )
+                return BookRefreshResult(
+                    book: cachedBook,
+                    source: .cache,
+                    error: "Could not refresh book from Storyteller.",
+                )
+            }
+            refreshed.sourceID = refreshed.sourceID ?? resolvedSourceID
+            refreshed.source = refreshed.source ?? sourceRecord?.name
+
+            debugLog(
+                "[MetadataCoverRefresh] BSA replacing cached book metadata bookID=\(bookID) refreshedUpdatedAt=\(refreshed.updatedAt ?? "nil")"
+            )
+            // Atomic replace with a single observer notification. Removing the book
+            // first would delete its downloaded media and strand cover states held by
+            // views, and the intermediate notify defeats updatedAt change detection.
+            try? await LocalMediaActor.shared.updateSourceCacheBookMetadata(
+                refreshed,
+                sourceID: resolvedSourceID,
+            )
+            debugLog(
+                "[MetadataCoverRefresh] BSA force refresh complete bookID=\(bookID) refreshedUpdatedAt=\(refreshed.updatedAt ?? "nil")"
+            )
+            return BookRefreshResult(book: refreshed, source: .source)
+        }
+
+        debugLog(
+            "[MetadataCoverRefresh] BSA fetching full source library bookID=\(bookID) sourceID=\(resolvedSourceID)"
+        )
+        guard let sourceMetadata = await fetchLibraryInformation(sourceID: resolvedSourceID),
+            let refreshed = sourceMetadata.first(where: { $0.uuid == bookID })
+        else {
+            debugLog(
+                "[MetadataCoverRefresh] BSA full source refresh failed bookID=\(bookID) returningCache=\(cachedBook != nil)"
+            )
+            return BookRefreshResult(
+                book: cachedBook,
+                source: .cache,
+                error: "Could not refresh book from source.",
+            )
+        }
+
+        debugLog(
+            "[MetadataCoverRefresh] BSA full source refresh complete bookID=\(bookID) refreshedUpdatedAt=\(refreshed.updatedAt ?? "nil")"
+        )
+        return BookRefreshResult(book: refreshed, source: .source)
+    }
+
     public func librarySnapshot(policy: LibrarySnapshotPolicy = .cachedOnly) async
         -> BookServiceLibrarySnapshot
     {
@@ -590,6 +676,19 @@ public actor BookServiceActor {
             cachedMediaPaths: await LocalMediaActor.shared.cachedMediaPaths(for: cachedMetadata),
             sources: sourceRecords,
         )
+    }
+
+    private func cachedBookMetadata(
+        bookID: String,
+        sourceID: BookSourceID,
+    ) async -> BookMetadata? {
+        let folderSourceIDs = Set(sourceRecords.filter { $0.kind == .localFolder }.map(\.id))
+        if folderSourceIDs.contains(sourceID) {
+            return await localFolderBooks(sourceID: sourceID).first { $0.uuid == bookID }
+        }
+        return await LocalMediaActor.shared.libraryMetadata().first {
+            $0.uuid == bookID && $0.sourceID == sourceID
+        }
     }
 
     public func addLibraryCacheObserver(
@@ -815,6 +914,113 @@ public actor BookServiceActor {
         )
     }
 
+    private static func coverCacheVariant(audio: Bool) -> String {
+        audio ? "audioSquare" : "standard"
+    }
+
+    public func cachedCoverData(for bookID: String, audio: Bool) async -> Data? {
+        await FilesystemActor.shared.loadCoverImage(
+            uuid: bookID,
+            variant: Self.coverCacheVariant(audio: audio),
+        )
+    }
+
+    // Cache policy for covers lives here, mirroring metadata: cachedThenFetch
+    // serves the disk cache first (fast scroll), then falls back to the source;
+    // forceRefresh bypasses the cache and asks the source directly. Persisting
+    // fetched bytes is left to persistCachedCover so callers only cache
+    // payloads that proved decodable.
+    public func loadCover(
+        for bookID: String,
+        sourceID: BookSourceID?,
+        audio: Bool,
+        width: Int?,
+        height: Int?,
+        version: String?,
+        allowNetwork: Bool,
+        policy: CoverLoadPolicy,
+    ) async -> CoverLoadResponse {
+        if policy == .cachedThenFetch,
+            let data = await cachedCoverData(for: bookID, audio: audio)
+        {
+            return .cached(data)
+        }
+
+        guard let sourceID else { return .missing }
+
+        if policy == .cachedThenFetch, await sourceKind(for: sourceID) == .localFolder {
+            guard
+                let cover = await fetchCoverImage(
+                    for: bookID,
+                    sourceID: sourceID,
+                    audio: false,
+                    width: nil,
+                    height: nil,
+                    version: nil,
+                )
+            else {
+                return .missing
+            }
+            return .fetched(cover)
+        }
+
+        guard allowNetwork else { return .skippedOffline }
+
+        debugLog(
+            "[MetadataCoverRefresh] BSA loadCover sized fetch bookID=\(bookID) sourceID=\(sourceID) audio=\(audio) size=\(width.map(String.init) ?? "nil")x\(height.map(String.init) ?? "nil") version=\(version ?? "nil") policy=\(policy)"
+        )
+        if let cover = await fetchCoverImage(
+            for: bookID,
+            sourceID: sourceID,
+            audio: audio,
+            width: width,
+            height: height,
+            version: version,
+        ) {
+            debugLog(
+                "[MetadataCoverRefresh] BSA loadCover sized fetch success bookID=\(bookID) audio=\(audio) bytes=\(cover.data.count) etag=\(cover.etag ?? "nil") lastModified=\(cover.lastModified ?? "nil") cacheControl=\(cover.cacheControl ?? "nil")"
+            )
+            return .fetched(cover)
+        }
+
+        debugLog(
+            "[MetadataCoverRefresh] BSA loadCover sized fetch nil, falling back raw bookID=\(bookID) audio=\(audio)"
+        )
+        if let cover = await fetchCoverImage(
+            for: bookID,
+            sourceID: sourceID,
+            audio: audio,
+            width: nil,
+            height: nil,
+        ) {
+            debugLog(
+                "[MetadataCoverRefresh] BSA loadCover raw fetch success bookID=\(bookID) audio=\(audio) bytes=\(cover.data.count) etag=\(cover.etag ?? "nil") lastModified=\(cover.lastModified ?? "nil") cacheControl=\(cover.cacheControl ?? "nil")"
+            )
+            return .fetched(cover)
+        }
+
+        debugLog(
+            "[MetadataCoverRefresh] BSA loadCover raw fetch nil bookID=\(bookID) audio=\(audio)"
+        )
+        return .missing
+    }
+
+    public func persistCachedCover(bookID: String, audio: Bool, data: Data) async {
+        try? await FilesystemActor.shared.saveCoverImage(
+            uuid: bookID,
+            data: data,
+            variant: Self.coverCacheVariant(audio: audio),
+        )
+    }
+
+    public func invalidateCachedCovers(for bookID: String) async throws {
+        try await FilesystemActor.shared.removeCoverImages(uuid: bookID)
+    }
+
+    public func removeAllCachedCovers() async throws {
+        try await FilesystemActor.shared.removeAllCoverImages()
+    }
+
     func fetchBook(
         for bookId: String,
         sourceID: BookSourceID,
@@ -997,10 +1203,38 @@ public actor BookServiceActor {
             return nil
         }
 
-        let sourceRecord = sourceRecords.first { $0.id == resolvedSourceID }
         metadata.sourceID = resolvedSourceID
-        metadata.source = sourceRecord?.name ?? metadata.source
         lastUpdateErrorsBySourceID[resolvedSourceID] = nil
+
+        debugLog(
+            "[MetadataCoverRefresh] BSA updateBook success bookID=\(metadata.uuid) sourceID=\(resolvedSourceID) updatedAt=\(metadata.updatedAt ?? "nil")"
+        )
+
+        let refreshResult = await refreshBookFromSource(
+            bookID: metadata.uuid,
+            sourceID: resolvedSourceID,
+            policy: .forceRefresh,
+        )
+        if let refreshed = refreshResult.book, refreshResult.source == .source {
+            debugLog(
+                "[MetadataCoverRefresh] BSA updateBook force refreshed bookID=\(refreshed.uuid) sourceID=\(resolvedSourceID) updatedAt=\(refreshed.updatedAt ?? "nil")"
+            )
+            return refreshed
+        }
+
+        debugLog(
+            "[MetadataCoverRefresh] BSA updateBook force refresh failed; caching update response bookID=\(metadata.uuid) sourceID=\(resolvedSourceID) updatedAt=\(metadata.updatedAt ?? "nil") error=\(refreshResult.error ?? "nil")"
+        )
+        do {
+            try await LocalMediaActor.shared.updateSourceCacheBookMetadata(
+                metadata,
+                sourceID: resolvedSourceID,
+            )
+        } catch {
+            debugLog(
+                "[MetadataCoverRefresh] BSA updateBook cache fallback write failed bookID=\(metadata.uuid) error=\(error)"
+            )
+        }
         return metadata
     }
 
