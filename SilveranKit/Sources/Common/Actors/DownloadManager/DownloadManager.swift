@@ -3,6 +3,9 @@ import Foundation
 public actor DownloadManager {
     public static let shared = DownloadManager()
 
+    private static let maxAutoRetries = 3
+    private static let retryBaseDelay: TimeInterval = 30
+
     private let delegate = DownloadManagerDelegate()
     private lazy var downloadSession: URLSession = {
         let identifier: String
@@ -110,12 +113,30 @@ public actor DownloadManager {
     }
 
     private func retryIncompleteDownloads() async {
-        let stalled = downloads.values.filter { !$0.isActive && $0.isIncomplete }
+        let now = Date()
+        var stalled: [DownloadRecord] = []
+
+        for record in downloads.values where !record.isActive && record.isIncomplete {
+            if case .failed = record.state {
+                guard record.retryCount < Self.maxAutoRetries else { continue }
+
+                let backoff = Self.retryBaseDelay * pow(2.0, Double(record.retryCount))
+                guard now.timeIntervalSince(record.lastUpdatedAt) >= backoff else { continue }
+
+                var updated = record
+                updated.retryCount += 1
+                downloads[record.id] = updated
+                stalled.append(updated)
+            } else {
+                stalled.append(record)
+            }
+        }
+
         guard !stalled.isEmpty else { return }
 
         debugLog("[DownloadManager] Retry loop: resuming \(stalled.count) stalled download(s)")
         for record in stalled {
-            await resumeDownload(for: record.bookId, category: record.category)
+            await performResume(downloadId: record.id)
         }
     }
 
@@ -192,6 +213,17 @@ public actor DownloadManager {
 
         let id = "\(bookId)-\(category.rawValue)"
         guard var record = downloads[id] else { return }
+
+        // A manual resume restores the auto-retry budget.
+        record.retryCount = 0
+        downloads[id] = record
+
+        await performResume(downloadId: id)
+    }
+
+    private func performResume(downloadId id: String) async {
+        guard var record = downloads[id] else { return }
+        let bookId = record.bookId
 
         if record.isActive && activeTasks[id] != nil {
             debugLog("[DownloadManager] Download already active, skipping resume: \(id)")
@@ -392,6 +424,9 @@ public actor DownloadManager {
         } catch {
             debugLog("[DownloadManager] Import failed for \(record.bookTitle): \(error)")
             record.state = .failed(error: error.localizedDescription, hasResumeData: false)
+            // The file downloaded fine, so the import error will recur on every attempt.
+            // Exhaust the auto-retry budget; the user can still retry manually.
+            record.retryCount = Self.maxAutoRetries
             record.lastUpdatedAt = Date()
             downloads[downloadId] = record
         }
