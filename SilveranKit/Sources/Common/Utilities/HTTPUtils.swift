@@ -119,6 +119,7 @@ func httpPatch(
     session: URLSession = .shared,
     debug: Bool = false,
     allowedStatusCodes: Set<Int>? = nil,
+    onSendProgress: (@Sendable (Int64, Int64) -> Void)? = nil,
 ) async throws -> HTTPResponse {
     try await httpRequest(
         method: "PATCH",
@@ -129,6 +130,7 @@ func httpPatch(
         session: session,
         debug: debug,
         allowedStatusCodes: resolvedAllowedStatusCodes(allowedStatusCodes),
+        onSendProgress: onSendProgress,
     )
 }
 
@@ -168,6 +170,24 @@ func urlWithQueryParameters(
     return resolvedURL
 }
 
+private final class UploadProgressDelegate: NSObject, URLSessionTaskDelegate, Sendable {
+    private let onProgress: @Sendable (Int64, Int64) -> Void
+
+    init(onProgress: @escaping @Sendable (Int64, Int64) -> Void) {
+        self.onProgress = onProgress
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        didSendBodyData bytesSent: Int64,
+        totalBytesSent: Int64,
+        totalBytesExpectedToSend: Int64,
+    ) {
+        onProgress(totalBytesSent, totalBytesExpectedToSend)
+    }
+}
+
 private func httpRequest(
     method: String,
     urlString: String,
@@ -177,6 +197,7 @@ private func httpRequest(
     session: URLSession,
     debug: Bool,
     allowedStatusCodes: Set<Int>,
+    onSendProgress: (@Sendable (Int64, Int64) -> Void)? = nil,
 ) async throws -> HTTPResponse {
     let resolvedURLString = try resolveURLString(urlString, adding: queryParameters)
     guard let url = URL(string: resolvedURLString) else {
@@ -186,9 +207,19 @@ private func httpRequest(
     var request = URLRequest(url: url)
     request.httpMethod = method
     headers.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
-    request.httpBody = body
 
-    let (data, response) = try await session.data(for: request)
+    let data: Data
+    let response: URLResponse
+    if let onSendProgress, let body {
+        (data, response) = try await session.upload(
+            for: request,
+            from: body,
+            delegate: UploadProgressDelegate(onProgress: onSendProgress),
+        )
+    } else {
+        request.httpBody = body
+        (data, response) = try await session.data(for: request)
+    }
 
     if debug, let responseString = String(data: data, encoding: .utf8) {
         debugLog("[HTTPUtils] raw response: \(responseString)")

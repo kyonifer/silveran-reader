@@ -534,7 +534,7 @@ public struct UploadNewBookView: View {
         await MainActor.run {
             isUploading = true
             uploadProgress = "Preparing..."
-            uploadProgressFraction = 0.05
+            uploadProgressFraction = 0.0
         }
 
         var ebookAsset: StorytellerUploadAsset?
@@ -545,7 +545,7 @@ public struct UploadNewBookView: View {
             if let url = selectedEbookURL {
                 await MainActor.run {
                     uploadProgress = "Reading ebook..."
-                    uploadProgressFraction = 0.2
+                    uploadProgressFraction = 0.03
                 }
                 let data = try readFileData(from: url)
                 ebookAsset = StorytellerUploadAsset(
@@ -560,7 +560,7 @@ public struct UploadNewBookView: View {
             if !selectedAudiobookURLs.isEmpty {
                 await MainActor.run {
                     uploadProgress = "Reading audiobook..."
-                    uploadProgressFraction = 0.4
+                    uploadProgressFraction = 0.06
                 }
                 audiobookAssets = try selectedAudiobookURLs.map { url in
                     StorytellerUploadAsset(
@@ -576,7 +576,7 @@ public struct UploadNewBookView: View {
             if let url = selectedReadaloudURL {
                 await MainActor.run {
                     uploadProgress = "Reading readaloud..."
-                    uploadProgressFraction = 0.6
+                    uploadProgressFraction = 0.09
                 }
                 let data = try readFileData(from: url)
                 readaloudAsset = StorytellerUploadAsset(
@@ -590,7 +590,7 @@ public struct UploadNewBookView: View {
 
             await MainActor.run {
                 uploadProgress = "Uploading..."
-                uploadProgressFraction = 0.75
+                uploadProgressFraction = 0.1
             }
 
             let uploadBookUUID = UUID().uuidString
@@ -600,6 +600,15 @@ public struct UploadNewBookView: View {
                 ebook: ebookAsset,
                 audiobooks: audiobookAssets,
                 readaloud: readaloudAsset,
+                onProgress: { fraction in
+                    Task { @MainActor in
+                        guard isUploading else { return }
+                        let scaled = 0.1 + 0.9 * min(max(fraction, 0), 1)
+                        if scaled > (uploadProgressFraction ?? 0) {
+                            uploadProgressFraction = scaled
+                        }
+                    }
+                },
             )
 
             await MainActor.run {

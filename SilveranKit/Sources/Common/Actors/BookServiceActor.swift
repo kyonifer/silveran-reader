@@ -1315,6 +1315,7 @@ public actor BookServiceActor {
         audiobooks: [StorytellerUploadAsset] = [],
         readaloud: StorytellerUploadAsset? = nil,
         collectionUUID: String? = nil,
+        onProgress: (@Sendable (Double) -> Void)? = nil,
     ) async -> Bool {
         await ensureSourceRegistryLoaded()
         guard let resolvedSourceID = resolveExplicitSourceID(sourceID),
@@ -1333,6 +1334,7 @@ public actor BookServiceActor {
                     audiobooks: audiobooks,
                     readaloud: readaloud,
                     collectionUUID: collectionUUID,
+                    onProgress: onProgress,
                 )
             case .localFolder:
                 guard let folder = source as? FolderSourceActor else { return false }

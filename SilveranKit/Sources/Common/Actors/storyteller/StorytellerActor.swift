@@ -1522,6 +1522,7 @@ public actor StorytellerActor {
         audiobooks: [StorytellerUploadAsset] = [],
         readaloud: StorytellerUploadAsset? = nil,
         collectionUUID: String? = nil,
+        onProgress: (@Sendable (Double) -> Void)? = nil,
     ) async -> Bool {
         let audiobookAssets = audiobooks + [audiobook].compactMap(\.self)
         let assets = [ebook].compactMap(\.self) + audiobookAssets + [readaloud].compactMap(\.self)
@@ -1531,7 +1532,16 @@ public actor StorytellerActor {
         }
 
         guard let (baseURL, token) = await ensureAuthentication() else { return false }
+        let totalBytes = assets.reduce(Int64(0)) { $0 + Int64($1.data.count) }
+        var completedBytes: Int64 = 0
         for (index, asset) in assets.enumerated() {
+            let assetBaseBytes = completedBytes
+            var onSendProgress: (@Sendable (Int64, Int64) -> Void)?
+            if let onProgress, totalBytes > 0 {
+                onSendProgress = { sentBytes, _ in
+                    onProgress(Double(assetBaseBytes + sentBytes) / Double(totalBytes))
+                }
+            }
             let succeeded = await uploadAsset(
                 asset,
                 bookUUID: bookUUID,
@@ -1539,10 +1549,12 @@ public actor StorytellerActor {
                 baseURL: baseURL,
                 token: token,
                 totalAudioFiles: asset.format == .audiobook ? audiobookAssets.count : nil,
+                onSendProgress: onSendProgress,
             )
             if !succeeded {
                 return false
             }
+            completedBytes += Int64(asset.data.count)
         }
         return true
     }
@@ -1664,6 +1676,7 @@ public actor StorytellerActor {
         baseURL: URL,
         token: AccessToken,
         totalAudioFiles: Int? = nil,
+        onSendProgress: (@Sendable (Int64, Int64) -> Void)? = nil,
     ) async -> Bool {
         let uploadBaseURL =
             baseURL
@@ -1763,6 +1776,7 @@ public actor StorytellerActor {
                 body: asset.data,
                 session: urlSession,
                 allowedStatusCodes: patchAllowedStatuses,
+                onSendProgress: onSendProgress,
             )
 
             guard
