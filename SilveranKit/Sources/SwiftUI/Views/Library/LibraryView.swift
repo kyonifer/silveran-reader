@@ -471,8 +471,6 @@ public struct LibraryView: View {
                     },
                     initialLocationFilter: .downloaded,
                 )
-            case .importLocalFile:
-                ImportLocalFileView()
             case .storytellerServer:
                 StorytellerServerSettingsView()
         }

@@ -1,8 +1,9 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 #if os(macOS)
 import AppKit
-import UniformTypeIdentifiers
+#endif
 
 public struct UploadNewBookData: Codable, Hashable {
     public var sourceID: BookSourceID?
@@ -26,6 +27,21 @@ public struct UploadNewBookView: View {
     @State private var uploadResult: UploadResult?
     @State private var bookSources: [BookSourceRecord] = []
     @State private var selectedSourceID: BookSourceID?
+
+    #if os(iOS)
+    @State private var activeImporter: ImporterTarget?
+    @State private var pendingImporterTarget: ImporterTarget?
+    @State private var localFiles: [BookMetadata] = []
+    @State private var bookToDelete: BookMetadata?
+
+    private enum ImporterTarget: Identifiable {
+        case ebook
+        case audiobook
+        case readaloud
+
+        var id: Self { self }
+    }
+    #endif
 
     private enum UploadResult {
         case success
@@ -99,6 +115,10 @@ public struct UploadNewBookView: View {
                         }
                     }
                 }
+
+                #if os(iOS)
+                localFilesSection
+                #endif
             }
             .formStyle(.grouped)
 
@@ -122,11 +142,13 @@ public struct UploadNewBookView: View {
                     }
                 }
 
+                #if os(macOS)
                 Button("Close") {
                     dismiss()
                 }
                 .buttonStyle(.bordered)
                 .keyboardShortcut(.cancelAction)
+                #endif
 
                 Button(primaryActionTitle) {
                     Task {
@@ -142,10 +164,29 @@ public struct UploadNewBookView: View {
             }
             .padding()
         }
+        #if os(macOS)
         .frame(width: 500, height: 440)
+        #endif
         .task {
             await loadSources()
+            #if os(iOS)
+            await refreshLocalFiles()
+            #endif
         }
+        #if os(iOS)
+        .onChange(of: mediaViewModel.library.bookMetaData.count) {
+            Task {
+                await refreshLocalFiles()
+            }
+        }
+        .fileImporter(
+            isPresented: importerPresentedBinding,
+            allowedContentTypes: importerContentTypes,
+            allowsMultipleSelection: activeImporter == .audiobook,
+        ) { result in
+            handleImporterResult(result)
+        }
+        #endif
     }
 
     private var selectedSourceBinding: Binding<BookSourceID> {
@@ -273,6 +314,7 @@ public struct UploadNewBookView: View {
         }
     }
 
+    #if os(macOS)
     private func selectEbook() {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.epub]
@@ -308,6 +350,183 @@ public struct UploadNewBookView: View {
             selectedReadaloudURL = panel.url
         }
     }
+    #else
+    private func selectEbook() {
+        pendingImporterTarget = .ebook
+        activeImporter = .ebook
+    }
+
+    private func selectAudiobook() {
+        pendingImporterTarget = .audiobook
+        activeImporter = .audiobook
+    }
+
+    private func selectReadaloud() {
+        pendingImporterTarget = .readaloud
+        activeImporter = .readaloud
+    }
+
+    private var importerPresentedBinding: Binding<Bool> {
+        Binding(
+            get: { activeImporter != nil },
+            set: { if !$0 { activeImporter = nil } },
+        )
+    }
+
+    private var importerContentTypes: [UTType] {
+        switch activeImporter {
+            case .audiobook:
+                return [.mpeg4Audio, .mp3, .audio]
+            case .ebook, .readaloud, nil:
+                return [.epub]
+        }
+    }
+
+    private func handleImporterResult(_ result: Result<[URL], Error>) {
+        defer {
+            activeImporter = nil
+            pendingImporterTarget = nil
+        }
+        guard case .success(let urls) = result, !urls.isEmpty else { return }
+        switch pendingImporterTarget {
+            case .ebook:
+                selectedEbookURL = urls.first
+            case .audiobook:
+                selectedAudiobookURLs = urls
+            case .readaloud:
+                selectedReadaloudURL = urls.first
+            case nil:
+                break
+        }
+    }
+
+    @ViewBuilder
+    private var localFilesSection: some View {
+        if !localFiles.isEmpty {
+            Section("Local Files") {
+                ForEach(localFiles) { book in
+                    localFileRow(book)
+                }
+            }
+            .confirmationDialog(
+                "Delete \(bookToDelete?.title ?? "this book")?",
+                isPresented: Binding(
+                    get: { bookToDelete != nil },
+                    set: { if !$0 { bookToDelete = nil } },
+                ),
+                titleVisibility: .visible,
+            ) {
+                Button("Delete", role: .destructive) {
+                    if let book = bookToDelete {
+                        deleteLocalFile(book)
+                    }
+                    bookToDelete = nil
+                }
+                Button("Cancel", role: .cancel) {
+                    bookToDelete = nil
+                }
+            } message: {
+                Text("This will permanently remove the files from your device.")
+            }
+        }
+    }
+
+    private func localFileRow(_ book: BookMetadata) -> some View {
+        HStack(spacing: 12) {
+            localFileCover(for: book)
+                .frame(width: 40, height: 60)
+                .clipShape(RoundedRectangle(cornerRadius: 4))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(book.title)
+                    .font(.body)
+                    .lineLimit(2)
+                if let author = book.authors?.first?.name {
+                    Text(author)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                HStack(spacing: 4) {
+                    if book.hasAvailableEbook {
+                        Label("eBook", systemImage: "book.closed")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    if book.hasAvailableAudiobook {
+                        Label("Audio", systemImage: "headphones")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
+            Spacer()
+
+            Button(role: .destructive) {
+                bookToDelete = book
+            } label: {
+                Image(systemName: "trash")
+                    .foregroundStyle(.red)
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    @ViewBuilder
+    private func localFileCover(for book: BookMetadata) -> some View {
+        let image = mediaViewModel.coverImage(for: book, variant: .standard)
+        ZStack {
+            Color.secondary.opacity(0.2)
+            if let image {
+                image
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                Image(systemName: "book.closed.fill")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .task {
+            mediaViewModel.ensureCoverLoaded(for: book, variant: .standard)
+        }
+    }
+
+    private func refreshLocalFiles() async {
+        let metadata = await BookServiceActor.shared.localFolderBooks()
+        await MainActor.run {
+            localFiles = metadata.sorted {
+                $0.title.articleStrippedCompare($1.title) == .orderedAscending
+            }
+        }
+    }
+
+    private func deleteLocalFile(_ book: BookMetadata) {
+        Task {
+            let success = await BookServiceActor.shared.deleteBook(
+                book.id,
+                sourceID: book.sourceID,
+            )
+            if success {
+                await refreshLocalFiles()
+            } else {
+                debugLog(
+                    "[UploadNewBookView] Failed to delete book: \(book.title)"
+                )
+            }
+        }
+    }
+    #endif
+
+    private func readFileData(from url: URL) throws -> Data {
+        let accessing = url.startAccessingSecurityScopedResource()
+        defer {
+            if accessing {
+                url.stopAccessingSecurityScopedResource()
+            }
+        }
+        return try Data(contentsOf: url)
+    }
 
     private func uploadBook() async {
         guard hasAnyFileSelected, let sourceID = selectedSourceID else { return }
@@ -328,7 +547,7 @@ public struct UploadNewBookView: View {
                     uploadProgress = "Reading ebook..."
                     uploadProgressFraction = 0.2
                 }
-                let data = try Data(contentsOf: url)
+                let data = try readFileData(from: url)
                 ebookAsset = StorytellerUploadAsset(
                     format: .ebook,
                     filename: url.lastPathComponent,
@@ -347,7 +566,7 @@ public struct UploadNewBookView: View {
                     StorytellerUploadAsset(
                         format: .audiobook,
                         filename: url.lastPathComponent,
-                        data: try Data(contentsOf: url),
+                        data: try readFileData(from: url),
                         contentType: audioContentType(for: url),
                         relativePath: nil,
                     )
@@ -359,7 +578,7 @@ public struct UploadNewBookView: View {
                     uploadProgress = "Reading readaloud..."
                     uploadProgressFraction = 0.6
                 }
-                let data = try Data(contentsOf: url)
+                let data = try readFileData(from: url)
                 readaloudAsset = StorytellerUploadAsset(
                     format: .readaloud,
                     filename: url.lastPathComponent,
@@ -442,4 +661,3 @@ public struct UploadNewBookView: View {
         .accessibilityValue("\(Int(progress * 100)) percent")
     }
 }
-#endif

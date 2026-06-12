@@ -241,12 +241,6 @@ public actor FolderSourceActor: BookSourceActor {
         return (tempURL, filename)
     }
 
-    public func folderDirectory() async throws -> URL {
-        let resolved = try await resolvedFolderURL()
-        stopAccessing(resolved)
-        return resolved.url
-    }
-
     public func importMedia(
         from sourceFileURL: URL,
         category: LocalMediaCategory,

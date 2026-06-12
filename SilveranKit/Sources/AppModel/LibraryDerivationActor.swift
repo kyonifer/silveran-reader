@@ -1072,7 +1072,7 @@ public actor LibraryDerivationActor {
 
         mutating func badgeCount(for content: SidebarContentKind) -> Int {
             switch content {
-                case .home, .placeholder, .importLocalFile, .storytellerServer:
+                case .home, .placeholder, .storytellerServer:
                     return 0
                 case .currentlyDownloading:
                     return input.incompleteDownloadCount

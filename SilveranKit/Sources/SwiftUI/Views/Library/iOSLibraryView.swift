@@ -565,7 +565,7 @@ struct MoreMenuView: View {
         case publicationYears
         case ratings
         case currentlyDownloading
-        case addLocalFile
+        case addBook
         case appleWatch
     }
 
@@ -644,8 +644,8 @@ struct MoreMenuView: View {
                         Label("Currently Downloading", systemImage: "arrow.down.circle.dotted")
                     }
                 }
-                NavigationLink(value: MoreDestination.addLocalFile) {
-                    Label("Manage Local Files", systemImage: "folder.badge.plus")
+                NavigationLink(value: MoreDestination.addBook) {
+                    Label("Add Book", systemImage: "plus.circle")
                 }
                 if isWatchPaired {
                     NavigationLink(value: MoreDestination.appleWatch) {
@@ -762,9 +762,9 @@ struct MoreMenuView: View {
                             showSettings: $showSettings,
                             showOfflineSheet: $showOfflineSheet,
                         )
-                case .addLocalFile:
-                    ImportLocalFileView()
-                        .navigationTitle("Manage Local Files")
+                case .addBook:
+                    UploadNewBookView()
+                        .navigationTitle("Add Book")
                         .navigationBarTitleDisplayMode(.inline)
                         .iOSLibraryToolbar(
                             showSettings: $showSettings,

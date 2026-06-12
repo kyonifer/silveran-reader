@@ -55,7 +55,6 @@ public enum SidebarContentKind: Hashable, Sendable {
     case placeholder(title: String)
     case currentlyDownloading
     case downloaded
-    case importLocalFile
     case storytellerServer
     case bookSource(BookSourceID)
 
@@ -95,8 +94,6 @@ public enum SidebarContentKind: Hashable, Sendable {
                 return "currentlyDownloading"
             case .downloaded:
                 return "downloaded"
-            case .importLocalFile:
-                return "importLocalFile"
             case .storytellerServer:
                 return "storytellerServer"
             case .bookSource(let sourceID):

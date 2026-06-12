@@ -768,38 +768,6 @@ public actor BookServiceActor {
         return metadata
     }
 
-    public func folderSourceDirectory(sourceID: BookSourceID? = nil) async throws -> URL {
-        guard let folder = await folderSourceActor(for: sourceID) else {
-            throw LocalMediaError.importFailed("Folder source is not configured")
-        }
-        return try await folder.folderDirectory()
-    }
-
-    @discardableResult
-    public func importMediaIntoFolderSource(
-        from sourceFileURL: URL,
-        category: LocalMediaCategory,
-        bookName: String,
-        bookUUID: String? = nil,
-        sourceID: BookSourceID? = nil,
-    ) async throws -> URL {
-        await ensureSourceRegistryLoaded()
-        guard let resolvedSourceID = resolveFolderSourceID(sourceID),
-            let folder = await folderSourceActor(for: resolvedSourceID)
-        else {
-            throw LocalMediaError.importFailed("Folder source is not configured")
-        }
-
-        let url = try await folder.importMedia(
-            from: sourceFileURL,
-            category: category,
-            bookName: bookName,
-            bookUUID: bookUUID,
-        )
-        await notifyLibraryObservers()
-        return url
-    }
-
     @discardableResult
     public func importAudiobookFilesIntoFolderSource(
         from sourceFileURLs: [URL],

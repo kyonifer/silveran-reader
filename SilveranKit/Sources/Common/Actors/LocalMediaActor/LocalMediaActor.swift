@@ -34,15 +34,6 @@ public actor LocalMediaActor: GlobalActor {
     private let localLibrary: LocalLibraryManager
     private var periodicScanTask: Task<Void, Never>?
 
-    private static let extensionCategoryMap: [String: LocalMediaCategory] = [
-        "epub": .ebook,
-        "m4b": .audio,
-    ]
-
-    public static var allowedExtensions: [String] {
-        Array(extensionCategoryMap.keys).sorted()
-    }
-
     private var observers: [UUID: @Sendable @MainActor () -> Void] = [:]
     private var sourceCacheLoaded = false
 
@@ -569,14 +560,6 @@ public actor LocalMediaActor: GlobalActor {
         await notifyObservers()
     }
 
-    public static func category(forFileURL url: URL) throws -> LocalMediaCategory {
-        let ext = url.pathExtension.lowercased()
-        guard let category = Self.extensionCategoryMap[ext] else {
-            throw LocalMediaError.unsupportedFileExtension(ext)
-        }
-        return category
-    }
-
     public func importMedia(
         for metadata: BookMetadata,
         category: LocalMediaCategory,
@@ -947,7 +930,6 @@ public enum LocalMediaCategory: String, CaseIterable, Sendable, Codable {
 }
 
 enum LocalMediaError: Error, Sendable {
-    case unsupportedFileExtension(String)
     case missingAudiobookManifest
     case importFailed(String)
 }
@@ -955,8 +937,6 @@ enum LocalMediaError: Error, Sendable {
 extension LocalMediaError: LocalizedError {
     var errorDescription: String? {
         switch self {
-            case .unsupportedFileExtension(let ext):
-                "Unsupported media file extension: \(ext)"
             case .missingAudiobookManifest:
                 "Audiobook package is missing manifest.json"
             case .importFailed(let message):
