@@ -87,6 +87,9 @@ public struct MetadataEditorView: View {
             TapGesture(count: 5)
                 .onEnded {
                     showsEditionScopes = true
+                    if selectedScope == .covers {
+                        selectedScope = .work
+                    }
                 }
         )
         #if os(macOS)

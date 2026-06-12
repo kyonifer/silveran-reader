@@ -26,10 +26,8 @@ struct MetadataEditorBookForm: View {
                     if isCompactIOS {
                         compactBookTitle
                     }
-                    if showsEditionScopes {
-                        scopePicker
-                        Divider()
-                    }
+                    scopePicker
+                    Divider()
                     scopeContent(bookId: bookId)
                 }
             } else {
@@ -73,9 +71,13 @@ struct MetadataEditorBookForm: View {
         }
     }
 
+    private var availableScopes: [MetadataEditorScope] {
+        showsEditionScopes ? [.work, .audiobook, .ebook] : [.work, .covers]
+    }
+
     private var scopeTabs: some View {
         Picker("", selection: $selectedScope) {
-            ForEach(MetadataEditorScope.allCases) { scope in
+            ForEach(availableScopes) { scope in
                 Label(scope.title, systemImage: scope.systemImage).tag(scope)
             }
         }
@@ -104,37 +106,34 @@ struct MetadataEditorBookForm: View {
 
     @ViewBuilder
     private func scopeContent(bookId: String) -> some View {
-        if !showsEditionScopes {
-            WorkMetadataLayout(
-                bookId: bookId,
-                viewModel: viewModel,
-                openHardcoverImport: openHardcoverImport,
-            )
-        } else {
-            switch selectedScope {
-                case .work:
-                    WorkMetadataLayout(
-                        bookId: bookId,
-                        viewModel: viewModel,
-                        openHardcoverImport: openHardcoverImport,
-                    )
-                case .audiobook:
-                    EditionMetadataLayout(
-                        bookId: bookId,
-                        viewModel: viewModel,
-                        scope: .audiobook,
-                        selectedCoverScope: $selectedCoverScope,
-                        openHardcoverImport: openHardcoverImport,
-                    )
-                case .ebook:
-                    EditionMetadataLayout(
-                        bookId: bookId,
-                        viewModel: viewModel,
-                        scope: .ebook,
-                        selectedCoverScope: $selectedCoverScope,
-                        openHardcoverImport: openHardcoverImport,
-                    )
-            }
+        switch selectedScope {
+            case .work:
+                WorkMetadataLayout(
+                    bookId: bookId,
+                    viewModel: viewModel,
+                    openHardcoverImport: openHardcoverImport,
+                )
+            case .covers:
+                CoversMetadataLayout(
+                    bookId: bookId,
+                    viewModel: viewModel,
+                )
+            case .audiobook:
+                EditionMetadataLayout(
+                    bookId: bookId,
+                    viewModel: viewModel,
+                    scope: .audiobook,
+                    selectedCoverScope: $selectedCoverScope,
+                    openHardcoverImport: openHardcoverImport,
+                )
+            case .ebook:
+                EditionMetadataLayout(
+                    bookId: bookId,
+                    viewModel: viewModel,
+                    scope: .ebook,
+                    selectedCoverScope: $selectedCoverScope,
+                    openHardcoverImport: openHardcoverImport,
+                )
         }
     }
 }

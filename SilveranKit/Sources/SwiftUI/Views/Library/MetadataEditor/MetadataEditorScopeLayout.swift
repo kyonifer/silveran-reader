@@ -9,6 +9,7 @@ import UniformTypeIdentifiers
 
 enum MetadataEditorScope: String, CaseIterable, Identifiable {
     case work
+    case covers
     case audiobook
     case ebook
 
@@ -17,6 +18,7 @@ enum MetadataEditorScope: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
             case .work: return "General"
+            case .covers: return "Covers"
             case .audiobook: return "Audiobook Edition"
             case .ebook: return "Ebook Edition"
         }
@@ -25,6 +27,7 @@ enum MetadataEditorScope: String, CaseIterable, Identifiable {
     var systemImage: String {
         switch self {
             case .work: return "books.vertical"
+            case .covers: return "photo.on.rectangle.angled"
             case .audiobook: return "headphones"
             case .ebook: return "book"
         }
@@ -1390,6 +1393,358 @@ struct EditionMetadataLayout: View {
                 viewModel.books[index].replacementAudiobookCover = nil
             case .ebook:
                 viewModel.books[index].replacementEbookCover = nil
+        }
+    }
+
+    private func dataImage(_ data: Data) -> Image {
+        #if canImport(AppKit)
+        if let nsImage = NSImage(data: data) {
+            return Image(nsImage: nsImage)
+        }
+        #elseif canImport(UIKit)
+        if let uiImage = UIImage(data: data) {
+            return Image(uiImage: uiImage)
+        }
+        #endif
+        return Image(systemName: "photo")
+    }
+
+    private func resolutionString(from data: Data) -> String? {
+        #if canImport(AppKit)
+        guard let image = NSImage(data: data),
+            let rep = image.representations.first
+        else { return nil }
+        return "\(rep.pixelsWide) x \(rep.pixelsHigh)"
+        #elseif canImport(UIKit)
+        guard let image = UIImage(data: data) else { return nil }
+        return "\(Int(image.size.width * image.scale)) x \(Int(image.size.height * image.scale))"
+        #else
+        return nil
+        #endif
+    }
+}
+
+struct CoversMetadataLayout: View {
+    let bookId: String
+    @Bindable var viewModel: MetadataEditorViewModel
+    @Environment(MediaViewModel.self) private var mediaViewModel
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    private var isCompactIOS: Bool {
+        #if os(iOS)
+        horizontalSizeClass == .compact
+        #else
+        false
+        #endif
+    }
+
+    private var book: MetadataEditorViewModel.EditableBook? {
+        viewModel.books.first { $0.id == bookId }
+    }
+
+    private var originalMetadata: BookMetadata? {
+        book?.originalMetadata
+    }
+
+    var body: some View {
+        GeometryReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 28) {
+                    if isCompactIOS || proxy.size.width < 640 {
+                        VStack(alignment: .leading, spacing: 28) {
+                            coverPanels
+                        }
+                    } else {
+                        HStack(alignment: .top, spacing: 32) {
+                            coverPanels
+                        }
+                    }
+
+                    classicPreviewSection
+                }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 24)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+            }
+            .scrollIndicators(.visible)
+        }
+        .onAppear {
+            guard let originalMetadata else { return }
+            mediaViewModel.ensureCoverLoaded(for: originalMetadata, variant: .standard)
+            mediaViewModel.ensureCoverLoaded(for: originalMetadata, variant: .audioSquare)
+        }
+    }
+
+    @ViewBuilder
+    private var coverPanels: some View {
+        CoverEditPanel(bookId: bookId, viewModel: viewModel, coverScope: .audiobook)
+            .frame(maxWidth: .infinity)
+        CoverEditPanel(bookId: bookId, viewModel: viewModel, coverScope: .ebook)
+            .frame(maxWidth: .infinity)
+    }
+
+    @ViewBuilder
+    private var classicPreviewSection: some View {
+        if let metadata = originalMetadata {
+            VStack(alignment: .leading, spacing: 5) {
+                Text("Storyteller Classic Preview")
+                    .font(.subheadline.weight(.semibold))
+                StagedDoubleCoverPreview(
+                    item: metadata,
+                    audiobookReplacement: book?.replacementAudiobookCover?.data,
+                    ebookReplacement: book?.replacementEbookCover?.data,
+                    placeholderColor: Color.secondary.opacity(0.18),
+                    coverWidth: 96,
+                    containerAspectRatio: CoverPreference.storytellerDouble
+                        .preferredContainerAspectRatio,
+                    cornerRadius: 6,
+                    mediaViewModel: mediaViewModel,
+                )
+                .frame(maxWidth: .infinity, alignment: .center)
+            }
+        }
+    }
+}
+
+private struct CoverEditPanel: View {
+    let bookId: String
+    @Bindable var viewModel: MetadataEditorViewModel
+    let coverScope: MetadataCoverScope
+    @Environment(MediaViewModel.self) private var mediaViewModel
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var showCoverPicker = false
+    @State private var showCoverDiff = false
+
+    private var book: MetadataEditorViewModel.EditableBook? {
+        viewModel.books.first { $0.id == bookId }
+    }
+
+    private var originalMetadata: BookMetadata? {
+        book?.originalMetadata
+    }
+
+    private var replacementCover: (data: Data, filename: String)? {
+        coverScope.isAudio ? book?.replacementAudiobookCover : book?.replacementEbookCover
+    }
+
+    private var currentServerCover: Image? {
+        originalMetadata.flatMap {
+            mediaViewModel.coverState(for: $0, variant: coverScope.variant).image
+        }
+    }
+
+    private var coverResolution: String? {
+        if let data = replacementCover?.data {
+            return resolutionString(from: data)
+        }
+
+        guard let metadata = originalMetadata else { return nil }
+        #if canImport(AppKit)
+        let state = mediaViewModel.coverState(for: metadata, variant: coverScope.variant)
+        guard let nsImage = state.nsImage, let rep = nsImage.representations.first else {
+            return nil
+        }
+        return "\(rep.pixelsWide) x \(rep.pixelsHigh)"
+        #else
+        return nil
+        #endif
+    }
+
+    private var coverSize: CGSize {
+        coverScope.isAudio
+            ? CGSize(width: 205, height: 205)
+            : CGSize(width: 150, height: 225)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            heading
+                .padding(.bottom, 2)
+                .popover(isPresented: $showCoverDiff, arrowEdge: .trailing) {
+                    coverDiffPopover
+                }
+
+            VStack(alignment: .center, spacing: 8) {
+                coverPreview
+
+                Button("Replace from File...") {
+                    showCoverPicker = true
+                }
+
+                if let coverResolution {
+                    Text(coverResolution)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity)
+        }
+        #if canImport(UniformTypeIdentifiers)
+        .fileImporter(
+            isPresented: $showCoverPicker,
+            allowedContentTypes: [.png, .jpeg, .webP, .heic],
+            onCompletion: handleCoverPick,
+        )
+        #endif
+    }
+
+    private var heading: some View {
+        HStack(spacing: 4) {
+            if replacementCover != nil {
+                Button(action: handleCoverDirtyClick) {
+                    Image(systemName: "arrow.uturn.backward.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(metadataEditorChangeColor(for: colorScheme))
+                }
+                .buttonStyle(.borderless)
+                .help(showCoverDiff ? "Revert cover art" : "Show cover art changes")
+            }
+
+            Text(coverScope.label)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(
+                    replacementCover == nil
+                        ? Color.primary : metadataEditorChangeColor(for: colorScheme)
+                )
+                .contentShape(Rectangle())
+                .onTapGesture(perform: handleCoverDirtyClick)
+                .onTapGesture(count: 2) {
+                    clearReplacementCover()
+                    showCoverDiff = false
+                }
+                .help(replacementCover == nil ? "" : "Show cover art changes")
+        }
+    }
+
+    private func handleCoverDirtyClick() {
+        guard replacementCover != nil else { return }
+        if showCoverDiff {
+            clearReplacementCover()
+            showCoverDiff = false
+        } else {
+            showCoverDiff = true
+        }
+    }
+
+    private var coverPreview: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.secondary.opacity(0.12))
+
+            if let data = replacementCover?.data {
+                dataImage(data)
+                    .resizable()
+                    .interpolation(.high)
+                    .scaledToFit()
+                    .padding(8)
+            } else if let currentServerCover {
+                currentServerCover
+                    .resizable()
+                    .interpolation(.high)
+                    .scaledToFit()
+                    .padding(8)
+            } else {
+                VStack(spacing: 8) {
+                    Image(systemName: "photo")
+                        .font(.largeTitle)
+                    Text("No cover art")
+                        .font(.caption)
+                }
+                .foregroundStyle(.secondary)
+            }
+        }
+        .frame(width: coverSize.width, height: coverSize.height)
+        .metadataEditorBoundary(cornerRadius: 8)
+    }
+
+    private var coverDiffPopover: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text(coverScope.label)
+                    .font(.headline)
+                Spacer()
+                Button("Revert Field") {
+                    clearReplacementCover()
+                    showCoverDiff = false
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+            }
+
+            Text("Original to Current")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            HStack(alignment: .top, spacing: 14) {
+                coverDiffImage(title: "Original", data: nil, image: currentServerCover)
+                coverDiffImage(
+                    title: "Current",
+                    data: replacementCover?.data,
+                    image: currentServerCover,
+                )
+            }
+        }
+        .padding()
+        .frame(width: 440)
+    }
+
+    private func coverDiffImage(title: String, data: Data?, image: Image?) -> some View {
+        VStack(spacing: 6) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            ZStack {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(Color.secondary.opacity(0.1))
+                if let data {
+                    dataImage(data)
+                        .resizable()
+                        .interpolation(.high)
+                        .scaledToFit()
+                        .padding(6)
+                } else if let image {
+                    image
+                        .resizable()
+                        .interpolation(.high)
+                        .scaledToFit()
+                        .padding(6)
+                } else {
+                    Image(systemName: "photo")
+                        .font(.title)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(width: 190, height: coverScope.isAudio ? 190 : 230)
+            .metadataEditorBoundary(cornerRadius: 6)
+        }
+    }
+
+    private func handleCoverPick(_ result: Result<URL, Error>) {
+        guard case .success(let url) = result else { return }
+        guard url.startAccessingSecurityScopedResource() else { return }
+        defer { url.stopAccessingSecurityScopedResource() }
+
+        guard let data = try? Data(contentsOf: url),
+            let index = viewModel.books.firstIndex(where: { $0.id == bookId })
+        else { return }
+
+        if coverScope.isAudio {
+            viewModel.books[index].replacementAudiobookCover = (
+                data: data, filename: url.lastPathComponent,
+            )
+        } else {
+            viewModel.books[index].replacementEbookCover = (
+                data: data, filename: url.lastPathComponent,
+            )
+        }
+    }
+
+    private func clearReplacementCover() {
+        guard let index = viewModel.books.firstIndex(where: { $0.id == bookId }) else { return }
+        if coverScope.isAudio {
+            viewModel.books[index].replacementAudiobookCover = nil
+        } else {
+            viewModel.books[index].replacementEbookCover = nil
         }
     }
 
