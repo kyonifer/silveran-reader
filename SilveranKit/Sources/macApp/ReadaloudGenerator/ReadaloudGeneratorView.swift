@@ -497,9 +497,17 @@ public struct ReadaloudGeneratorView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.body.weight(.medium))
-                Text(isDownloaded ? "Downloaded" : "Needed for local alignment")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Text(
+                    isDownloaded
+                        ? "Downloaded"
+                        : isDownloading
+                            ? "Downloading..."
+                            : "Download required before alignment"
+                )
+                .font(.caption)
+                .foregroundStyle(
+                    isDownloaded || isDownloading ? AnyShapeStyle(.secondary) : AnyShapeStyle(.red)
+                )
             }
 
             Spacer(minLength: 8)

@@ -1136,7 +1136,8 @@ struct MediaTableView: NSViewRepresentable {
             {
                 menu.addItem(.separator())
                 let local = NSMenuItem(
-                    title: item.hasAvailableReadaloud ? "Realign Locally" : "Align Locally",
+                    title: item.hasAvailableReadaloud
+                        ? "Recreate Readaloud Locally" : "Create Readaloud Locally",
                     action: #selector(createLocalReadaloud(_:)),
                     keyEquivalent: "",
                 )
@@ -1183,7 +1184,7 @@ struct MediaTableView: NSViewRepresentable {
 
         private func addReprocessItems(to menu: NSMenu, item: BookMetadata) {
             let sync = NSMenuItem(
-                title: "Re-align (Fast)",
+                title: "Re-align Readaloud (Fast)",
                 action: #selector(reprocessSync(_:)),
                 keyEquivalent: "",
             )
@@ -1192,7 +1193,7 @@ struct MediaTableView: NSViewRepresentable {
             menu.addItem(sync)
 
             let transcribe = NSMenuItem(
-                title: "Re-transcribe & Align",
+                title: "Re-transcribe & Align Readaloud",
                 action: #selector(reprocessTranscription(_:)),
                 keyEquivalent: "",
             )
@@ -1201,7 +1202,7 @@ struct MediaTableView: NSViewRepresentable {
             menu.addItem(transcribe)
 
             let full = NSMenuItem(
-                title: "Full Reprocess",
+                title: "Fully Reprocess Readaloud",
                 action: #selector(reprocessFull(_:)),
                 keyEquivalent: "",
             )
@@ -1220,7 +1221,7 @@ struct MediaTableView: NSViewRepresentable {
 
             if status == "PROCESSING" || status == "QUEUED" {
                 let cancel = NSMenuItem(
-                    title: "Cancel Processing",
+                    title: "Cancel Readaloud Processing",
                     action: #selector(cancelProcessing(_:)),
                     keyEquivalent: "",
                 )
@@ -1231,7 +1232,7 @@ struct MediaTableView: NSViewRepresentable {
                 addReprocessItems(to: menu, item: item)
             } else if status == "ERROR" || status == "STOPPED" {
                 let retry = NSMenuItem(
-                    title: "Retry Processing",
+                    title: "Retry Readaloud Processing",
                     action: #selector(reprocessFull(_:)),
                     keyEquivalent: "",
                 )
@@ -1240,7 +1241,7 @@ struct MediaTableView: NSViewRepresentable {
                 menu.addItem(retry)
 
                 let realign = NSMenuItem(
-                    title: "Re-align Only",
+                    title: "Re-align Readaloud Only",
                     action: #selector(reprocessSync(_:)),
                     keyEquivalent: "",
                 )

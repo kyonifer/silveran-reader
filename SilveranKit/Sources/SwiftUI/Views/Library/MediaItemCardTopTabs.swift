@@ -265,7 +265,7 @@ struct MediaItemCardTopTabsButtonOverlay: View {
                 Button(role: .destructive) {
                     deleteMedia(for: tab)
                 } label: {
-                    Label("Delete", systemImage: "trash")
+                    Label("Delete Local \(tab.title)", systemImage: "trash")
                 }
             }
         }

@@ -55,7 +55,7 @@ struct BookContextMenuContent: View {
     }
 
     private var alignMenuTitle: String {
-        item.hasAvailableReadaloud ? "Realign" : "Align"
+        item.hasAvailableReadaloud ? "Recreate Readaloud" : "Create Readaloud"
     }
 
     private var hasProcessingActions: Bool {
@@ -101,7 +101,7 @@ struct BookContextMenuContent: View {
                     await BookServiceActor.shared.fetchLibraryInformation()
                 }
             } label: {
-                Label("Cancel Processing", systemImage: "xmark.circle")
+                Label("Cancel Readaloud Processing", systemImage: "xmark.circle")
             }
         } else if status == "ALIGNED" {
             Button {
@@ -114,7 +114,7 @@ struct BookContextMenuContent: View {
                     await BookServiceActor.shared.fetchLibraryInformation()
                 }
             } label: {
-                Label("Re-align (Fast)", systemImage: "arrow.triangle.2.circlepath")
+                Label("Re-align Readaloud (Fast)", systemImage: "arrow.triangle.2.circlepath")
             }
 
             Button {
@@ -127,7 +127,7 @@ struct BookContextMenuContent: View {
                     await BookServiceActor.shared.fetchLibraryInformation()
                 }
             } label: {
-                Label("Re-transcribe & Align", systemImage: "waveform")
+                Label("Re-transcribe & Align Readaloud", systemImage: "waveform")
             }
 
             Button {
@@ -140,7 +140,7 @@ struct BookContextMenuContent: View {
                     await BookServiceActor.shared.fetchLibraryInformation()
                 }
             } label: {
-                Label("Full Reprocess", systemImage: "arrow.counterclockwise")
+                Label("Fully Reprocess Readaloud", systemImage: "arrow.counterclockwise")
             }
         } else if status == "ERROR" || status == "STOPPED" {
             Button {
@@ -153,7 +153,7 @@ struct BookContextMenuContent: View {
                     await BookServiceActor.shared.fetchLibraryInformation()
                 }
             } label: {
-                Label("Retry Processing", systemImage: "arrow.counterclockwise")
+                Label("Retry Readaloud Processing", systemImage: "arrow.counterclockwise")
             }
 
             Button {
@@ -166,7 +166,7 @@ struct BookContextMenuContent: View {
                     await BookServiceActor.shared.fetchLibraryInformation()
                 }
             } label: {
-                Label("Re-align Only", systemImage: "arrow.triangle.2.circlepath")
+                Label("Re-align Readaloud Only", systemImage: "arrow.triangle.2.circlepath")
             }
         } else if hasEbookAndAudio {
             Button {
