@@ -104,3 +104,9 @@ import Testing
     #expect(books.first?.title == "Still Visible")
     #expect(books.first?.position?.locator == nil)
 }
+
+@Test func formURLEncodedBodyEscapesFormUnsafeCharacters() async throws {
+    let body = formURLEncodedBody(["password": ">-\",+&= a"])
+    let encoded = try #require(body.flatMap { String(data: $0, encoding: .utf8) })
+    #expect(encoded == "password=%3E-%22,%2B%26%3D%20a")
+}

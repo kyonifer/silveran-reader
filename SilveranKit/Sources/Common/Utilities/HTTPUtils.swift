@@ -43,6 +43,19 @@ func httpGet(
     )
 }
 
+func formURLEncodedBody(_ parameters: [String: String]) -> Data? {
+    var components = URLComponents()
+    components.queryItems =
+        parameters
+        .sorted(by: { $0.key < $1.key })
+        .map { URLQueryItem(name: $0.key, value: $0.value) }
+    // URLComponents leaves "+" raw (valid in a URL query), but form-urlencoded
+    // decodes "+" as a space, so it must be escaped explicitly.
+    return components.percentEncodedQuery?
+        .replacingOccurrences(of: "+", with: "%2B")
+        .data(using: .utf8)
+}
+
 func httpPost(
     _ urlString: String,
     headers: [String: String] = [:],
@@ -60,12 +73,7 @@ func httpPost(
     if let body {
         payload = body
     } else if !formParameters.isEmpty {
-        var components = URLComponents()
-        components.queryItems =
-            formParameters
-            .sorted(by: { $0.key < $1.key })
-            .map { URLQueryItem(name: $0.key, value: $0.value) }
-        payload = components.percentEncodedQuery?.data(using: .utf8)
+        payload = formURLEncodedBody(formParameters)
     } else {
         payload = nil
     }
