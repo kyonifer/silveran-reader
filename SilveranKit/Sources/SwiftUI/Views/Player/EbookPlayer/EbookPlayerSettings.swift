@@ -368,6 +368,7 @@ struct EbookPlayerSettings: View {
         settingsVM.showPlayerControls = kDefaultShowPlayerControlsIOS
         settingsVM.showOverlaySkipBackward = kDefaultShowOverlaySkipBackward
         settingsVM.showOverlaySkipForward = kDefaultShowOverlaySkipForward
+        settingsVM.showOverlayPlayPause = kDefaultShowOverlayPlayPause
         #else
         settingsVM.showPlayerControls = kDefaultShowPlayerControlsMac
         #endif

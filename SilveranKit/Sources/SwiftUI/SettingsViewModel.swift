@@ -46,6 +46,7 @@ public final class SettingsViewModel {
     public var alwaysShowMiniPlayer: Bool = kDefaultAlwaysShowMiniPlayer
     public var showOverlaySkipBackward: Bool = kDefaultShowOverlaySkipBackward
     public var showOverlaySkipForward: Bool = kDefaultShowOverlaySkipForward
+    public var showOverlayPlayPause: Bool = kDefaultShowOverlayPlayPause
     public var showMiniPlayerStats: Bool = kDefaultShowMiniPlayerStats
     #endif
 
@@ -176,6 +177,7 @@ public final class SettingsViewModel {
         alwaysShowMiniPlayer = config.readingBar.alwaysShowMiniPlayer
         showOverlaySkipBackward = config.readingBar.showOverlaySkipBackward
         showOverlaySkipForward = config.readingBar.showOverlaySkipForward
+        showOverlayPlayPause = config.readingBar.showOverlayPlayPause
         showMiniPlayerStats = config.readingBar.showMiniPlayerStats
         #endif
 
@@ -393,6 +395,7 @@ public final class SettingsViewModel {
             alwaysShowMiniPlayer: alwaysShowMiniPlayerValue,
             showOverlaySkipBackward: showOverlaySkipBackwardValue,
             showOverlaySkipForward: showOverlaySkipForwardValue,
+            showOverlayPlayPause: showOverlayPlayPauseValue,
             showMiniPlayerStats: showMiniPlayerStatsValue,
             progressSyncIntervalSeconds: progressSyncIntervalSeconds,
             metadataRefreshIntervalSeconds: metadataRefreshIntervalSeconds,
@@ -415,6 +418,7 @@ public final class SettingsViewModel {
     private var alwaysShowMiniPlayerValue: Bool { alwaysShowMiniPlayer }
     private var showOverlaySkipBackwardValue: Bool { showOverlaySkipBackward }
     private var showOverlaySkipForwardValue: Bool { showOverlaySkipForward }
+    private var showOverlayPlayPauseValue: Bool { showOverlayPlayPause }
     private var showMiniPlayerStatsValue: Bool { showMiniPlayerStats }
     private var tabBarSlot1Value: String { tabBarSlot1 }
     private var tabBarSlot2Value: String { tabBarSlot2 }
@@ -424,6 +428,7 @@ public final class SettingsViewModel {
     private var alwaysShowMiniPlayerValue: Bool { kDefaultAlwaysShowMiniPlayer }
     private var showOverlaySkipBackwardValue: Bool { kDefaultShowOverlaySkipBackward }
     private var showOverlaySkipForwardValue: Bool { kDefaultShowOverlaySkipForward }
+    private var showOverlayPlayPauseValue: Bool { kDefaultShowOverlayPlayPause }
     private var showMiniPlayerStatsValue: Bool { kDefaultShowMiniPlayerStats }
     private var tabBarSlot1Value: String { kDefaultTabBarSlot1 }
     private var tabBarSlot2Value: String { kDefaultTabBarSlot2 }

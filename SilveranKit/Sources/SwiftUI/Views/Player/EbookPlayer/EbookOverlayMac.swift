@@ -6,6 +6,7 @@ struct EbookOverlayMac: View {
     let isPlaying: Bool
     let playbackRate: Double
     let isLightBackground: Bool
+    let backgroundColor: Color
     @Binding var chapterProgress: Double
 
     let onPrevChapter: () -> Void
@@ -27,7 +28,19 @@ struct EbookOverlayMac: View {
         isLightBackground ? .black : .white
     }
 
+    private var usesFullWidthBar: Bool {
+        readingBarConfig.showPlayerControls || readingBarConfig.showProgressBar
+    }
+
     var body: some View {
+        if usesFullWidthBar {
+            fullWidthBar
+        } else {
+            cornerStats
+        }
+    }
+
+    private var fullWidthBar: some View {
         VStack(spacing: 4) {
             if readingBarConfig.showPlayerControls {
                 transportControls
@@ -56,7 +69,33 @@ struct EbookOverlayMac: View {
         .padding(.horizontal, 20)
         .padding(.top, 8)
         .padding(.bottom, 8)
-        .background(Color.clear)
+        .frame(maxWidth: .infinity)
+        .background(backgroundColor.ignoresSafeArea(edges: .bottom))
+    }
+
+    private var cornerStats: some View {
+        HStack(alignment: .bottom) {
+            if hasLeftStats {
+                leftStatsColumn
+                    .padding(.leading, 20)
+                    .padding(.trailing, 12)
+                    .padding(.top, 8)
+                    .padding(.bottom, 8)
+                    .background(backgroundColor.ignoresSafeArea(edges: .bottom))
+            }
+
+            Spacer()
+
+            if hasRightStats {
+                rightStatsColumn
+                    .padding(.leading, 12)
+                    .padding(.trailing, 20)
+                    .padding(.top, 8)
+                    .padding(.bottom, 8)
+                    .background(backgroundColor.ignoresSafeArea(edges: .bottom))
+            }
+        }
+        .frame(maxWidth: .infinity)
     }
 
     private var transportControls: some View {
@@ -267,9 +306,16 @@ struct EbookOverlayMac: View {
     }
 
     private var hasStatsToDisplay: Bool {
-        (readingBarConfig.showProgress && bookFraction != nil)
-            || (readingBarConfig.showTimeRemainingInBook && bookTimeRemaining != nil)
+        hasLeftStats || hasRightStats
+    }
+
+    private var hasLeftStats: Bool {
+        (readingBarConfig.showTimeRemainingInBook && bookTimeRemaining != nil)
             || (readingBarConfig.showTimeRemainingInChapter && chapterTimeRemaining != nil)
+    }
+
+    private var hasRightStats: Bool {
+        (readingBarConfig.showProgress && bookFraction != nil)
             || (readingBarConfig.showPageNumber && progressData?.chapterCurrentPage != nil
                 && progressData?.chapterTotalPages != nil)
     }

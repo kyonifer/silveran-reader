@@ -182,15 +182,7 @@ struct EbookPlayerTopToolbar: View {
             }
             .padding(.horizontal, 8)
             .frame(height: 44)
-            .background(
-                Group {
-                    if settingsVM.scrollingMode {
-                        toolbarBackgroundColor.ignoresSafeArea(edges: .top)
-                    } else {
-                        Color.black.opacity(0.001)
-                    }
-                }
-            )
+            .background(toolbarBackgroundColor.ignoresSafeArea(edges: .top))
 
             Spacer()
         }
@@ -344,6 +336,18 @@ struct EbookPlayerTopToolbar: View {
                             )
                         ) {
                             Label("Skip Back", systemImage: "arrow.counterclockwise")
+                        }
+
+                        Toggle(
+                            isOn: Binding(
+                                get: { settingsVM.showOverlayPlayPause },
+                                set: { newValue in
+                                    settingsVM.showOverlayPlayPause = newValue
+                                    Task { try? await settingsVM.save() }
+                                },
+                            )
+                        ) {
+                            Label("Play/Pause", systemImage: "play")
                         }
 
                         Toggle(

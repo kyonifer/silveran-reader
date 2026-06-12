@@ -108,8 +108,7 @@ public struct EbookPlayerView: View {
         }
         .background(
             TitleBarConfigurator(
-                isTitleBarVisible: viewModel.isTitleBarHovered || viewModel.showCustomizePopover
-                    || viewModel.showKeybindingsPopover || viewModel.showSearchPanel,
+                isTitleBarVisible: isTitleBarVisible,
                 windowTitle: viewModel.bookData?.metadata.title ?? "Ebook Reader",
             )
         )
@@ -228,6 +227,12 @@ public struct EbookPlayerView: View {
     #if os(macOS)
     private let leftSidebarWidth: CGFloat = 260
     private let leftSidebarTotalWidth: CGFloat = 261
+
+    private var isTitleBarVisible: Bool {
+        viewModel.isTitleBarHovered || viewModel.showCustomizePopover
+            || viewModel.showKeybindingsPopover || viewModel.showSearchPanel
+            || viewModel.showBookmarksPanel
+    }
 
     private var mainLayout: some View {
         GeometryReader { geometry in
@@ -411,6 +416,7 @@ public struct EbookPlayerView: View {
                     showPageNumber: viewModel.settingsVM.showPageNumber,
                     showSkipBackward: viewModel.settingsVM.showOverlaySkipBackward,
                     showSkipForward: viewModel.settingsVM.showOverlaySkipForward,
+                    showPlayPause: viewModel.settingsVM.showOverlayPlayPause,
                     overlayTransparency: viewModel.settingsVM.overlayTransparency,
                     bookFraction: viewModel.progressManager?.bookFraction,
                     bookTimeRemaining: viewModel.mediaOverlayManager?.bookTimeRemaining,
@@ -419,7 +425,6 @@ public struct EbookPlayerView: View {
                     totalPages: viewModel.progressManager?.chapterTotalPages,
                     isPlaying: viewModel.mediaOverlayManager?.isPlaying ?? false,
                     hasAudioNarration: viewModel.hasAudioNarration,
-                    scrollingMode: viewModel.settingsVM.scrollingMode,
                     backgroundColor: readerBackgroundColor,
                     positionAtTop: alwaysShowMini,
                     onSkipBackward: {
@@ -508,6 +513,7 @@ public struct EbookPlayerView: View {
                     isPlaying: mom?.isPlaying ?? false,
                     playbackRate: mom?.playbackRate ?? viewModel.settingsVM.defaultPlaybackSpeed,
                     isLightBackground: isLight,
+                    backgroundColor: readerBackgroundColor,
                     chapterProgress: viewModel.chapterProgressBinding,
                     onPrevChapter: viewModel.handlePrevChapter,
                     onSkipBackward: viewModel.handlePrevSentence,
@@ -803,7 +809,7 @@ private struct TitleBarConfigurator: NSViewRepresentable {
         window.titlebarAppearsTransparent = true
         window.styleMask.insert(.fullSizeContentView)
         window.isMovableByWindowBackground = true
-        window.toolbar?.isVisible = true
+        window.toolbar?.isVisible = isTitleBarVisible
 
         installDoubleClickGesture(on: window, coordinator: coordinator)
         updateTitleBarVisibility(for: window)

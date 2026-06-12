@@ -385,6 +385,7 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
         public var alwaysShowMiniPlayer: Bool
         public var showOverlaySkipBackward: Bool
         public var showOverlaySkipForward: Bool
+        public var showOverlayPlayPause: Bool
         public var showMiniPlayerStats: Bool
 
         public init(
@@ -399,6 +400,7 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
             alwaysShowMiniPlayer: Bool = kDefaultAlwaysShowMiniPlayer,
             showOverlaySkipBackward: Bool = kDefaultShowOverlaySkipBackward,
             showOverlaySkipForward: Bool = kDefaultShowOverlaySkipForward,
+            showOverlayPlayPause: Bool = kDefaultShowOverlayPlayPause,
             showMiniPlayerStats: Bool = kDefaultShowMiniPlayerStats,
         ) {
             self.enabled = enabled
@@ -416,6 +418,7 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
             self.alwaysShowMiniPlayer = alwaysShowMiniPlayer
             self.showOverlaySkipBackward = showOverlaySkipBackward
             self.showOverlaySkipForward = showOverlaySkipForward
+            self.showOverlayPlayPause = showOverlayPlayPause
             self.showMiniPlayerStats = showMiniPlayerStats
         }
 
@@ -458,6 +461,9 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
             showOverlaySkipForward =
                 (try? container?.decode(Bool.self, forKey: .showOverlaySkipForward))
                 ?? kDefaultShowOverlaySkipForward
+            showOverlayPlayPause =
+                (try? container?.decode(Bool.self, forKey: .showOverlayPlayPause))
+                ?? kDefaultShowOverlayPlayPause
             showMiniPlayerStats =
                 (try? container?.decode(Bool.self, forKey: .showMiniPlayerStats))
                 ?? kDefaultShowMiniPlayerStats
@@ -467,7 +473,8 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
             case enabled, showPlayerControls, showProgressBar, showProgress
             case showTimeRemainingInBook, showTimeRemainingInChapter, showPageNumber
             case overlayTransparency, alwaysShowMiniPlayer
-            case showOverlaySkipBackward, showOverlaySkipForward, showMiniPlayerStats
+            case showOverlaySkipBackward, showOverlaySkipForward, showOverlayPlayPause
+            case showMiniPlayerStats
         }
     }
 
@@ -734,6 +741,7 @@ public actor SettingsActor {
         alwaysShowMiniPlayer: Bool? = nil,
         showOverlaySkipBackward: Bool? = nil,
         showOverlaySkipForward: Bool? = nil,
+        showOverlayPlayPause: Bool? = nil,
         showMiniPlayerStats: Bool? = nil,
         progressSyncIntervalSeconds: Double? = nil,
         metadataRefreshIntervalSeconds: Double? = nil,
@@ -811,6 +819,9 @@ public actor SettingsActor {
         }
         if let showOverlaySkipForward {
             updated.readingBar.showOverlaySkipForward = showOverlaySkipForward
+        }
+        if let showOverlayPlayPause {
+            updated.readingBar.showOverlayPlayPause = showOverlayPlayPause
         }
         if let showMiniPlayerStats {
             updated.readingBar.showMiniPlayerStats = showMiniPlayerStats

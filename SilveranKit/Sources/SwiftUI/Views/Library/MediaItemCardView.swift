@@ -538,7 +538,8 @@ private struct MediaItemCoverImage: View {
 
     var body: some View {
         let coverState = mediaViewModel.coverState(for: item, variant: variant)
-        let fallbackVariant: MediaViewModel.CoverVariant = variant == .standard ? .audioSquare : .standard
+        let fallbackVariant: MediaViewModel.CoverVariant =
+            variant == .standard ? .audioSquare : .standard
         let fallbackState = mediaViewModel.coverState(for: item, variant: fallbackVariant)
         let displayImage = coverState.image ?? fallbackState.image
 
@@ -701,35 +702,39 @@ struct DoubleCoverView: View {
             if ebookState.image != nil && audioState.image != nil {
                 coverImage(state: audioState)
                     .frame(width: audioSize, height: audioSize)
-                    .clipShape(RoundedRectangle(cornerRadius: cornerRadius * 0.8, style: .continuous))
+                    .clipShape(
+                        RoundedRectangle(cornerRadius: cornerRadius * 0.8, style: .continuous)
+                    )
                     .stableCoverRendering()
                     .scaleEffect(audioScale)
                     .offset(x: audioXOffset)
                     .zIndex(audioZ)
                     #if os(macOS)
-                    .onHover { hovering in
-                        audioHoverTask?.cancel()
-                        if hovering {
-                            audioHoverTask = Task { @MainActor in
-                                try? await Task.sleep(for: .milliseconds(250))
-                                guard !Task.isCancelled else { return }
-                                withAnimation(.easeInOut(duration: 0.25)) {
-                                    swapPhase = .slidingOut
-                                    isSwapping = true
-                                }
-                                try? await Task.sleep(for: .milliseconds(250))
-                                guard !Task.isCancelled else { return }
-                                withAnimation(.easeInOut(duration: 0.25)) {
-                                    swapPhase = .swapped
-                                }
+                .onHover { hovering in
+                    audioHoverTask?.cancel()
+                    if hovering {
+                        audioHoverTask = Task { @MainActor in
+                            try? await Task.sleep(for: .milliseconds(250))
+                            guard !Task.isCancelled else { return }
+                            withAnimation(.easeInOut(duration: 0.25)) {
+                                swapPhase = .slidingOut
+                                isSwapping = true
+                            }
+                            try? await Task.sleep(for: .milliseconds(250))
+                            guard !Task.isCancelled else { return }
+                            withAnimation(.easeInOut(duration: 0.25)) {
+                                swapPhase = .swapped
                             }
                         }
                     }
+                }
                     #endif
 
                 coverImage(state: ebookState)
                     .frame(width: scaledWidth, height: ebookHeight)
-                    .clipShape(RoundedRectangle(cornerRadius: cornerRadius * 0.8, style: .continuous))
+                    .clipShape(
+                        RoundedRectangle(cornerRadius: cornerRadius * 0.8, style: .continuous)
+                    )
                     .stableCoverRendering()
                     .offset(x: ebookXOffset)
                     .zIndex(ebookZ)

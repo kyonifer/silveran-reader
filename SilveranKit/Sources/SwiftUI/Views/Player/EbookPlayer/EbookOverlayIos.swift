@@ -9,6 +9,7 @@ struct EbookOverlayIos: View {
     let showPageNumber: Bool
     let showSkipBackward: Bool
     let showSkipForward: Bool
+    let showPlayPause: Bool
     let overlayTransparency: Double
     let bookFraction: Double?
     let bookTimeRemaining: TimeInterval?
@@ -17,7 +18,6 @@ struct EbookOverlayIos: View {
     let totalPages: Int?
     let isPlaying: Bool
     let hasAudioNarration: Bool
-    let scrollingMode: Bool
     let backgroundColor: Color
     let positionAtTop: Bool
     let onSkipBackward: () -> Void
@@ -33,8 +33,16 @@ struct EbookOverlayIos: View {
             || (showPageNumber && currentPage != nil && totalPages != nil && totalPages! > 0)
     }
 
+    private var hasPlaybackControlsToDisplay: Bool {
+        hasAudioNarration && (showSkipBackward || showPlayPause || showSkipForward)
+    }
+
+    private var hasStatsToDisplay: Bool {
+        hasBookStatsToDisplay || hasTimeStatsToDisplay
+    }
+
     private var hasOverlayContent: Bool {
-        hasBookStatsToDisplay || hasTimeStatsToDisplay || hasAudioNarration
+        hasStatsToDisplay || hasPlaybackControlsToDisplay
     }
 
     var body: some View {
@@ -63,7 +71,7 @@ struct EbookOverlayIos: View {
             .padding(.bottom, 8)
             .frame(maxWidth: .infinity)
             .background(alignment: .top) {
-                if scrollingMode && hasOverlayContent {
+                if hasStatsToDisplay {
                     backgroundColor.ignoresSafeArea(edges: .top)
                 }
             }
@@ -137,7 +145,7 @@ struct EbookOverlayIos: View {
                     }
                 }
 
-                if hasAudioNarration {
+                if hasPlaybackControlsToDisplay {
                     playbackControls
                 }
             }
@@ -146,7 +154,7 @@ struct EbookOverlayIos: View {
             .padding(.top, 8)
             .frame(maxWidth: .infinity)
             .background(alignment: .bottom) {
-                if scrollingMode && hasOverlayContent {
+                if hasOverlayContent {
                     backgroundColor.ignoresSafeArea(edges: .bottom)
                 }
             }
@@ -162,7 +170,9 @@ struct EbookOverlayIos: View {
                 skipButton(systemName: "arrow.counterclockwise", action: onSkipBackward)
             }
 
-            playPauseButton
+            if showPlayPause {
+                playPauseButton
+            }
 
             if showSkipForward {
                 skipButton(systemName: "arrow.clockwise", action: onSkipForward)
