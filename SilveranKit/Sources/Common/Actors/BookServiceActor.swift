@@ -1032,7 +1032,10 @@ public actor BookServiceActor {
 
     func fetchBookDetails(for bookId: String, sourceID: BookSourceID?) async -> BookMetadata? {
         guard let storyteller = await storytellerActor(for: sourceID) else { return nil }
-        return await storyteller.fetchBookDetails(for: bookId)
+        guard var book = await storyteller.fetchBookDetails(for: bookId) else { return nil }
+        book.sourceID = book.sourceID ?? sourceID
+        book.source = book.source ?? sourceRecords.first(where: { $0.id == sourceID })?.name
+        return book
     }
 
     public func resolveLocalMedia(
