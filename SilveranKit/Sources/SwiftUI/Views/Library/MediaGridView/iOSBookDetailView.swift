@@ -20,7 +20,7 @@ struct iOSBookDetailView: View {
     }
 
     private var mediaOptions: [MediaDownloadOption] {
-        MediaGridViewUtilities.mediaDownloadOptions(for: item)
+        MediaGridViewUtilities.mediaDownloadOptions(for: currentItem)
     }
 
     var body: some View {
@@ -173,7 +173,7 @@ struct iOSBookDetailView: View {
     private var mediaButtonsRow: some View {
         HStack(alignment: .top, spacing: 12) {
             ForEach(mediaOptions) { option in
-                iOSMediaButton(item: item, option: option)
+                iOSMediaButton(item: currentItem, option: option)
             }
             if currentItem.canShowCreateReadaloud {
                 iOSCreateReadaloudButton(item: currentItem)

@@ -1,4 +1,5 @@
 import Foundation
+import ZIPFoundation
 
 #if canImport(FoundationNetworking)
 import FoundationNetworking
@@ -946,6 +947,71 @@ public actor BookServiceActor {
             return nil
         }
         return await folder.localMediaReference(for: bookID, category: category)
+    }
+
+    /// Packages a book's local audiobook directory into a Readium-packaged `.audiobook` zip for the
+    /// content server's audiobook download. The directory already holds `manifest.json` plus the
+    /// audio files (and any cover); we zip those as-is and add a duplicate
+    /// `manifest.audiobook-manifest` so both Silveran (which reads `manifest.json`) and the official
+    /// Storyteller mobile client (which reads `manifest.audiobook-manifest`) can open the result.
+    /// Returns a temp file URL the caller is responsible for deleting after sending it.
+    public func packageAudiobook(for bookID: String, sourceID: BookSourceID?) async -> URL? {
+        guard
+            let media = await resolveLocalMedia(for: bookID, sourceID: sourceID, category: .audio)
+        else {
+            return nil
+        }
+        let audioDirectory = media.url.deletingLastPathComponent()
+        let fm = FileManager.default
+        let stagingDir = fm.temporaryDirectory.appendingPathComponent(
+            "silveran-content-server",
+            isDirectory: true,
+        )
+        let zipURL = stagingDir.appendingPathComponent(
+            "\(bookID)-\(UUID().uuidString).audiobook",
+        )
+
+        do {
+            try fm.createDirectory(at: stagingDir, withIntermediateDirectories: true)
+            if fm.fileExists(atPath: zipURL.path) {
+                try fm.removeItem(at: zipURL)
+            }
+            let archive = try Archive(url: zipURL, accessMode: .create)
+
+            let files = try fm.contentsOfDirectory(
+                at: audioDirectory,
+                includingPropertiesForKeys: [.isRegularFileKey],
+                options: [.skipsHiddenFiles],
+            ).filter { !$0.hasDirectoryPath }
+
+            for file in files {
+                // Audio is already compressed; store everything without re-deflating.
+                try archive.addEntry(
+                    with: file.lastPathComponent,
+                    fileURL: file,
+                    compressionMethod: .none,
+                )
+            }
+
+            if let manifest = files.first(where: { $0.lastPathComponent == "manifest.json" }) {
+                let alias = stagingDir.appendingPathComponent(
+                    "\(UUID().uuidString).manifest",
+                )
+                try fm.copyItem(at: manifest, to: alias)
+                defer { try? fm.removeItem(at: alias) }
+                try archive.addEntry(
+                    with: "manifest.audiobook-manifest",
+                    fileURL: alias,
+                    compressionMethod: .none,
+                )
+            }
+
+            return zipURL
+        } catch {
+            debugLog("[BookServiceActor] packageAudiobook failed for \(bookID): \(error)")
+            try? fm.removeItem(at: zipURL)
+            return nil
+        }
     }
 
     public func resolvedLocalMediaPaths(for metadata: [BookMetadata]) async -> [String: MediaPaths]

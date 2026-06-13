@@ -16,6 +16,7 @@ let package = Package(
         .library(name: "SilveranKitSwiftUI", targets: ["SilveranKitSwiftUI"]),
         .library(name: "SilveranKitiOSApp", targets: ["SilveranKitiOSApp"]),
         .library(name: "SilveranKitMacApp", targets: ["SilveranKitMacApp"]),
+        .library(name: "SilveranKitContentServer", targets: ["SilveranKitContentServer"]),
         .library(name: "SilveranKitWatchApp", targets: ["SilveranKitWatchApp"]),
         .library(name: "SilveranKitTVApp", targets: ["SilveranKitTVApp"]),
         .executable(name: "SilveranKitLinuxApp", targets: ["SilveranKitLinuxApp"]),
@@ -29,6 +30,7 @@ let package = Package(
         .package(url: "https://github.com/weichsel/ZIPFoundation.git", from: "0.9.0"),
         .package(url: "https://github.com/scinfu/SwiftSoup.git", from: "2.7.0"),
         .package(url: "https://github.com/kyonifer/StoryAlign.git", from: "1.2.0"),
+        .package(url: "https://github.com/hummingbird-project/hummingbird.git", from: "2.0.0"),
     ],
     targets: [
         .target(
@@ -78,9 +80,18 @@ let package = Package(
             dependencies: [
                 "SilveranKitCommon",
                 "SilveranKitSwiftUI",
+                "SilveranKitContentServer",
                 .product(name: "StoryAlignCore", package: "StoryAlign"),
             ],
             path: "Sources/macApp",
+        ),
+        .target(
+            name: "SilveranKitContentServer",
+            dependencies: [
+                "SilveranKitCommon",
+                .product(name: "Hummingbird", package: "hummingbird"),
+            ],
+            path: "Sources/ContentServer",
         ),
         .target(
             name: "SilveranKitWatchApp",

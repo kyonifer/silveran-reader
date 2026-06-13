@@ -50,6 +50,7 @@ struct SilveranReaderApp: App {
         settingsScene
         debugLogScene
         readaloudGeneratorScene
+        contentServerScene
         mp3ToM4BConverterScene
         serverMediaManagementScene
         uploadNewBookScene
@@ -164,8 +165,22 @@ struct SilveranReaderApp: App {
                     openWindow(id: "MP3ToM4BConverter")
                 }
                 .keyboardShortcut("M", modifiers: [.command, .shift])
+
+                Divider()
+
+                Button("Content Server…") {
+                    openWindow(id: "ContentServer")
+                }
             }
         }
+    }
+
+    private var contentServerScene: some Scene {
+        Window("Content Server", id: "ContentServer") {
+            ContentServerView()
+        }
+        .windowResizability(.contentSize)
+        .disableWindowRestoration()
     }
 
     private var mp3ToM4BConverterScene: some Scene {
