@@ -1243,7 +1243,7 @@ private struct DirectionalPressButton<Label: View>: UIViewRepresentable {
 
     func sizeThatFits(
         _ proposal: ProposedViewSize,
-        uiView: PressButton,
+        uiView _: PressButton,
         context: Context,
     ) -> CGSize? {
         guard let host = context.coordinator.host else { return nil }

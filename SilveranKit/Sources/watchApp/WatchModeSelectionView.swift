@@ -1,8 +1,6 @@
 import SwiftUI
 
 struct WatchModeSelectionView: View {
-    @Environment(WatchViewModel.self) private var viewModel
-
     var body: some View {
         NavigationStack {
             List {

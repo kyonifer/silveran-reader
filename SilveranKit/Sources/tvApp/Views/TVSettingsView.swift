@@ -8,10 +8,6 @@ struct TVSettingsView: View {
     @State private var showRemoveConfirmation = false
     @State private var navigationPath: [TVSourceRoute] = []
 
-    private var isConnected: Bool {
-        settingsViewModel.connectionStatus == .connected
-    }
-
     private var canSave: Bool {
         !settingsViewModel.serverURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !settingsViewModel.username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty

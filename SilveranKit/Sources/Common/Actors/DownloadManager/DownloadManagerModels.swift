@@ -90,15 +90,6 @@ public struct DownloadRecord: Codable, Sendable, Identifiable, Equatable {
         }
     }
 
-    public var isResumable: Bool {
-        switch state {
-            case .paused(let has), .failed(_, let has):
-                return has
-            default:
-                return false
-        }
-    }
-
     public var isActive: Bool {
         switch state {
             case .queued, .downloading, .importing:

@@ -373,7 +373,7 @@ extension TVReaderDisplayView {
         )
     }
 
-    private func saveAppearance(_ newValue: String) async {
+    private func saveAppearance(_: String) async {
         do {
             try await SettingsActor.shared.updateConfig(tvReaderAppearance: tvReaderAppearance)
         } catch {

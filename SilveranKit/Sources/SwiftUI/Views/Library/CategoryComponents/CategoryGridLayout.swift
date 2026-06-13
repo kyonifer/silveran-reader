@@ -218,29 +218,6 @@ struct CategoryGridLayout<Header: View, StickyHeader: View, ContextMenu: View>: 
     #endif
 }
 
-extension CategoryGridLayout where ContextMenu == EmptyView {
-    init(
-        groups: [CategoryGroup],
-        mediaKind: MediaKind,
-        coverPreference: CoverPreference,
-        sortByCount: Bool = false,
-        showBookCountBadge: Bool,
-        onNavigate: @escaping (CategoryGroup, BookMetadata?) -> Void,
-        @ViewBuilder header: @escaping () -> Header = { EmptyView() },
-        @ViewBuilder stickyHeader: @escaping () -> StickyHeader = { EmptyView() },
-    ) {
-        self.groups = groups
-        self.mediaKind = mediaKind
-        self.coverPreference = coverPreference
-        self.sortByCount = sortByCount
-        self.showBookCountBadge = showBookCountBadge
-        self.onNavigate = onNavigate
-        self.header = header
-        self.stickyHeader = stickyHeader
-        self.contextMenuBuilder = nil
-    }
-}
-
 extension CategoryGridLayout where StickyHeader == EmptyView, ContextMenu == EmptyView {
     init(
         groups: [CategoryGroup],

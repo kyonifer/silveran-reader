@@ -4,8 +4,6 @@ struct MediaTableRowView: View {
     let item: BookMetadata
     let mediaKind: MediaKind
     let coverPreference: CoverPreference
-    let showAudioIndicator: Bool
-    let sourceLabel: String?
     let seriesPositionBadge: String?
     let isSelected: Bool
     let onSelect: (BookMetadata) -> Void

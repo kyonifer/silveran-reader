@@ -1,7 +1,6 @@
 import Foundation
 
 public struct PlaybackProgressUpdateMessage: Codable {
-    public let chapterIndex: Int?
     public let chapterId: String?
     public let chapterLabel: String?
     public let chapterCurrentPage: Int?
@@ -11,10 +10,8 @@ public struct PlaybackProgressUpdateMessage: Codable {
     public let bookCurrentSecondsAudio: Double?
     public let bookTotalSecondsAudio: Double?
     public let bookCurrentFraction: Double?
-    public let generatedAt: TimeInterval?
 
     public init(
-        chapterIndex: Int? = nil,
         chapterId: String? = nil,
         chapterLabel: String? = nil,
         chapterCurrentPage: Int? = nil,
@@ -24,9 +21,7 @@ public struct PlaybackProgressUpdateMessage: Codable {
         bookCurrentSecondsAudio: Double? = nil,
         bookTotalSecondsAudio: Double? = nil,
         bookCurrentFraction: Double? = nil,
-        generatedAt: TimeInterval? = nil,
     ) {
-        self.chapterIndex = chapterIndex
         self.chapterId = chapterId
         self.chapterLabel = chapterLabel
         self.chapterCurrentPage = chapterCurrentPage
@@ -36,7 +31,6 @@ public struct PlaybackProgressUpdateMessage: Codable {
         self.bookCurrentSecondsAudio = bookCurrentSecondsAudio
         self.bookTotalSecondsAudio = bookTotalSecondsAudio
         self.bookCurrentFraction = bookCurrentFraction
-        self.generatedAt = generatedAt
     }
 }
 
@@ -57,9 +51,4 @@ public struct ChapterItem: Codable, Equatable {
 public enum SleepTimerType: String, Codable {
     case duration
     case endOfChapter
-}
-
-public enum PageTurnDirection: String, Codable {
-    case left
-    case right
 }

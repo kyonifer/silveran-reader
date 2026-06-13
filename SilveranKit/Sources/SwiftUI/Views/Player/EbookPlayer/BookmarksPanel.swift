@@ -4,12 +4,10 @@ import SwiftUI
 struct BookmarksPanel: View {
     let bookmarks: [Highlight]
     let highlights: [Highlight]
-    let onDismiss: () -> Void
     let onNavigate: (Highlight) -> Void
     let onDelete: (Highlight) -> Void
     let onAddBookmark: () -> Void
     let highlightColorResolver: (HighlightColor?) -> Color
-    var initialTab: Tab = .bookmarks
 
     @State private var selectedTab: Tab = .bookmarks
     @State private var selectedHighlight: Highlight?
@@ -17,7 +15,7 @@ struct BookmarksPanel: View {
     init(
         bookmarks: [Highlight],
         highlights: [Highlight],
-        onDismiss: @escaping () -> Void,
+        onDismiss _: @escaping () -> Void,
         onNavigate: @escaping (Highlight) -> Void,
         onDelete: @escaping (Highlight) -> Void,
         onAddBookmark: @escaping () -> Void,
@@ -26,12 +24,10 @@ struct BookmarksPanel: View {
     ) {
         self.bookmarks = bookmarks
         self.highlights = highlights
-        self.onDismiss = onDismiss
         self.onNavigate = onNavigate
         self.onDelete = onDelete
         self.onAddBookmark = onAddBookmark
         self.highlightColorResolver = highlightColorResolver
-        self.initialTab = initialTab
         self._selectedTab = State(initialValue: initialTab)
     }
 

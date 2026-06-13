@@ -9,7 +9,6 @@ enum MetadataCoverScope: String, CaseIterable, Identifiable {
 
     var isAudio: Bool { self == .audiobook }
     var label: String { isAudio ? "Audiobook Cover" : "Ebook Cover" }
-    var serverPreviewLabel: String { isAudio ? "Server Audiobook Cover" : "Server Ebook Cover" }
     var aspectRatio: CGFloat { isAudio ? 1.0 : 2.0 / 3.0 }
     var variant: MediaViewModel.CoverVariant { isAudio ? .audioSquare : .standard }
 }
@@ -24,8 +23,4 @@ public struct MetadataEditorData: Codable, Hashable, Identifiable {
         self.sessionId = sessionId
     }
 
-    public init(bookId: String) {
-        self.bookIds = [bookId]
-        self.sessionId = UUID()
-    }
 }

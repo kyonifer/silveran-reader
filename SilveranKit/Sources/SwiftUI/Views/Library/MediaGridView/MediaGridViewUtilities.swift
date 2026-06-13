@@ -122,20 +122,6 @@ enum MediaGridViewUtilities {
         return options
     }
 
-    static func obviousMediaCategory(for item: BookMetadata) -> LocalMediaCategory? {
-        let options = mediaDownloadOptions(for: item)
-        guard !options.isEmpty else { return nil }
-
-        if let readaloud = options.first(where: { $0.category == .synced }) {
-            return readaloud.category
-        }
-
-        if options.count == 1 {
-            return options[0].category
-        }
-
-        return nil
-    }
 }
 
 struct MediaDownloadOption: Identifiable {
@@ -149,7 +135,6 @@ struct MediaDownloadOption: Identifiable {
     let category: LocalMediaCategory
     let title: String
     let openTitle: String
-    let iconName: String
     let iconType: IconType
 
     init(
@@ -163,7 +148,6 @@ struct MediaDownloadOption: Identifiable {
         self.category = category
         self.title = title
         self.openTitle = openTitle
-        self.iconName = iconName
         self.iconType = iconType == .system("") ? .system(iconName) : iconType
     }
 

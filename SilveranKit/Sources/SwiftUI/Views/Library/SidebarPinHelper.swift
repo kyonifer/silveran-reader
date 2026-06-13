@@ -235,7 +235,6 @@ enum SidebarPinHelper {
         HomeSectionConfigHelper.save(homeConfig)
     }
 
-    static func pinId(forSidebarItem stableId: String) -> String { "pin.sidebar:\(stableId)" }
     static func pinId(forSeries name: String) -> String { "pin.series:\(name)" }
     static func pinId(forCollection name: String) -> String { "pin.collection:\(name)" }
     static func pinId(forAuthor name: String) -> String { "pin.author:\(name)" }

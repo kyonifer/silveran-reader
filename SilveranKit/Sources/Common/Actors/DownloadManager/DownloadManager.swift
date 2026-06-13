@@ -294,13 +294,6 @@ public actor DownloadManager {
         return downloads[id]
     }
 
-    public func isDownloading(bookId: String, category: LocalMediaCategory) async -> Bool {
-        await ensureInitialized()
-        let id = "\(bookId)-\(category.rawValue)"
-        guard let record = downloads[id] else { return false }
-        return record.isActive
-    }
-
     public func downloadProgress(for bookId: String, category: LocalMediaCategory) async -> Double?
     {
         await ensureInitialized()

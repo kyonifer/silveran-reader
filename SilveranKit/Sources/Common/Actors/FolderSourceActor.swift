@@ -192,55 +192,6 @@ public actor FolderSourceActor: BookSourceActor {
         }
     }
 
-    public func copyMediaToTemporaryFile(
-        for bookID: String,
-        category: LocalMediaCategory,
-    ) async throws -> (url: URL, filename: String)? {
-        if pathCache[bookID] == nil {
-            _ = await fetchLibraryInformation()
-        }
-        guard let paths = pathCache[bookID] else { return nil }
-        let sourceURL: URL?
-        switch category {
-            case .ebook:
-                sourceURL = paths.ebookPath
-            case .audio:
-                sourceURL = paths.audioPath
-            case .synced:
-                sourceURL = paths.syncedPath
-        }
-        guard let sourceURL else { return nil }
-
-        let resolved = try await resolvedFolderURL()
-        defer { stopAccessing(resolved) }
-
-        let tempDirectory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("SilveranFolderSourceDownloads", isDirectory: true)
-        try await filesystem.ensureDirectoryExists(at: tempDirectory)
-
-        let isAudiobook = category == .audio
-        let filename =
-            isAudiobook
-            ? "\(sourceURL.deletingLastPathComponent().deletingLastPathComponent().lastPathComponent).audiobook"
-            : sourceURL.lastPathComponent
-        let tempURL = tempDirectory.appendingPathComponent(
-            "\(UUID().uuidString)-\(filename)",
-            isDirectory: false,
-        )
-        if FileManager.default.fileExists(atPath: tempURL.path) {
-            try FileManager.default.removeItem(at: tempURL)
-        }
-        if isAudiobook {
-            try createAudiobookArchive(
-                from: sourceURL.deletingLastPathComponent(),
-                at: tempURL,
-            )
-        } else {
-            try FileManager.default.copyItem(at: sourceURL, to: tempURL)
-        }
-        return (tempURL, filename)
-    }
-
     public func importMedia(
         from sourceFileURL: URL,
         category: LocalMediaCategory,
@@ -332,37 +283,6 @@ public actor FolderSourceActor: BookSourceActor {
 
         _ = try await scanLibrary(in: resolved.url)
         return destinationURL
-    }
-
-    public func replaceMedia(
-        from sourceFileURL: URL,
-        category: LocalMediaCategory,
-        bookName: String,
-        bookUUID: String,
-    ) async throws -> URL {
-        if pathCache[bookUUID] == nil {
-            _ = await fetchLibraryInformation()
-        }
-
-        let resolved = try await resolvedFolderURL()
-        defer { stopAccessing(resolved) }
-
-        if let destinationDirectory = existingCategoryDirectory(
-            for: bookUUID,
-            category: category,
-        ) {
-            let fm = FileManager.default
-            if fm.fileExists(atPath: destinationDirectory.path) {
-                try fm.removeItem(at: destinationDirectory)
-            }
-        }
-
-        return try await importMedia(
-            from: sourceFileURL,
-            category: category,
-            bookName: bookName,
-            bookUUID: bookUUID,
-        )
     }
 
     public func importAudiobookFiles(
@@ -1055,51 +975,6 @@ public actor FolderSourceActor: BookSourceActor {
         #else
         return nil
         #endif
-    }
-
-    private func createAudiobookArchive(from packageDirectory: URL, at archiveURL: URL) throws {
-        let archive = try Archive(url: archiveURL, accessMode: .create)
-
-        let fm = FileManager.default
-        guard
-            let enumerator = fm.enumerator(
-                at: packageDirectory,
-                includingPropertiesForKeys: [.isDirectoryKey],
-                options: [.skipsHiddenFiles],
-            )
-        else {
-            throw LocalMediaError.importFailed("Could not read audiobook package")
-        }
-
-        for case let file as URL in enumerator {
-            guard (try? file.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) != true
-            else {
-                continue
-            }
-            let relativePath = try audiobookArchiveEntryPath(
-                for: file,
-                relativeTo: packageDirectory,
-            )
-            try archive.addEntry(
-                with: relativePath,
-                relativeTo: packageDirectory,
-            )
-        }
-    }
-
-    private func audiobookArchiveEntryPath(for file: URL, relativeTo packageDirectory: URL) throws
-        -> String
-    {
-        let baseComponents = packageDirectory.standardizedFileURL.pathComponents
-        let fileComponents = file.standardizedFileURL.pathComponents
-        guard fileComponents.count > baseComponents.count,
-            Array(fileComponents.prefix(baseComponents.count)) == baseComponents
-        else {
-            throw LocalMediaError.importFailed(
-                "Audiobook package file is outside its source folder"
-            )
-        }
-        return fileComponents.dropFirst(baseComponents.count).joined(separator: "/")
     }
 
     private func savedMetadataByUUID(_ metadata: [BookMetadata]) -> [String: BookMetadata] {

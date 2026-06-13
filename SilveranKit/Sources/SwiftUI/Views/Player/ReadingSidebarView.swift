@@ -702,52 +702,6 @@ public struct ReadingSidebarView: View {
         Color.clear
     }
 
-    private func quickActionButton(
-        title: String,
-        systemImage: String,
-        action: @escaping () -> Void,
-    )
-        -> some View
-    {
-        VStack(spacing: 6) {
-            Button(action: action) {
-                Image(systemName: systemImage)
-                    .font(.callout.weight(.semibold))
-                    .frame(width: 38, height: 38)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(Color.secondary.opacity(0.12))
-                    )
-            }
-            .buttonStyle(.plain)
-
-            Text(title)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    private func progressHasContent(_ data: ProgressData) -> Bool {
-        let hasChapterFraction =
-            chapterPagesFraction(
-                current: data.chapterCurrentPage,
-                total: data.chapterTotalPages,
-            ) != nil
-        let hasBookFraction =
-            normalizedFraction(data.bookCurrentFraction) != nil
-            || bookAudioFraction(
-                current: data.bookCurrentSecondsAudio,
-                total: data.bookTotalSecondsAudio,
-            ) != nil
-        let hasPages = normalizedTotalPage(data.chapterTotalPages) != nil
-        let hasAudio =
-            normalizedSeconds(data.bookCurrentSecondsAudio) != nil
-            || normalizedSeconds(data.bookTotalSecondsAudio) != nil
-            || normalizedSeconds(data.chapterCurrentSecondsAudio) != nil
-            || normalizedSeconds(data.chapterTotalSecondsAudio) != nil
-        return hasChapterFraction || hasBookFraction || hasPages || hasAudio
-    }
-
     private var playbackRateDescription: String {
         SilveranKitSwiftUI.playbackRateDescription(for: model.playbackRate)
     }

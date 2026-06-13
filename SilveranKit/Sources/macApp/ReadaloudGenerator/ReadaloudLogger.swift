@@ -47,12 +47,6 @@ public final class ReadaloudLogger: Logger, @unchecked Sendable {
 
         debugLog("[ReadaloudGenerator] \(prefix) \(formattedMessage)")
     }
-
-    public func clear() {
-        lock.lock()
-        _messages.removeAll()
-        lock.unlock()
-    }
 }
 
 extension LogLevel {

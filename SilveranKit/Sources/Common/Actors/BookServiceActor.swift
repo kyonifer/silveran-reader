@@ -163,30 +163,6 @@ public actor BookServiceActor {
         }
     }
 
-    public var currentApiBaseURL: URL? {
-        get async {
-            await ensureSourceRegistryLoaded()
-            for actor in storytellerActors() {
-                if let baseURL = await actor.currentApiBaseURL {
-                    return baseURL
-                }
-            }
-            return nil
-        }
-    }
-
-    public var currentAccessToken: String? {
-        get async {
-            await ensureSourceRegistryLoaded()
-            for actor in storytellerActors() {
-                if let accessToken = await actor.currentAccessToken {
-                    return accessToken
-                }
-            }
-            return nil
-        }
-    }
-
     public var lastNetworkOpSucceeded: Bool? {
         get async {
             await ensureSourceRegistryLoaded()
@@ -213,27 +189,6 @@ public actor BookServiceActor {
         await ensureSourceRegistryLoaded()
         for actor in storytellerActors() {
             await actor.setActive(active, source: source)
-        }
-    }
-
-    public func appDidBecomeActive() async {
-        await ensureSourceRegistryLoaded()
-        for actor in storytellerActors() {
-            await actor.appDidBecomeActive()
-        }
-    }
-
-    public func appWillResignActive() async {
-        await ensureSourceRegistryLoaded()
-        for actor in storytellerActors() {
-            await actor.appWillResignActive()
-        }
-    }
-
-    public func setLastNetworkOpSucceeded(_ succeeded: Bool) async {
-        await ensureSourceRegistryLoaded()
-        for actor in storytellerActors() {
-            await actor.setLastNetworkOpSucceeded(succeeded)
         }
     }
 
@@ -485,13 +440,6 @@ public actor BookServiceActor {
         return await storyteller.checkBookUpdatePermission()
     }
 
-    public func registerSourceActor(_ source: any BookSourceActor) async {
-        let record = await source.sourceRecord
-        await closeFolderAccessIfNeeded(sourceID: record.id)
-        sourcesByID[record.id] = source
-        await upsertSourceRecord(record)
-    }
-
     public func reloadSourceRegistry() async {
         await SilveranMigrations.ensureMigrationsRan()
         await closeAllFolderAccess()
@@ -700,10 +648,6 @@ public actor BookServiceActor {
         return id
     }
 
-    public func removeLibraryCacheObserver(id: UUID) async {
-        libraryObservers.removeValue(forKey: id)
-    }
-
     public func scanLibraryCache() async throws {
         try await LocalMediaActor.shared.scanForMedia()
     }
@@ -766,29 +710,6 @@ public actor BookServiceActor {
             metadata.append(contentsOf: stamped)
         }
         return metadata
-    }
-
-    @discardableResult
-    public func importAudiobookFilesIntoFolderSource(
-        from sourceFileURLs: [URL],
-        bookName: String,
-        bookUUID: String? = nil,
-        sourceID: BookSourceID? = nil,
-    ) async throws -> URL {
-        await ensureSourceRegistryLoaded()
-        guard let resolvedSourceID = resolveFolderSourceID(sourceID),
-            let folder = await folderSourceActor(for: resolvedSourceID)
-        else {
-            throw LocalMediaError.importFailed("Folder source is not configured")
-        }
-
-        let url = try await folder.importAudiobookFiles(
-            from: sourceFileURLs,
-            bookName: bookName,
-            bookUUID: bookUUID,
-        )
-        await notifyLibraryObservers()
-        return url
     }
 
     public func planBulkImportIntoFolderSource(from folderURL: URL) async
@@ -989,15 +910,6 @@ public actor BookServiceActor {
         try await FilesystemActor.shared.removeAllCoverImages()
     }
 
-    func fetchBook(
-        for bookId: String,
-        sourceID: BookSourceID,
-        format: StorytellerBookFormat,
-    ) async -> StorytellerBookDownload? {
-        guard let storyteller = await storytellerActor(for: sourceID) else { return nil }
-        return await storyteller.fetchBook(for: bookId, format: format)
-    }
-
     func fetchBookDetails(for bookId: String, sourceID: BookSourceID?) async -> BookMetadata? {
         guard let storyteller = await storytellerActor(for: sourceID) else { return nil }
         guard var book = await storyteller.fetchBookDetails(for: bookId) else { return nil }
@@ -1068,38 +980,6 @@ public actor BookServiceActor {
             }
         }
         return pathsByBookID
-    }
-
-    public func ensureLocalMediaAvailable(
-        for bookID: String,
-        sourceID: BookSourceID?,
-        category: LocalMediaCategory,
-    ) async -> LocalMediaAvailability {
-        if let media = await resolveLocalMedia(
-            for: bookID,
-            sourceID: sourceID,
-            category: category,
-        ) {
-            return .available(media)
-        }
-
-        await ensureSourceRegistryLoaded()
-        guard let resolvedSourceID = resolveExplicitSourceID(sourceID),
-            let source = sourceActor(for: resolvedSourceID)
-        else {
-            return .missing
-        }
-
-        if source is FolderSourceActor {
-            return .missing
-        }
-
-        switch await source.connectionStatus {
-            case .connected:
-                return .missing
-            case .connecting, .disconnected, .error:
-                return .offline
-        }
     }
 
     public func prepareEbookForReading(
@@ -1442,15 +1322,6 @@ public actor BookServiceActor {
         }
     }
 
-    private func defaultExtension(for asset: StorytellerUploadAsset) -> String {
-        switch asset.format {
-            case .ebook, .readaloud:
-                return "epub"
-            case .audiobook:
-                return asset.contentType == "audio/mp4" ? "m4b" : "mp3"
-        }
-    }
-
     public func getAvailableStatuses() async -> [BookStatus] {
         await ensureSourceRegistryLoaded()
         var statusesByKey: [String: BookStatus] = [:]
@@ -1532,20 +1403,6 @@ public actor BookServiceActor {
     public func deleteCollection(uuid: String, sourceID: BookSourceID) async -> Bool {
         guard let storyteller = await storytellerActor(for: sourceID) else { return false }
         return await storyteller.deleteCollection(uuid: uuid)
-    }
-
-    public func logout() async -> Bool {
-        await ensureSourceRegistryLoaded()
-        var didLogout = false
-        for storyteller in storytellerActors() {
-            didLogout = await storyteller.logout() || didLogout
-        }
-        return didLogout
-    }
-
-    public func logout(sourceID: BookSourceID) async -> Bool {
-        guard let storyteller = await storytellerActor(for: sourceID) else { return false }
-        return await storyteller.logout()
     }
 
     public func sendProgressToServer(

@@ -95,15 +95,6 @@ class EbookPlayerViewModel {
         )
     }
 
-    var uiSelectedChapterIdBinding: Binding<Int?> {
-        Binding(
-            get: { self.progressManager?.uiSelectedChapterId },
-            set: { newValue in
-                self.progressManager?.uiSelectedChapterId = newValue
-            },
-        )
-    }
-
     var selectedChapterHref: String? {
         guard let index = progressManager?.selectedChapterId else { return nil }
         if !tocEntries.isEmpty {
@@ -878,11 +869,6 @@ class EbookPlayerViewModel {
                 self.handleHighlightTapped(message.highlightId)
             }
         }
-    }
-
-    func handlePlaybackProgressUpdate(_ message: PlaybackProgressUpdateMessage) {
-        playbackProgressMessage = message
-        progressManager?.handlePlaybackProgressUpdate(message)
     }
 
     /// Navigate to search result - view only, no audio sync

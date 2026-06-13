@@ -188,17 +188,8 @@ public final class MP3ToM4BConverterViewModel {
         }
     }
 
-    public func removeFile(at index: Int) {
-        guard files.indices.contains(index) else { return }
-        files.remove(at: index)
-    }
-
     public func removeFile(id: UUID) {
         files.removeAll { $0.id == id }
-    }
-
-    public func moveFile(from source: IndexSet, to destination: Int) {
-        files.move(fromOffsets: source, toOffset: destination)
     }
 
     public func sortFiles() {

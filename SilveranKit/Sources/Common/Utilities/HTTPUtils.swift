@@ -6,7 +6,6 @@ public enum HTTPRequestError: Error {
     case unauthorized
     case notFound
     case unexpectedStatus(Int)
-    case networkFailure(Error)
 }
 
 struct HTTPResponse {

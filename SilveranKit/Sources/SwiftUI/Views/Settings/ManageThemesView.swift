@@ -257,9 +257,3 @@ struct ManageThemesView: View {
         renamingThemeId = nil
     }
 }
-
-extension ReaderTheme: Hashable {
-    public func hash(into hasher: inout Hasher) {
-        hasher.combine(id)
-    }
-}

@@ -16,14 +16,9 @@ extension EnvironmentValues {
 struct MediaItemCardMetrics {
     let tileWidth: CGFloat
     let cardPadding: CGFloat
-    let cardCornerRadius: CGFloat
     let coverCornerRadius: CGFloat
     let contentSpacing: CGFloat
-    let labelSpacing: CGFloat
     let coverWidth: CGFloat
-    let labelLeadingPadding: CGFloat
-    let infoIconSize: CGFloat
-    let shadowRadius: CGFloat
     let maxCardHeight: CGFloat
     let coverContainerHeight: CGFloat
     let titleContainerHeight: CGFloat
@@ -31,13 +26,11 @@ struct MediaItemCardMetrics {
 
     static func make(
         for tileWidth: CGFloat,
-        mediaKind: MediaKind,
+        mediaKind _: MediaKind,
         coverPreference: CoverPreference = .preferEbook,
     ) -> MediaItemCardMetrics {
         let cardPadding = 2.0
         let coverWidth = max(tileWidth - (cardPadding * 2), tileWidth * 0.90)
-        let labelLeadingPadding = max(cardPadding + 6, 12)
-        let infoIconSize = max(18, tileWidth * 0.12)
         let contentSpacing = max(4, tileWidth * 0.03)
 
         let tallestCoverAspectRatio: CGFloat = 1.0 / coverPreference.preferredContainerAspectRatio
@@ -63,14 +56,9 @@ struct MediaItemCardMetrics {
         return MediaItemCardMetrics(
             tileWidth: tileWidth,
             cardPadding: cardPadding,
-            cardCornerRadius: max(12, tileWidth * 0.08),
             coverCornerRadius: max(12, tileWidth * 0.06),
             contentSpacing: contentSpacing,
-            labelSpacing: max(4, tileWidth * 0.03),
             coverWidth: coverWidth,
-            labelLeadingPadding: labelLeadingPadding,
-            infoIconSize: infoIconSize,
-            shadowRadius: max(3, tileWidth * 0.02),
             maxCardHeight: maxCardHeight,
             coverContainerHeight: coverContainerHeight,
             titleContainerHeight: titleContainerHeight,

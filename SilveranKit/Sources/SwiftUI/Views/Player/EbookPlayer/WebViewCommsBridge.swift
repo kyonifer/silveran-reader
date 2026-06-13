@@ -97,7 +97,7 @@ class WebViewCommsBridge {
     }
 
     /// JS detected a user tap to toggle overlay visibility
-    func sendSwiftOverlayToggled(_ message: OverlayToggledMessage) {
+    func sendSwiftOverlayToggled(_: OverlayToggledMessage) {
         debugLog("[WebViewCommsBridge] sendSwiftOverlayToggled")
         onOverlayToggled?()
     }
@@ -217,20 +217,6 @@ class WebViewCommsBridge {
         _ = try await webView.evaluateJavaScript(
             "(function() { window.foliateManager.goToBookFraction(\(fraction)); })()"
         )
-    }
-
-    /// Swift is requesting a current location from JS
-    /// Returns: JSON object with sectionIndex, pageIndex, cfi, href, fraction
-    func sendJsCurrentLocationRequest() async throws -> String? {
-        guard let webView = webView else {
-            throw WebViewCommsBridgeError.webViewNotAvailable
-        }
-
-        let result = try await webView.evaluateJavaScript(
-            "JSON.stringify(window.foliateManager.getCurrentLocation())"
-        )
-
-        return result as? String
     }
 
     /// Swift is requesting fully visible element IDs from JS
@@ -484,16 +470,6 @@ class WebViewCommsBridge {
         _ = try await webView.evaluateJavaScript(
             "(function() { window.foliateManager.renderHighlights('\(jsonString)'); })()"
         )
-    }
-
-    /// Swift commands JS to clear all user highlights
-    func sendJsClearAllHighlights() async throws {
-        guard let webView = webView else {
-            throw WebViewCommsBridgeError.webViewNotAvailable
-        }
-
-        debugLog("[WebViewCommsBridge] sendJsClearAllHighlights()")
-        _ = try await webView.evaluateJavaScript("window.foliateManager.clearAllHighlights()")
     }
 
     /// Swift commands JS to remove a specific highlight

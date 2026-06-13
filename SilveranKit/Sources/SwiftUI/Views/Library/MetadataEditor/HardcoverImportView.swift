@@ -19,21 +19,6 @@ private enum HardcoverImportTarget: String, CaseIterable, Identifiable {
         }
     }
 
-    var systemImage: String {
-        switch self {
-            case .general: return "books.vertical"
-            case .audiobook: return "headphones"
-            case .ebook: return "book"
-        }
-    }
-
-    var help: String {
-        switch self {
-            case .general: return "Import work-level metadata"
-            case .audiobook: return "Import audiobook edition metadata"
-            case .ebook: return "Import ebook edition metadata"
-        }
-    }
 }
 
 extension View {
@@ -145,15 +130,6 @@ private enum HardcoverImportUseDestination: String, CaseIterable, Identifiable {
     case ebook
 
     var id: String { rawValue }
-
-    var title: String {
-        switch self {
-            case .none: return "None"
-            case .general: return "General"
-            case .audiobook: return "Audiobook Edition"
-            case .ebook: return "Ebook Edition"
-        }
-    }
 
     var target: HardcoverImportTarget? {
         switch self {
@@ -546,51 +522,6 @@ struct HardcoverImportView: View {
                 }
             }
         }
-    }
-
-    // MARK: - Field Selection
-
-    @ViewBuilder
-    private var fieldsSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Fields to autopopulate")
-                    .font(.headline)
-                Spacer()
-                Button("All") { viewModel.selectAllFields() }
-                    .font(.callout)
-                    .buttonStyle(.borderless)
-                Text("/").foregroundStyle(.secondary)
-                Button("None") { viewModel.selectNoFields() }
-                    .font(.callout)
-                    .buttonStyle(.borderless)
-            }
-
-            LazyVGrid(
-                columns: [
-                    GridItem(.flexible()), GridItem(.flexible()),
-                    GridItem(.flexible()),
-                ],
-                alignment: .leading,
-                spacing: 6,
-            ) {
-                ForEach(HardcoverImportViewModel.allFields, id: \.key) { field in
-                    Toggle(
-                        field.label,
-                        isOn: Binding(
-                            get: { viewModel.selectedFields.contains(field.key) },
-                            set: { _ in viewModel.toggleField(field.key) },
-                        ),
-                    )
-                    #if os(macOS)
-                    .toggleStyle(.checkbox)
-                    #endif
-                    .font(.callout)
-                }
-            }
-
-        }
-        .padding(12)
     }
 
     // MARK: - Search Result Row

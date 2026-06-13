@@ -174,11 +174,6 @@ struct WorkMetadataLayout: View {
         return slug
     }
 
-    private var hasDownloadedHardcoverSlug: Bool {
-        guard let slug = book?.hardcoverImports[.text]?.slug else { return false }
-        return !slug.isEmpty
-    }
-
     private var hardcoverSlugURL: URL? {
         guard let slug = book?.hardcoverImports[.text]?.slug, !slug.isEmpty else { return nil }
         return URL(string: "https://hardcover.app/books/\(slug)")
@@ -742,7 +737,6 @@ struct EditionMetadataLayout: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var showCoverPicker = false
-    @State private var isGridPreviewSwapping = false
     @State private var showCoverDiff = false
 
     private var isCompactIOS: Bool {
@@ -1158,28 +1152,6 @@ struct EditionMetadataLayout: View {
         switch scope {
             case .audiobook: return 96
             case .ebook: return 84
-        }
-    }
-
-    private func editionScalar(
-        _ label: String,
-        field: String,
-        keyPath: WritableKeyPath<MetadataEditorViewModel.EditableBook, String>,
-    ) -> some View {
-        editionFieldRow(label: label, field: field) {
-            TextField(
-                "(empty)",
-                text: Binding(
-                    get: { viewModel.books.first { $0.id == bookId }?[keyPath: keyPath] ?? "" },
-                    set: { newValue in
-                        guard let index = viewModel.books.firstIndex(where: { $0.id == bookId })
-                        else { return }
-                        viewModel.books[index][keyPath: keyPath] = newValue
-                        viewModel.markDirty(field: field, for: bookId)
-                    },
-                ),
-            )
-            .textFieldStyle(.roundedBorder)
         }
     }
 
@@ -2184,7 +2156,6 @@ struct ExpandedStringListEditor: View {
 
 private struct CreatorNameAutocompleteField: View {
     @Binding var name: String
-    let role: String
     let suggestions: [String]
     let placeholder: String
     var onSubmit: (() -> Void)? = nil
@@ -2384,7 +2355,6 @@ struct CreatorsExpandedEditor: View {
                 HStack(spacing: 8) {
                     CreatorNameAutocompleteField(
                         name: creatorBinding(creator.id, \.name),
-                        role: creator.role,
                         suggestions: suggestions(for: creator.role, excluding: creator.id),
                         placeholder: "Creator name",
                     )
@@ -2407,7 +2377,6 @@ struct CreatorsExpandedEditor: View {
             HStack(spacing: 8) {
                 CreatorNameAutocompleteField(
                     name: $draftName,
-                    role: draftRole,
                     suggestions: suggestions(for: draftRole),
                     placeholder: "Add Creator",
                     onSubmit: appendDraftCreator,
@@ -3081,43 +3050,6 @@ private struct MetadataEditorDatePicker: NSViewRepresentable {
     }
 }
 #endif
-
-struct EditableChipList: View {
-    @Binding var values: [String]
-    let placeholder: String
-    let onChange: () -> Void
-    @State private var draft = ""
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            ChipWrap(values: values, removable: true) { value in
-                values.removeAll { $0 == value }
-                onChange()
-            }
-            HStack(spacing: 6) {
-                TextField(placeholder, text: $draft)
-                    .textFieldStyle(.roundedBorder)
-                Button {
-                    addDraft()
-                } label: {
-                    Image(systemName: "plus.circle.fill")
-                }
-                .buttonStyle(.borderless)
-                .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
-        }
-        .padding(8)
-        .metadataEditorBoundary()
-    }
-
-    private func addDraft() {
-        let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        values.append(trimmed)
-        draft = ""
-        onChange()
-    }
-}
 
 struct ChipWrap: View {
     let values: [String]

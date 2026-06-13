@@ -14,7 +14,6 @@ struct GroupedBooksCardView: View {
     private let tileWidth: CGFloat = 125
     private let cardPadding: CGFloat = 4
     private var coverWidth: CGFloat { max(tileWidth - (cardPadding * 2), tileWidth * 0.90) }
-    private let coverCornerRadius: CGFloat = 12
     private let titleContainerHeight: CGFloat = 32
 
     private var containerAspectRatio: CGFloat { coverPreference.preferredContainerAspectRatio }

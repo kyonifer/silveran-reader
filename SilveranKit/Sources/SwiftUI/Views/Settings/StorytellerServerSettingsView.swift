@@ -628,10 +628,6 @@ struct BookSourceEditorView: View {
         }
     }
 
-    private func loadExistingCredentials() async {
-        await loadExistingSource()
-    }
-
     private func loadExistingSource() async {
         guard !hasLoadedCredentials else { return }
         hasLoadedCredentials = true

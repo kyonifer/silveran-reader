@@ -17,7 +17,6 @@ struct RelocatedMessage: Codable {
     let cfi: String
     let fraction: Double?
     let chapterFraction: Double?
-    let title: String?
     let flow: String?
     let reason: String?
 }
@@ -31,9 +30,7 @@ struct BookStructureReadyMessage: Codable {
 struct PageFlippedMessage: Codable {
     let direction: String
     let fromPage: Int?
-    let toPage: Int?
     let delta: Int?
-    let isRtl: Bool
 }
 
 /// Sent when user taps to toggle overlay visibility (iOS only)
@@ -99,9 +96,6 @@ struct SearchProgressMessage: Codable {
     let progress: Double
 }
 
-/// Sent from JS when search is complete
-struct SearchCompleteMessage: Codable {}
-
 /// Sent from JS when search encounters an error
 struct SearchErrorMessage: Codable {
     let message: String
@@ -131,7 +125,6 @@ struct HighlightTappedMessage: Codable {
 
 /// Response from getFirstVisiblePosition() for bookmark creation
 struct FirstVisiblePosition: Codable {
-    let sectionIndex: Int
     let cfi: String?
     let text: String
     let href: String

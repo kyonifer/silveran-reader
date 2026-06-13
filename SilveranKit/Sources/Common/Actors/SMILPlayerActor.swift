@@ -90,8 +90,6 @@ private class AVPlayerEndObserver: NSObject, @unchecked Sendable {
 
 public struct SMILPlaybackState: Sendable {
     public let isPlaying: Bool
-    public let currentTime: Double
-    public let duration: Double
     public let currentSectionIndex: Int
     public let currentEntryIndex: Int
     public let currentFragment: String
@@ -106,8 +104,6 @@ public struct SMILPlaybackState: Sendable {
 
     public init(
         isPlaying: Bool,
-        currentTime: Double,
-        duration: Double,
         currentSectionIndex: Int,
         currentEntryIndex: Int,
         currentFragment: String,
@@ -121,8 +117,6 @@ public struct SMILPlaybackState: Sendable {
         bookId: String?,
     ) {
         self.isPlaying = isPlaying
-        self.currentTime = currentTime
-        self.duration = duration
         self.currentSectionIndex = currentSectionIndex
         self.currentEntryIndex = currentEntryIndex
         self.currentFragment = currentFragment
@@ -940,7 +934,6 @@ public actor SMILPlayerActor {
         guard !bookStructure.isEmpty else { return nil }
 
         let currentTime = player?.currentTime().seconds ?? 0
-        let duration = player?.currentItem?.duration.seconds ?? 0
 
         var chapterLabel: String? = nil
         var chapterElapsed: Double = 0
@@ -988,8 +981,6 @@ public actor SMILPlayerActor {
 
         return SMILPlaybackState(
             isPlaying: isPlaying,
-            currentTime: currentTime,
-            duration: duration,
             currentSectionIndex: currentSectionIndex,
             currentEntryIndex: currentEntryIndex,
             currentFragment: currentFragment,

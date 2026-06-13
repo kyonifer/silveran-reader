@@ -18,10 +18,6 @@ enum MarcRelators {
             return MarcRelator(label: parts[0], code: parts[1])
         }
 
-    static func contains(_ code: String) -> Bool {
-        creatorRelators.contains { $0.code == code }
-    }
-
     private static let rawCreatorRelators = """
         Abridger|abr
         Actor|act

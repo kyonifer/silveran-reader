@@ -389,7 +389,6 @@ public struct AudiobookPlayerView: View {
             chapterProgress = chapter.duration > 0 ? timeInChapter / chapter.duration : 0
 
             progressMessage = PlaybackProgressUpdateMessage(
-                chapterIndex: index,
                 chapterId: chapter.id,
                 chapterLabel: chapter.title,
                 chapterCurrentPage: nil,
@@ -399,7 +398,6 @@ public struct AudiobookPlayerView: View {
                 bookCurrentSecondsAudio: currentTime,
                 bookTotalSecondsAudio: totalDuration,
                 bookCurrentFraction: totalDuration > 0 ? currentTime / totalDuration : 0,
-                generatedAt: Date().timeIntervalSince1970,
             )
         } else {
             currentChapterTitle = "Unknown Chapter"
@@ -407,7 +405,6 @@ public struct AudiobookPlayerView: View {
             chapterProgress = 0
 
             progressMessage = PlaybackProgressUpdateMessage(
-                chapterIndex: nil,
                 chapterLabel: nil,
                 chapterCurrentPage: nil,
                 chapterTotalPages: nil,
@@ -416,7 +413,6 @@ public struct AudiobookPlayerView: View {
                 bookCurrentSecondsAudio: currentTime,
                 bookTotalSecondsAudio: totalDuration,
                 bookCurrentFraction: totalDuration > 0 ? currentTime / totalDuration : 0,
-                generatedAt: Date().timeIntervalSince1970,
             )
         }
 
@@ -758,12 +754,3 @@ public struct AudiobookPlayerView: View {
         }
     }
 }
-
-#if DEBUG
-struct AudiobookPlayerView_Previews: PreviewProvider {
-    static var previews: some View {
-        AudiobookPlayerView(bookData: nil)
-            .frame(width: 420, height: 768)
-    }
-}
-#endif

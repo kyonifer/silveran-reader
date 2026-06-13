@@ -57,10 +57,6 @@ public actor StorytellerActor {
         apiBaseURL
     }
 
-    public var currentAccessToken: String? {
-        accessToken?.accessToken
-    }
-
     private let urlSession: URLSession
     private let downloadDelegate: StorytellerDownloadDelegate
     private let decoder: JSONDecoder
@@ -302,11 +298,6 @@ public actor StorytellerActor {
         }
     }
 
-    public func appDidBecomeActive() async {
-        debugLog("[StorytellerActor] appDidBecomeActive")
-        await setActive(true, source: .app)
-    }
-
     public func appWillResignActive() async {
         debugLog("[StorytellerActor] appWillResignActive")
         await setActive(false, source: .app)
@@ -348,11 +339,6 @@ public actor StorytellerActor {
         }
     }
     #endif
-
-    public func setLastNetworkOpSucceeded(_ succeeded: Bool) {
-        lastNetworkOpSucceeded = succeeded
-        Task { await observers?() }
-    }
 
     private func isConnectivityError(_ error: URLError) -> Bool {
         switch error.code {
@@ -785,75 +771,6 @@ public actor StorytellerActor {
 
         guard let date else { return nil }
         return String(Int64(date.timeIntervalSince1970 * 1000))
-    }
-
-    /// Streams the actual book from `/api/v2/books/{bookId}/files`.
-    /// Server implementation: `storyteller/web/src/app/api/v2/books/[bookId]/files/route.ts`.
-    func fetchBook(
-        for bookId: String,
-        format: StorytellerBookFormat,
-    ) async -> StorytellerBookDownload? {
-        guard let (baseURL, token) = await ensureAuthentication() else { return nil }
-
-        let fileURL =
-            baseURL
-            .appendingPathComponent("books")
-            .appendingPathComponent(bookId)
-            .appendingPathComponent("files")
-
-        do {
-            let requestURL = try urlWithQueryParameters(
-                fileURL,
-                queryParameters: ["format": downloadQueryValue(for: format)],
-            )
-
-            var request = URLRequest(url: requestURL)
-            request.httpMethod = "GET"
-            request.setValue(downloadAcceptHeader(for: format), forHTTPHeaderField: "Accept")
-            request.setValue(
-                authorizationHeaderValue(for: token),
-                forHTTPHeaderField: "Authorization",
-            )
-
-            let downloadTask = urlSession.downloadTask(with: request)
-            let fallbackFilename = fallbackFilename(for: bookId, format: format)
-
-            let events = AsyncThrowingStream<StorytellerDownloadEvent, Error> { continuation in
-                let failureHandler: @Sendable (StorytellerDownloadFailure) -> Void = {
-                    [weak self] failure in
-                    guard let self else { return }
-                    Task {
-                        await self.handleDownloadFailure(failure, bookId: bookId)
-                    }
-                }
-
-                downloadDelegate.register(
-                    task: downloadTask,
-                    state: StorytellerDownloadDelegate.TaskState(
-                        continuation: continuation,
-                        fallbackFilename: fallbackFilename,
-                        bookId: bookId,
-                        format: format,
-                        failureHandler: failureHandler,
-                    ),
-                )
-
-                continuation.onTermination = { @Sendable _ in
-                    downloadTask.cancel()
-                }
-
-                downloadTask.resume()
-            }
-
-            return StorytellerBookDownload(
-                initialFilename: fallbackFilename,
-                events: events,
-                cancel: { downloadTask.cancel() },
-            )
-        } catch {
-            logStorytellerError("fetchBook", error: error)
-            return nil
-        }
     }
 
     private func handleDownloadFailure(
@@ -1404,111 +1321,6 @@ public actor StorytellerActor {
             ) == .success
         } catch {
             logStorytellerError("upgradeEpub", error: error)
-            return false
-        }
-    }
-
-    /// Merges books via `/api/v2/books/merge`.
-    /// Server implementation:  `storyteller/web/src/app/api/v2/books/merge/route.ts`.
-    // TODO: UNTESTED
-    func mergeBooks(
-        update: StorytellerBookMergeUpdate?,
-        relations: StorytellerBookRelationsUpdatePayload,
-        from bookIds: [String],
-    ) async -> BookMetadata? {
-        guard let (baseURL, token) = await ensureAuthentication() else { return nil }
-        let mergeURL = baseURL.appendingPathComponent("books/merge")
-
-        struct MergeBody: Encodable {
-            let update: StorytellerBookMergeUpdate?
-            let relations: StorytellerBookRelationsUpdatePayload
-            let from: [String]
-        }
-
-        let body = MergeBody(update: update, relations: relations, from: bookIds)
-
-        var allowedStatuses = Set(200..<300)
-        allowedStatuses.insert(401)
-        allowedStatuses.insert(403)
-        allowedStatuses.insert(404)
-        allowedStatuses.insert(405)
-
-        do {
-            let payload = try encoder.encode(body)
-            let response = try await httpPost(
-                mergeURL.absoluteString,
-                headers: [
-                    "Accept": "application/json",
-                    "Content-Type": "application/json",
-                    "Authorization": authorizationHeaderValue(for: token),
-                ],
-                body: payload,
-                session: urlSession,
-                allowedStatusCodes: allowedStatuses,
-            )
-
-            guard
-                case .success = evaluateResponse(
-                    response,
-                    methodName: "mergeBooks",
-                    context: "merge request \(bookIds.joined(separator: ","))",
-                )
-            else {
-                return nil
-            }
-
-            do {
-                return try decoder.decode(BookMetadata.self, from: response.data)
-            } catch {
-                logStorytellerError("mergeBooks decode", error: error)
-                return nil
-            }
-        } catch {
-            logStorytellerError("mergeBooks", error: error)
-            return nil
-        }
-    }
-
-    /// Triggers Storyteller's processing pipeline via `/api/v2/books/{bookId}/process`.
-    /// Server implementation: `storyteller/web/src/app/api/v2/books/[bookId]/process/route.ts`.
-    /// TODO: UNTESTED
-    func startProcessing(for bookId: String, restart: AlignmentRestartMode = .none) async -> Bool {
-        guard let (baseURL, token) = await ensureAuthentication() else { return false }
-        let processURL =
-            baseURL
-            .appendingPathComponent("books")
-            .appendingPathComponent(bookId)
-            .appendingPathComponent("process")
-
-        var queryParameters: [String: String] = [:]
-        if restart != .none {
-            queryParameters["restart"] = restart.rawValue
-        }
-
-        var allowedStatuses = Set(200..<300)
-        allowedStatuses.insert(401)
-        allowedStatuses.insert(403)
-        allowedStatuses.insert(404)
-
-        do {
-            let response = try await httpPost(
-                processURL.absoluteString,
-                headers: [
-                    "Authorization": authorizationHeaderValue(for: token),
-                    "Accept": "application/json",
-                ],
-                queryParameters: queryParameters,
-                session: urlSession,
-                allowedStatusCodes: allowedStatuses,
-            )
-
-            return evaluateResponse(
-                response,
-                methodName: "startProcessing",
-                context: "process for \(bookId)",
-            ) == .success
-        } catch {
-            logStorytellerError("startProcessing", error: error)
             return false
         }
     }
@@ -2096,94 +1908,6 @@ public actor StorytellerActor {
             ) == .success
         } catch {
             logStorytellerError("updateStatus", error: error)
-            return false
-        }
-    }
-
-    /// Retrieves tags visible to the current user from `/api/v2/tags`.
-    /// Server implementation: `storyteller/web/src/app/api/v2/tags/route.ts`.
-    func fetchTags() async -> [BookTag]? {
-        guard let (baseURL, token) = await ensureAuthentication() else { return nil }
-        let tagsURL = baseURL.appendingPathComponent("tags")
-
-        do {
-            var allowedStatuses = Set(200..<300)
-            allowedStatuses.insert(401)
-            allowedStatuses.insert(403)
-            allowedStatuses.insert(404)
-
-            let response = try await httpGet(
-                tagsURL.absoluteString,
-                headers: [
-                    "Accept": "application/json",
-                    "Authorization": authorizationHeaderValue(for: token),
-                ],
-                session: urlSession,
-                allowedStatusCodes: allowedStatuses,
-            )
-
-            guard
-                case .success = evaluateResponse(
-                    response,
-                    methodName: "fetchTags",
-                    context: "tags",
-                )
-            else {
-                return nil
-            }
-
-            return try decoder.decode([BookTag].self, from: response.data)
-        } catch {
-            logStorytellerError("fetchTags", error: error)
-            return nil
-        }
-    }
-
-    /// Adds tags to books using `/api/v2/books/tags` (POST).
-    /// Server implementation: `storyteller/web/src/app/api/v2/books/tags/route.ts`.
-    /// TODO: UNTESTED
-    func addTags(_ tags: [String], toBooks bookIds: [String]) async -> Bool {
-        guard !tags.isEmpty, !bookIds.isEmpty else {
-            debugLog("[StorytellerActor] addTags requires non-empty tags and books.")
-            return false
-        }
-
-        guard let (baseURL, token) = await ensureAuthentication() else { return false }
-        let tagsURL = baseURL.appendingPathComponent("books/tags")
-
-        struct AddTagsBody: Encodable {
-            let tags: [String]
-            let books: [String]
-        }
-
-        let body = AddTagsBody(tags: tags, books: bookIds)
-
-        do {
-            let payload = try encoder.encode(body)
-
-            var allowedStatuses = Set(200..<300)
-            allowedStatuses.insert(401)
-            allowedStatuses.insert(403)
-
-            let response = try await httpPost(
-                tagsURL.absoluteString,
-                headers: [
-                    "Accept": "application/json",
-                    "Content-Type": "application/json",
-                    "Authorization": authorizationHeaderValue(for: token),
-                ],
-                body: payload,
-                session: urlSession,
-                allowedStatusCodes: allowedStatuses,
-            )
-
-            return evaluateResponse(
-                response,
-                methodName: "addTags",
-                context: "tag assignment",
-            ) == .success
-        } catch {
-            logStorytellerError("addTags", error: error)
             return false
         }
     }

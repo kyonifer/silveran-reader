@@ -33,20 +33,6 @@ final class HardcoverImportViewModel {
 
     var selectedFields: Set<String> = []
 
-    static let allFields: [(key: String, label: String)] = [
-        ("title", "Title"),
-        ("subtitle", "Subtitle"),
-        ("description", "Description"),
-        ("language", "Language"),
-        ("publicationDate", "Publication Date"),
-        ("rating", "Rating"),
-        ("authors", "Authors"),
-        ("narrators", "Narrators"),
-        ("creators", "Other Creators"),
-        ("series", "Series"),
-        ("tags", "Tags"),
-    ]
-
     private static let defaultFields: Set<String> = [
         "title", "subtitle", "description", "language", "publicationDate",
         "rating", "authors", "narrators", "creators", "series", "tags",
@@ -60,20 +46,6 @@ final class HardcoverImportViewModel {
         } else {
             selectedFields = Self.defaultFields
         }
-    }
-
-    private func persistFieldSelection() {
-        UserDefaults.standard.set(Array(selectedFields), forKey: Self.selectedFieldsKey)
-    }
-
-    func selectAllFields() {
-        selectedFields = Set(Self.allFields.map(\.key))
-        persistFieldSelection()
-    }
-
-    func selectNoFields() {
-        selectedFields = []
-        persistFieldSelection()
     }
 
     func loadToken() async {
@@ -171,16 +143,6 @@ final class HardcoverImportViewModel {
         return imports
     }
 
-    func clearTextSelection() {
-        selectedTextEditionId = nil
-        selectedTextDetails = nil
-        if selectedAudiobookDetails == nil {
-            selectedResult = nil
-            selectedEditionId = nil
-            fetchedDetails = nil
-        }
-    }
-
     func clearAudiobookSelection() {
         selectedAudiobookEditionId = nil
         selectedAudiobookDetails = nil
@@ -189,11 +151,6 @@ final class HardcoverImportViewModel {
             selectedEditionId = nil
             fetchedDetails = nil
         }
-    }
-
-    func useFetchedDetailsForText() {
-        selectedTextEditionId = nil
-        selectedTextDetails = fetchedDetails
     }
 
     func useFetchedDetailsForAudiobook() {
@@ -223,10 +180,6 @@ final class HardcoverImportViewModel {
         }
 
         isFetching = false
-    }
-
-    func selectEdition(_ edition: HardcoverEditionInfo, bookId: Int) {
-        selectEdition(edition, bookId: bookId, source: .text)
     }
 
     func selectEdition(
@@ -293,15 +246,6 @@ final class HardcoverImportViewModel {
             rawJSON: bookDetails.rawJSON,
         )
         return details
-    }
-
-    func toggleField(_ field: String) {
-        if selectedFields.contains(field) {
-            selectedFields.remove(field)
-        } else {
-            selectedFields.insert(field)
-        }
-        persistFieldSelection()
     }
 
     func prefill(title: String, author: String?) {

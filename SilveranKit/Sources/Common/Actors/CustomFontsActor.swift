@@ -57,20 +57,6 @@ public struct CustomFontFamily: Sendable, Equatable, Identifiable {
     }
 }
 
-public struct CustomFontInfo: Sendable, Equatable, Identifiable {
-    public let id: String
-    public let name: String
-    public let fileName: String
-    public let fileURL: URL
-
-    public init(name: String, fileName: String, fileURL: URL) {
-        self.id = fileName
-        self.name = name
-        self.fileName = fileName
-        self.fileURL = fileURL
-    }
-}
-
 @globalActor
 public actor CustomFontsActor {
     public static let shared = CustomFontsActor()
@@ -97,22 +83,8 @@ public actor CustomFontsActor {
         cachedFamilies
     }
 
-    public var availableFonts: [CustomFontInfo] {
-        cachedFamilies.map { family in
-            CustomFontInfo(
-                name: family.name,
-                fileName: family.variants.first?.fileName ?? "",
-                fileURL: family.variants.first?.fileURL ?? fontsDirectory,
-            )
-        }
-    }
-
     public var fontFaceCSS: String {
         cachedFontFaceCSS
-    }
-
-    public func fontsDirectoryURL() -> URL {
-        fontsDirectory
     }
 
     @discardableResult
@@ -120,10 +92,6 @@ public actor CustomFontsActor {
         let id = UUID()
         observers[id] = callback
         return id
-    }
-
-    public func removeObserver(id: UUID) {
-        observers.removeValue(forKey: id)
     }
 
     public func refreshFonts() async {
@@ -154,17 +122,6 @@ public actor CustomFontsActor {
         }
 
         try fileManager.copyItem(at: sourceURL, to: destinationURL)
-        await refreshFonts()
-    }
-
-    public func deleteFont(_ font: CustomFontInfo) async throws {
-        for family in cachedFamilies where family.name == font.name {
-            for variant in family.variants {
-                if fileManager.fileExists(atPath: variant.fileURL.path) {
-                    try fileManager.removeItem(at: variant.fileURL)
-                }
-            }
-        }
         await refreshFonts()
     }
 

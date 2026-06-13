@@ -889,53 +889,9 @@ class MediaOverlayManager {
         return result
     }
 
-    func getSection(byId id: String) -> SectionInfo? {
-        bookStructure.first { $0.id == id }
-    }
-
     func getSection(at index: Int) -> SectionInfo? {
         guard index >= 0 && index < bookStructure.count else { return nil }
         return bookStructure[index]
-    }
-
-    /// Find SMIL entry by text ID in a specific section
-    func findSMILEntry(textId: String, in sectionIndex: Int) -> SMILEntry? {
-        guard let section = getSection(at: sectionIndex) else { return nil }
-        if let entryIndex = textIdIndexBySection[sectionIndex]?[textId],
-            entryIndex < section.mediaOverlay.count
-        {
-            return section.mediaOverlay[entryIndex]
-        }
-        return section.mediaOverlay.first { $0.textId == textId }
-    }
-
-    /// Find SMIL entry by audio time position in a specific section
-    private func findEntryByTime(_ time: Double, in sectionIndex: Int) -> (
-        entryIndex: Int, entry: SMILEntry
-    )? {
-        guard let section = getSection(at: sectionIndex), !section.mediaOverlay.isEmpty else {
-            return nil
-        }
-
-        for (index, entry) in section.mediaOverlay.enumerated() {
-            if time >= entry.begin && time < entry.end {
-                return (index, entry)
-            }
-        }
-
-        let lastIndex = section.mediaOverlay.count - 1
-        let lastEntry = section.mediaOverlay[lastIndex]
-        if time >= lastEntry.end {
-            return (lastIndex, lastEntry)
-        }
-
-        return nil
-    }
-
-    /// Get the current chapter label for Now Playing display
-    func currentChapterLabel() -> String {
-        guard cachedSectionIndex < bookStructure.count else { return "" }
-        return bookStructure[cachedSectionIndex].label ?? "Chapter \(cachedSectionIndex + 1)"
     }
 
     // MARK: - Highlight and Page Flip

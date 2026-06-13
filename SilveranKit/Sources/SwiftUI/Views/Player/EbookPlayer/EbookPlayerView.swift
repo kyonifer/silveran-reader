@@ -630,27 +630,6 @@ public struct EbookPlayerView: View {
     }
     #endif
 
-    private func sidebarToggleButton(
-        isVisible: Bool,
-        systemImage: String,
-        accessibilityLabel: String,
-        action: @escaping () -> Void,
-    ) -> some View {
-        Button(action: action) {
-            Label {
-                Text(accessibilityLabel)
-            } icon: {
-                Image(systemName: systemImage)
-                    .symbolVariant(isVisible ? .fill : .none)
-            }
-            .labelStyle(.iconOnly)
-        }
-        .buttonStyle(.plain)
-        #if os(macOS)
-        .help(accessibilityLabel)
-        #endif
-    }
-
     #if os(macOS)
     private func isLightColor(hex: String) -> Bool {
         guard let color = Color(hex: hex) else {
@@ -862,15 +841,6 @@ private struct TitleBarConfigurator: NSViewRepresentable {
                 item.isEnabled = isTitleBarVisible
             }
         }
-    }
-}
-#endif
-
-#if DEBUG
-struct EbookPlayerView_Previews: PreviewProvider {
-    static var previews: some View {
-        EbookPlayerView(bookData: nil)
-            .frame(width: 1024, height: 768)
     }
 }
 #endif

@@ -25,11 +25,6 @@ public final class TVSettingsViewModel {
         }
     }
 
-    var selectedSourceName: String {
-        storytellerSources.first { $0.id == selectedSourceID }?.name
-            ?? BookSourceKind.storyteller.defaultName
-    }
-
     func loadSources() async {
         let previousSelection = selectedSourceID
         storytellerSources = await BookServiceActor.shared.bookSources

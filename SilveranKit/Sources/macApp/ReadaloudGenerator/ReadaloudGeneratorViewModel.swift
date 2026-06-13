@@ -160,11 +160,6 @@ public final class ReadaloudGeneratorViewModel {
 
     public init() {}
 
-    public var audioURL: URL? {
-        get { audioURLs.first }
-        set { audioURLs = newValue.map { [$0] } ?? [] }
-    }
-
     public func loadUploadSources() async {
         let sources = await BookServiceActor.shared.bookSources.filter {
             $0.capabilities.canUploadBooks
@@ -199,17 +194,6 @@ public final class ReadaloudGeneratorViewModel {
             && (uploadAllToServer ? selectedUploadSourceID != nil : outputURL != nil)
             && state != .processing
             && !isLoadingSourceInputs
-    }
-
-    public var canAttemptStart: Bool {
-        if state == .processing || isLoadingSourceInputs {
-            return false
-        }
-        if epubURL == nil || audioURLs.isEmpty {
-            return false
-        }
-        return (uploadAllToServer ? selectedUploadSourceID != nil : outputURL != nil)
-            && isModelDownloaded
     }
 
     public var isMissingSourceWorkflowMedia: Bool {

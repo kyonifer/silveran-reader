@@ -13,10 +13,6 @@ public final class WatchViewModel {
     var remotePlaybackState: RemotePlaybackState?
     private var metadataRefreshTask: Task<Void, Never>?
 
-    var isReceiving: Bool {
-        receivingTitle != nil
-    }
-
     var transferProgress: Double {
         guard totalChunks > 0 else { return 0 }
         return Double(receivedChunks) / Double(totalChunks)

@@ -22,16 +22,6 @@ class ReaderStyleManager {
         }
     }
 
-    func cleanup() {
-        if let id = fontObserverID {
-            let capturedId = id
-            fontObserverID = nil
-            Task {
-                await CustomFontsActor.shared.removeObserver(id: capturedId)
-            }
-        }
-    }
-
     private func registerFontObserver() async {
         fontObserverID = await CustomFontsActor.shared.addObserver { @MainActor [weak self] in
             guard let self else { return }

@@ -13,18 +13,6 @@ public struct MediaPaths: Sendable {
     }
 }
 
-public enum LocalMediaImportEvent: Sendable {
-    case started(book: BookMetadata, category: LocalMediaCategory, expectedBytes: Int64?)
-    case progress(
-        book: BookMetadata,
-        category: LocalMediaCategory,
-        receivedBytes: Int64,
-        expectedBytes: Int64?,
-    )
-    case finished(book: BookMetadata, category: LocalMediaCategory, destination: URL)
-    case skipped(book: BookMetadata, category: LocalMediaCategory)
-}
-
 @globalActor
 public actor LocalMediaActor: GlobalActor {
     public static let shared = LocalMediaActor()
@@ -68,11 +56,6 @@ public actor LocalMediaActor: GlobalActor {
         observers[id] = callback
         debugLog("[LMA] addObserver: id=\(id), total observers=\(observers.count)")
         return id
-    }
-
-    public func removeObserver(id: UUID) {
-        observers.removeValue(forKey: id)
-        debugLog("[LMA] removeObserver: id=\(id), total observers=\(observers.count)")
     }
 
     private func notifyObservers() async {
@@ -376,28 +359,6 @@ public actor LocalMediaActor: GlobalActor {
         return paths
     }
 
-    public func listAvailableUuids() async -> Set<String> {
-        do {
-            try await scanForMedia()
-            return Set(sourceCacheMetadata.map(\.uuid))
-        } catch {
-            debugLog("[LocalMediaActor] listAvailableUuids failed: \(error)")
-            return Set(sourceCacheMetadata.map(\.uuid))
-        }
-    }
-
-    public func downloadedCategories(
-        for uuid: String,
-        sourceID explicitSourceID: BookSourceID? = nil,
-    ) async -> Set<LocalMediaCategory> {
-        guard let sourceID = await cacheSourceID(for: uuid, explicitSourceID: explicitSourceID)
-        else { return [] }
-        return await filesystem.downloadedCategories(
-            for: uuid,
-            sourceID: sourceID,
-        )
-    }
-
     public func cachedMediaPaths(for metadata: [BookMetadata]) async -> [String: MediaPaths] {
         await SilveranMigrations.ensureMigrationsRan()
         var paths = sourceCacheBookPaths
@@ -560,213 +521,6 @@ public actor LocalMediaActor: GlobalActor {
         await notifyObservers()
     }
 
-    public func importMedia(
-        for metadata: BookMetadata,
-        category: LocalMediaCategory,
-    ) -> AsyncThrowingStream<LocalMediaImportEvent, Error> {
-        AsyncThrowingStream { continuation in
-            let task = Task { [self] in
-                do {
-                    try await self.streamSourceCacheImport(
-                        metadata: metadata,
-                        category: category,
-                        continuation: continuation,
-                    )
-                    continuation.finish()
-                } catch {
-                    continuation.finish(throwing: error)
-                }
-            }
-            continuation.onTermination = { @Sendable _ in
-                task.cancel()
-            }
-        }
-    }
-
-    private func streamSourceCacheImport(
-        metadata: BookMetadata,
-        category: LocalMediaCategory,
-        continuation: AsyncThrowingStream<LocalMediaImportEvent, Error>.Continuation,
-    ) async throws {
-        try await filesystem.ensureLocalStorageDirectories()
-        let cacheSourceID: BookSourceID
-        if let sourceID = metadata.sourceID {
-            cacheSourceID = sourceID
-        } else {
-            continuation.yield(.skipped(book: metadata, category: category))
-            return
-        }
-
-        let destinationDirectory = await filesystem.getMediaDirectory(
-            category: category,
-            bookName: metadata.title,
-            uuidIdentifier: metadata.uuid,
-            sourceID: cacheSourceID,
-        )
-        let bookRoot = destinationDirectory.deletingLastPathComponent()
-        try await filesystem.ensureDirectoryExists(at: bookRoot)
-
-        let fm = FileManager.default
-
-        let assetInfo = sourceAssetInfo(for: metadata, category: category)
-        guard assetInfo.available else {
-            continuation.yield(.skipped(book: metadata, category: category))
-            return
-        }
-
-        guard let sourceID = metadata.sourceID,
-            let download = await BookServiceActor.shared.fetchBook(
-                for: metadata.uuid,
-                sourceID: sourceID,
-                format: assetInfo.format,
-            )
-        else {
-            continuation.yield(.skipped(book: metadata, category: category))
-            return
-        }
-
-        try await filesystem.ensureDirectoryExists(at: destinationDirectory)
-
-        var currentFilename = download.initialFilename
-        var expectedBytes: Int64? = nil
-        var started = false
-        var lastReported: Int64 = -1
-
-        do {
-            for try await event in download.events {
-                try Task.checkCancellation()
-                switch event {
-                    case .response(let filename, let expected, _, _, _):
-                        currentFilename = filename
-                        expectedBytes = expected
-                        if !started {
-                            started = true
-                            continuation.yield(
-                                .started(
-                                    book: metadata,
-                                    category: category,
-                                    expectedBytes: expectedBytes,
-                                )
-                            )
-                        }
-                    case .progress(let receivedBytes, let eventExpected):
-                        if !started {
-                            started = true
-                            expectedBytes = eventExpected ?? expectedBytes
-                            continuation.yield(
-                                .started(
-                                    book: metadata,
-                                    category: category,
-                                    expectedBytes: expectedBytes,
-                                )
-                            )
-                        }
-                        expectedBytes = eventExpected ?? expectedBytes
-                        guard receivedBytes != lastReported else { continue }
-                        lastReported = receivedBytes
-                        continuation.yield(
-                            .progress(
-                                book: metadata,
-                                category: category,
-                                receivedBytes: receivedBytes,
-                                expectedBytes: expectedBytes,
-                            )
-                        )
-                    case .finished(let tempURL):
-                        if !started {
-                            started = true
-                            continuation.yield(
-                                .started(
-                                    book: metadata,
-                                    category: category,
-                                    expectedBytes: expectedBytes,
-                                )
-                            )
-                        }
-
-                        if category == .audio {
-                            if fm.fileExists(atPath: destinationDirectory.path) {
-                                try fm.removeItem(at: destinationDirectory)
-                            }
-                            try await filesystem.ensureDirectoryExists(at: destinationDirectory)
-                            try extractAudiobookPackage(from: tempURL, to: destinationDirectory)
-                            guard
-                                fm.fileExists(
-                                    atPath: destinationDirectory.appendingPathComponent(
-                                        "manifest.json"
-                                    ).path
-                                )
-                            else {
-                                throw LocalMediaError.missingAudiobookManifest
-                            }
-                            try? fm.removeItem(at: tempURL)
-                            let destinationURL = destinationDirectory.appendingPathComponent(
-                                "manifest.json"
-                            )
-                            continuation.yield(
-                                .finished(
-                                    book: metadata,
-                                    category: category,
-                                    destination: destinationURL,
-                                )
-                            )
-                            do {
-                                try await scanForMedia()
-                            } catch {
-                                debugLog(
-                                    "[LocalMediaActor] scanForMedia post-download failed: \(error)"
-                                )
-                            }
-                            return
-                        }
-
-                        let destinationURL = destinationDirectory.appendingPathComponent(
-                            currentFilename
-                        )
-                        if fm.fileExists(atPath: destinationURL.path) {
-                            try fm.removeItem(at: destinationURL)
-                        }
-
-                        var shouldRemoveTemp = true
-                        defer {
-                            if shouldRemoveTemp {
-                                try? fm.removeItem(at: tempURL)
-                            }
-                        }
-
-                        do {
-                            try fm.moveItem(at: tempURL, to: destinationURL)
-                            shouldRemoveTemp = false
-                        } catch {
-                            throw error
-                        }
-
-                        continuation.yield(
-                            .finished(
-                                book: metadata,
-                                category: category,
-                                destination: destinationURL,
-                            )
-                        )
-
-                        do {
-                            try await scanForMedia()
-                        } catch {
-                            debugLog(
-                                "[LocalMediaActor] scanForMedia post-download failed: \(error)"
-                            )
-                        }
-                        return
-                }
-            }
-        } catch is CancellationError {
-            download.cancel()
-            throw CancellationError()
-        } catch is StorytellerDownloadFailure {
-            continuation.yield(.skipped(book: metadata, category: category))
-        }
-    }
-
     public func ensureLocalStorageDirectories() async throws {
         try await filesystem.ensureLocalStorageDirectories()
     }
@@ -844,16 +598,6 @@ public actor LocalMediaActor: GlobalActor {
         try await scanForMedia()
     }
 
-    public func removeAllSourceCacheData() async throws {
-        try await filesystem.removeAllSourceCacheData()
-
-        sourceCacheMetadata = []
-        sourceCacheBookPaths = [:]
-        sourceCacheLoaded = true
-
-        await notifyObservers()
-    }
-
     public func removeSourceCacheData(sourceID: BookSourceID) async throws {
         await ensureSourceCacheLoaded()
         let booksToRemove = sourceCacheMetadata.filter {
@@ -881,20 +625,6 @@ public actor LocalMediaActor: GlobalActor {
         sourceCacheBookPaths = paths
 
         await notifyObservers()
-    }
-
-    private func sourceAssetInfo(
-        for metadata: BookMetadata,
-        category: LocalMediaCategory,
-    ) -> (available: Bool, format: StorytellerBookFormat) {
-        switch category {
-            case .ebook:
-                return (metadata.hasAvailableEbook, .ebook)
-            case .audio:
-                return (metadata.hasAvailableAudiobook, .audiobook)
-            case .synced:
-                return (metadata.hasAvailableReadaloud, .readaloud)
-        }
     }
 
     private func extractAudiobookPackage(from archiveURL: URL, to destinationDirectory: URL) throws

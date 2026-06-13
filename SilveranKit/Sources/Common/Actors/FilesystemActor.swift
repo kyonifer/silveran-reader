@@ -38,17 +38,6 @@ public actor FilesystemActor {
             .appendingPathComponent(sanitizedPathComponent(from: sourceID), isDirectory: true)
     }
 
-    public func ensureSourceCacheDirectory(sourceID: BookSourceID) throws -> URL {
-        let directory = sourceCacheDirectory(sourceID: sourceID)
-        try ensureDirectoryExists(at: directory)
-        let marker = directory.appendingPathComponent(
-            BookSourceRecord.sourceIDFilename,
-            isDirectory: false,
-        )
-        try sourceID.write(to: marker, atomically: true, encoding: .utf8)
-        return directory
-    }
-
     public func internalFolderSourceRootDirectory() -> URL {
         applicationSupportBaseDirectory()
             .appendingPathComponent("InternalFolderSource", isDirectory: true)
@@ -142,50 +131,6 @@ public actor FilesystemActor {
 
         let baseForLocal = sanitizedBase.isEmpty ? "Book" : sanitizedBase
         return baseForLocal
-    }
-
-    public func downloadedCategories(
-        for uuid: String,
-        sourceID: BookSourceID,
-    ) async -> Set<LocalMediaCategory> {
-        let sourceDirectory = sourceCacheDirectory(sourceID: sourceID)
-        let sanitizedUuid = sanitizedPathComponent(from: uuid)
-        guard
-            let folderName = try? await existingFolder(
-                matching: sanitizedUuid,
-                in: sourceDirectory,
-            )
-        else {
-            return []
-        }
-
-        let fm = FileManager.default
-        let bookRoot = sourceDirectory.appendingPathComponent(folderName, isDirectory: true)
-        var results: Set<LocalMediaCategory> = []
-
-        for category in LocalMediaCategory.allCases {
-            let categoryDir = bookRoot.appendingPathComponent(category.rawValue, isDirectory: true)
-            guard
-                let contents = try? fm.contentsOfDirectory(
-                    at: categoryDir,
-                    includingPropertiesForKeys: [.isDirectoryKey],
-                    options: [.skipsHiddenFiles],
-                )
-            else {
-                continue
-            }
-
-            if contents.contains(where: { url in
-                guard let values = try? url.resourceValues(forKeys: [.isDirectoryKey]) else {
-                    return false
-                }
-                return values.isDirectory != true
-            }) {
-                results.insert(category)
-            }
-        }
-
-        return results
     }
 
     public func mediaDirectory(
@@ -596,17 +541,6 @@ public actor FilesystemActor {
         try removeCoverImages(uuid: uuid)
     }
 
-    public func removeAllSourceCacheData() throws {
-        let cacheDir = sourceCacheRootDirectory()
-        let fm = FileManager.default
-
-        if fm.fileExists(atPath: cacheDir.path) {
-            try fm.removeItem(at: cacheDir)
-        }
-
-        try removeAllCoverImages()
-    }
-
     public func getHighlightsDirectory() -> URL {
         applicationSupportBaseDirectory()
             .appendingPathComponent("Highlights", isDirectory: true)
@@ -902,20 +836,6 @@ public actor FilesystemActor {
         if cleanedCount > 0 {
             debugLog("[FilesystemActor] Cleaned up \(cleanedCount) extracted EPUB directories")
         }
-    }
-
-    public func extractEpubIfNeeded(
-        epubPath: URL,
-        sizeThresholdMB: Int = 200,
-        forceExtract: Bool = false,
-    ) async throws -> URL {
-        try await extractEpubIfNeeded(
-            epubPath: epubPath,
-            extractedDir: epubPath.deletingLastPathComponent()
-                .appendingPathComponent("extracted", isDirectory: true),
-            sizeThresholdMB: sizeThresholdMB,
-            forceExtract: forceExtract,
-        )
     }
 
     public func prepareEpubForReading(

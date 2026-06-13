@@ -55,7 +55,6 @@ struct HomeView: View {
     @State private var sections: [HomeSection] = []
     @State private var loadSectionsTask: Task<Void, Never>?
     @State private var loadSectionsGeneration: Int = 0
-    @State private var settingsViewModel = SettingsViewModel()
     @State private var allowEmptyStateDisplay: Bool = false
     #if os(macOS)
     @State private var cardTapInProgress: Bool = false
@@ -92,7 +91,6 @@ struct HomeView: View {
     #if os(macOS)
     #endif
     private let horizontalPadding: CGFloat = 24
-    private let verticalPadding: CGFloat = 28
     private let sectionSpacing: CGFloat = 36
     private let headerBottomPadding: CGFloat = 12
 
@@ -659,28 +657,6 @@ struct HomeView: View {
 
     #endif
 
-    private static nonisolated func makeSection(
-        title: String,
-        mediaKind: MediaKind,
-        tagFilter: String?,
-        limit: Int,
-        destination: String,
-        context: MediaViewModel.LibraryRenderContext,
-        searchText: String,
-    ) -> HomeSection {
-        let baseItems = items(context.metadata, for: mediaKind, tagFilter: tagFilter)
-        let filtered = baseItems.filter { matchesSearchText($0, searchText: searchText) }
-        return HomeSection(
-            title: title,
-            mediaKind: mediaKind,
-            items: Array(filtered.prefix(limit)),
-            destination: destination,
-            tagFilter: tagFilter,
-            statusFilter: nil,
-            sortOrder: nil,
-        )
-    }
-
     private static nonisolated func makeStatusSection(
         title: String,
         statusName: String,
@@ -832,27 +808,6 @@ struct HomeView: View {
             statusFilter: nil,
             sortOrder: nil,
         )
-    }
-
-    private static nonisolated func items(
-        _ metadata: [BookMetadata],
-        for kind: MediaKind,
-        tagFilter: String?,
-    ) -> [BookMetadata] {
-        var base = metadata.filter { item in
-            switch kind {
-                case .ebook:
-                    return item.hasAvailableEbook || item.hasAvailableReadaloud
-                case .audiobook:
-                    return !item.hasAvailableEbook && !item.hasAvailableReadaloud
-                        && item.hasAvailableAudiobook
-            }
-        }
-        if let tagFilter, !tagFilter.isEmpty {
-            let target = tagFilter.lowercased()
-            base = base.filter { $0.tagNames.contains { $0.lowercased() == target } }
-        }
-        return base
     }
 
     private static nonisolated func booksForShelf(
@@ -1318,8 +1273,6 @@ private struct HomeSectionRow: View {
         )
     }
 
-    @Environment(MediaViewModel.self) private var mediaViewModel
-
     private var editMetadataHandler: (([String]) -> Void)? {
         #if os(macOS)
         onEditMetadata
@@ -1374,35 +1327,5 @@ private struct HomeSectionRow: View {
 
     private func calculateRowHeight(metrics: MediaItemCardMetrics) -> CGFloat {
         return metrics.maxCardHeight
-    }
-}
-
-#Preview {
-    StatePreviewWrapper()
-}
-
-private struct StatePreviewWrapper: View {
-    @State var sections: [SidebarSectionDescription] = LibrarySidebarDefaults.getSections()
-    @State var selectedItem: SidebarItemDescription? = nil
-    @State var showSettings: Bool = false
-    #if os(iOS)
-    @State var searchText: String = ""
-    #endif
-    var body: some View {
-        #if os(iOS)
-        HomeView(
-            searchText: $searchText,
-            sidebarSections: $sections,
-            selectedSidebarItem: $selectedItem,
-            showSettings: $showSettings,
-        )
-        #else
-        HomeView(
-            searchText: "",
-            sidebarSections: $sections,
-            selectedSidebarItem: $selectedItem,
-            showSettings: $showSettings,
-        )
-        #endif
     }
 }

@@ -10,14 +10,6 @@ struct WatchDownloadProgressView: View {
 
     private let bookMetadata: BookMetadata?
 
-    init(book: BookMetadata, onDismiss: @escaping () -> Void) {
-        self.bookId = book.uuid
-        self.bookTitle = book.title
-        self.category = book.hasAvailableReadaloud ? .synced : .ebook
-        self.bookMetadata = book
-        self.onDismiss = onDismiss
-    }
-
     init(record: DownloadRecord, onDismiss: @escaping () -> Void) {
         self.bookId = record.bookId
         self.bookTitle = record.bookTitle

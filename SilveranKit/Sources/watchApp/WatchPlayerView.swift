@@ -3,7 +3,6 @@ import SilveranKitCommon
 import SwiftUI
 
 struct WatchPlayerView: View {
-    @Environment(\.dismiss) private var dismiss
     @State private var viewModel = WatchPlayerViewModel()
     @State private var currentPage: PlayerPage = .controls
 

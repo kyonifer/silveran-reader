@@ -481,18 +481,15 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
     public struct Sync: Codable, Equatable, Sendable {
         public var progressSyncIntervalSeconds: Double
         public var metadataRefreshIntervalSeconds: Double
-        public var isManuallyOffline: Bool
         public var autoSyncToNewerServerPosition: Bool
 
         public init(
             progressSyncIntervalSeconds: Double = kDefaultProgressSyncIntervalSeconds,
             metadataRefreshIntervalSeconds: Double = kDefaultMetadataRefreshIntervalSeconds,
-            isManuallyOffline: Bool = kDefaultIsManuallyOffline,
             autoSyncToNewerServerPosition: Bool = kDefaultAutoSyncToNewerServerPosition,
         ) {
             self.progressSyncIntervalSeconds = progressSyncIntervalSeconds
             self.metadataRefreshIntervalSeconds = metadataRefreshIntervalSeconds
-            self.isManuallyOffline = isManuallyOffline
             self.autoSyncToNewerServerPosition = autoSyncToNewerServerPosition
         }
 
@@ -504,21 +501,14 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
             metadataRefreshIntervalSeconds =
                 (try? container?.decode(Double.self, forKey: .metadataRefreshIntervalSeconds))
                 ?? kDefaultMetadataRefreshIntervalSeconds
-            isManuallyOffline =
-                (try? container?.decode(Bool.self, forKey: .isManuallyOffline))
-                ?? kDefaultIsManuallyOffline
             autoSyncToNewerServerPosition =
                 (try? container?.decode(Bool.self, forKey: .autoSyncToNewerServerPosition))
                 ?? kDefaultAutoSyncToNewerServerPosition
         }
 
         private enum CodingKeys: String, CodingKey {
-            case progressSyncIntervalSeconds, metadataRefreshIntervalSeconds, isManuallyOffline
+            case progressSyncIntervalSeconds, metadataRefreshIntervalSeconds
             case autoSyncToNewerServerPosition
-        }
-
-        public var isProgressSyncDisabled: Bool {
-            progressSyncIntervalSeconds < 0
         }
 
         public var isMetadataRefreshDisabled: Bool {
@@ -745,7 +735,6 @@ public actor SettingsActor {
         showMiniPlayerStats: Bool? = nil,
         progressSyncIntervalSeconds: Double? = nil,
         metadataRefreshIntervalSeconds: Double? = nil,
-        isManuallyOffline: Bool? = nil,
         autoSyncToNewerServerPosition: Bool? = nil,
         showAudioIndicator: Bool? = nil,
         tapToPlayPreferredPlayer: Bool? = nil,
@@ -837,9 +826,6 @@ public actor SettingsActor {
                 "[SettingsActor] Updating metadataRefreshIntervalSeconds to \(metadataRefreshIntervalSeconds)s"
             )
             updated.sync.metadataRefreshIntervalSeconds = metadataRefreshIntervalSeconds
-        }
-        if let isManuallyOffline {
-            updated.sync.isManuallyOffline = isManuallyOffline
         }
         if let autoSyncToNewerServerPosition {
             updated.sync.autoSyncToNewerServerPosition = autoSyncToNewerServerPosition

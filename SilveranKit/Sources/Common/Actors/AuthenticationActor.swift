@@ -19,14 +19,6 @@ public actor AuthenticationActor {
         accessGroup = Self.requiredInfoValue(for: Self.accessGroupInfoKey)
     }
 
-    public func saveCredentials(url: String, username: String, password: String) async throws {
-        try await deleteCredentials()
-
-        try saveString(url, for: serverURLKey)
-        try saveString(username, for: usernameKey)
-        try saveString(password, for: passwordKey)
-    }
-
     public func saveCredentials(
         url: String,
         username: String,
@@ -96,15 +88,6 @@ public actor AuthenticationActor {
             if status != errSecSuccess && status != errSecItemNotFound {
                 throw KeychainError.unableToDelete(status: status)
             }
-        }
-    }
-
-    public func hasCredentials() async -> Bool {
-        do {
-            let creds = try await loadCredentials()
-            return creds != nil
-        } catch {
-            return false
         }
     }
 

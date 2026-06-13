@@ -168,14 +168,6 @@ class EbookProgressManager {
         }
     }
 
-    /// Reset progress (e.g., when loading a new book)
-    func reset() {
-        chapterSeekBarValue = 0.0
-        bookFraction = nil
-        hasPerformedInitialSeek = false
-        debugLog("[EPM] Progress reset")
-    }
-
     /// Find the SMIL entry corresponding to a fraction (0-1) within a specific section.
     private func findSmilEntryBySectionFraction(_ sectionIndex: Int, fraction: Double) -> String? {
         guard sectionIndex >= 0 && sectionIndex < bookStructure.count else { return nil }
@@ -1049,14 +1041,6 @@ class EbookProgressManager {
         }
     }
 
-    func handlePlaybackProgressUpdate(_ message: PlaybackProgressUpdateMessage) {
-        updateChapterProgress(
-            currentPage: message.chapterCurrentPage,
-            totalPages: message.chapterTotalPages,
-        )
-        debugLog("[EPM] handlePlaybackProgressUpdate")
-    }
-
     // MARK: - Progress Sync
     //
     // Sync Strategy - Progress is synced to the server in multiple scenarios:
@@ -1309,13 +1293,6 @@ class EbookProgressManager {
                 debugLog("[EPM] Failed to navigate to PSA position: \(error)")
             }
         }
-    }
-
-    /// Check if user navigation should be suppressed (within 30s of resume)
-    private func shouldSuppressNavigation() -> Bool {
-        guard let resumeTime = lastResumeTime else { return false }
-        let elapsed = Date().timeIntervalSince(resumeTime)
-        return elapsed < resumeSuppressionDuration
     }
 
     /// Cleanup and perform final sync (call on deinit or window close)

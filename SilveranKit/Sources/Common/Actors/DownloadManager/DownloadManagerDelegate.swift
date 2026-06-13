@@ -24,13 +24,6 @@ final class DownloadManagerDelegate: NSObject, URLSessionDownloadDelegate, @unch
         }
     }
 
-    func removeAllTasks() {
-        queue.sync {
-            taskToDownloadId.removeAll()
-            lastProgressTime.removeAll()
-        }
-    }
-
     // MARK: - URLSessionDownloadDelegate
 
     func urlSession(

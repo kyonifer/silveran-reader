@@ -1,19 +1,16 @@
 import Foundation
 
 public struct IncomingServerPosition: Sendable {
-    public let bookId: String
     public let locator: BookLocator
     public let timestamp: Double
 
-    public init(bookId: String, locator: BookLocator, timestamp: Double) {
-        self.bookId = bookId
+    public init(locator: BookLocator, timestamp: Double) {
         self.locator = locator
         self.timestamp = timestamp
     }
 }
 
 public struct BookProgress: Sendable {
-    public let bookId: String
     public let locator: BookLocator?
     public let timestamp: Double?
     public let source: ProgressSource
@@ -21,7 +18,6 @@ public struct BookProgress: Sendable {
     public enum ProgressSource: Sendable {
         case server
         case pendingSync
-        case localOnly
     }
 
     public var progressFraction: Double {
@@ -33,12 +29,10 @@ public struct BookProgress: Sendable {
     }
 
     public init(
-        bookId: String,
         locator: BookLocator?,
         timestamp: Double?,
         source: ProgressSource,
     ) {
-        self.bookId = bookId
         self.locator = locator
         self.timestamp = timestamp
         self.source = source
@@ -298,45 +292,10 @@ public actor ProgressSyncActor {
         return pendingProgressQueue
     }
 
-    public func hasPendingSync(for bookId: String) async -> Bool {
-        await ensureQueueLoaded()
-        return pendingProgressQueue.contains { $0.bookId == bookId }
-    }
-
     public func removePendingSync(for bookId: String) async {
         await ensureQueueLoaded()
         await removeFromQueue(bookId: bookId)
         await notifyObservers()
-    }
-
-    // MARK: - Position Fetch
-
-    /// Fetch current position for a book, refreshing from server if connected
-    public func fetchCurrentPosition(
-        for bookId: String,
-        sourceID: BookSourceID? = nil,
-    ) async -> BookReadingPosition? {
-        debugLog("[PSA] fetchCurrentPosition: bookId=\(bookId)")
-
-        let connectionStatus = await BookServiceActor.shared.connectionStatus(sourceID: sourceID)
-        if connectionStatus == .connected, let sourceID {
-            debugLog("[PSA] fetchCurrentPosition: connected, refreshing from server")
-            let _ = await BookServiceActor.shared.fetchLibraryInformation(
-                sourceID: sourceID
-            )
-        }
-
-        let allMetadata = await BookServiceActor.shared.librarySnapshot(policy: .cachedOnly).books
-
-        guard let book = allMetadata.first(where: { $0.uuid == bookId }) else {
-            debugLog("[PSA] fetchCurrentPosition: book not found in source library")
-            return nil
-        }
-
-        debugLog(
-            "[PSA] fetchCurrentPosition: returning position timestamp=\(book.position?.timestamp ?? 0)"
-        )
-        return book.position
     }
 
     // MARK: - Progress Source of Truth
@@ -497,14 +456,12 @@ public actor ProgressSyncActor {
         for (bookId, serverPosition) in serverPositions {
             if let pending = pendingProgressQueue.first(where: { $0.bookId == bookId }) {
                 result[bookId] = BookProgress(
-                    bookId: bookId,
                     locator: pending.locator,
                     timestamp: pending.timestamp,
                     source: .pendingSync,
                 )
             } else {
                 result[bookId] = BookProgress(
-                    bookId: bookId,
                     locator: serverPosition.locator,
                     timestamp: serverPosition.timestamp,
                     source: .server,
@@ -514,7 +471,6 @@ public actor ProgressSyncActor {
 
         for pending in pendingProgressQueue where result[pending.bookId] == nil {
             result[pending.bookId] = BookProgress(
-                bookId: pending.bookId,
                 locator: pending.locator,
                 timestamp: pending.timestamp,
                 source: .pendingSync,
@@ -530,7 +486,6 @@ public actor ProgressSyncActor {
 
         if let pending = pendingProgressQueue.first(where: { $0.bookId == bookId }) {
             return BookProgress(
-                bookId: bookId,
                 locator: pending.locator,
                 timestamp: pending.timestamp,
                 source: .pendingSync,
@@ -539,7 +494,6 @@ public actor ProgressSyncActor {
 
         if let serverPosition = serverPositions[bookId] {
             return BookProgress(
-                bookId: bookId,
                 locator: serverPosition.locator,
                 timestamp: serverPosition.timestamp,
                 source: .server,
@@ -658,7 +612,6 @@ public actor ProgressSyncActor {
         timestamp: Double,
     ) async {
         let position = IncomingServerPosition(
-            bookId: bookId,
             locator: locator,
             timestamp: timestamp,
         )

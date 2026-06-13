@@ -119,41 +119,6 @@ final class MetadataEditorViewModel {
             }
         }
 
-        mutating func appendToStringList(field: String, value: String) {
-            switch field {
-                case "authors": authors.append(value)
-                case "narrators": narrators.append(value)
-                case "tags": tags.append(value)
-                default: break
-            }
-        }
-
-        mutating func updateStringList(field: String, index: Int, value: String) {
-            switch field {
-                case "authors" where index < authors.count: authors[index] = value
-                case "narrators" where index < narrators.count: narrators[index] = value
-                case "tags" where index < tags.count: tags[index] = value
-                default: break
-            }
-        }
-
-        mutating func removeFromStringList(field: String, index: Int) {
-            switch field {
-                case "authors" where index < authors.count: authors.remove(at: index)
-                case "narrators" where index < narrators.count: narrators.remove(at: index)
-                case "tags" where index < tags.count: tags.remove(at: index)
-                default: break
-            }
-        }
-
-        mutating func removeFromStringList(field: String, indices: IndexSet) {
-            switch field {
-                case "authors": authors.remove(atOffsets: indices)
-                case "narrators": narrators.remove(atOffsets: indices)
-                case "tags": tags.remove(atOffsets: indices)
-                default: break
-            }
-        }
     }
 
     struct CollectionChoice: Identifiable, Hashable {
@@ -428,10 +393,6 @@ final class MetadataEditorViewModel {
             guard let uuid = collection.uuid else { return nil }
             return CollectionChoice(id: index, uuid: uuid, name: collection.name)
         }
-    }
-
-    func removeBook(id: String) {
-        removeBooks(ids: [id])
     }
 
     func removeBooks(ids: Set<String>) {
@@ -766,17 +727,6 @@ final class MetadataEditorViewModel {
 
     var hasAnyValidationErrors: Bool {
         books.contains { hasValidationErrors(for: $0.id) }
-    }
-
-    func fieldHasError(_ field: String, for bookId: String) -> Bool {
-        validationErrors(for: bookId).contains { $0.field == field }
-    }
-
-    func seriesPositionHasError(bookId: String, seriesId: UUID) -> Bool {
-        guard let book = books.first(where: { $0.id == bookId }),
-            let index = book.series.firstIndex(where: { $0.id == seriesId })
-        else { return false }
-        return validationErrors(for: bookId).contains { $0.field == "series.\(index).position" }
     }
 
     private func coverUploads(for book: EditableBook) -> (
@@ -1385,63 +1335,6 @@ final class MetadataEditorViewModel {
         books[index].dirtyFields.removeAll()
         books[index].replacementEbookCover = nil
         books[index].replacementAudiobookCover = nil
-    }
-
-    func originalScalarValue(field: String, for bookId: String) -> String {
-        guard let book = books.first(where: { $0.id == bookId }) else { return "" }
-        let orig = book.originalMetadata
-        switch field {
-            case "title": return orig.title
-            case "subtitle": return orig.subtitle ?? ""
-            case "description": return orig.description ?? ""
-            case "language": return orig.language ?? ""
-            case "publicationDate":
-                return EditableBook.dateOnly(orig.publicationDate) ?? ""
-            case "rating": return orig.rating.map { String($0) } ?? ""
-            default: return ""
-        }
-    }
-
-    func originalStringList(field: String, for bookId: String) -> [String] {
-        guard let book = books.first(where: { $0.id == bookId }) else { return [] }
-        let orig = book.originalMetadata
-        switch field {
-            case "authors": return orig.authors?.compactMap { $0.name } ?? []
-            case "narrators": return orig.narrators?.compactMap { $0.name } ?? []
-            case "tags": return Self.normalizedTags(orig.tags?.map { $0.name } ?? [])
-            default: return []
-        }
-    }
-
-    // MARK: - iTunes Search
-
-    func itunesResults(for bookId: String) -> [ITunesCoverResult] {
-        itunesResultsByBookId[bookId] ?? []
-    }
-
-    func isSearchingItunes(for bookId: String) -> Bool {
-        searchingItunesBookIds.contains(bookId)
-    }
-
-    func clearItunesResults(for bookId: String) {
-        itunesResultsByBookId[bookId] = nil
-    }
-
-    func searchItunes(book: EditableBook) {
-        let bookId = book.id
-        searchingItunesBookIds.insert(bookId)
-        itunesResultsByBookId[bookId] = []
-        Task {
-            defer { searchingItunesBookIds.remove(bookId) }
-            do {
-                itunesResultsByBookId[bookId] = try await ITunesSearchActor.search(
-                    title: book.title,
-                    author: book.authors.first,
-                )
-            } catch {
-                debugLog("[MetadataEditor] iTunes search failed: \(error)")
-            }
-        }
     }
 
 }

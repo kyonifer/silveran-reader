@@ -6,4 +6,3 @@ public typealias MediaGridFormatFilterOption = SilveranKitAppModel.MediaGridForm
 public typealias MediaGridLocationFilterOption = SilveranKitAppModel.MediaGridLocationFilterOption
 public typealias MediaGridContextFilters = SilveranKitAppModel.MediaGridContextFilters
 public typealias MediaGridRenderRequest = SilveranKitAppModel.MediaGridRenderRequest
-public typealias MediaGridRenderSnapshot = SilveranKitAppModel.MediaGridRenderSnapshot

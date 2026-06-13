@@ -35,26 +35,6 @@ extension View {
 }
 #endif
 
-extension MediaKind {
-    var coverAspectRatio: CGFloat {
-        switch self {
-            case .ebook:
-                2.0 / 3.0
-            case .audiobook:
-                1.0
-        }
-    }
-
-    var iconName: String {
-        switch self {
-            case .ebook:
-                "books.vertical"
-            case .audiobook:
-                "headphones"
-        }
-    }
-}
-
 struct SeriesNavIdentifier: Hashable {
     let name: String
 }
@@ -88,7 +68,6 @@ struct MediaGridView: View {
     let title: String
     let searchText: String
     @Environment(MediaViewModel.self) private var mediaViewModel: MediaViewModel
-    @State private var settingsViewModel = SettingsViewModel()
     let mediaKind: MediaKind
     let tagFilter: String?
     let seriesFilter: String?
@@ -112,7 +91,6 @@ struct MediaGridView: View {
     let onMetadataLinkClicked: ((MetadataLinkTarget) -> Void)?
     let initialNarrationFilterOption: NarrationFilter
     private let scrollPosition: Binding<BookMetadata.ID?>?
-    private let headerScrollID = "media-grid-header"
     private let initialSelectedItem: BookMetadata?
     let filteredItems: [BookMetadata]?
     let showAddBookButton: Bool
@@ -1267,9 +1245,6 @@ struct MediaGridView: View {
                                     item: item,
                                     mediaKind: mediaKind,
                                     coverPreference: coverPreference,
-                                    showAudioIndicator: showAudioIndicator,
-                                    sourceLabel: showSourceBadge
-                                        ? item.source : nil,
                                     seriesPositionBadge: seriesPositionBadge(for: item),
                                     isSelected: activeInfoItem?.id == item.id,
                                     onSelect: { selected in
@@ -1553,14 +1528,6 @@ struct MediaGridView: View {
         requestRenderSnapshot(includeFilterOptions: false, started: started)
     }
 
-    private func recomputeFilterOptions() {
-        let started = CFAbsoluteTimeGetCurrent()
-        debugLog(
-            "[PerfTrace][MediaGridView] recomputeFilterOptions start title='\(title)' libraryVersion=\(mediaViewModel.libraryVersion)"
-        )
-        requestRenderSnapshot(includeFilterOptions: true, started: started)
-    }
-
     private func recomputeAllCaches() {
         let started = CFAbsoluteTimeGetCurrent()
         debugLog(
@@ -1622,26 +1589,6 @@ struct MediaGridView: View {
     private func sourceName(for sourceID: BookSourceID?) -> String? {
         guard let sourceID else { return nil }
         return mediaViewModel.bookSources.first(where: { $0.id == sourceID })?.name
-    }
-
-    private func scrollToActiveItem(using proxy: ScrollViewProxy) {
-        guard let id = activeInfoItem?.id else { return }
-        if let binding = scrollPosition {
-            binding.wrappedValue = id
-        }
-        withAnimation(.easeInOut(duration: 0.15)) {
-            proxy.scrollTo(id, anchor: .top)
-        }
-    }
-
-    private func restoreScrollPosition(
-        using proxy: ScrollViewProxy,
-        binding: Binding<BookMetadata.ID?>,
-    ) {
-        let target = binding.wrappedValue ?? headerScrollID
-        DispatchQueue.main.async {
-            proxy.scrollTo(target, anchor: .top)
-        }
     }
 
     #if os(macOS)

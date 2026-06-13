@@ -16,11 +16,6 @@ extension Color {
         green: 114.0 / 255.0,
         blue: 47.0 / 255.0,
     )
-    static let storytellerOrangeDark = Color(
-        red: 239.0 / 255.0,
-        green: 127.0 / 255.0,
-        blue: 62.0 / 255.0,
-    )
 }
 
 #if canImport(CoreText)

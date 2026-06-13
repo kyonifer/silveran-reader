@@ -104,7 +104,7 @@ public struct MP3ToM4BConverterView: View {
                         ForEach(Array(viewModel.files.enumerated()), id: \.element.id) {
                             index,
                             file in
-                            fileRow(file, index: index)
+                            fileRow(file)
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 4)
                                 .opacity(draggingFileID == file.id ? 0.5 : 1.0)
@@ -152,7 +152,7 @@ public struct MP3ToM4BConverterView: View {
         .frame(minWidth: 450)
     }
 
-    private func fileRow(_ file: MP3FileInfo, index: Int) -> some View {
+    private func fileRow(_ file: MP3FileInfo) -> some View {
         HStack(spacing: 0) {
             HStack {
                 Image(systemName: "music.note")

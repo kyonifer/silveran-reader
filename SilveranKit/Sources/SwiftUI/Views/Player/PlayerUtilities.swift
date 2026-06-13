@@ -34,11 +34,6 @@ public struct ProgressData {
     }
 }
 
-func sanitizedTime(_ value: Double?) -> TimeInterval? {
-    guard let value, value.isFinite, value >= 0 else { return nil }
-    return value
-}
-
 func normalizedSeconds(_ value: Double?) -> TimeInterval? {
     guard let value, value.isFinite, value >= 0 else { return nil }
     return value
@@ -86,24 +81,6 @@ func chapterPagesFraction(current: Int?, total: Int?) -> Double? {
 func formatPercent(_ value: Double?) -> String {
     guard let value, value.isFinite else { return "--%" }
     return String(format: "%.0f%%", max(min(value, 1), 0) * 100)
-}
-
-func formatPages(current: Int?, total: Int?) -> String {
-    guard let totalPage = normalizedTotalPage(total) else { return "-- / --" }
-    let currentDisplay = max(min(normalizedCurrentPage(current) ?? 1, totalPage), 1)
-    return "\(currentDisplay)/\(totalPage)"
-}
-
-func formatChapterProgress(pagesCurrent: Int?, pagesTotal: Int?, fraction: Double?) -> String {
-    let hasPagesData = pagesCurrent != nil || pagesTotal != nil
-    let percentText = formatPercent(fraction)
-
-    if hasPagesData {
-        let pagesText = formatPages(current: pagesCurrent, total: pagesTotal)
-        return "\(pagesText) pages (\(percentText))"
-    } else {
-        return percentText
-    }
 }
 
 func formatTime(_ time: TimeInterval) -> String {
