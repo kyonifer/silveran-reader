@@ -1,3 +1,4 @@
+#if os(watchOS)
 import SwiftUI
 
 struct TransferProgressView: View {
@@ -33,3 +34,4 @@ struct TransferProgressView: View {
         }
     }
 }
+#endif

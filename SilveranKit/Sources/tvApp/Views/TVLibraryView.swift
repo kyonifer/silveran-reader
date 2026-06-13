@@ -1,3 +1,4 @@
+#if os(tvOS)
 import SilveranKitAppModel
 import SilveranKitCommon
 import SwiftUI
@@ -108,3 +109,4 @@ struct TVLibraryView: View {
         await mediaViewModel.refreshMetadata(source: "TVLibraryView")
     }
 }
+#endif

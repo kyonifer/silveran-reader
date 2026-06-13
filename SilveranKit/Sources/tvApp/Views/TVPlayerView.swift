@@ -1,3 +1,4 @@
+#if os(tvOS)
 import SilveranKitAppModel
 import SilveranKitCommon
 import SwiftUI
@@ -1406,3 +1407,4 @@ private final class PressButton: UIButton {
         super.pressesBegan(presses, with: event)
     }
 }
+#endif

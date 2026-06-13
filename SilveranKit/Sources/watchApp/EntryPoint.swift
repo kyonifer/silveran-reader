@@ -1,3 +1,4 @@
+#if os(watchOS)
 import SwiftUI
 
 /// Public entry point that the XCode project can call.
@@ -5,3 +6,4 @@ import SwiftUI
 public func watchAppEntryPoint() {
     SilveranWatchApp.main()
 }
+#endif

@@ -1,3 +1,4 @@
+#if os(tvOS)
 import SilveranKitAppModel
 import SilveranKitCommon
 import SwiftUI
@@ -312,3 +313,4 @@ struct TVBookDetailView: View {
         return "\(book.id)-\(variantId)-\(mediaViewModel.connectionStatus)"
     }
 }
+#endif

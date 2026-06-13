@@ -1,3 +1,4 @@
+#if os(tvOS)
 import SilveranKitAppModel
 import SilveranKitCommon
 import SwiftUI
@@ -83,3 +84,4 @@ struct TVBookCardView: View {
         }
     }
 }
+#endif

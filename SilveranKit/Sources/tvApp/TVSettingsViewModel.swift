@@ -1,3 +1,4 @@
+#if os(tvOS)
 import Foundation
 import SilveranKitCommon
 import SwiftUI
@@ -203,3 +204,4 @@ public final class TVSettingsViewModel {
     }
 
 }
+#endif

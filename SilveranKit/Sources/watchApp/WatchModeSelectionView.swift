@@ -1,3 +1,4 @@
+#if os(watchOS)
 import SwiftUI
 
 struct WatchModeSelectionView: View {
@@ -42,3 +43,4 @@ struct WatchModeSelectionView: View {
         }
     }
 }
+#endif

@@ -1,3 +1,4 @@
+#if os(tvOS)
 import SilveranKitCommon
 import SwiftUI
 
@@ -583,3 +584,4 @@ private struct TVReaderDisplayRowButtonStyle: ButtonStyle {
             .animation(.easeInOut(duration: 0.15), value: isFocused)
     }
 }
+#endif

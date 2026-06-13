@@ -1,3 +1,4 @@
+#if os(watchOS)
 import Foundation
 import SilveranKitCommon
 
@@ -180,3 +181,4 @@ public struct ChunkTransferMetadata: Codable, Sendable {
     public let fileExtension: String
     public let bookMetadata: BookMetadata?
 }
+#endif

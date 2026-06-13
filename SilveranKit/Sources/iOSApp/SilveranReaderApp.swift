@@ -1,3 +1,4 @@
+#if os(iOS)
 import SilveranKitCommon
 import SilveranKitSwiftUI
 import SwiftUI
@@ -165,3 +166,4 @@ private struct iOSRootView: View {
         }
     }
 }
+#endif

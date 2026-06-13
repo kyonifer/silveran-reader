@@ -1,3 +1,4 @@
+#if os(tvOS)
 import SilveranKitAppModel
 import SilveranKitCommon
 import SwiftUI
@@ -209,3 +210,4 @@ private struct TVHomeSectionView: View {
         return nil
     }
 }
+#endif

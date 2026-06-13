@@ -1,3 +1,4 @@
+#if os(watchOS)
 import SilveranKitCommon
 import SwiftUI
 import WatchConnectivity
@@ -101,3 +102,4 @@ struct ContentView: View {
         }
     }
 }
+#endif

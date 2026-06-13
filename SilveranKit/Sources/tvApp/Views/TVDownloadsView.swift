@@ -1,3 +1,4 @@
+#if os(tvOS)
 import SilveranKitAppModel
 import SilveranKitCommon
 import SwiftUI
@@ -71,3 +72,4 @@ struct TVDownloadsView: View {
         }
     }
 }
+#endif

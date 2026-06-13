@@ -1,3 +1,4 @@
+#if os(tvOS)
 import SilveranKitCommon
 import SwiftUI
 
@@ -52,3 +53,4 @@ struct TVSpeedPickerView: View {
     }
 
 }
+#endif

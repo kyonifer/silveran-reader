@@ -1,3 +1,4 @@
+#if os(watchOS)
 import Foundation
 import SilveranKitCommon
 import WatchConnectivity
@@ -561,3 +562,4 @@ private struct WatchBookInfoResponse: Codable {
     let category: String
     let sizeBytes: Int64
 }
+#endif

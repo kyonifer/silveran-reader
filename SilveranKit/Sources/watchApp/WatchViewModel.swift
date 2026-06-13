@@ -1,3 +1,4 @@
+#if os(watchOS)
 import Foundation
 import SilveranKitCommon
 import SwiftUI
@@ -137,3 +138,4 @@ public final class WatchViewModel {
         }
     }
 }
+#endif

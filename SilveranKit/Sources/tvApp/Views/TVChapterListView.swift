@@ -1,3 +1,4 @@
+#if os(tvOS)
 import SwiftUI
 
 struct TVChapterListView: View {
@@ -45,3 +46,4 @@ struct TVChapterListView: View {
         }
     }
 }
+#endif

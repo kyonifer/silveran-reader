@@ -1,3 +1,4 @@
+#if os(watchOS)
 import SilveranKitCommon
 import SwiftUI
 
@@ -201,3 +202,4 @@ private struct SavingBookRow: View {
         .padding(.vertical, 2)
     }
 }
+#endif

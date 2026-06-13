@@ -1,3 +1,4 @@
+#if os(tvOS)
 import SilveranKitAppModel
 import SilveranKitCommon
 import SwiftUI
@@ -223,3 +224,4 @@ struct TVSettingsView: View {
         case editor
     }
 }
+#endif

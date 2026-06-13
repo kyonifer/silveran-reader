@@ -1,3 +1,4 @@
+#if os(watchOS)
 import SilveranKitCommon
 import SwiftUI
 
@@ -363,3 +364,4 @@ private struct SpeedPickerSheet: View {
     }
 
 }
+#endif
