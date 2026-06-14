@@ -352,8 +352,21 @@ public struct EbookPlayerView: View {
         readerContent
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         #else
-        readerContent
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        HStack(spacing: 0) {
+            readerContent
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            if isPad && viewModel.showAudioSidebar {
+                Rectangle()
+                    .fill(separatorColor)
+                    .frame(width: 1)
+                audiobookSidebar
+                    .frame(width: 360)
+                    .padding(.horizontal, 14)
+                    .transition(.move(edge: .trailing))
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         #endif
     }
 
@@ -477,6 +490,7 @@ public struct EbookPlayerView: View {
                     showCustomizePopover: $viewModel.showCustomizePopover,
                     showSearchSheet: $viewModel.showSearchPanel,
                     showBookmarksPanel: $viewModel.showBookmarksPanel,
+                    showAudioSidebar: $viewModel.showAudioSidebar,
                     searchManager: viewModel.searchManager,
                     onDismiss: {
                         if let bookData = viewModel.bookData {
@@ -504,7 +518,9 @@ public struct EbookPlayerView: View {
                 .transition(.opacity)
             }
 
-            draggableAudioCard
+            if !(isPad && viewModel.showAudioSidebar) {
+                draggableAudioCard
+            }
 
             playbackProgressBar
             #else
@@ -556,6 +572,10 @@ public struct EbookPlayerView: View {
     }
 
     #if os(iOS)
+    private var isPad: Bool {
+        UIDevice.current.userInterfaceIdiom == .pad
+    }
+
     private var safeAreaInsets: EdgeInsets {
         guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
             let window = windowScene.windows.first

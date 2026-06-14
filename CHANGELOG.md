@@ -47,6 +47,8 @@
 #### iOS
 - Restores the last open book when resuming the app, so reading can continue immediately
 - Long-pressing inside an existing highlight now opens it for editing instead of starting a new highlight.
+- iPad: hardware keyboard arrow keys now match macOS - left/right flip pages, and up/down skip a sentence forward/backward in readalouds.
+- iPad: added an optional right-hand audio drawer in the reader with full playback controls, mirroring the macOS sidebar.
 
 #### tvOS
 

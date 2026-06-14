@@ -266,15 +266,52 @@ class FoliateManager {
   }
 
   #handleKeyDown(event) {
-    if (!this.#scrollingMode || !this.#hasAudioNarration) return;
     if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
-    if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
 
     const target = event.target;
     const tagName = target?.tagName?.toLowerCase?.();
     if (target?.isContentEditable || tagName === "input" || tagName === "textarea" || tagName === "select") {
       return;
     }
+
+    // iPad hardware keyboard: route left/right arrows through the same EPM path as
+    // macOS arrow keys (Swift handleUserNavLeft/Right). WKWebView swallows hardware
+    // keys on iOS so SwiftUI's onKeyPress (used on macOS) never fires over the
+    // webview; this keydown listener is the only reliable capture point, and
+    // MarginClickNav is the existing bridge into the EPM. Gated to touch devices
+    // (maxTouchPoints is 0 on the AppKit macOS build) so macOS keeps using its
+    // native onKeyPress and we never double-navigate. Raw direction is sent so it
+    // matches macOS arrow keys exactly, bypassing the RTL flip that tap zones use.
+    if (navigator.maxTouchPoints > 0 && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
+      event.preventDefault();
+      event.stopPropagation();
+      window.webkit?.messageHandlers?.MarginClickNav?.postMessage({
+        direction: event.key === "ArrowLeft" ? "left" : "right",
+      });
+      return;
+    }
+
+    // iPad: up/down skip a sentence for readalouds, matching macOS arrow keys
+    // (Swift handlePrevSentence/handleNextSentence via SentenceSkip). Gated to
+    // audio narration only, and works in both paginated and scrolling modes -
+    // unlike the macOS-only block below, which is restricted to scrolling mode
+    // because that is the only case where macOS needs JS to intercept up/down
+    // before the page scrolls. Touch-gated so macOS keeps its native onKeyPress.
+    if (
+      navigator.maxTouchPoints > 0 &&
+      this.#hasAudioNarration &&
+      (event.key === "ArrowUp" || event.key === "ArrowDown")
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+      window.webkit?.messageHandlers?.SentenceSkip?.postMessage({
+        direction: event.key === "ArrowUp" ? "previous" : "next",
+      });
+      return;
+    }
+
+    if (!this.#scrollingMode || !this.#hasAudioNarration) return;
+    if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
 
     event.preventDefault();
     event.stopPropagation();

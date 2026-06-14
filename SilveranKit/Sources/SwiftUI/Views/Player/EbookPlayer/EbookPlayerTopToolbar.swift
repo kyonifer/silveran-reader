@@ -1,6 +1,8 @@
 import SwiftUI
 
 #if os(iOS)
+import UIKit
+
 struct EbookPlayerTopToolbar: View {
     @Environment(\.colorScheme) private var colorScheme
 
@@ -16,6 +18,7 @@ struct EbookPlayerTopToolbar: View {
     @Binding var showCustomizePopover: Bool
     @Binding var showSearchSheet: Bool
     @Binding var showBookmarksPanel: Bool
+    @Binding var showAudioSidebar: Bool
 
     let searchManager: EbookSearchManager?
 
@@ -30,6 +33,10 @@ struct EbookPlayerTopToolbar: View {
 
     @State private var showSleepTimerSheet = false
     @State private var showOptionsSheet = false
+
+    private var isPad: Bool {
+        UIDevice.current.userInterfaceIdiom == .pad
+    }
 
     private var toolbarForegroundColor: Color {
         let bgHex =
@@ -164,6 +171,19 @@ struct EbookPlayerTopToolbar: View {
                             }
                         }
                         .presentationDetents([.fraction(0.7)])
+                    }
+
+                    if isPad {
+                        Button {
+                            withAnimation(.easeInOut) { showAudioSidebar.toggle() }
+                        } label: {
+                            Image(systemName: "sidebar.trailing")
+                                .font(.system(size: 20, weight: .regular))
+                                .symbolVariant(showAudioSidebar ? .fill : .none)
+                                .foregroundStyle(toolbarForegroundColor)
+                                .contentShape(Rectangle())
+                        }
+                        .frame(width: 44, height: 44)
                     }
 
                     Button {

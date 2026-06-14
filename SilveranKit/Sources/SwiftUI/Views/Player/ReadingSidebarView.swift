@@ -172,7 +172,7 @@ public struct ReadingSidebarView: View {
         if showEbookCover, let ebookCover = model.ebookCoverArt {
             return ebookCover
         }
-        return model.coverArt
+        return model.coverArt ?? model.ebookCoverArt
     }
 
     private var canToggleCover: Bool {

@@ -49,8 +49,8 @@ class EbookPlayerViewModel {
 
     var hasAudioNarration: Bool = false
 
-    #if os(macOS)
     private var _sidebarInitialized = false
+    #if os(macOS)
     var showChapterSidebar: Bool = false {
         didSet {
             if _sidebarInitialized && oldValue != showChapterSidebar {
@@ -76,7 +76,16 @@ class EbookPlayerViewModel {
     }
     var isTitleBarHovered = true
     #else
-    var showAudioSidebar = false
+    var showAudioSidebar: Bool = false {
+        didSet {
+            if _sidebarInitialized && oldValue != showAudioSidebar {
+                UserDefaults.standard.set(
+                    showAudioSidebar,
+                    forKey: "EbookPlayerShowAudioSidebarIOS",
+                )
+            }
+        }
+    }
     var showAudioSheet = false
     var isReadingBarVisible = true
     var isTopBarVisible = true
@@ -180,11 +189,14 @@ class EbookPlayerViewModel {
         let savedChapterSidebarState =
             UserDefaults.standard.object(forKey: "EbookPlayerShowChapterSidebar") as? Bool
         self.showChapterSidebar = savedChapterSidebarState ?? false
-        self._sidebarInitialized = true
         debugLog(
             "[EbookPlayerViewModel] Init - audio sidebar: \(self.showAudioSidebar), chapter sidebar: \(self.showChapterSidebar)"
         )
+        #else
+        self.showAudioSidebar =
+            UserDefaults.standard.object(forKey: "EbookPlayerShowAudioSidebarIOS") as? Bool ?? false
         #endif
+        self._sidebarInitialized = true
     }
 
     func handleChapterSelection(_ chapter: ChapterItem) {
