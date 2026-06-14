@@ -74,7 +74,7 @@ class EbookPlayerViewModel {
             }
         }
     }
-    var isTitleBarHovered = true
+    var isTitleBarHovered = false
     #else
     var showAudioSidebar: Bool = false {
         didSet {

@@ -520,7 +520,9 @@ struct EbookPlayerWebView: View {
             onContentPurged: onContentPurged,
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        #if os(iOS)
         .ignoresSafeArea(edges: .top)
+        #endif
     }
 }
 

@@ -95,17 +95,13 @@ public struct EbookPlayerView: View {
         .toolbar {
             EbookPlayerToolbar(viewModel: viewModel)
         }
-        .overlay(alignment: .top) {
-            Color.clear
-            .frame(height: 60)
-            .contentShape(Rectangle())
-            .ignoresSafeArea(edges: .top)
-            .onHover { hovering in
+        .background(
+            TitleBarHoverMonitor(threshold: 60) { hovering in
                 if viewModel.isTitleBarHovered != hovering {
                     viewModel.isTitleBarHovered = hovering
                 }
             }
-        }
+        )
         .background(
             TitleBarConfigurator(
                 isTitleBarVisible: isTitleBarVisible,
@@ -251,6 +247,9 @@ public struct EbookPlayerView: View {
     #if os(macOS)
     private let leftSidebarWidth: CGFloat = 260
     private let leftSidebarTotalWidth: CGFloat = 261
+    // Measured title-bar inset: the full-bleed webview otherwise paginates into the
+    // 32px hidden behind the title bar, clipping the top line of every page.
+    private let readerTopInset: CGFloat = 32
 
     private var isTitleBarVisible: Bool {
         viewModel.isTitleBarHovered || viewModel.showCustomizePopover
@@ -280,6 +279,7 @@ public struct EbookPlayerView: View {
                 }
 
                 readerContent
+                    .padding(.top, readerTopInset)
                     .frame(width: contentWidth, height: geometry.size.height)
                     .zIndex(1)
 
@@ -323,6 +323,7 @@ public struct EbookPlayerView: View {
                 }
             }
         }
+        .ignoresSafeArea(.container, edges: .top)
         .clipped()
         .background(
             WindowFrameAdjuster(
@@ -776,6 +777,73 @@ public struct EbookPlayerView: View {
 }
 
 #if os(macOS)
+// Reports whether the cursor is within `threshold` points of the window's top edge.
+// A plain SwiftUI `.onHover` strip can't be used here: once the title bar/toolbar
+// becomes visible its AppKit views sit over the strip and swallow mouse-moved events,
+// so the exit ("not hovering") edge never fires and the bar sticks. A window-level
+// mouse-moved monitor sees those events regardless of what's drawn on top.
+private struct TitleBarHoverMonitor: NSViewRepresentable {
+    var threshold: CGFloat = 60
+    var onChange: (Bool) -> Void
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        context.coordinator.onChange = onChange
+        context.coordinator.threshold = threshold
+        DispatchQueue.main.async { context.coordinator.attach(to: view) }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        context.coordinator.onChange = onChange
+        context.coordinator.threshold = threshold
+        if context.coordinator.window == nil {
+            context.coordinator.attach(to: nsView)
+        }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
+        coordinator.detach()
+    }
+
+    @MainActor
+    final class Coordinator: NSObject {
+        var onChange: ((Bool) -> Void)?
+        var threshold: CGFloat = 60
+        weak var window: NSWindow?
+        private var monitor: Any?
+        private var lastValue: Bool?
+
+        func attach(to view: NSView) {
+            guard let window = view.window else { return }
+            self.window = window
+            window.acceptsMouseMovedEvents = true
+            monitor = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved]) {
+                [weak self] event in
+                self?.handle(event)
+                return event
+            }
+        }
+
+        private func handle(_ event: NSEvent) {
+            guard let window, event.window === window,
+                let contentView = window.contentView
+            else { return }
+            let hovering = event.locationInWindow.y >= contentView.bounds.height - threshold
+            guard lastValue != hovering else { return }
+            lastValue = hovering
+            onChange?(hovering)
+        }
+
+        func detach() {
+            if let monitor { NSEvent.removeMonitor(monitor) }
+            monitor = nil
+        }
+    }
+}
+
 private class TitleBarDoubleClickGestureRecognizer: NSClickGestureRecognizer {
     var titlebarHeight: CGFloat = 52
 }
