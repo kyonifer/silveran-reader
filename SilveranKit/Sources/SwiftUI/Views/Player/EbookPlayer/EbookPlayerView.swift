@@ -7,6 +7,25 @@ import AppKit
 import UIKit
 #endif
 
+#if canImport(Translation)
+import Translation
+#endif
+
+extension View {
+    @ViewBuilder
+    func systemTranslationPresentation(isPresented: Binding<Bool>, text: String) -> some View {
+        #if canImport(Translation)
+        if #available(iOS 17.4, macOS 14.4, *) {
+            self.translationPresentation(isPresented: isPresented, text: text)
+        } else {
+            self
+        }
+        #else
+        self
+        #endif
+    }
+}
+
 #if os(iOS)
 extension Notification.Name {
     static let appWillResignActive = Notification.Name("appWillResignActive")
@@ -46,6 +65,10 @@ public struct EbookPlayerView: View {
             #endif
         }
         .background(readerBackgroundColor)
+        .systemTranslationPresentation(
+            isPresented: $viewModel.showTranslation,
+            text: viewModel.translationText,
+        )
         #if os(iOS)
         .statusBarHidden(!viewModel.isTopBarVisible)
         .persistentSystemOverlays(viewModel.isTopBarVisible ? .automatic : .hidden)
@@ -106,6 +129,7 @@ public struct EbookPlayerView: View {
             TitleBarConfigurator(
                 isTitleBarVisible: isTitleBarVisible,
                 windowTitle: viewModel.bookData?.metadata.title ?? "Ebook Reader",
+                onApplied: { viewModel.handleTitleBarApplied() },
             )
         )
         .navigationTitle(viewModel.bookData?.metadata.title ?? "Ebook Reader")
@@ -254,7 +278,7 @@ public struct EbookPlayerView: View {
     private var isTitleBarVisible: Bool {
         viewModel.isTitleBarHovered || viewModel.showCustomizePopover
             || viewModel.showKeybindingsPopover || viewModel.showSearchPanel
-            || viewModel.showBookmarksPanel
+            || viewModel.showBookmarksPanel || viewModel.pendingSearchReveal
     }
 
     private var mainLayout: some View {
@@ -851,6 +875,7 @@ private class TitleBarDoubleClickGestureRecognizer: NSClickGestureRecognizer {
 private struct TitleBarConfigurator: NSViewRepresentable {
     var isTitleBarVisible: Bool
     var windowTitle: String = "Ebook Reader"
+    var onApplied: (() -> Void)? = nil
 
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
@@ -904,6 +929,7 @@ private struct TitleBarConfigurator: NSViewRepresentable {
 
         installDoubleClickGesture(on: window, coordinator: coordinator)
         updateTitleBarVisibility(for: window)
+        onApplied?()
     }
 
     private func installDoubleClickGesture(on window: NSWindow, coordinator: Coordinator) {

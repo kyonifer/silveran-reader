@@ -1279,6 +1279,14 @@ class FoliateManager {
   setHighlightPalette(jsonString) {
     this.#bookmarkManager.setSelectionPalette(jsonString);
   }
+
+  setTranslateAvailable(value) {
+    this.#bookmarkManager.setTranslateAvailable(value);
+  }
+
+  setDefaultHighlightColor(colorId) {
+    this.#bookmarkManager.setDefaultColor(colorId);
+  }
 }
 
 export default FoliateManager;

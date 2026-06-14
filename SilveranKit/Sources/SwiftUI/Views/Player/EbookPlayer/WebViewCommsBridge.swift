@@ -73,6 +73,12 @@ class WebViewCommsBridge {
     /// Notifies when an existing highlight should be edited (color/note) from the toolbar
     var onHighlightEdit: ((HighlightEditMessage) -> Void)?
 
+    /// Notifies when the selection should be translated via the system translate UI
+    var onSelectionTranslate: ((String) -> Void)?
+
+    /// Notifies when the selection should be piped into the in-book search panel
+    var onSelectionSearch: ((String) -> Void)?
+
     init(webView: WKWebView? = nil) {
         self.webView = webView
     }
@@ -480,6 +486,16 @@ class WebViewCommsBridge {
         onHighlightEdit?(message)
     }
 
+    func sendSwiftSelectionTranslate(_ text: String) {
+        debugLog("[WebViewCommsBridge] sendSwiftSelectionTranslate")
+        onSelectionTranslate?(text)
+    }
+
+    func sendSwiftSelectionSearch(_ text: String) {
+        debugLog("[WebViewCommsBridge] sendSwiftSelectionSearch")
+        onSelectionSearch?(text)
+    }
+
     // MARK: - Highlight commands (Swift → JS)
 
     /// Swift commands JS to render user highlights
@@ -526,6 +542,31 @@ class WebViewCommsBridge {
 
         _ = try await webView.evaluateJavaScript(
             "(function() { window.foliateManager.setHighlightPalette('\(jsonString)'); })()"
+        )
+    }
+
+    /// Tells the selection toolbar whether to offer a Translate button (system support is OS-version gated)
+    func sendJsSetTranslateAvailable(_ available: Bool) async throws {
+        guard let webView = webView else {
+            throw WebViewCommsBridgeError.webViewNotAvailable
+        }
+
+        _ = try await webView.evaluateJavaScript(
+            "(function() { window.foliateManager.setTranslateAvailable(\(available ? "true" : "false")); })()"
+        )
+    }
+
+    /// Pushes the last-used highlight color so the toolbar shows it as the lead swatch
+    func sendJsSetDefaultHighlightColor(_ colorId: String) async throws {
+        guard let webView = webView else {
+            throw WebViewCommsBridgeError.webViewNotAvailable
+        }
+
+        let escaped = colorId
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "'", with: "\\'")
+        _ = try await webView.evaluateJavaScript(
+            "(function() { window.foliateManager.setDefaultHighlightColor('\(escaped)'); })()"
         )
     }
 }

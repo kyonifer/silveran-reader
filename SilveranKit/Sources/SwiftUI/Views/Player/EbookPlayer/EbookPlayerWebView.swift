@@ -270,6 +270,27 @@ private class WebViewCoordinator2: NSObject, WKNavigationDelegate, WKScriptMessa
                     (message.webView as? HighlightableWebView)?.presentDictionary(for: term)
                     #endif
 
+                case "SelectionShare":
+                    let data = try JSONSerialization.data(withJSONObject: message.body)
+                    let msg = try decoder.decode(SelectionTextActionMessage.self, from: data)
+                    let text = msg.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    var rect: CGRect? = nil
+                    if let x = msg.x, let y = msg.y, let w = msg.width, let h = msg.height {
+                        rect = CGRect(x: x, y: y, width: w, height: h)
+                    }
+                    (message.webView as? HighlightableWebView)?
+                        .presentShare(for: text, atViewportRect: rect)
+
+                case "SelectionTranslate":
+                    let data = try JSONSerialization.data(withJSONObject: message.body)
+                    let msg = try decoder.decode(SelectionTextActionMessage.self, from: data)
+                    bridge.sendSwiftSelectionTranslate(msg.text)
+
+                case "SelectionSearch":
+                    let data = try JSONSerialization.data(withJSONObject: message.body)
+                    let msg = try decoder.decode(SelectionTextActionMessage.self, from: data)
+                    bridge.sendSwiftSelectionSearch(msg.text)
+
                 case "SelectionCopy":
                     let data = try JSONSerialization.data(withJSONObject: message.body)
                     let msg = try decoder.decode(SelectionTextActionMessage.self, from: data)
@@ -403,6 +424,16 @@ class HighlightableWebView: WKWebView {
         presenter.present(UIReferenceLibraryViewController(term: term), animated: true)
     }
 
+    func presentShare(for text: String, atViewportRect rect: CGRect?) {
+        guard !text.isEmpty, let presenter = nearestViewController() else { return }
+        let activityVC = UIActivityViewController(activityItems: [text], applicationActivities: nil)
+        if let pop = activityVC.popoverPresentationController {
+            pop.sourceView = self
+            pop.sourceRect = rect ?? CGRect(x: bounds.midX, y: bounds.midY, width: 0, height: 0)
+        }
+        presenter.present(activityVC, animated: true)
+    }
+
     private func nearestViewController() -> UIViewController? {
         var responder: UIResponder? = self
         while let next = responder?.next {
@@ -444,6 +475,23 @@ class HighlightableWebView: WKWebView {
 
         showDefinition(for: NSAttributedString(string: term), at: point)
     }
+
+    func presentShare(for text: String, atViewportRect rect: CGRect?) {
+        guard !text.isEmpty else { return }
+
+        let anchor: NSRect
+        if let rect {
+            // rect is top-left-origin viewport coords; flip to bottom-left if needed.
+            var r = rect
+            if !isFlipped { r.origin.y = bounds.height - rect.maxY }
+            anchor = r
+        } else {
+            anchor = NSRect(x: bounds.midX, y: bounds.midY, width: 1, height: 1)
+        }
+
+        let picker = NSSharingServicePicker(items: [text])
+        picker.show(relativeTo: anchor, of: self, preferredEdge: .minY)
+    }
 }
 #endif
 
@@ -479,6 +527,9 @@ private func makeWebViewConfiguration2(
     contentController.add(coordinator, name: "TextSelection")
     contentController.add(coordinator, name: "SelectionHighlight")
     contentController.add(coordinator, name: "SelectionDefine")
+    contentController.add(coordinator, name: "SelectionShare")
+    contentController.add(coordinator, name: "SelectionTranslate")
+    contentController.add(coordinator, name: "SelectionSearch")
     contentController.add(coordinator, name: "SelectionCopy")
     contentController.add(coordinator, name: "HighlightSetColor")
     contentController.add(coordinator, name: "HighlightDelete")

@@ -36,6 +36,14 @@ class BookmarkManager {
     }
   }
 
+  setTranslateAvailable(value) {
+    this.#selectionToolbar.setTranslateAvailable(value);
+  }
+
+  setDefaultColor(colorId) {
+    this.#selectionToolbar.setDefaultColor(colorId);
+  }
+
   hideSelectionToolbar() {
     this.#shownKey = null;
     this.#toolbarPageKey = null;
@@ -312,6 +320,18 @@ class BookmarkManager {
           width: rect.width,
           height: rect.height,
         }),
+      share: () =>
+        window.webkit?.messageHandlers?.SelectionShare?.postMessage({
+          text: payload.text,
+          x: rect.left,
+          y: rect.top,
+          width: rect.width,
+          height: rect.height,
+        }),
+      translate: () =>
+        window.webkit?.messageHandlers?.SelectionTranslate?.postMessage({ text: payload.text }),
+      search: () =>
+        window.webkit?.messageHandlers?.SelectionSearch?.postMessage({ text: payload.text }),
       copy: () =>
         window.webkit?.messageHandlers?.SelectionCopy?.postMessage({ text: payload.text }),
       note: () => window.webkit?.messageHandlers?.TextSelection?.postMessage(payload),

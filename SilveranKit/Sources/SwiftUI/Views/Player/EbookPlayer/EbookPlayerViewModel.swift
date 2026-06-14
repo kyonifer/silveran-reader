@@ -144,6 +144,9 @@ class EbookPlayerViewModel {
     var isJoiningExistingSession = false
     var showKeybindingsPopover = false
     var showSearchPanel = false
+    var pendingSearchReveal = false
+    var showTranslation = false
+    var translationText = ""
     var showBookmarksPanel = false
     var bookmarksPanelInitialTab: BookmarksPanel.Tab = .bookmarks
     var highlights: [Highlight] = []
@@ -881,6 +884,7 @@ class EbookPlayerViewModel {
             Task { @MainActor in
                 let color = HighlightColor(rawValue: message.colorId)
                 await self.addHighlight(from: message.selection, color: color)
+                self.rememberLastUsedColor(message.colorId)
             }
         }
 
@@ -888,6 +892,7 @@ class EbookPlayerViewModel {
             guard let self else { return }
             Task { @MainActor in
                 await self.handleHighlightSetColor(id: message.id, colorId: message.colorId)
+                self.rememberLastUsedColor(message.colorId)
             }
         }
 
@@ -904,7 +909,42 @@ class EbookPlayerViewModel {
                 self.handleHighlightEdit(id: message.id)
             }
         }
+
+        bridge.onSelectionTranslate = { [weak self] text in
+            guard let self else { return }
+            Task { @MainActor in
+                self.translationText = text
+                self.showTranslation = true
+            }
+        }
+
+        bridge.onSelectionSearch = { [weak self] text in
+            guard let self else { return }
+            Task { @MainActor in
+                self.searchManager?.searchQuery = text
+                #if os(macOS)
+                // The search popover anchors to the toolbar magnifier, which is
+                // hidden until the title bar reveals. Reveal it first; the panel
+                // is presented once the toolbar is on-screen (handleTitleBarApplied).
+                self.pendingSearchReveal = true
+                #else
+                self.showSearchPanel = true
+                await self.searchManager?.startSearch(query: text)
+                #endif
+            }
+        }
     }
+
+    #if os(macOS)
+    /// Defers the search popover until the toolbar anchor is on-screen, avoiding a flicker.
+    func handleTitleBarApplied() {
+        guard pendingSearchReveal, !showSearchPanel else { return }
+        pendingSearchReveal = false
+        showSearchPanel = true
+        let query = searchManager?.searchQuery ?? ""
+        Task { await searchManager?.startSearch(query: query) }
+    }
+    #endif
 
     /// Navigate to search result - view only, no audio sync
     func handleSearchResultNavigation(_ result: SearchResult) {
@@ -1036,11 +1076,37 @@ class EbookPlayerViewModel {
             )
         }
 
+        let translateAvailable: Bool
+        if #available(iOS 17.4, macOS 14.4, *) {
+            translateAvailable = true
+        } else {
+            translateAvailable = false
+        }
+
         do {
             try await bridge.sendJsSetHighlightPalette(entries)
+            try await bridge.sendJsSetTranslateAvailable(translateAvailable)
+            try await bridge.sendJsSetDefaultHighlightColor(lastUsedHighlightColorId)
         } catch {
             debugLog("[EbookPlayerViewModel] Failed to send highlight palette to JS: \(error)")
         }
+    }
+
+    private static let lastUsedHighlightColorKey = "lastUsedHighlightColorId"
+
+    var lastUsedHighlightColorId: String {
+        get {
+            UserDefaults.standard.string(forKey: Self.lastUsedHighlightColorKey)
+                ?? HighlightColor.allCases.first!.rawValue
+        }
+        set { UserDefaults.standard.set(newValue, forKey: Self.lastUsedHighlightColorKey) }
+    }
+
+    private func rememberLastUsedColor(_ colorId: String) {
+        guard HighlightColor(rawValue: colorId) != nil else { return }
+        guard colorId != lastUsedHighlightColorId else { return }
+        lastUsedHighlightColorId = colorId
+        Task { try? await commsBridge?.sendJsSetDefaultHighlightColor(colorId) }
     }
 
     private func sendHighlightsToJS() async {
