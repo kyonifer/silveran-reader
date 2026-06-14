@@ -4,6 +4,7 @@ import SwiftUI
 struct DebugLogView: View {
     @State private var logText: String = ""
     @State private var messageCount: Int = 0
+    @State private var verbose = DebugLogBuffer.shared.isVerbose
 
     var body: some View {
         VStack(spacing: 0) {
@@ -12,6 +13,12 @@ struct DebugLogView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
+                Toggle("Verbose", isOn: $verbose)
+                    .toggleStyle(.checkbox)
+                    .help("Include high-volume performance diagnostics in the log.")
+                    .onChange(of: verbose) { _, newValue in
+                        DebugLogBuffer.shared.setVerbose(newValue)
+                    }
                 Button("Refresh") {
                     loadMessages()
                 }

@@ -398,9 +398,21 @@ extension SettingsView {
 private struct IOSDebugLogView: View {
     @State private var logText: String = ""
     @State private var messageCount: Int = 0
+    @State private var verbose = DebugLogBuffer.shared.isVerbose
 
     var body: some View {
         List {
+            Section {
+                Toggle("Verbose logging", isOn: $verbose)
+                    .onChange(of: verbose) { _, newValue in
+                        DebugLogBuffer.shared.setVerbose(newValue)
+                    }
+            } footer: {
+                Text(
+                    "Includes high-volume performance diagnostics. Turn this on, reproduce the issue, then copy the log."
+                )
+            }
+
             Section {
                 Text(logText)
                     .font(.system(.caption, design: .monospaced))

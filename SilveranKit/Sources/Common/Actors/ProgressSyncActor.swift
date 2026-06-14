@@ -430,7 +430,7 @@ public actor ProgressSyncActor {
         }
 
         if updatedCount > 0 || reconciledCount > 0 {
-            debugLog(
+            debugLogVerbose(
                 "[PSA] updateServerPositions: updated \(updatedCount), reconciled \(reconciledCount), total=\(serverPositions.count)"
             )
         }
@@ -618,7 +618,9 @@ public actor ProgressSyncActor {
         for (_, observer) in incomingPositionObservers where observer.bookId == bookId {
             await observer.callback(position)
         }
-        debugLog("[PSA] notifyIncomingPositionObservers: notified observers for bookId=\(bookId)")
+        debugLogVerbose(
+            "[PSA] notifyIncomingPositionObservers: notified observers for bookId=\(bookId)"
+        )
     }
 
     // MARK: - Private Helpers
@@ -755,7 +757,7 @@ public actor ProgressSyncActor {
     }
 
     private func notifyObservers() async {
-        debugLog("[PSA] notifyObservers: notifying \(observers.count) observers")
+        debugLogVerbose("[PSA] notifyObservers: notifying \(observers.count) observers")
         for (_, callback) in observers {
             await callback()
         }

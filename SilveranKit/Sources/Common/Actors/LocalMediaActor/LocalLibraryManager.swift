@@ -156,7 +156,7 @@ public final class LocalLibraryManager: Sendable {
                 }
                 allPaths[scanned.metadata.uuid] = mediaPaths
 
-                debugLog(
+                debugLogVerbose(
                     "[LocalLibraryManager] Discovered local file: \(finalFileURL.lastPathComponent) (readaloud: \(scanned.metadata.hasAvailableReadaloud))"
                 )
             }

@@ -380,7 +380,7 @@ public final class MediaViewModel {
                         self.lastNetworkOpSucceeded = networkOp
                         self.sourceConnectionInfos =
                             await BookServiceActor.shared.sourceConnectionInfos()
-                        debugLog(
+                        debugLogVerbose(
                             "[MediaViewModel] StorytellerActor notify: connectionStatus=\(status), lastNetworkOpSucceeded=\(String(describing: networkOp))"
                         )
                         if !wasConnected && status == .connected && self.availableStatuses.isEmpty {

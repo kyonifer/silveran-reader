@@ -59,7 +59,7 @@ public actor LocalMediaActor: GlobalActor {
     }
 
     private func notifyObservers() async {
-        debugLog("[LMA] notifyObservers: notifying \(observers.count) observers")
+        debugLogVerbose("[LMA] notifyObservers: notifying \(observers.count) observers")
         for (_, callback) in observers {
             await callback()
         }
