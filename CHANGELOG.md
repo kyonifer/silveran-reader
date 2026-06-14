@@ -2,6 +2,14 @@
 
 ## [0.1-dev]
 
+### Major Features
+- Ebook scrolling mode on macOS and iOS
+- Full metadata editing, including Hardcover/iTunes import
+- Embedded content server for sharing a local folder source over the LAN to Storyteller-compatible clients
+- Support for multiple Storyteller servers and local folders, including iCloud folders
+- MP3 audiobook support, and MP3 folder bulk import
+- tvOS reader customization
+
 ### Features
 
 #### General
@@ -20,9 +28,14 @@
 - Source-aware library/sidebar views, including a Sources category and editable Media Sources sidebar entries that can be moved/renamed/hidden.
 - More table customization: alignment columns, creator-role columns, source badges, media columns, remembered column sizing/order, and reset-to-defaults behavior.
 - Local alignment controls from the library UI when ebook + audiobook are available.
+- Unified book importer UI across macOS and iOS.
+- Download retry cap with exponential backoff for more reliable downloads.
+- Progress indicator for server uploads.
+- Redesigned overlay and menu backgrounds on iOS and macOS.
 
 
 #### macOS
+- Added an embedded content server for sharing a local folder source over the LAN to Storyteller-compatible clients.
 - Added integrated readaloud generation options, including creating readalouds locally and automatically pushing to server
 - Added EPUB 2 to EPUB 3 conversion support for eligible books
 - Server media management actions for upload, delete, and replace flows.
@@ -42,6 +55,10 @@
 - watchOS multi-source / multi-server support updates, including settings and source-aware library/download handling.
 
 ### Bug Fixes
+- Fixed passwords containing `+` not being escaped correctly (#52)
+- Fixed erroneous download errors
+- Fixed cover cache invalidation
+- Made readaloud alignment labels more consistent
 - Fixed EPUB scrolling layout so scrolled books use the full reader width instead of inheriting paginated column sizing
 - Fixed malformed locator payloads from sync so broken fragment data no longer drops otherwise usable reading positions
 - Fixed local-folder readaloud handling for multi-MP3 audiobook packages and generated manifest ordering
