@@ -38,7 +38,7 @@ final class ContentServerManager {
                     username: username,
                     password: password,
                     sourceID: sourceID,
-                ),
+                )
             )
             status = .running(port: info.port)
         } catch {

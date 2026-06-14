@@ -6,6 +6,9 @@ struct HighlightCreationSheet: View {
     let selectedText: String
     let onSave: (HighlightColor?, String?) -> Void
     let onCancel: () -> Void
+    var title: String = "Add Highlight"
+    var initialColor: HighlightColor? = .yellow
+    var initialNote: String = ""
 
     @State private var selectedColor: HighlightColor? = .yellow
     @State private var note: String = ""
@@ -40,7 +43,12 @@ struct HighlightCreationSheet: View {
                 Spacer()
             }
             .padding()
-            .navigationTitle("Add Highlight")
+            .onAppear {
+                selectedColor = initialColor ?? .yellow
+                note = initialNote
+                isBookmarkOnly = initialColor == nil
+            }
+            .navigationTitle(title)
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

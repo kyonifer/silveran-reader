@@ -51,6 +51,7 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
         public var marginTopBottom: Double
         public var wordSpacing: Double
         public var letterSpacing: Double
+        public var textAlignment: String
         public var highlightColor: String?
         public var highlightThickness: Double
         public var backgroundColor: String?
@@ -84,6 +85,7 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
             marginTopBottom: Double = kDefaultMarginTopBottom,
             wordSpacing: Double = kDefaultWordSpacing,
             letterSpacing: Double = kDefaultLetterSpacing,
+            textAlignment: String = kDefaultTextAlignment,
             highlightColor: String? = nil,
             highlightThickness: Double = kDefaultHighlightThickness,
             backgroundColor: String? = nil,
@@ -120,6 +122,7 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
             self.marginTopBottom = marginTopBottom
             self.wordSpacing = wordSpacing
             self.letterSpacing = letterSpacing
+            self.textAlignment = Self.normalizedTextAlignment(textAlignment)
             self.highlightColor = highlightColor
             self.highlightThickness = highlightThickness
             self.backgroundColor = backgroundColor
@@ -171,6 +174,16 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
             letterSpacing =
                 (try? container?.decode(Double.self, forKey: .letterSpacing))
                 ?? kDefaultLetterSpacing
+            if let storedAlignment = try? container?.decode(String.self, forKey: .textAlignment) {
+                textAlignment = Self.normalizedTextAlignment(storedAlignment)
+            } else if let legacyJustify = try? legacyContainer?.decode(
+                Bool.self,
+                forKey: .justifyText,
+            ) {
+                textAlignment = legacyJustify ? "justify" : "left"
+            } else {
+                textAlignment = kDefaultTextAlignment
+            }
             highlightColor = try? container?.decode(String.self, forKey: .highlightColor)
             highlightThickness =
                 (try? container?.decode(Double.self, forKey: .highlightThickness))
@@ -256,7 +269,7 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
 
         private enum CodingKeys: String, CodingKey {
             case fontSize, fontFamily, lineSpacing, marginLeftRight, marginTopBottom
-            case wordSpacing, letterSpacing, highlightColor, highlightThickness
+            case wordSpacing, letterSpacing, textAlignment, highlightColor, highlightThickness
             case backgroundColor, foregroundColor
             case customCSS, enableMarginClickNavigation, singleColumnMode
             case scrollingMode
@@ -270,6 +283,11 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
 
         private enum LegacyCodingKeys: String, CodingKey {
             case readaloudHighlightUnderline, tvBackgroundStyle, readaloudScrollingMode
+            case justifyText
+        }
+
+        static func normalizedTextAlignment(_ value: String) -> String {
+            kTextAlignmentValues.contains(value) ? value : kDefaultTextAlignment
         }
 
         public struct TVReaderAppearance: Codable, Equatable, Sendable {
@@ -708,6 +726,7 @@ public actor SettingsActor {
         marginTopBottom: Double? = nil,
         wordSpacing: Double? = nil,
         letterSpacing: Double? = nil,
+        textAlignment: String? = nil,
         highlightColor: String?? = nil,
         highlightThickness: Double? = nil,
         backgroundColor: String?? = nil,
@@ -772,6 +791,11 @@ public actor SettingsActor {
         if let marginTopBottom { updated.reading.marginTopBottom = marginTopBottom }
         if let wordSpacing { updated.reading.wordSpacing = wordSpacing }
         if let letterSpacing { updated.reading.letterSpacing = letterSpacing }
+        if let textAlignment {
+            updated.reading.textAlignment = SilveranGlobalConfig.Reading.normalizedTextAlignment(
+                textAlignment
+            )
+        }
         if let highlightColor { updated.reading.highlightColor = highlightColor }
         if let highlightThickness { updated.reading.highlightThickness = highlightThickness }
         if let backgroundColor { updated.reading.backgroundColor = backgroundColor }

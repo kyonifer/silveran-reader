@@ -250,10 +250,45 @@ private class WebViewCoordinator2: NSObject, WKNavigationDelegate, WKScriptMessa
                     let msg = try decoder.decode(TextSelectionMessage.self, from: data)
                     bridge.sendSwiftTextSelected(msg)
 
-                case "HighlightTapped":
+                case "SelectionHighlight":
                     let data = try JSONSerialization.data(withJSONObject: message.body)
-                    let msg = try decoder.decode(HighlightTappedMessage.self, from: data)
-                    bridge.sendSwiftHighlightTapped(msg)
+                    let msg = try decoder.decode(SelectionHighlightMessage.self, from: data)
+                    bridge.sendSwiftSelectionHighlight(msg)
+
+                case "SelectionDefine":
+                    let data = try JSONSerialization.data(withJSONObject: message.body)
+                    let msg = try decoder.decode(SelectionTextActionMessage.self, from: data)
+                    let term = msg.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    #if os(macOS)
+                    var rect: CGRect? = nil
+                    if let x = msg.x, let y = msg.y, let w = msg.width, let h = msg.height {
+                        rect = CGRect(x: x, y: y, width: w, height: h)
+                    }
+                    (message.webView as? HighlightableWebView)?
+                        .presentDictionary(for: term, atViewportRect: rect)
+                    #else
+                    (message.webView as? HighlightableWebView)?.presentDictionary(for: term)
+                    #endif
+
+                case "SelectionCopy":
+                    let data = try JSONSerialization.data(withJSONObject: message.body)
+                    let msg = try decoder.decode(SelectionTextActionMessage.self, from: data)
+                    Self.copyToPasteboard(msg.text)
+
+                case "HighlightSetColor":
+                    let data = try JSONSerialization.data(withJSONObject: message.body)
+                    let msg = try decoder.decode(HighlightSetColorMessage.self, from: data)
+                    bridge.sendSwiftHighlightSetColor(msg)
+
+                case "HighlightDelete":
+                    let data = try JSONSerialization.data(withJSONObject: message.body)
+                    let msg = try decoder.decode(HighlightDeleteMessage.self, from: data)
+                    bridge.sendSwiftHighlightDelete(msg)
+
+                case "HighlightEdit":
+                    let data = try JSONSerialization.data(withJSONObject: message.body)
+                    let msg = try decoder.decode(HighlightEditMessage.self, from: data)
+                    bridge.sendSwiftHighlightEdit(msg)
 
                 case "FileAccessDiagnostic":
                     if let body = message.body as? [String: Any],
@@ -272,6 +307,17 @@ private class WebViewCoordinator2: NSObject, WKNavigationDelegate, WKScriptMessa
         } catch {
             debugLog("[EbookPlayerWebView] Failed to decode message '\(message.name)': \(error)")
         }
+    }
+
+    static func copyToPasteboard(_ text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        #if os(macOS)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(trimmed, forType: .string)
+        #else
+        UIPasteboard.general.string = trimmed
+        #endif
     }
 
     static func runFileAccessDiagnostic(filePath: String, errorMessage: String) {
@@ -349,36 +395,54 @@ private class WebViewCoordinator2: NSObject, WKNavigationDelegate, WKScriptMessa
 class HighlightableWebView: WKWebView {
     var commsBridge: WebViewCommsBridge?
 
-    override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
-        if action == #selector(highlightSelection(_:)) {
-            return true
-        }
-        return super.canPerformAction(action, withSender: sender)
+    func presentDictionary(for term: String) {
+        guard !term.isEmpty,
+            UIReferenceLibraryViewController.dictionaryHasDefinition(forTerm: term),
+            let presenter = nearestViewController()
+        else { return }
+        presenter.present(UIReferenceLibraryViewController(term: term), animated: true)
     }
 
-    @objc func highlightSelection(_ sender: Any?) {
-        guard let bridge = commsBridge else { return }
-        Task { @MainActor in
-            do {
-                try await bridge.sendJsCaptureCurrentSelection()
-            } catch {
-                debugLog("[HighlightableWebView] Failed to capture selection: \(error)")
-            }
+    private func nearestViewController() -> UIViewController? {
+        var responder: UIResponder? = self
+        while let next = responder?.next {
+            if let vc = next as? UIViewController { return vc }
+            responder = next
         }
+        return window?.rootViewController
     }
 
+    // The compact in-page selection toolbar replaces the native callout menu entirely.
     override func buildMenu(with builder: any UIMenuBuilder) {
         super.buildMenu(with: builder)
+        builder.remove(menu: .standardEdit)
+        builder.remove(menu: .lookup)
+        builder.remove(menu: .share)
+        builder.remove(menu: .replace)
+        builder.remove(menu: .learn)
+    }
+}
+#endif
 
-        let highlightAction = UIAction(
-            title: "Highlight",
-            image: UIImage(systemName: "highlighter"),
-        ) { [weak self] _ in
-            self?.highlightSelection(nil)
+#if os(macOS)
+@available(macOS 14.0, *)
+class HighlightableWebView: WKWebView {
+    var commsBridge: WebViewCommsBridge?
+
+    func presentDictionary(for term: String, atViewportRect rect: CGRect?) {
+        guard !term.isEmpty else { return }
+
+        let point: NSPoint
+        if let rect {
+            // rect is top-left-origin viewport coords; flip if the view isn't flipped.
+            var p = NSPoint(x: rect.midX, y: rect.maxY)
+            if !isFlipped { p.y = bounds.height - p.y }
+            point = p
+        } else {
+            point = NSPoint(x: bounds.midX, y: bounds.midY)
         }
 
-        let highlightMenu = UIMenu(title: "", options: .displayInline, children: [highlightAction])
-        builder.insertChild(highlightMenu, atStartOfMenu: .standardEdit)
+        showDefinition(for: NSAttributedString(string: term), at: point)
     }
 }
 #endif
@@ -413,7 +477,12 @@ private func makeWebViewConfiguration2(
     contentController.add(coordinator, name: "SearchComplete")
     contentController.add(coordinator, name: "SearchError")
     contentController.add(coordinator, name: "TextSelection")
-    contentController.add(coordinator, name: "HighlightTapped")
+    contentController.add(coordinator, name: "SelectionHighlight")
+    contentController.add(coordinator, name: "SelectionDefine")
+    contentController.add(coordinator, name: "SelectionCopy")
+    contentController.add(coordinator, name: "HighlightSetColor")
+    contentController.add(coordinator, name: "HighlightDelete")
+    contentController.add(coordinator, name: "HighlightEdit")
     contentController.add(coordinator, name: "FileAccessDiagnostic")
     contentController.add(coordinator, name: "ReaderReady")
 
@@ -560,7 +629,7 @@ private struct WebViewRepresentable2: PlatformViewRepresentable {
         )
 
         #if os(macOS)
-        let wkWebView = WKWebView(frame: .zero, configuration: config)
+        let wkWebView = HighlightableWebView(frame: .zero, configuration: config)
         wkWebView.wantsLayer = true
         wkWebView.layer?.backgroundColor = .clear
         #else
@@ -583,9 +652,7 @@ private struct WebViewRepresentable2: PlatformViewRepresentable {
             self.commsBridge = bridge
             self.onBridgeReady?(bridge)
 
-            #if os(iOS)
             wkWebView.commsBridge = bridge
-            #endif
 
             #if os(macOS)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {

@@ -64,6 +64,7 @@ class ReaderStyleManager {
             _ = settingsVM.marginTopBottom
             _ = settingsVM.wordSpacing
             _ = settingsVM.letterSpacing
+            _ = settingsVM.textAlignment
             _ = settingsVM.highlightColor
             _ = settingsVM.highlightThickness
             _ = settingsVM.backgroundColor
@@ -131,6 +132,7 @@ class ReaderStyleManager {
             marginTopBottom: settingsVM.marginTopBottom,
             wordSpacing: settingsVM.wordSpacing,
             letterSpacing: settingsVM.letterSpacing,
+            textAlignment: settingsVM.textAlignment,
             highlightColor: effectiveHighlightColor,
             highlightThickness: settingsVM.highlightThickness,
             backgroundColor: effectiveBackgroundColor,

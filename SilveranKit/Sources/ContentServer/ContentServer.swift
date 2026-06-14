@@ -29,7 +29,7 @@ public actor ContentServer {
     public var isRunning: Bool { running }
 
     public func start(
-        configuration: ContentServerConfiguration,
+        configuration: ContentServerConfiguration
     ) async throws -> StartInfo {
         guard !running else {
             throw ContentServerError.alreadyRunning

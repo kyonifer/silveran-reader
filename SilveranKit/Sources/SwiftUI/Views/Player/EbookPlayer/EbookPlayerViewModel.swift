@@ -139,6 +139,7 @@ class EbookPlayerViewModel {
     var bookmarksPanelInitialTab: BookmarksPanel.Tab = .bookmarks
     var highlights: [Highlight] = []
     var pendingSelection: TextSelectionMessage? = nil
+    var pendingEditHighlight: Highlight? = nil
 
     var showServerPositionDialog = false
     var pendingServerPosition: IncomingServerPosition? = nil
@@ -863,10 +864,32 @@ class EbookPlayerViewModel {
             }
         }
 
-        bridge.onHighlightTapped = { [weak self] message in
+        bridge.onSelectionHighlight = { [weak self] message in
             guard let self else { return }
             Task { @MainActor in
-                self.handleHighlightTapped(message.highlightId)
+                let color = HighlightColor(rawValue: message.colorId)
+                await self.addHighlight(from: message.selection, color: color)
+            }
+        }
+
+        bridge.onHighlightSetColor = { [weak self] message in
+            guard let self else { return }
+            Task { @MainActor in
+                await self.handleHighlightSetColor(id: message.id, colorId: message.colorId)
+            }
+        }
+
+        bridge.onHighlightDelete = { [weak self] message in
+            guard let self else { return }
+            Task { @MainActor in
+                await self.handleHighlightDelete(id: message.id)
+            }
+        }
+
+        bridge.onHighlightEdit = { [weak self] message in
+            guard let self else { return }
+            Task { @MainActor in
+                self.handleHighlightEdit(id: message.id)
             }
         }
     }
@@ -990,8 +1013,28 @@ class EbookPlayerViewModel {
         await sendHighlightsToJS()
     }
 
+    private func sendHighlightPaletteToJS() async {
+        guard let bridge = commsBridge else { return }
+
+        let entries = HighlightColor.allCases.map { color in
+            HighlightPaletteEntry(
+                id: color.rawValue,
+                color: settingsVM.hexColor(for: color),
+                label: settingsVM.label(for: color),
+            )
+        }
+
+        do {
+            try await bridge.sendJsSetHighlightPalette(entries)
+        } catch {
+            debugLog("[EbookPlayerViewModel] Failed to send highlight palette to JS: \(error)")
+        }
+    }
+
     private func sendHighlightsToJS() async {
         guard let bridge = commsBridge else { return }
+
+        await sendHighlightPaletteToJS()
 
         let coloredOnly = highlights.filter { !$0.isBookmark }
         let renderData = coloredOnly.compactMap { highlight -> HighlightRenderData? in
@@ -1023,21 +1066,65 @@ class EbookPlayerViewModel {
         pendingSelection = message
     }
 
-    func handleHighlightTapped(_ highlightId: String) {
-        guard let uuid = UUID(uuidString: highlightId),
-            highlights.first(where: { $0.id == uuid }) != nil
-        else {
-            debugLog("[EbookPlayerViewModel] Tapped highlight not found: \(highlightId)")
-            return
-        }
+    func handleHighlightSetColor(id: String, colorId: String) async {
+        guard let bookId = bookData?.metadata.uuid,
+            let uuid = UUID(uuidString: id),
+            let existing = highlights.first(where: { $0.id == uuid }),
+            let color = HighlightColor(rawValue: colorId)
+        else { return }
 
-        debugLog("[EbookPlayerViewModel] Highlight tapped: \(highlightId)")
-        bookmarksPanelInitialTab = .highlights
-        showBookmarksPanel = true
+        let updated = Highlight(
+            id: existing.id,
+            bookId: existing.bookId,
+            locator: existing.locator,
+            text: existing.text,
+            color: color,
+            note: existing.note,
+            createdAt: existing.createdAt,
+        )
+
+        await BookmarkActor.shared.updateHighlight(updated)
+        highlights = await BookmarkActor.shared.getHighlights(bookId: bookId)
+        await sendHighlightsToJS()
+    }
+
+    func handleHighlightDelete(id: String) async {
+        guard let uuid = UUID(uuidString: id),
+            let existing = highlights.first(where: { $0.id == uuid })
+        else { return }
+        await deleteHighlight(existing)
+    }
+
+    func handleHighlightEdit(id: String) {
+        guard let uuid = UUID(uuidString: id),
+            let existing = highlights.first(where: { $0.id == uuid })
+        else { return }
+        pendingEditHighlight = existing
+    }
+
+    func saveEditedHighlight(_ original: Highlight, color: HighlightColor?, note: String?) async {
+        guard let bookId = bookData?.metadata.uuid else { return }
+        let updated = Highlight(
+            id: original.id,
+            bookId: original.bookId,
+            locator: original.locator,
+            text: original.text,
+            color: color,
+            note: note,
+            createdAt: original.createdAt,
+        )
+        await BookmarkActor.shared.updateHighlight(updated)
+        highlights = await BookmarkActor.shared.getHighlights(bookId: bookId)
+        await sendHighlightsToJS()
+        pendingEditHighlight = nil
     }
 
     func cancelPendingSelection() {
         pendingSelection = nil
+    }
+
+    func cancelPendingEdit() {
+        pendingEditHighlight = nil
     }
 
     func addBookmarkAtCurrentPage() async {

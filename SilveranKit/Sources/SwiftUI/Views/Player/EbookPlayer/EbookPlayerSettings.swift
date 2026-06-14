@@ -1,116 +1,23 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
+#if os(iOS)
 struct EbookPlayerSettings: View {
     @Bindable var settingsVM: SettingsViewModel
     let hasAudioNarration: Bool
     @Environment(\.colorScheme) private var colorScheme
-    #if os(macOS)
-    @Environment(\.openSettings) private var openSettings
-    #endif
 
     let onDismiss: (() -> Void)?
 
     @State private var fontSizeInput: String = "20"
-    #if os(iOS)
     @State private var customFamilies: [CustomFontFamily] = []
     @State private var showFontManager = false
     @State private var showManageThemes = false
-    #endif
 
     var body: some View {
-        #if os(macOS)
-        macOSBody
-        #else
         iOSBody
-        #endif
     }
 
-    #if os(macOS)
-    private var macOSBody: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Button {
-                resetToDefaults()
-            } label: {
-                Label("Reset to Defaults", systemImage: "arrow.counterclockwise")
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-
-            Divider()
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Font Size")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                HStack(spacing: 8) {
-                    Slider(value: $settingsVM.fontSize, in: 8...60, step: 1)
-                        .onChange(of: settingsVM.fontSize) { _, newValue in
-                            fontSizeInput = String(Int(newValue))
-                            settingsVM.save()
-                        }
-                    TextField("Size", text: $fontSizeInput)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 50)
-                        .multilineTextAlignment(.trailing)
-                        .onSubmit {
-                            if let val = Double(fontSizeInput), val >= 8, val <= 60 {
-                                settingsVM.fontSize = val
-                                settingsVM.save()
-                            } else {
-                                fontSizeInput = String(Int(settingsVM.fontSize))
-                            }
-                        }
-                }
-            }
-
-            Divider()
-
-            labeledSlider(
-                label: "Margins (Left/Right)",
-                value: $settingsVM.marginLeftRight,
-                range: 0...30,
-                step: 1,
-                formatter: { "\(Int($0))%" },
-            )
-
-            labeledSlider(
-                label: "Margins (Top/Bottom)",
-                value: $settingsVM.marginTopBottom,
-                range: 0...30,
-                step: 1,
-                formatter: { "\(Int($0))%" },
-            )
-
-            Divider()
-
-            Toggle("Scrolling Mode", isOn: $settingsVM.scrollingMode)
-                .onChange(of: settingsVM.scrollingMode) { _, _ in
-                    settingsVM.save()
-                }
-
-            Divider()
-
-            Button {
-                onDismiss?()
-                SettingsTabRequest.shared.requestReaderSettings()
-                openSettings()
-            } label: {
-                HStack {
-                    Image(systemName: "gearshape")
-                    Text("More Settings...")
-                }
-                .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.bordered)
-        }
-        .onAppear {
-            fontSizeInput = String(Int(settingsVM.fontSize))
-        }
-    }
-    #endif
-
-    #if os(iOS)
     private var iOSBody: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
@@ -222,6 +129,22 @@ struct EbookPlayerSettings: View {
                 formatter: { String(format: "%.1f", $0) },
             )
 
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Text Alignment")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Picker("Text Alignment", selection: $settingsVM.textAlignment) {
+                    Image(systemName: "text.alignleft").tag("left")
+                    Image(systemName: "text.justify").tag("justify")
+                    Image(systemName: "text.alignright").tag("right")
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .onChange(of: settingsVM.textAlignment) { _, _ in
+                    settingsVM.save()
+                }
+            }
+
             Divider()
 
             labeledSlider(
@@ -303,9 +226,7 @@ struct EbookPlayerSettings: View {
             }
             .sheet(isPresented: $showManageThemes) {
                 ManageThemesView(settingsVM: settingsVM)
-                    #if os(iOS)
-                .presentationDetents([.fraction(0.7)])
-                    #endif
+                    .presentationDetents([.fraction(0.7)])
             }
         }
         .onAppear {
@@ -320,8 +241,6 @@ struct EbookPlayerSettings: View {
         await CustomFontsActor.shared.refreshFonts()
         customFamilies = await CustomFontsActor.shared.availableFamilies
     }
-
-    #endif
 
     @ViewBuilder
     private func labeledSlider(
@@ -346,14 +265,11 @@ struct EbookPlayerSettings: View {
         settingsVM.fontSize = kDefaultFontSize
         settingsVM.fontFamily = kDefaultFontFamily
         settingsVM.lineSpacing = kDefaultLineSpacing
-        #if os(iOS)
         settingsVM.marginLeftRight = kDefaultMarginLeftRightIOS
-        #else
-        settingsVM.marginLeftRight = kDefaultMarginLeftRightMac
-        #endif
         settingsVM.marginTopBottom = kDefaultMarginTopBottom
         settingsVM.wordSpacing = kDefaultWordSpacing
         settingsVM.letterSpacing = kDefaultLetterSpacing
+        settingsVM.textAlignment = kDefaultTextAlignment
         settingsVM.enableMarginClickNavigation = kDefaultEnableMarginClickNavigation
         settingsVM.scrollingMode = kDefaultScrollingMode
         settingsVM.enableReadingBar = kDefaultReadingBarEnabled
@@ -364,14 +280,10 @@ struct EbookPlayerSettings: View {
         settingsVM.showPageNumber = kDefaultShowPageNumber
         settingsVM.overlayTransparency = kDefaultOverlayTransparency
         settingsVM.singleColumnMode = kDefaultSingleColumnMode
-        #if os(iOS)
         settingsVM.showPlayerControls = kDefaultShowPlayerControlsIOS
         settingsVM.showOverlaySkipBackward = kDefaultShowOverlaySkipBackward
         settingsVM.showOverlaySkipForward = kDefaultShowOverlaySkipForward
         settingsVM.showOverlayPlayPause = kDefaultShowOverlayPlayPause
-        #else
-        settingsVM.showPlayerControls = kDefaultShowPlayerControlsMac
-        #endif
         settingsVM.lockViewToAudio = kDefaultLockViewToAudio
 
         settingsVM.save()
@@ -389,7 +301,6 @@ struct EbookPlayerSettings: View {
     }
 }
 
-#if os(iOS)
 private struct IOSFontManagerView: View {
     @Binding var customFamilies: [CustomFontFamily]
     @Binding var selectedFont: String

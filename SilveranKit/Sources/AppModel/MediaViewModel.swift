@@ -98,8 +98,33 @@ public final class MediaViewModel {
     public var libraryVersion: Int = 0
     public var isReady: Bool = false
     public var connectionStatus: ConnectionStatus = .disconnected
+    public var sourceConnectionInfos: [SourceConnectionInfo] = []
     public var availableStatuses: [BookStatus] = []
     public var lastNetworkOpSucceeded: Bool? = nil
+
+    /// True when a network op failed or any Storyteller source is unreachable. Folder
+    /// sources are local and never count as an issue. Used to drive the toolbar warning icon.
+    public var hasServerConnectionIssue: Bool {
+        if lastNetworkOpSucceeded == false { return true }
+        if case .error = connectionStatus { return true }
+        return sourceConnectionInfos.contains { info in
+            guard info.kind == .storyteller else { return false }
+            switch info.status {
+                case .connected, .connecting: return false
+                case .error, .disconnected: return true
+            }
+        }
+    }
+
+    public var connectionIssueIcon: String {
+        if case .error = connectionStatus { return "exclamationmark.triangle" }
+        let anyServerError = sourceConnectionInfos.contains { info in
+            guard info.kind == .storyteller else { return false }
+            if case .error = info.status { return true }
+            return false
+        }
+        return anyServerError ? "exclamationmark.triangle" : "wifi.slash"
+    }
     public var cachedConfig: SilveranGlobalConfig = SilveranGlobalConfig()
     public var pendingSyncsByBook: [String: PendingProgressSync] = [:]
     public var syncNotification: SyncNotification?
@@ -335,8 +360,10 @@ public final class MediaViewModel {
                 debugLog(
                     "[MediaViewModel] init: Setting initial connectionStatus to \(initialStatus)"
                 )
+                let initialSourceInfos = await BookServiceActor.shared.sourceConnectionInfos()
                 await MainActor.run { [weak self] in
                     self?.connectionStatus = initialStatus
+                    self?.sourceConnectionInfos = initialSourceInfos
                     debugLog(
                         "[MediaViewModel] init: connectionStatus is now \(self?.connectionStatus ?? .disconnected)"
                     )
@@ -351,6 +378,8 @@ public final class MediaViewModel {
                         let wasConnected = self.connectionStatus == .connected
                         self.connectionStatus = status
                         self.lastNetworkOpSucceeded = networkOp
+                        self.sourceConnectionInfos =
+                            await BookServiceActor.shared.sourceConnectionInfos()
                         debugLog(
                             "[MediaViewModel] StorytellerActor notify: connectionStatus=\(status), lastNetworkOpSucceeded=\(String(describing: networkOp))"
                         )
@@ -492,6 +521,7 @@ public final class MediaViewModel {
         scheduleLibraryDerivation(reason: "refreshMetadata(\(source))")
         connectionStatus = status
         lastNetworkOpSucceeded = await BookServiceActor.shared.lastNetworkOpSucceeded
+        sourceConnectionInfos = await BookServiceActor.shared.sourceConnectionInfos()
         isReady = true
         logPerfCheckpoint(
             "refreshMetadata publish remaining state",

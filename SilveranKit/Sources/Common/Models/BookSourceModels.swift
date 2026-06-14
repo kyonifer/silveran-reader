@@ -7,6 +7,20 @@ public enum BookSourceKind: String, Codable, Sendable, Hashable {
     case localFolder
 }
 
+public struct SourceConnectionInfo: Sendable, Identifiable, Equatable {
+    public let id: BookSourceID
+    public let name: String
+    public let kind: BookSourceKind
+    public let status: ConnectionStatus
+
+    public init(id: BookSourceID, name: String, kind: BookSourceKind, status: ConnectionStatus) {
+        self.id = id
+        self.name = name
+        self.kind = kind
+        self.status = status
+    }
+}
+
 public struct BookSourceCapabilities: Codable, Sendable, Hashable {
     public var canEditMetadata: Bool
     public var canManageMedia: Bool

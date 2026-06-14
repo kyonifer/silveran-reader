@@ -6,7 +6,7 @@ import BookmarkManager from "./BookmarkManager.js";
 
 const getCSS = ({
   lineSpacing = 1.4,
-  justify,
+  textAlign = "justify",
   hyphenate,
   mediaActiveClass,
   fontSize = 16,
@@ -56,7 +56,7 @@ const getCSS = ({
         font-size: ${fontSize}px !important;
         ${fontFamilyCSS}
         line-height: ${lineSpacing} !important;
-        text-align: ${justify ? "justify" : "start"};
+        text-align: ${textAlign};
         -webkit-hyphens: ${hyphenate ? "auto" : "manual"};
         hyphens: ${hyphenate ? "auto" : "manual"};
         -webkit-hyphenate-limit-before: 3;
@@ -137,6 +137,7 @@ class FoliateManager {
   #marginTopBottom = 8;
   #wordSpacing = 0;
   #letterSpacing = 0;
+  #textAlign = "justify";
   #highlightColor = "#333333";
   #highlightThickness = 1.0;
   #backgroundColor = null;
@@ -310,6 +311,10 @@ class FoliateManager {
         : null;
 
     const totalPages = textPages;
+
+    // Let the toolbar dismiss itself only on a genuine page/section move; the
+    // "anchor" / "snap" relocate stream that fires while selecting must not.
+    this.#bookmarkManager.handleRelocate(`${sectionIndex}:${pageIndex}`);
 
     const href = sectionIndex != null
       ? this.#view?.book?.sections?.[sectionIndex]?.id || null
@@ -585,6 +590,9 @@ class FoliateManager {
     if (styles.letterSpacing !== undefined && styles.letterSpacing !== null) {
       this.#letterSpacing = styles.letterSpacing;
     }
+    if (styles.textAlign !== undefined && styles.textAlign !== null) {
+      this.#textAlign = styles.textAlign;
+    }
     if (styles.highlightColor !== undefined && styles.highlightColor !== null) {
       this.#highlightColor = styles.highlightColor;
       this.#refreshReadaloudHighlight();
@@ -645,7 +653,7 @@ class FoliateManager {
     this.#view.renderer.setStyles?.(
       getCSS({
         lineSpacing: this.#lineSpacing,
-        justify: true,
+        textAlign: this.#textAlign,
         hyphenate: true,
         mediaActiveClass,
         fontSize: this.#fontSize,
@@ -1231,8 +1239,8 @@ class FoliateManager {
     this.#bookmarkManager.removeHighlight(id);
   }
 
-  captureCurrentSelection() {
-    return this.#bookmarkManager.captureCurrentSelection();
+  setHighlightPalette(jsonString) {
+    this.#bookmarkManager.setSelectionPalette(jsonString);
   }
 }
 

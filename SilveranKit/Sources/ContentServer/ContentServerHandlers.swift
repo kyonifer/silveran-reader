@@ -100,7 +100,11 @@ struct ContentServerHandlers: Sendable {
         if category == .audio {
             return try await audiobookResponse(for: bookID, requestedFormat: requestedFormat)
         }
-        return try await epubResponse(for: bookID, category: category, requestedFormat: requestedFormat)
+        return try await epubResponse(
+            for: bookID,
+            category: category,
+            requestedFormat: requestedFormat,
+        )
     }
 
     /// Maps the client's `format` query to a local media category. Both Silveran and the official

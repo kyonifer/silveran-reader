@@ -152,6 +152,24 @@ public actor BookServiceActor {
         return false
     }
 
+    public func sourceConnectionInfos() async -> [SourceConnectionInfo] {
+        await ensureSourceRegistryLoaded()
+        var result: [SourceConnectionInfo] = []
+        for record in sourceRecords {
+            guard let source = sourcesByID[record.id] else { continue }
+            let status = await source.connectionStatus
+            result.append(
+                SourceConnectionInfo(
+                    id: record.id,
+                    name: record.name,
+                    kind: record.kind,
+                    status: status,
+                )
+            )
+        }
+        return result
+    }
+
     public var isConfigured: Bool {
         get async {
             await ensureSourceRegistryLoaded()
@@ -968,7 +986,7 @@ public actor BookServiceActor {
             isDirectory: true,
         )
         let zipURL = stagingDir.appendingPathComponent(
-            "\(bookID)-\(UUID().uuidString).audiobook",
+            "\(bookID)-\(UUID().uuidString).audiobook"
         )
 
         do {
@@ -995,7 +1013,7 @@ public actor BookServiceActor {
 
             if let manifest = files.first(where: { $0.lastPathComponent == "manifest.json" }) {
                 let alias = stagingDir.appendingPathComponent(
-                    "\(UUID().uuidString).manifest",
+                    "\(UUID().uuidString).manifest"
                 )
                 try fm.copyItem(at: manifest, to: alias)
                 defer { try? fm.removeItem(at: alias) }

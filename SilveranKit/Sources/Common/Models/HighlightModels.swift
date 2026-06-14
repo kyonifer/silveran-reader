@@ -91,6 +91,18 @@ public struct HighlightRenderData: Codable, Sendable {
     }
 }
 
+public struct HighlightPaletteEntry: Codable, Sendable {
+    public let id: String
+    public let color: String
+    public let label: String
+
+    public init(id: String, color: String, label: String) {
+        self.id = id
+        self.color = color
+        self.label = label
+    }
+}
+
 public struct BookHighlights: Codable, Sendable {
     public let bookId: String
     public var highlights: [Highlight]

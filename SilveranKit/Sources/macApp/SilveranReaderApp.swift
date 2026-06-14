@@ -101,6 +101,42 @@ struct SilveranReaderApp: App {
         .onChange(of: scenePhase) { _, newPhase in
             handleScenePhaseChange(newPhase)
         }
+        .commands {
+            // Most secondary windows (reader, metadata editor, server tools) only make
+            // sense when opened from a book context, so drop the synthesized File > New items.
+            CommandGroup(replacing: .newItem) {}
+            CommandGroup(after: .windowArrangement) {
+                Button("Show Library") {
+                    openWindow(id: "MyLibrary")
+                }
+                .keyboardShortcut("0", modifiers: .command)
+                Button("Show Library") {
+                    openWindow(id: "MyLibrary")
+                }
+                .keyboardShortcut("l", modifiers: .command)
+                Button("Show Reader") {
+                    Self.raiseReaderWindow()
+                }
+                .keyboardShortcut("r", modifiers: .command)
+            }
+        }
+    }
+
+    /// Brings the frontmost open reader window forward. No-op when none are open, since a
+    /// reader window has no meaning without a book to display.
+    @MainActor
+    private static func raiseReaderWindow() {
+        let readerWindows = NSApp.orderedWindows.filter { window in
+            guard window.isVisible || window.isMiniaturized else { return false }
+            let id = window.identifier?.rawValue ?? ""
+            let title = window.title
+            return id.contains("EbookPlayer") || id.contains("AudiobookPlayer")
+                || title == "Ebook Reader" || title == "Audiobook Player"
+        }
+        guard let target = readerWindows.first else { return }
+        if target.isMiniaturized { target.deminiaturize(nil) }
+        target.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     private var libraryViewContent: some View {

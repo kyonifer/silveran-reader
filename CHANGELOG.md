@@ -32,6 +32,8 @@
 - Download retry cap with exponential backoff for more reliable downloads.
 - Progress indicator for server uploads.
 - Redesigned overlay and menu backgrounds on iOS and macOS.
+- Added a floating selection toolbar in the reader with color swatches for highlighting, dictionary lookup, copy, and notes, plus edit and delete actions on existing highlights.
+- Reader text alignment is now selectable between left, justified, and right.
 
 
 #### macOS
@@ -40,10 +42,11 @@
 - Added EPUB 2 to EPUB 3 conversion support for eligible books
 - Server media management actions for upload, delete, and replace flows.
 - Expanded book context menus across book views, including Show Book Information, Edit Metadata, Server Actions, folder-source deletion, local-download deletion, and alignment/reprocessing actions.
-
+- Window shortcuts: cmd+0 / cmd+L raise the Library, cmd+R raises the frontmost reader window (macOS) or opens the last-read book (iPad). No-op when no reader is open.
 
 #### iOS
 - Restores the last open book when resuming the app, so reading can continue immediately
+- Long-pressing inside an existing highlight now opens it for editing instead of starting a new highlight.
 
 #### tvOS
 

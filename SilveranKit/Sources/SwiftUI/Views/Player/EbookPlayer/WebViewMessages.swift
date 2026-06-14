@@ -118,9 +118,63 @@ struct TextSelectionMessage: Codable {
     let endCharOffset: Int
 }
 
-/// Sent from JS when user taps on an existing highlight
-struct HighlightTappedMessage: Codable {
-    let highlightId: String
+/// Sent from JS when a selection-toolbar swatch is tapped (mirrors TextSelectionMessage + colorId)
+struct SelectionHighlightMessage: Codable {
+    let sectionIndex: Int
+    let cfi: String
+    let text: String
+    let href: String
+    let title: String?
+    let startCssSelector: String
+    let startTextNodeIndex: Int
+    let startCharOffset: Int
+    let endCssSelector: String
+    let endTextNodeIndex: Int
+    let endCharOffset: Int
+    let colorId: String
+
+    var selection: TextSelectionMessage {
+        TextSelectionMessage(
+            sectionIndex: sectionIndex,
+            cfi: cfi,
+            text: text,
+            href: href,
+            title: title,
+            startCssSelector: startCssSelector,
+            startTextNodeIndex: startTextNodeIndex,
+            startCharOffset: startCharOffset,
+            endCssSelector: endCssSelector,
+            endTextNodeIndex: endTextNodeIndex,
+            endCharOffset: endCharOffset,
+        )
+    }
+}
+
+/// Sent from JS for a plain-text selection action (dictionary lookup / copy).
+/// Rect fields (top-document viewport coords) are present for dictionary lookup
+/// so macOS can anchor its definition popover at the selection.
+struct SelectionTextActionMessage: Codable {
+    let text: String
+    let x: Double?
+    let y: Double?
+    let width: Double?
+    let height: Double?
+}
+
+/// Sent from JS to recolor an existing highlight from the toolbar
+struct HighlightSetColorMessage: Codable {
+    let id: String
+    let colorId: String
+}
+
+/// Sent from JS to delete an existing highlight from the toolbar
+struct HighlightDeleteMessage: Codable {
+    let id: String
+}
+
+/// Sent from JS to edit an existing highlight (color/note) from the toolbar
+struct HighlightEditMessage: Codable {
+    let id: String
 }
 
 /// Response from getFirstVisiblePosition() for bookmark creation

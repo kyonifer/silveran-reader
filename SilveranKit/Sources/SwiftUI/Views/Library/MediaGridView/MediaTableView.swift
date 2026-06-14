@@ -762,26 +762,22 @@ struct MediaTableView: NSViewRepresentable {
                         secondary: true,
                     )
                 case "author":
-                    let name = item.authors?.first?.name ?? ""
-                    let target: MetadataLinkTarget? = name.isEmpty ? nil : .author(name)
-                    return makeLinkTextCell(
+                    return makeCreatorPillsCell(
                         tableView: tableView,
                         cellID: cellID,
-                        text: name,
-                        linkTarget: target,
+                        names: creatorNames(item.authors),
+                        linkBuilder: { .author($0) },
                     )
                 case "series":
                     return makeSeriesCell(tableView: tableView, cellID: cellID, item: item)
                 case "progress":
                     return makeProgressCell(tableView: tableView, cellID: cellID, item: item)
                 case "narrator":
-                    let name = item.narrators?.first?.name ?? ""
-                    let target: MetadataLinkTarget? = name.isEmpty ? nil : .narrator(name)
-                    return makeLinkTextCell(
+                    return makeCreatorPillsCell(
                         tableView: tableView,
                         cellID: cellID,
-                        text: name,
-                        linkTarget: target,
+                        names: creatorNames(item.narrators),
+                        linkBuilder: { .narrator($0) },
                     )
                 case "language":
                     return makeTextCell(
@@ -1693,6 +1689,32 @@ struct MediaTableView: NSViewRepresentable {
                     $0.localizedCaseInsensitiveCompare($1) == .orderedAscending
                 },
                 onTagClicked: onLinkClicked != nil ? { tag in onLinkClicked?(.tag(tag)) } : nil,
+                compact: isCoverHidden,
+            )
+            cell.setContent(content)
+            return cell
+        }
+
+        private func creatorNames(_ creators: [BookCreator]?) -> [String] {
+            (creators ?? []).compactMap {
+                $0.name?.trimmingCharacters(in: .whitespacesAndNewlines)
+            }.filter { !$0.isEmpty }
+        }
+
+        private func makeCreatorPillsCell(
+            tableView: NSTableView,
+            cellID: NSUserInterfaceItemIdentifier,
+            names: [String],
+            linkBuilder: @escaping (String) -> MetadataLinkTarget,
+        ) -> NSView {
+            let cell =
+                tableView.makeView(withIdentifier: cellID, owner: self) as? HostingCellView
+                ?? HostingCellView(identifier: cellID)
+            let onLinkClicked = parent.onMetadataLinkClicked
+            let content = TagFlowCellContent(
+                tags: names,
+                onTagClicked: onLinkClicked != nil
+                    ? { name in onLinkClicked?(linkBuilder(name)) } : nil,
                 compact: isCoverHidden,
             )
             cell.setContent(content)

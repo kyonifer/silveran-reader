@@ -126,7 +126,8 @@ struct ContentServerView: View {
 
     private func connectURL(port: Int) -> String {
         let trimmed = hostOverride.trimmingCharacters(in: .whitespaces)
-        let host = trimmed.isEmpty
+        let host =
+            trimmed.isEmpty
             ? (ContentServerManager.localIPv4Address() ?? "<your-mac-ip>")
             : trimmed
         return "http://\(host):\(port)"

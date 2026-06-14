@@ -209,6 +209,30 @@ public struct EbookPlayerView: View {
                 onCancel: { viewModel.cancelPendingSelection() },
             )
         }
+        .sheet(
+            item: Binding(
+                get: { viewModel.pendingEditHighlight },
+                set: { _ in viewModel.cancelPendingEdit() },
+            )
+        ) { highlight in
+            HighlightCreationSheet(
+                settingsVM: viewModel.settingsVM,
+                selectedText: highlight.text,
+                onSave: { color, note in
+                    Task {
+                        await viewModel.saveEditedHighlight(
+                            highlight,
+                            color: color,
+                            note: note,
+                        )
+                    }
+                },
+                onCancel: { viewModel.cancelPendingEdit() },
+                title: "Edit Highlight",
+                initialColor: highlight.color,
+                initialNote: highlight.note ?? "",
+            )
+        }
         .alert(
             "Server Has Newer Position",
             isPresented: $viewModel.showServerPositionDialog,

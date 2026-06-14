@@ -16,6 +16,7 @@ public final class SettingsViewModel {
     public var marginTopBottom: Double = kDefaultMarginTopBottom
     public var wordSpacing: Double = kDefaultWordSpacing
     public var letterSpacing: Double = kDefaultLetterSpacing
+    public var textAlignment: String = kDefaultTextAlignment
     public var highlightColor: String? = nil
     public var highlightThickness: Double = kDefaultHighlightThickness
     public var backgroundColor: String? = nil
@@ -151,6 +152,7 @@ public final class SettingsViewModel {
         marginTopBottom = config.reading.marginTopBottom
         wordSpacing = config.reading.wordSpacing
         letterSpacing = config.reading.letterSpacing
+        textAlignment = config.reading.textAlignment
         highlightColor = config.reading.highlightColor
         highlightThickness = config.reading.highlightThickness
         backgroundColor = config.reading.backgroundColor
@@ -372,6 +374,7 @@ public final class SettingsViewModel {
             marginTopBottom: marginTopBottom,
             wordSpacing: wordSpacing,
             letterSpacing: letterSpacing,
+            textAlignment: textAlignment,
             highlightColor: .some(highlightColor),
             highlightThickness: highlightThickness,
             backgroundColor: .some(backgroundColor),

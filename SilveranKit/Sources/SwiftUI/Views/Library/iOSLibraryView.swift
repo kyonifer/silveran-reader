@@ -1,6 +1,11 @@
 #if os(iOS)
 import SwiftUI
 
+extension Notification.Name {
+    public static let silveranShowLibrary = Notification.Name("silveranShowLibrary")
+    public static let silveranShowReader = Notification.Name("silveranShowReader")
+}
+
 public enum ConfigurableTab: String, CaseIterable, Identifiable {
     case books
     case series
@@ -58,6 +63,7 @@ public struct iOSLibraryView: View {
     @State private var booksNavigationPath = NavigationPath()
     @State private var downloadedNavigationPath = NavigationPath()
     @State private var showCarPlayPlayer: Bool = false
+    @State private var shortcutReaderBook: ShortcutReaderBook?
     @State private var metadataEditorData: MetadataEditorData?
     @State private var metadataEditorHasUnsavedChanges = false
     @State private var showMetadataEditorCloseWarning = false
@@ -87,18 +93,11 @@ public struct iOSLibraryView: View {
     }
 
     private var hasConnectionError: Bool {
-        mediaViewModel.lastNetworkOpSucceeded == false
-            || {
-                if case .error = mediaViewModel.connectionStatus { return true }
-                return false
-            }()
+        mediaViewModel.hasServerConnectionIssue
     }
 
     private var connectionErrorIcon: String {
-        if case .error = mediaViewModel.connectionStatus {
-            return "exclamationmark.triangle"
-        }
-        return "wifi.slash"
+        mediaViewModel.connectionIssueIcon
     }
 
     enum Tab: Hashable {
@@ -165,6 +164,28 @@ public struct iOSLibraryView: View {
         .onChange(of: selectedTab) { _, _ in
             searchText = ""
         }
+        .onReceive(NotificationCenter.default.publisher(for: .silveranShowLibrary)) { _ in
+            selectedTab = .home
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .silveranShowReader)) { _ in
+            Task {
+                if let data = await LastOpenBookStore.loadPlayerBookData() {
+                    shortcutReaderBook = ShortcutReaderBook(data: data)
+                }
+            }
+        }
+        .fullScreenCover(item: $shortcutReaderBook) { wrapper in
+            NavigationStack {
+                playerView(for: wrapper.data)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button("Done") {
+                                shortcutReaderBook = nil
+                            }
+                        }
+                    }
+            }
+        }
         .sheet(isPresented: $showSettings) {
             NavigationStack {
                 SettingsView()
@@ -182,6 +203,7 @@ public struct iOSLibraryView: View {
         .sheet(isPresented: $showOfflineSheet) {
             OfflineStatusSheet(
                 errorType: connectionErrorType,
+                sources: mediaViewModel.sourceConnectionInfos,
                 onRetry: {
                     let _ = await BookServiceActor.shared.fetchLibraryInformation()
                     if !hasConnectionError {
@@ -542,6 +564,11 @@ public struct iOSLibraryView: View {
     }
 }
 
+private struct ShortcutReaderBook: Identifiable {
+    let id = UUID()
+    let data: PlayerBookData
+}
+
 struct MoreMenuView: View {
     @Binding var searchText: String
     @Binding var showSettings: Bool
@@ -560,6 +587,7 @@ struct MoreMenuView: View {
         case narrators
         case tags
         case collections
+        case sources
         case downloaded
         case translators
         case publicationYears
@@ -570,16 +598,11 @@ struct MoreMenuView: View {
     }
 
     private var hasConnectionError: Bool {
-        if mediaViewModel.lastNetworkOpSucceeded == false { return true }
-        if case .error = mediaViewModel.connectionStatus { return true }
-        return false
+        mediaViewModel.hasServerConnectionIssue
     }
 
     private var connectionErrorIcon: String {
-        if case .error = mediaViewModel.connectionStatus {
-            return "exclamationmark.triangle"
-        }
-        return "wifi.slash"
+        mediaViewModel.connectionIssueIcon
     }
 
     private func isExcluded(_ tab: ConfigurableTab) -> Bool {
@@ -617,6 +640,11 @@ struct MoreMenuView: View {
                 if !isExcluded(.collections) {
                     NavigationLink(value: MoreDestination.collections) {
                         Label("Collections", systemImage: "rectangle.stack")
+                    }
+                }
+                if !mediaViewModel.bookSources.isEmpty {
+                    NavigationLink(value: MoreDestination.sources) {
+                        Label("Sources", systemImage: "externaldrive.fill")
                     }
                 }
                 if !isExcluded(.translators) {
@@ -741,6 +769,12 @@ struct MoreMenuView: View {
                     )
                 case .collections:
                     MoreCollectionsView(
+                        searchText: $searchText,
+                        showSettings: $showSettings,
+                        showOfflineSheet: $showOfflineSheet,
+                    )
+                case .sources:
+                    MoreSourcesView(
                         searchText: $searchText,
                         showSettings: $showSettings,
                         showOfflineSheet: $showOfflineSheet,
@@ -1171,6 +1205,7 @@ struct OfflineStatusSheet: View {
     }
 
     let errorType: ErrorType
+    let sources: [SourceConnectionInfo]
     let onRetry: () async -> Bool
     let onGoToDownloads: () -> Void
     let onGoToSettings: (() -> Void)?
@@ -1179,11 +1214,13 @@ struct OfflineStatusSheet: View {
 
     init(
         errorType: ErrorType = .networkOffline,
+        sources: [SourceConnectionInfo] = [],
         onRetry: @escaping () async -> Bool,
         onGoToDownloads: @escaping () -> Void,
         onGoToSettings: (() -> Void)? = nil,
     ) {
         self.errorType = errorType
+        self.sources = sources
         self.onRetry = onRetry
         self.onGoToDownloads = onGoToDownloads
         self.onGoToSettings = onGoToSettings
@@ -1198,7 +1235,7 @@ struct OfflineStatusSheet: View {
 
     private var title: String {
         switch errorType {
-            case .networkOffline: return "Not Connected"
+            case .networkOffline: return "Connection Status"
             case .authError: return "Connection Error"
         }
     }
@@ -1207,10 +1244,61 @@ struct OfflineStatusSheet: View {
         switch errorType {
             case .networkOffline:
                 return
-                    "You are currently not connected to the server. Only downloaded books are available for reading."
+                    "Downloaded books are always available. Per-source status is shown below."
             case .authError(let details):
                 return
-                    "Unable to connect to the server: \(details). Please check your server credentials in Settings."
+                    "Unable to connect to a server: \(details). Please check your server credentials in Settings."
+        }
+    }
+
+    @ViewBuilder
+    private var sourceStatusList: some View {
+        let serverSources = sources.filter { $0.kind == .storyteller }
+        if !serverSources.isEmpty {
+            VStack(spacing: 8) {
+                ForEach(serverSources) { source in
+                    HStack(spacing: 12) {
+                        Image(systemName: "server.rack")
+                            .foregroundStyle(.secondary)
+                            .frame(width: 22)
+                        Text(source.name)
+                            .font(.subheadline)
+                            .lineLimit(1)
+                        Spacer()
+                        Circle()
+                            .fill(statusColor(for: source))
+                            .frame(width: 8, height: 8)
+                        Text(statusLabel(for: source))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(Color.secondary.opacity(0.12))
+                    )
+                }
+            }
+            .padding(.horizontal)
+        }
+    }
+
+    private func statusLabel(for source: SourceConnectionInfo) -> String {
+        switch source.status {
+            case .connected: return "Connected"
+            case .connecting: return "Connecting…"
+            case .disconnected: return "Offline"
+            case .error: return "Error"
+        }
+    }
+
+    private func statusColor(for source: SourceConnectionInfo) -> Color {
+        switch source.status {
+            case .connected: return .green
+            case .connecting: return .yellow
+            case .disconnected: return .orange
+            case .error: return .red
         }
     }
 
@@ -1229,6 +1317,8 @@ struct OfflineStatusSheet: View {
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             }
+
+            sourceStatusList
 
             VStack(spacing: 12) {
                 if case .authError = errorType, let onGoToSettings {
@@ -1297,16 +1387,11 @@ struct IOSLibraryToolbarModifier: ViewModifier {
     @Environment(MediaViewModel.self) private var mediaViewModel
 
     private var hasConnectionError: Bool {
-        if mediaViewModel.lastNetworkOpSucceeded == false { return true }
-        if case .error = mediaViewModel.connectionStatus { return true }
-        return false
+        mediaViewModel.hasServerConnectionIssue
     }
 
     private var connectionErrorIcon: String {
-        if case .error = mediaViewModel.connectionStatus {
-            return "exclamationmark.triangle"
-        }
-        return "wifi.slash"
+        mediaViewModel.connectionIssueIcon
     }
 
     func body(content: Content) -> some View {
@@ -1475,6 +1560,30 @@ struct LibraryNavigationDestinations: ViewModifier {
                     initialNarrationFilterOption: .both,
                 )
                 .navigationTitle(collection.name)
+                .iOSLibraryToolbar(
+                    showSettings: $showSettings,
+                    showOfflineSheet: $showOfflineSheet,
+                )
+            }
+            .navigationDestination(for: SourceNavIdentifier.self) { source in
+                MediaGridView(
+                    title: source.name,
+                    searchText: "",
+                    mediaKind: .ebook,
+                    viewOptionsKey: "sourceView.ebook.\(source.id)",
+                    defaultSort: "titleAZ",
+                    preferredTileWidth: 110,
+                    minimumTileWidth: 90,
+                    columnBreakpoints: [
+                        MediaGridView.ColumnBreakpoint(columns: 3, minWidth: 0)
+                    ],
+                    initialNarrationFilterOption: .both,
+                    showAddBookButton: true,
+                    addBookSourceID: source.id,
+                    sourceFilterID: source.id,
+                    sourceFilterName: source.name,
+                )
+                .navigationTitle(source.name)
                 .iOSLibraryToolbar(
                     showSettings: $showSettings,
                     showOfflineSheet: $showOfflineSheet,
@@ -2912,6 +3021,63 @@ struct MoreRatingsView: View {
                 Spacer()
             }.font(.callout)
         }
+    }
+}
+
+struct SourceNavIdentifier: Hashable {
+    let id: BookSourceID
+    let name: String
+}
+
+struct MoreSourcesView: View {
+    @Binding var searchText: String
+    @Binding var showSettings: Bool
+    @Binding var showOfflineSheet: Bool
+    @Environment(MediaViewModel.self) private var mediaViewModel
+
+    private func iconName(for source: BookSourceRecord) -> String {
+        switch source.kind {
+            case .storyteller: "server.rack"
+            case .localFolder: "folder.fill"
+        }
+    }
+
+    private func bookCount(for sourceID: BookSourceID) -> Int {
+        mediaViewModel.library.bookMetaData.filter { $0.sourceID == sourceID }.count
+    }
+
+    private var filteredSources: [BookSourceRecord] {
+        guard !searchText.isEmpty else { return mediaViewModel.bookSources }
+        let searchLower = searchText.lowercased()
+        return mediaViewModel.bookSources.filter { $0.name.lowercased().contains(searchLower) }
+    }
+
+    var body: some View {
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                ForEach(filteredSources) { source in
+                    NavigationLink(value: SourceNavIdentifier(id: source.id, name: source.name)) {
+                        CategoryRowContent(
+                            iconName: iconName(for: source),
+                            name: source.name,
+                            bookCount: bookCount(for: source.id),
+                            isSelected: false,
+                        ).contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    Divider().padding(.leading, 48)
+                }
+            }
+            .padding(.top, 8)
+        }
+        .navigationTitle("Sources")
+        .navigationBarTitleDisplayMode(.inline)
+        .iOSLibraryToolbar(showSettings: $showSettings, showOfflineSheet: $showOfflineSheet)
+        .searchable(
+            text: $searchText,
+            placement: .navigationBarDrawer(displayMode: .always),
+            prompt: "Search",
+        )
     }
 }
 

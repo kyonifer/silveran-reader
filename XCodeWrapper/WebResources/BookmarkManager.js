@@ -1,6 +1,7 @@
 import { Overlayer } from "./foliate-js/overlayer.js";
 import { SpanHighlighter } from "./SpanHighlighter.js";
 import { debugLog } from "./DebugConfig.js";
+import { SelectionToolbar } from "./SelectionToolbar.js";
 
 console.log("[BookmarkManager] Module loaded");
 
@@ -12,6 +13,49 @@ class BookmarkManager {
   #highlightMode = "background";
   #highlightThickness = 1.0;
   #renderedSpanState = new Map();
+  #selectionToolbar = new SelectionToolbar();
+  #shownKey = null;
+  #currentPageKey = null;
+  #toolbarPageKey = null;
+
+  // Maps a rect from a section iframe's viewport into the top document's
+  // viewport, where the (untransformed) toolbar and macOS dictionary anchor live.
+  #resolveTopFrame(doc) {
+    const view = doc.defaultView;
+    const frameEl = view?.frameElement || null;
+    const topDoc = frameEl?.ownerDocument || doc;
+    const frameRect = frameEl ? frameEl.getBoundingClientRect() : { left: 0, top: 0 };
+    return { topDoc, offsetX: frameRect.left, offsetY: frameRect.top };
+  }
+
+  setSelectionPalette(jsonString) {
+    try {
+      this.#selectionToolbar.setPalette(JSON.parse(jsonString));
+    } catch (error) {
+      console.error("[BookmarkManager] Failed to parse highlight palette:", error);
+    }
+  }
+
+  hideSelectionToolbar() {
+    this.#shownKey = null;
+    this.#toolbarPageKey = null;
+    this.#selectionToolbar.hide();
+  }
+
+  // foliate fires a continuous stream of relocate events (reason "anchor"), plus
+  // a "snap" relocate on every touchend that settles the current page. None of
+  // those move the toolbar's content, so they must not dismiss it. Only a real
+  // page or section change (a different page key) invalidates the anchor.
+  handleRelocate(pageKey) {
+    this.#currentPageKey = pageKey;
+    if (
+      this.#selectionToolbar.isVisible &&
+      this.#toolbarPageKey != null &&
+      pageKey !== this.#toolbarPageKey
+    ) {
+      this.hideSelectionToolbar();
+    }
+  }
 
   setView(view) {
     this.#view = view;
@@ -108,16 +152,42 @@ class BookmarkManager {
     this.#renderHighlightsForSection(sectionIndex, doc);
 
     doc.addEventListener("click", (event) => {
-      const result = overlayer.hitTest({ x: event.clientX, y: event.clientY });
-      if (result && result.length > 0) {
-        const highlightId = result[0];
-        debugLog("BookmarkManager", "Highlight tapped:", highlightId);
-        window.webkit?.messageHandlers?.HighlightTapped?.postMessage({
-          highlightId: highlightId,
-        });
-        event.stopPropagation();
+      // A reliable click can land on a highlight with a pointer (desktop). On
+      // touch, taps are unreliable and steal the overlay-toggle gesture, so the
+      // highlight bar is reached by long-pressing inside the highlight instead
+      // (handled in #showSelectionToolbar).
+      if (!this.#isTouchDevice()) {
+        const result = overlayer.hitTest({ x: event.clientX, y: event.clientY });
+        if (result && result.length > 0) {
+          const highlightId = result[0];
+          debugLog("BookmarkManager", "Highlight tapped:", highlightId);
+          this.#showHighlightToolbar(doc, highlightId, event.clientX, event.clientY);
+          event.stopPropagation();
+          return;
+        }
+      }
+      const selection = doc.getSelection?.();
+      if (!selection || selection.isCollapsed) {
+        this.hideSelectionToolbar();
       }
     });
+
+    let selectionDebounce = null;
+    const onSelectionChange = () => {
+      const selection = doc.getSelection?.();
+      if (!selection || selection.isCollapsed) {
+        clearTimeout(selectionDebounce);
+        this.hideSelectionToolbar();
+        return;
+      }
+      clearTimeout(selectionDebounce);
+      selectionDebounce = setTimeout(
+        () => this.#showSelectionToolbar(sectionIndex, doc),
+        250
+      );
+    };
+    doc.addEventListener("selectionchange", onSelectionChange);
+    doc.addEventListener("mouseup", () => this.#showSelectionToolbar(sectionIndex, doc));
 
     if (!this.#isTouchDevice()) {
       debugLog("BookmarkManager", "Setting up contextmenu listener for desktop");
@@ -129,52 +199,39 @@ class BookmarkManager {
   }
 
   #handleContextMenu(event, sectionIndex, doc) {
-    debugLog("BookmarkManager", "contextmenu event fired");
-
     const selection = doc.getSelection?.();
-    debugLog("BookmarkManager", "selection:", selection ? `"${selection.toString()}"` : "null", "isCollapsed:", selection?.isCollapsed);
+    if (!selection || selection.isCollapsed) return;
 
-    if (!selection || selection.isCollapsed) {
-      debugLog("BookmarkManager", "No selection, ignoring contextmenu");
-      return;
-    }
+    // Suppress the native context menu; show the compact selection toolbar instead.
+    event.preventDefault();
+    this.#showSelectionToolbar(sectionIndex, doc);
+  }
+
+  #buildSelectionPayload(sectionIndex, doc) {
+    const selection = doc.getSelection?.();
+    if (!selection || selection.isCollapsed) return null;
 
     const text = selection.toString().trim();
-    if (!text || text.length < 2) {
-      debugLog("BookmarkManager", "Text too short, ignoring");
-      return;
-    }
+    if (!text || text.length < 2) return null;
 
-    const range = selection.getRangeAt(0);
-    if (!range) return;
+    const range = selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
+    if (!range) return null;
 
     let cfi = null;
     try {
       cfi = this.#view.getCFI(sectionIndex, range);
     } catch (error) {
       debugLog("BookmarkManager", "Failed to get CFI from selection:", error);
-      return;
+      return null;
     }
-
-    if (!cfi) return;
+    if (!cfi) return null;
 
     const href = this.#view?.book?.sections?.[sectionIndex]?.id || "";
     const title =
-      this.#view?.book?.toc?.find((t) => t.href?.startsWith(href))?.label ||
-      null;
+      this.#view?.book?.toc?.find((t) => t.href?.startsWith(href))?.label || null;
 
     const startContainer = range.startContainer;
     const endContainer = range.endContainer;
-
-    const startCssSelector = this.#getCssSelector(
-      startContainer.parentElement || startContainer
-    );
-    const endCssSelector = this.#getCssSelector(
-      endContainer.parentElement || endContainer
-    );
-
-    const startTextNodeIndex = this.#getTextNodeIndex(startContainer);
-    const endTextNodeIndex = this.#getTextNodeIndex(endContainer);
 
     const payload = {
       sectionIndex,
@@ -182,22 +239,107 @@ class BookmarkManager {
       text,
       href,
       title,
-      startCssSelector,
-      startTextNodeIndex,
+      startCssSelector: this.#getCssSelector(startContainer.parentElement || startContainer),
+      startTextNodeIndex: this.#getTextNodeIndex(startContainer),
       startCharOffset: range.startOffset,
-      endCssSelector,
-      endTextNodeIndex,
+      endCssSelector: this.#getCssSelector(endContainer.parentElement || endContainer),
+      endTextNodeIndex: this.#getTextNodeIndex(endContainer),
       endCharOffset: range.endOffset,
     };
 
-    debugLog(
-      "BookmarkManager",
-      "Context menu with selection:",
-      text.substring(0, 50) + "..."
-    );
-    window.webkit?.messageHandlers?.TextSelection?.postMessage(payload);
+    return { payload, range };
+  }
 
-    event.preventDefault();
+  #showSelectionToolbar(sectionIndex, doc) {
+    const built = this.#buildSelectionPayload(sectionIndex, doc);
+    if (!built) {
+      this.hideSelectionToolbar();
+      return;
+    }
+
+    const { payload, range } = built;
+    const r = range.getBoundingClientRect();
+    if (!r || (r.width === 0 && r.height === 0)) {
+      this.hideSelectionToolbar();
+      return;
+    }
+
+    // On touch, a long-press landing inside an existing highlight should edit
+    // that highlight rather than offer to create a new one - tapping highlights
+    // directly is too unreliable on iOS (it usually toggles the player overlay).
+    if (this.#isTouchDevice()) {
+      const cx = r.left + r.width / 2;
+      const cy = r.top + r.height / 2;
+      const hit = this.#overlayers.get(sectionIndex)?.hitTest({ x: cx, y: cy });
+      if (hit && hit.length > 0) {
+        this.#showHighlightToolbar(doc, hit[0], cx, r.top);
+        return;
+      }
+    }
+
+    // Don't tear down and rebuild for the same selection - that restarts the
+    // fade and reads as a flicker while selectionchange/mouseup both fire.
+    const key = `sel:${payload.cfi}`;
+    if (this.#selectionToolbar.isVisible && this.#shownKey === key) {
+      return;
+    }
+    this.#shownKey = key;
+    this.#toolbarPageKey = this.#currentPageKey;
+
+    const { topDoc, offsetX, offsetY } = this.#resolveTopFrame(doc);
+    const rect = {
+      left: r.left + offsetX,
+      top: r.top + offsetY,
+      right: r.right + offsetX,
+      bottom: r.bottom + offsetY,
+      width: r.width,
+      height: r.height,
+    };
+
+    this.#selectionToolbar.showForSelection(topDoc, rect, {
+      highlight: (colorId) => {
+        window.webkit?.messageHandlers?.SelectionHighlight?.postMessage({
+          ...payload,
+          colorId,
+        });
+        doc.getSelection?.()?.removeAllRanges?.();
+      },
+      define: () =>
+        window.webkit?.messageHandlers?.SelectionDefine?.postMessage({
+          text: payload.text,
+          x: rect.left,
+          y: rect.top,
+          width: rect.width,
+          height: rect.height,
+        }),
+      copy: () =>
+        window.webkit?.messageHandlers?.SelectionCopy?.postMessage({ text: payload.text }),
+      note: () => window.webkit?.messageHandlers?.TextSelection?.postMessage(payload),
+    });
+  }
+
+  #showHighlightToolbar(doc, highlightId, x, y) {
+    const key = `hl:${highlightId}`;
+    if (this.#selectionToolbar.isVisible && this.#shownKey === key) return;
+    this.#shownKey = key;
+    this.#toolbarPageKey = this.#currentPageKey;
+    const highlight = this.#userHighlights.get(highlightId);
+    const { topDoc, offsetX, offsetY } = this.#resolveTopFrame(doc);
+    const px = x + offsetX;
+    const py = y + offsetY;
+    const rect = { left: px, top: py, right: px, bottom: py, width: 0, height: 0 };
+
+    this.#selectionToolbar.showForHighlight(topDoc, rect, highlight?.color, {
+      setColor: (colorId) =>
+        window.webkit?.messageHandlers?.HighlightSetColor?.postMessage({
+          id: highlightId,
+          colorId,
+        }),
+      delete: () =>
+        window.webkit?.messageHandlers?.HighlightDelete?.postMessage({ id: highlightId }),
+      edit: () =>
+        window.webkit?.messageHandlers?.HighlightEdit?.postMessage({ id: highlightId }),
+    });
   }
 
   #getCssSelector(element) {
@@ -430,68 +572,6 @@ class BookmarkManager {
     }
   }
 
-  captureCurrentSelection() {
-    debugLog("BookmarkManager", "captureCurrentSelection called");
-
-    const contents = this.#view?.renderer?.getContents?.() || [];
-
-    for (const content of contents) {
-      if (!content.doc) continue;
-
-      const selection = content.doc.getSelection?.();
-      if (!selection || selection.isCollapsed) continue;
-
-      const text = selection.toString().trim();
-      if (!text || text.length < 2) continue;
-
-      const range = selection.getRangeAt(0);
-      if (!range) continue;
-
-      const sectionIndex = content.index;
-      let cfi = null;
-      try {
-        cfi = this.#view.getCFI(sectionIndex, range);
-      } catch (error) {
-        debugLog("BookmarkManager", "Failed to get CFI:", error);
-        continue;
-      }
-
-      if (!cfi) continue;
-
-      const href = this.#view?.book?.sections?.[sectionIndex]?.id || "";
-      const title = this.#view?.book?.toc?.find((t) => t.href?.startsWith(href))?.label || null;
-
-      const startContainer = range.startContainer;
-      const endContainer = range.endContainer;
-      const startCssSelector = this.#getCssSelector(startContainer.parentElement || startContainer);
-      const endCssSelector = this.#getCssSelector(endContainer.parentElement || endContainer);
-      const startTextNodeIndex = this.#getTextNodeIndex(startContainer);
-      const endTextNodeIndex = this.#getTextNodeIndex(endContainer);
-
-      const payload = {
-        sectionIndex,
-        cfi,
-        text,
-        href,
-        title,
-        startCssSelector,
-        startTextNodeIndex,
-        startCharOffset: range.startOffset,
-        endCssSelector,
-        endTextNodeIndex,
-        endCharOffset: range.endOffset,
-      };
-
-      debugLog("BookmarkManager", "Captured selection:", text.substring(0, 50) + "...");
-      window.webkit?.messageHandlers?.TextSelection?.postMessage(payload);
-
-      selection.removeAllRanges();
-      return true;
-    }
-
-    debugLog("BookmarkManager", "No valid selection found");
-    return false;
-  }
 }
 
 export default BookmarkManager;

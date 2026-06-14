@@ -61,8 +61,17 @@ class WebViewCommsBridge {
     /// Notifies when user completes a text selection (for creating highlights)
     var onTextSelected: ((TextSelectionMessage) -> Void)?
 
-    /// Notifies when user taps on an existing highlight
-    var onHighlightTapped: ((HighlightTappedMessage) -> Void)?
+    /// Notifies when a selection-toolbar swatch is tapped (selection + chosen color)
+    var onSelectionHighlight: ((SelectionHighlightMessage) -> Void)?
+
+    /// Notifies when an existing highlight's color is changed from the toolbar
+    var onHighlightSetColor: ((HighlightSetColorMessage) -> Void)?
+
+    /// Notifies when an existing highlight is deleted from the toolbar
+    var onHighlightDelete: ((HighlightDeleteMessage) -> Void)?
+
+    /// Notifies when an existing highlight should be edited (color/note) from the toolbar
+    var onHighlightEdit: ((HighlightEditMessage) -> Void)?
 
     init(webView: WKWebView? = nil) {
         self.webView = webView
@@ -305,6 +314,7 @@ class WebViewCommsBridge {
         marginTopBottom: Double,
         wordSpacing: Double,
         letterSpacing: Double,
+        textAlignment: String,
         highlightColor: String,
         highlightThickness: Double,
         backgroundColor: String?,
@@ -330,6 +340,7 @@ class WebViewCommsBridge {
             "marginTopBottom": marginTopBottom,
             "wordSpacing": wordSpacing,
             "letterSpacing": letterSpacing,
+            "textAlign": textAlignment,
             "highlightColor": highlightColor,
             "highlightThickness": highlightThickness,
             "singleColumnMode": singleColumnMode,
@@ -447,9 +458,26 @@ class WebViewCommsBridge {
         onTextSelected?(message)
     }
 
-    func sendSwiftHighlightTapped(_ message: HighlightTappedMessage) {
-        debugLog("[WebViewCommsBridge] sendSwiftHighlightTapped - id: \(message.highlightId)")
-        onHighlightTapped?(message)
+    func sendSwiftSelectionHighlight(_ message: SelectionHighlightMessage) {
+        debugLog("[WebViewCommsBridge] sendSwiftSelectionHighlight - color: \(message.colorId)")
+        onSelectionHighlight?(message)
+    }
+
+    func sendSwiftHighlightSetColor(_ message: HighlightSetColorMessage) {
+        debugLog(
+            "[WebViewCommsBridge] sendSwiftHighlightSetColor - id: \(message.id), color: \(message.colorId)"
+        )
+        onHighlightSetColor?(message)
+    }
+
+    func sendSwiftHighlightDelete(_ message: HighlightDeleteMessage) {
+        debugLog("[WebViewCommsBridge] sendSwiftHighlightDelete - id: \(message.id)")
+        onHighlightDelete?(message)
+    }
+
+    func sendSwiftHighlightEdit(_ message: HighlightEditMessage) {
+        debugLog("[WebViewCommsBridge] sendSwiftHighlightEdit - id: \(message.id)")
+        onHighlightEdit?(message)
     }
 
     // MARK: - Highlight commands (Swift → JS)
@@ -485,15 +513,19 @@ class WebViewCommsBridge {
         )
     }
 
-    /// Swift commands JS to capture the current text selection and send it as TextSelection message
-    func sendJsCaptureCurrentSelection() async throws {
+    /// Swift pushes the configured highlight palette so the selection toolbar can render swatches
+    func sendJsSetHighlightPalette(_ entries: [HighlightPaletteEntry]) async throws {
         guard let webView = webView else {
             throw WebViewCommsBridgeError.webViewNotAvailable
         }
 
-        debugLog("[WebViewCommsBridge] sendJsCaptureCurrentSelection")
+        let jsonData = try JSONEncoder().encode(entries)
+        let jsonString = String(data: jsonData, encoding: .utf8)!
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "'", with: "\\'")
+
         _ = try await webView.evaluateJavaScript(
-            "window.foliateManager.captureCurrentSelection()"
+            "(function() { window.foliateManager.setHighlightPalette('\(jsonString)'); })()"
         )
     }
 }

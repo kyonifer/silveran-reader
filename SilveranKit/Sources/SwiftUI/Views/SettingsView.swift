@@ -165,10 +165,12 @@ public struct SettingsView: View {
                 try await SettingsActor.shared.updateConfig(
                     fontSize: newValue.reading.fontSize,
                     fontFamily: newValue.reading.fontFamily,
+                    lineSpacing: newValue.reading.lineSpacing,
                     marginLeftRight: newValue.reading.marginLeftRight,
                     marginTopBottom: newValue.reading.marginTopBottom,
                     wordSpacing: newValue.reading.wordSpacing,
                     letterSpacing: newValue.reading.letterSpacing,
+                    textAlignment: newValue.reading.textAlignment,
                     highlightColor: .some(newValue.reading.highlightColor),
                     highlightThickness: newValue.reading.highlightThickness,
                     backgroundColor: .some(newValue.reading.backgroundColor),
@@ -297,6 +299,7 @@ extension SettingsView {
         config.reading.marginTopBottom = kDefaultMarginTopBottom
         config.reading.wordSpacing = kDefaultWordSpacing
         config.reading.letterSpacing = kDefaultLetterSpacing
+        config.reading.textAlignment = kDefaultTextAlignment
         config.reading.highlightColor = nil
         config.reading.highlightThickness = kDefaultHighlightThickness
         config.reading.userHighlightMode = kDefaultUserHighlightMode
@@ -679,6 +682,18 @@ private struct MacReaderSettingsView: View {
                 }
 
                 GridRow {
+                    label("Text Alignment")
+                    Picker("", selection: $reading.textAlignment) {
+                        Image(systemName: "text.alignleft").tag("left")
+                        Image(systemName: "text.justify").tag("justify")
+                        Image(systemName: "text.alignright").tag("right")
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .frame(width: 200, alignment: .leading)
+                }
+
+                GridRow {
                     label("Font")
                     HStack(spacing: 12) {
                         Picker("", selection: $reading.fontFamily) {
@@ -744,6 +759,16 @@ private struct MacReaderSettingsView: View {
                         range: 0...30,
                         step: 1,
                         formatter: { String(format: "%.0f%%", $0) },
+                    )
+                }
+
+                GridRow {
+                    label("Line Spacing")
+                    MacSliderControl(
+                        value: $reading.lineSpacing,
+                        range: 1.0...2.5,
+                        step: 0.1,
+                        formatter: { String(format: "%.1f", $0) },
                     )
                 }
 

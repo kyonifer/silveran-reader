@@ -41,13 +41,10 @@ struct SourceView: View {
 
     #if os(iOS)
     private var hasConnectionError: Bool {
-        if mediaViewModel.lastNetworkOpSucceeded == false { return true }
-        if case .error = mediaViewModel.connectionStatus { return true }
-        return false
+        mediaViewModel.hasServerConnectionIssue
     }
     private var connectionErrorIcon: String {
-        if case .error = mediaViewModel.connectionStatus { return "exclamationmark.triangle" }
-        return "wifi.slash"
+        mediaViewModel.connectionIssueIcon
     }
     #endif
 

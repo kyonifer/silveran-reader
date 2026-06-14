@@ -100,6 +100,22 @@ struct SilveranReaderApp: App {
                     }
                 }
         }
+        .commands {
+            CommandMenu("Go") {
+                Button("Show Library") {
+                    NotificationCenter.default.post(name: .silveranShowLibrary, object: nil)
+                }
+                .keyboardShortcut("0", modifiers: .command)
+                Button("Show Library") {
+                    NotificationCenter.default.post(name: .silveranShowLibrary, object: nil)
+                }
+                .keyboardShortcut("l", modifiers: .command)
+                Button("Open Reader") {
+                    NotificationCenter.default.post(name: .silveranShowReader, object: nil)
+                }
+                .keyboardShortcut("r", modifiers: .command)
+            }
+        }
     }
 
     private func handleDidEnterBackground() {
