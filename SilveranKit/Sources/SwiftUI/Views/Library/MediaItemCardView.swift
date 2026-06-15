@@ -77,6 +77,7 @@ struct MediaItemCardView: View {
     let seriesPositionBadge: String?
     let coverPreference: CoverPreference
     let progressStyle: ProgressIndicatorStyle
+    var sortOption: MediaGridSortOption = .titleAZ
     let onSelect: (BookMetadata) -> Void
     let onInfo: (BookMetadata) -> Void
     var onEditMetadata: (([String]) -> Void)? = nil
@@ -310,7 +311,7 @@ struct MediaItemCardView: View {
             isDoubleCover && standardCoverState.image != nil && audioCoverState.image != nil
 
         return VStack(alignment: .leading, spacing: 0) {
-            ZStack(alignment: .top) {
+            ZStack(alignment: .center) {
                 VStack(spacing: 0) {
                     Spacer(minLength: 0)
                     if shouldRenderDoubleCover {
@@ -363,14 +364,33 @@ struct MediaItemCardView: View {
                             .padding(.top, 4)
                     }
                 }
+                .overlay(alignment: .topTrailing) {
+                    if showAudioIndicator && shouldRenderDoubleCover && item.hasAvailableReadaloud {
+                        Image("readalong")
+                            .renderingMode(.template)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 22, height: 22)
+                            .foregroundStyle(.tint)
+                            .padding(.trailing, 4)
+                            .padding(.top, 7)
+                    }
+                }
                 .overlay(alignment: .bottomTrailing) {
-                    if progressStyle == .circle {
-                        let progress = mediaViewModel.progress(for: item.id)
-                        if progress > 0 {
-                            CircularProgressBadge(progress: progress)
-                                .padding(.trailing, 4)
-                                .padding(.bottom, 4)
-                        }
+                    let progress = mediaViewModel.progress(for: item.id)
+                    if progressStyle == .circle && progress > 0 {
+                        CircularProgressBadge(progress: progress)
+                            .padding(.trailing, 4)
+                            .padding(.bottom, 4)
+                    } else if progressStyle == .text && progress > 0 {
+                        Text("\(Int((progress * 100).rounded()))%")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                            .padding(.trailing, 4)
+                            .padding(.bottom, 4)
                     }
                 }
                 .overlay(alignment: .topLeading) {
@@ -414,6 +434,9 @@ struct MediaItemCardView: View {
                 .frame(height: metrics.contentSpacing)
 
             VStack(alignment: .leading, spacing: 0) {
+                authorRow
+                    .padding(.bottom, metrics.titleToAuthorGap)
+
                 Text(item.title)
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.primary)
@@ -423,9 +446,6 @@ struct MediaItemCardView: View {
                     .frame(maxWidth: .infinity, alignment: .topLeading)
                     .padding(.horizontal, 8)
                     .frame(height: metrics.titleContainerHeight, alignment: .top)
-
-                authorRow
-                    .padding(.top, metrics.titleToAuthorGap)
             }
         }
         .padding(
@@ -466,7 +486,7 @@ struct MediaItemCardView: View {
 
     private var authorRow: some View {
         HStack(spacing: 2) {
-            Text(item.authors?.first?.name ?? "")
+            Text(authorRowText)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
@@ -476,6 +496,47 @@ struct MediaItemCardView: View {
         .padding(.leading, 8)
         .padding(.trailing, 2)
         .padding(.bottom, 4)
+    }
+
+    private var authorRowText: String {
+        switch sortOption {
+            case .titleAZ, .titleZA, .authorAZ, .authorZA, .progressHighToLow, .progressLowToHigh:
+                return item.authors?.first?.name ?? ""
+            case .recentlyRead:
+                return item.sortableLastRead.isEmpty ? "" : parseDate(item.sortableLastRead)
+            case .recentlyAdded:
+                return parseDate(item.sortableAdded)
+            case .seriesPosition:
+                if let series = item.series?.first {
+                    let pos = series.formattedPosition.map { "\($0) - " } ?? ""
+                    return "\(pos)\(series.name)"
+                }
+                return item.authors?.first?.name ?? ""
+            case .publicationDateNewestFirst, .publicationDateOldestFirst:
+                if let pub = item.publicationDate, !pub.isEmpty {
+                    return parseDate(pub)
+                }
+                return item.authors?.first?.name ?? ""
+        }
+    }
+
+    private func parseDate(_ isoString: String) -> String {
+        let attempts: [ISO8601DateFormatter] = {
+            let withFractional = ISO8601DateFormatter()
+            withFractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            let withoutFractional = ISO8601DateFormatter()
+            withoutFractional.formatOptions = [.withInternetDateTime]
+            let dateOnly = ISO8601DateFormatter()
+            dateOnly.formatOptions = [.withFullDate]
+            return [withFractional, withoutFractional, dateOnly]
+        }()
+        for formatter in attempts {
+            if let date = formatter.date(from: isoString) {
+                return date.formatted(date: .abbreviated, time: .omitted)
+            }
+        }
+        // Fall back to raw string (handles bare year strings like "2019")
+        return String(isoString.prefix(10))
     }
 
     private func resolveCoverVariant(for item: BookMetadata) -> MediaViewModel.CoverVariant {
@@ -868,12 +929,18 @@ struct AudioIndicatorBadge: View {
                             .frame(width: 12, height: 12)
                             .foregroundStyle(.gray)
                     case .headphones:
-                        Image(systemName: "headphones")
-                            .font(.system(size: 9, weight: .semibold))
+                        Image("audioIcon")
+                            .renderingMode(.template)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 11, height: 11)
                             .foregroundStyle(.gray)
                     case .book:
-                        Image(systemName: "book.fill")
-                            .font(.system(size: 9, weight: .semibold))
+                        Image("ebookIcon")
+                            .renderingMode(.template)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 11, height: 11)
                             .foregroundStyle(.gray)
                 }
             }

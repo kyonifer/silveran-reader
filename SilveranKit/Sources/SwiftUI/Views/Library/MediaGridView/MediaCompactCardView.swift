@@ -116,6 +116,15 @@ struct MediaCompactCardView: View {
                     CircularProgressBadge(progress: progress)
                         .padding(.trailing, 3)
                         .padding(.bottom, 3)
+                } else if progressStyle == .text && progress > 0 {
+                    Text("\(Int((progress * 100).rounded()))%")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                        .padding(.trailing, 3)
+                        .padding(.bottom, 3)
                 }
             }
             .overlay(alignment: .bottomLeading) {
@@ -146,9 +155,9 @@ struct MediaCompactCardView: View {
                 }
             }
             #if os(macOS)
-            .overlay(alignment: .top) {
+            .overlay {
                 if isHovered {
-                    topTabBar
+                    playOverlay
                 }
             }
             #endif
@@ -287,128 +296,96 @@ struct MediaCompactCardView: View {
             }
         }
 
-        var iconName: String {
-            switch self {
-                case .ebook: return "book.fill"
-                case .audio: return "headphones"
-                case .synced: return "text.bubble"
+    }
+
+    private enum ButtonSize {
+        case large, medium, small
+        var frame: CGFloat { switch self { case .large: 44; case .medium: 37; case .small: 30 } }
+        var icon: CGFloat { switch self { case .large: 26; case .medium: 22; case .small: 18 } }
+        var playIcon: CGFloat { switch self { case .large: 36; case .medium: 28; case .small: 24 } }
+    }
+
+    private var orderedDownloadedTabs: [TabCategory] {
+        [.ebook, .synced, .audio].filter {
+            mediaViewModel.isCategoryDownloaded($0.localCategory, for: item)
+        }
+    }
+
+    private func buttonSize(for tab: TabCategory, in tabs: [TabCategory]) -> ButtonSize {
+        let hasSynced = tabs.contains(.synced)
+        switch tabs.count {
+            case 1: return .large
+            case 2: return hasSynced ? (tab == .synced ? .large : .small) : .medium
+            default: return tab == .synced ? .large : .small
+        }
+    }
+
+    private var playOverlay: some View {
+        let downloadedTabs = orderedDownloadedTabs
+        return Group {
+            if !downloadedTabs.isEmpty {
+                let hasSynced = downloadedTabs.contains(.synced)
+                let slots: [TabCategory] = hasSynced ? [.ebook, .synced, .audio] : downloadedTabs
+                HStack(spacing: 8) {
+                    ForEach(slots, id: \.self) { tab in
+                        let isPresent = downloadedTabs.contains(tab)
+                        let size = buttonSize(for: tab, in: downloadedTabs)
+                        if isPresent {
+                            tabButton(for: tab, size: size)
+                        } else {
+                            Color.clear
+                                .frame(width: size.frame, height: size.frame)
+                        }
+                    }
+                }
             }
-        }
-    }
-
-    private var topTabBar: some View {
-        HStack(spacing: 0) {
-            ForEach(TabCategory.allCases, id: \.self) { tab in
-                tabButton(for: tab)
-            }
-        }
-        .frame(width: tileSize, height: 40)
-        .background(Color.black.opacity(0.7))
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-    }
-
-    private enum TabStatus: Equatable {
-        case unavailable
-        case availableNotDownloaded
-        case downloaded
-        case downloading(progress: Double?)
-        case failed
-    }
-
-    private func tabStatus(for tab: TabCategory) -> TabStatus {
-        let category = tab.localCategory
-        let downloading = mediaViewModel.isCategoryDownloadInProgress(
-            for: item,
-            category: category,
-        )
-        if downloading {
-            let progress = mediaViewModel.downloadProgressFraction(for: item, category: category)
-            return .downloading(progress: progress)
-        }
-
-        let downloaded = mediaViewModel.isCategoryDownloaded(category, for: item)
-        if downloaded { return .downloaded }
-
-        if mediaViewModel.isCategoryDownloadFailed(for: item, category: category) {
-            return .failed
-        }
-
-        let available: Bool
-        switch tab {
-            case .ebook: available = item.hasAvailableEbook
-            case .audio: available = item.hasAvailableAudiobook
-            case .synced: available = item.hasAvailableReadaloud
-        }
-
-        return available ? .availableNotDownloaded : .unavailable
-    }
-
-    private func statusColor(for status: TabStatus) -> Color {
-        switch status {
-            case .unavailable: return .gray.opacity(0.4)
-            case .availableNotDownloaded: return .blue
-            case .downloaded: return .green
-            case .downloading: return .blue
-            case .failed: return .red
         }
     }
 
     @ViewBuilder
-    private func tabButton(for tab: TabCategory) -> some View {
-        let status = tabStatus(for: tab)
-        let color = statusColor(for: status)
+    private func tabButton(for tab: TabCategory, size: ButtonSize) -> some View {
         let isTabHovered = hoveredTab == tab
 
         Button {
-            handleTabTap(for: tab)
+            openMedia(for: tab.localCategory)
         } label: {
             ZStack {
-                if case .downloading(let progress) = status {
-                    DownloadCancelProgressIcon(
-                        progress: progress,
-                        color: color,
-                        size: 24,
-                        lineWidth: 2.5,
-                        showsCancel: isTabHovered,
-                    )
-                } else if status == .failed {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 18))
-                        .foregroundStyle(.red)
-                } else if isTabHovered && status == .availableNotDownloaded {
-                    Image(systemName: "arrow.down.circle.fill")
-                        .font(.system(size: 24))
-                } else if isTabHovered && status == .downloaded {
+                Circle()
+                    .fill(Color.black.opacity(0.7))
+                    .frame(width: size.frame, height: size.frame)
+                if isTabHovered {
                     Image(systemName: "play.circle.fill")
-                        .font(.system(size: 24))
-                } else if tab == .synced {
-                    ReadaloudIcon(size: 26)
+                        .font(.system(size: size.playIcon))
+                        .foregroundStyle(.white)
                 } else {
-                    Image(systemName: tab.iconName)
-                        .font(.system(size: 20))
+                    Group {
+                        switch tab {
+                            case .synced:
+                                ReadaloudIcon(size: size.icon)
+                            case .ebook:
+                                Image("ebookIcon")
+                                    .renderingMode(.template)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: size.icon, height: size.icon)
+                            case .audio:
+                                Image("audioIcon")
+                                    .renderingMode(.template)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: size.icon, height: size.icon)
+                        }
+                    }
+                    .foregroundStyle(.white.opacity(0.85))
                 }
             }
-            .foregroundStyle(color)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .contentShape(Rectangle())
+            .frame(width: size.frame, height: size.frame)
+            .contentShape(Circle())
         }
         .buttonStyle(.plain)
-        .disabled(status == .unavailable)
+        .accessibilityLabel("Play \(tab.localCategory == .ebook ? "Ebook" : tab.localCategory == .audio ? "Audiobook" : "Readaloud")")
         .onHover { hovering in
             hoveredTab = hovering ? tab : nil
-        }
-    }
-
-    private func handleTabTap(for tab: TabCategory) {
-        let category = tab.localCategory
-        let status = tabStatus(for: tab)
-
-        if case .downloading = status {
-            mediaViewModel.cancelDownload(for: item, category: category)
-        } else if status == .downloaded {
-            openMedia(for: category)
-        } else if status == .failed || status == .availableNotDownloaded {
-            mediaViewModel.startDownload(for: item, category: category)
         }
     }
 

@@ -54,14 +54,6 @@ struct MediaItemCardTopTabs: View {
             }
         }
 
-        var iconName: String {
-            switch self {
-                case .ebook: return "book.fill"
-                case .audio: return "headphones"
-                case .synced: return "text.bubble"
-            }
-        }
-
         var title: String {
             switch self {
                 case .ebook: return "Ebook"
@@ -71,14 +63,22 @@ struct MediaItemCardTopTabs: View {
         }
 
         @ViewBuilder
-        var icon: some View {
+        func iconView(size: CGFloat) -> some View {
             switch self {
                 case .ebook:
-                    Image(systemName: "book.fill")
+                    Image("ebookIcon")
+                        .renderingMode(.template)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: size, height: size)
                 case .audio:
-                    Image(systemName: "headphones")
+                    Image("audioIcon")
+                        .renderingMode(.template)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: size, height: size)
                 case .synced:
-                    ReadaloudIcon(size: 26)
+                    ReadaloudIcon(size: size)
             }
         }
     }
@@ -159,161 +159,89 @@ struct MediaItemCardTopTabsButtonOverlay: View {
     #endif
 
     @State private var hoveredTab: MediaItemCardTopTabs.TabCategory?
-    @State private var showConnectionAlert = false
-
-    private let buttonHeight: CGFloat = 40
-
-    private var hasConnectionError: Bool {
-        if mediaViewModel.lastNetworkOpSucceeded == false { return true }
-        if case .error = mediaViewModel.connectionStatus { return true }
-        return false
-    }
-
-    private var connectionAlertTitle: String {
-        if case .error = mediaViewModel.connectionStatus {
-            return "Connection Error"
-        }
-        return "Server Not Connected"
-    }
-
-    private var connectionAlertMessage: String {
-        if case .error(let message) = mediaViewModel.connectionStatus {
-            return
-                "Unable to download: \(message). Please check your server credentials in Settings."
-        }
-        return
-            "Cannot download media while disconnected from the server. Please check your connection and try again."
-    }
 
     var body: some View {
-        Group {
-            if isHoveringCard {
-                HStack(spacing: 0) {
-                    ForEach(MediaItemCardTopTabs.TabCategory.allCases, id: \.self) { tab in
-                        tabButton(for: tab)
+        if isHoveringCard {
+            let downloadedTabs = orderedDownloadedTabs
+            if !downloadedTabs.isEmpty {
+                let hasSynced = downloadedTabs.contains(.synced)
+                let slots: [MediaItemCardTopTabs.TabCategory] = hasSynced
+                    ? [.ebook, .synced, .audio]
+                    : downloadedTabs
+                HStack(spacing: 8) {
+                    ForEach(slots, id: \.self) { tab in
+                        let isPresent = downloadedTabs.contains(tab)
+                        let size = buttonSize(for: tab, in: downloadedTabs)
+                        if isPresent {
+                            tabButton(for: tab, size: size)
+                        } else {
+                            Color.clear
+                                .frame(width: size.frame, height: size.frame)
+                        }
                     }
                 }
-                .frame(width: coverWidth, height: buttonHeight)
-                .background(Color.black.opacity(0.7))
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
         }
-        .alert(connectionAlertTitle, isPresented: $showConnectionAlert) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(connectionAlertMessage)
+    }
+
+    private enum ButtonSize {
+        case large, medium, small
+        var frame: CGFloat { switch self { case .large: 44; case .medium: 37; case .small: 30 } }
+        var icon: CGFloat { switch self { case .large: 26; case .medium: 22; case .small: 18 } }
+        var playIcon: CGFloat { switch self { case .large: 36; case .medium: 28; case .small: 24 } }
+    }
+
+    private var orderedDownloadedTabs: [MediaItemCardTopTabs.TabCategory] {
+        [.ebook, .synced, .audio].filter {
+            mediaViewModel.isCategoryDownloaded($0.localMediaCategory, for: item)
+        }
+    }
+
+    private func buttonSize(
+        for tab: MediaItemCardTopTabs.TabCategory,
+        in tabs: [MediaItemCardTopTabs.TabCategory]
+    ) -> ButtonSize {
+        let hasSynced = tabs.contains(.synced)
+        switch tabs.count {
+            case 1: return .large
+            case 2: return hasSynced ? (tab == .synced ? .large : .small) : .medium
+            default: return tab == .synced ? .large : .small
         }
     }
 
     @ViewBuilder
-    private func tabButton(for tab: MediaItemCardTopTabs.TabCategory) -> some View {
-        let status = tabStatus(for: tab)
-        let isHovered = hoveredTab == tab
-        let statusColor = status.color
+    private func tabButton(
+        for tab: MediaItemCardTopTabs.TabCategory,
+        size: ButtonSize
+    ) -> some View {
+        let isTabHovered = hoveredTab == tab
 
         Button {
-            handleTabTap(for: tab)
+            openMedia(for: tab.localMediaCategory)
         } label: {
             ZStack {
-                Group {
-                    if case .downloading(let progress) = status {
-                        DownloadCancelProgressIcon(
-                            progress: progress,
-                            color: statusColor,
-                            size: 24,
-                            lineWidth: 2.5,
-                            showsCancel: isHovered,
-                        )
-                    } else if isHovered && status == .availableNotDownloaded {
-                        if hasConnectionError {
-                            ZStack {
-                                Circle()
-                                    .fill(.red)
-                                    .frame(width: 24, height: 24)
-                                Image(systemName: "exclamationmark")
-                                    .font(.system(size: 14, weight: .bold))
-                                    .foregroundStyle(.white)
-                            }
-                        } else {
-                            Image(systemName: "arrow.down.circle.fill")
-                                .font(.system(size: 24))
-                        }
-                    } else if isHovered && status == .downloaded {
-                        Image(systemName: "play.circle.fill")
-                            .font(.system(size: 24))
-                    } else {
-                        tab.icon
-                            .font(.system(size: 20))
-                    }
+                Circle()
+                    .fill(Color.black.opacity(0.7))
+                    .frame(width: size.frame, height: size.frame)
+                if isTabHovered {
+                    Image(systemName: "play.circle.fill")
+                        .font(.system(size: size.playIcon))
+                        .foregroundStyle(.white)
+                } else {
+                    tab.iconView(size: size.icon)
+                        .foregroundStyle(.white.opacity(0.85))
                 }
-                .foregroundStyle(statusColor)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .contentShape(Rectangle())
+            .frame(width: size.frame, height: size.frame)
+            .contentShape(Circle())
         }
         .buttonStyle(.plain)
-        .disabled(status.isUnavailable)
-        .accessibilityLabel("\(tab.title): \(accessibilityLabel(for: status))")
+        .accessibilityLabel("Play \(tab.title)")
         #if os(macOS)
         .onHover { hovering in
             hoveredTab = hovering ? tab : nil
         }
-        .contextMenu {
-            if status == .downloaded
-                && mediaViewModel.hasCachedMedia(tab.localMediaCategory, for: item)
-            {
-                Button(role: .destructive) {
-                    deleteMedia(for: tab)
-                } label: {
-                    Label("Delete Local \(tab.title)", systemImage: "trash")
-                }
-            }
-        }
         #endif
-    }
-
-    private func tabStatus(
-        for tab: MediaItemCardTopTabs.TabCategory
-    ) -> MediaItemCardTopTabs.TabStatus {
-        let category = tab.localMediaCategory
-
-        if mediaViewModel.isCategoryDownloadInProgress(for: item, category: category) {
-            let progress = mediaViewModel.downloadProgressFraction(for: item, category: category)
-            return .downloading(progress: progress)
-        }
-
-        if mediaViewModel.isCategoryDownloaded(category, for: item) {
-            return .downloaded
-        }
-
-        switch category {
-            case .ebook:
-                return item.hasAvailableEbook ? .availableNotDownloaded : .unavailable
-            case .audio:
-                return item.hasAvailableAudiobook ? .availableNotDownloaded : .unavailable
-            case .synced:
-                return item.hasAvailableReadaloud ? .availableNotDownloaded : .unavailable
-        }
-    }
-
-    private func handleTabTap(for tab: MediaItemCardTopTabs.TabCategory) {
-        let category = tab.localMediaCategory
-        let status = tabStatus(for: tab)
-
-        switch status {
-            case .availableNotDownloaded:
-                if hasConnectionError {
-                    showConnectionAlert = true
-                } else {
-                    mediaViewModel.startDownload(for: item, category: category)
-                }
-            case .downloaded:
-                openMedia(for: category)
-            case .downloading:
-                mediaViewModel.cancelDownload(for: item, category: category)
-            case .unavailable:
-                break
-        }
     }
 
     private func openMedia(for category: LocalMediaCategory) {
@@ -343,25 +271,5 @@ struct MediaItemCardTopTabsButtonOverlay: View {
         )
         openWindow(id: windowID, value: bookData)
         #endif
-    }
-
-    private func deleteMedia(for tab: MediaItemCardTopTabs.TabCategory) {
-        let category = tab.localMediaCategory
-        mediaViewModel.deleteDownload(for: item, category: category)
-    }
-
-    private func accessibilityLabel(
-        for status: MediaItemCardTopTabs.TabStatus
-    ) -> String {
-        switch status {
-            case .unavailable:
-                return "Not available"
-            case .availableNotDownloaded:
-                return "Available for download"
-            case .downloaded:
-                return "Downloaded"
-            case .downloading:
-                return "Downloading"
-        }
     }
 }
