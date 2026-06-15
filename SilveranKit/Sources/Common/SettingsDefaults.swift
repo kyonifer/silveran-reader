@@ -20,19 +20,32 @@ public let kDefaultScrollingMode = false
 
 // MARK: - Highlight Colors
 
-public let kDefaultUserHighlightColor1 = "#B5B83E"
-public let kDefaultUserHighlightColor2 = "#4E90C7"
-public let kDefaultUserHighlightColor3 = "#198744"
-public let kDefaultUserHighlightColor4 = "#E25EA3"
-public let kDefaultUserHighlightColor5 = "#CE8C4A"
-public let kDefaultUserHighlightColor6 = "#B366FF"
-public let kDefaultUserHighlightLabel1 = "Yellow"
-public let kDefaultUserHighlightLabel2 = "Blue"
-public let kDefaultUserHighlightLabel3 = "Green"
-public let kDefaultUserHighlightLabel4 = "Pink"
-public let kDefaultUserHighlightLabel5 = "Orange"
-public let kDefaultUserHighlightLabel6 = "Purple"
-public let kDefaultUserHighlightMode = "background"
+// Slot order is defined by HighlightColor's case order: Pink, Orange, Yellow,
+// Green, Blue, Purple. These palettes are indexed by that position and must
+// stay aligned with it.
+public let kDefaultUserHighlightColorsLight = [
+    "#B849B8", "#E67400", "#FFB600", "#00915A", "#005493", "#6C3CC1",
+]
+public let kDefaultUserHighlightColorsDark = [
+    "#C4527A", "#C47A3A", "#B8A030", "#3A9E7E", "#4A7ACC", "#8A52CC",
+]
+public let kDefaultUserHighlightLabels = [
+    "Pink", "Orange", "Yellow", "Green", "Blue", "Purple",
+]
+
+public let kDefaultUserHighlightColor1 = kDefaultUserHighlightColorsLight[0]
+public let kDefaultUserHighlightColor2 = kDefaultUserHighlightColorsLight[1]
+public let kDefaultUserHighlightColor3 = kDefaultUserHighlightColorsLight[2]
+public let kDefaultUserHighlightColor4 = kDefaultUserHighlightColorsLight[3]
+public let kDefaultUserHighlightColor5 = kDefaultUserHighlightColorsLight[4]
+public let kDefaultUserHighlightColor6 = kDefaultUserHighlightColorsLight[5]
+public let kDefaultUserHighlightLabel1 = kDefaultUserHighlightLabels[0]
+public let kDefaultUserHighlightLabel2 = kDefaultUserHighlightLabels[1]
+public let kDefaultUserHighlightLabel3 = kDefaultUserHighlightLabels[2]
+public let kDefaultUserHighlightLabel4 = kDefaultUserHighlightLabels[3]
+public let kDefaultUserHighlightLabel5 = kDefaultUserHighlightLabels[4]
+public let kDefaultUserHighlightLabel6 = kDefaultUserHighlightLabels[5]
+public let kDefaultUserHighlightMode = "underline"
 public let kDefaultReadaloudHighlightMode = "background"
 
 // MARK: - Playback Settings

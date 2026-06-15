@@ -150,6 +150,12 @@ extension ReaderTheme {
         foregroundColor: kDefaultForegroundColorDark,
         highlightColor: "#65A8EE",
         readaloudHighlightMode: "text",
+        userHighlightColor1: kDefaultUserHighlightColorsDark[0],
+        userHighlightColor2: kDefaultUserHighlightColorsDark[1],
+        userHighlightColor3: kDefaultUserHighlightColorsDark[2],
+        userHighlightColor4: kDefaultUserHighlightColorsDark[3],
+        userHighlightColor5: kDefaultUserHighlightColorsDark[4],
+        userHighlightColor6: kDefaultUserHighlightColorsDark[5],
     )
 
     public static let allBuiltIn: [ReaderTheme] = [

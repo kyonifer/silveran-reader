@@ -98,13 +98,9 @@ struct HighlightCreationSheet: View {
                 .lineLimit(4)
                 .padding(12)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(
+                .overlay(
                     RoundedRectangle(cornerRadius: 8)
-                        .fill(
-                            isBookmarkOnly
-                                ? Color.secondary.opacity(0.1)
-                                : colorForHighlight(selectedColor)
-                        )
+                        .strokeBorder(Color.secondary.opacity(0.3), lineWidth: 1)
                 )
         }
         .frame(maxWidth: .infinity, alignment: .leading)

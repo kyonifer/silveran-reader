@@ -101,26 +101,22 @@ public final class SettingsViewModel {
         )
     }
 
+    private var userHighlightColors: [String] {
+        [userHighlightColor1, userHighlightColor2, userHighlightColor3,
+         userHighlightColor4, userHighlightColor5, userHighlightColor6]
+    }
+
+    private var userHighlightLabels: [String] {
+        [userHighlightLabel1, userHighlightLabel2, userHighlightLabel3,
+         userHighlightLabel4, userHighlightLabel5, userHighlightLabel6]
+    }
+
     public func hexColor(for color: HighlightColor) -> String {
-        switch color {
-            case .yellow: return userHighlightColor1
-            case .blue: return userHighlightColor2
-            case .green: return userHighlightColor3
-            case .pink: return userHighlightColor4
-            case .orange: return userHighlightColor5
-            case .purple: return userHighlightColor6
-        }
+        userHighlightColors[color.slotIndex]
     }
 
     public func label(for color: HighlightColor) -> String {
-        switch color {
-            case .yellow: return userHighlightLabel1
-            case .blue: return userHighlightLabel2
-            case .green: return userHighlightLabel3
-            case .pink: return userHighlightLabel4
-            case .orange: return userHighlightLabel5
-            case .purple: return userHighlightLabel6
-        }
+        userHighlightLabels[color.slotIndex]
     }
 
     public var highlightColorsHash: String {
