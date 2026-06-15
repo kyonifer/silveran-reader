@@ -257,30 +257,104 @@ struct BookContextMenuContent: View {
                 Label("Delete from Folder", systemImage: "trash")
             }
             .tint(.red)
-        } else if ebookCached || audioCached || syncedCached {
+        } else {
+            assetDownloadSection(
+                ebookCached: ebookCached,
+                audioCached: audioCached,
+                syncedCached: syncedCached
+            )
+        }
+    }
+
+    @ViewBuilder
+    private func assetDownloadSection(
+        ebookCached: Bool,
+        audioCached: Bool,
+        syncedCached: Bool
+    ) -> some View {
+        let ebookAvailable = item.hasAvailableEbook
+        let audioAvailable = item.hasAvailableAudiobook
+        let syncedAvailable = item.hasAvailableReadaloud
+        let ebookInProgress = ebookAvailable && mediaViewModel.isCategoryDownloadInProgress(for: item, category: .ebook)
+        let audioInProgress = audioAvailable && mediaViewModel.isCategoryDownloadInProgress(for: item, category: .audio)
+        let syncedInProgress = syncedAvailable && mediaViewModel.isCategoryDownloadInProgress(for: item, category: .synced)
+
+        let hasAnyAction =
+            (ebookAvailable && !ebookCached) || (audioAvailable && !audioCached)
+            || (syncedAvailable && !syncedCached) || ebookCached || audioCached || syncedCached
+
+        if hasAnyAction {
             Divider()
 
-            if ebookCached {
-                Button(role: .destructive) {
-                    confirmDeleteLocalDownload(.ebook)
-                } label: {
-                    Label("Delete Local Ebook", systemImage: "trash")
+            if ebookAvailable {
+                if ebookInProgress {
+                    Button {
+                        mediaViewModel.cancelDownload(for: item, category: .ebook)
+                    } label: {
+                        Label("Cancel Ebook Download", systemImage: "xmark.circle")
+                    }
+                } else if ebookCached {
+                    Button(role: .destructive) {
+                        confirmDeleteLocalDownload(.ebook)
+                    } label: {
+                        Label("Remove Ebook", systemImage: "trash")
+                    }
+                    .tint(.red)
+                } else {
+                    Button {
+                        mediaViewModel.startDownload(for: item, category: .ebook)
+                    } label: {
+                        Label("Download Ebook", systemImage: "arrow.down.circle")
+                    }
+                    .tint(.blue)
                 }
             }
 
-            if audioCached {
-                Button(role: .destructive) {
-                    confirmDeleteLocalDownload(.audio)
-                } label: {
-                    Label("Delete Local Audiobook", systemImage: "trash")
+            if audioAvailable {
+                if audioInProgress {
+                    Button {
+                        mediaViewModel.cancelDownload(for: item, category: .audio)
+                    } label: {
+                        Label("Cancel Audiobook Download", systemImage: "xmark.circle")
+                    }
+                } else if audioCached {
+                    Button(role: .destructive) {
+                        confirmDeleteLocalDownload(.audio)
+                    } label: {
+                        Label("Remove Audiobook", systemImage: "trash")
+                    }
+                    .tint(.red)
+                } else {
+                    Button {
+                        mediaViewModel.startDownload(for: item, category: .audio)
+                    } label: {
+                        Label("Download Audiobook", systemImage: "arrow.down.circle")
+                    }
+                    .tint(.blue)
                 }
             }
 
-            if syncedCached {
-                Button(role: .destructive) {
-                    confirmDeleteLocalDownload(.synced)
-                } label: {
-                    Label("Delete Local Readaloud", systemImage: "trash")
+            if syncedAvailable {
+                if syncedInProgress {
+                    Button {
+                        mediaViewModel.cancelDownload(for: item, category: .synced)
+                    } label: {
+                        Label("Cancel Readaloud Download", systemImage: "xmark.circle")
+                    }
+                } else if syncedCached {
+                    Button(role: .destructive) {
+                        confirmDeleteLocalDownload(.synced)
+                    } label: {
+                        Label("Remove Readaloud", systemImage: "trash")
+                    }
+                    .tint(.red)
+                } else {
+                    Button {
+                        mediaViewModel.startDownload(for: item, category: .synced)
+                    } label: {
+                        Label("Download Readaloud", systemImage: "arrow.down.circle")
+                    }
+                    .tint(.blue)
                 }
             }
         }
