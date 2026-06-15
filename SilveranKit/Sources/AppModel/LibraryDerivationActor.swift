@@ -90,6 +90,8 @@ public enum MediaGridSortOption: String, CaseIterable, Identifiable, Sendable {
     case recentlyRead
     case recentlyAdded
     case seriesPosition
+    case publicationDateNewestFirst
+    case publicationDateOldestFirst
 
     public var id: String { rawValue }
 
@@ -104,6 +106,7 @@ public enum MediaGridSortOption: String, CaseIterable, Identifiable, Sendable {
             case .recentlyRead: "Recently Read"
             case .recentlyAdded: "Recently Added"
             case .seriesPosition: "Series Position"
+            case .publicationDateNewestFirst, .publicationDateOldestFirst: "Publication Date"
         }
     }
 
@@ -117,14 +120,18 @@ public enum MediaGridSortOption: String, CaseIterable, Identifiable, Sendable {
             case .recentlyRead: return .recentlyRead
             case .recentlyAdded: return .recentlyAdded
             case .seriesPosition: return .seriesPosition
+            case .publicationDateNewestFirst, .publicationDateOldestFirst: return .publicationDate
         }
     }
 
     public var isAscending: Bool {
         switch self {
             case .titleAZ, .authorAZ, .progressLowToHigh, .seriesPosition: return true
-            case .titleZA, .authorZA, .progressHighToLow, .recentlyRead, .recentlyAdded:
+            case .titleZA, .authorZA, .progressHighToLow, .recentlyRead, .recentlyAdded,
+                 .publicationDateNewestFirst:
                 return false
+            case .publicationDateOldestFirst:
+                return true
         }
     }
 
@@ -137,11 +144,13 @@ public enum MediaGridSortOption: String, CaseIterable, Identifiable, Sendable {
             case .progressHighToLow: return .progressLowToHigh
             case .progressLowToHigh: return .progressHighToLow
             case .recentlyRead, .recentlyAdded, .seriesPosition: return self
+            case .publicationDateNewestFirst: return .publicationDateOldestFirst
+            case .publicationDateOldestFirst: return .publicationDateNewestFirst
         }
     }
 
     public static var menuFields: [SortField] {
-        [.title, .author, .progress, .recentlyRead, .recentlyAdded, .seriesPosition]
+        [.title, .author, .publicationDate, .seriesPosition, .recentlyAdded, .recentlyRead, .progress]
     }
 
     public static func defaultOption(for field: SortField) -> MediaGridSortOption {
@@ -152,27 +161,30 @@ public enum MediaGridSortOption: String, CaseIterable, Identifiable, Sendable {
             case .recentlyRead: return .recentlyRead
             case .recentlyAdded: return .recentlyAdded
             case .seriesPosition: return .seriesPosition
+            case .publicationDate: return .publicationDateNewestFirst
         }
     }
 
     public enum SortField: String, CaseIterable, Sendable {
-        case title, author, progress, recentlyRead, recentlyAdded, seriesPosition
+        case title, author, progress, recentlyRead, recentlyAdded, seriesPosition, publicationDate
 
         public var label: String {
             switch self {
                 case .title: return "Title"
                 case .author: return "Author"
                 case .progress: return "Progress"
-                case .recentlyRead: return "Recently Read"
-                case .recentlyAdded: return "Recently Added"
-                case .seriesPosition: return "Series Position"
+                case .recentlyRead: return "Date Read"
+                case .recentlyAdded: return "Date Added"
+                case .seriesPosition: return "Series"
+                case .publicationDate: return "Pub Date"
             }
         }
 
         public var isToggleable: Bool {
             switch self {
-                case .title, .author, .progress: return true
+                case .title, .author, .progress, .publicationDate: return true
                 case .recentlyRead, .recentlyAdded, .seriesPosition: return false
+
             }
         }
     }
@@ -194,15 +206,13 @@ public enum MediaGridSortOption: String, CaseIterable, Identifiable, Sendable {
                 let result = rhsAuthor.localizedCaseInsensitiveCompare(lhsAuthor)
                 return result == .orderedSame ? lhs.title.articleStrippedCompare(rhs.title) : result
             case .progressHighToLow:
-                if lhs.progress == rhs.progress {
-                    return lhs.title.articleStrippedCompare(rhs.title)
-                }
-                return lhs.progress > rhs.progress ? .orderedAscending : .orderedDescending
+                let lhsP = effectiveProgress(lhs), rhsP = effectiveProgress(rhs)
+                if lhsP == rhsP { return lhs.title.articleStrippedCompare(rhs.title) }
+                return lhsP > rhsP ? .orderedAscending : .orderedDescending
             case .progressLowToHigh:
-                if lhs.progress == rhs.progress {
-                    return lhs.title.articleStrippedCompare(rhs.title)
-                }
-                return lhs.progress < rhs.progress ? .orderedAscending : .orderedDescending
+                let lhsP = effectiveProgress(lhs), rhsP = effectiveProgress(rhs)
+                if lhsP == rhsP { return lhs.title.articleStrippedCompare(rhs.title) }
+                return lhsP < rhsP ? .orderedAscending : .orderedDescending
             case .recentlyRead:
                 let lhsDate = lhs.position?.updatedAt ?? ""
                 let rhsDate = rhs.position?.updatedAt ?? ""
@@ -213,6 +223,20 @@ public enum MediaGridSortOption: String, CaseIterable, Identifiable, Sendable {
                 let rhsDate = rhs.createdAt ?? ""
                 if lhsDate == rhsDate { return lhs.title.articleStrippedCompare(rhs.title) }
                 return lhsDate > rhsDate ? .orderedAscending : .orderedDescending
+            case .publicationDateNewestFirst:
+                let lhsPub = lhs.publicationDate ?? ""
+                let rhsPub = rhs.publicationDate ?? ""
+                if lhsPub == rhsPub { return lhs.title.articleStrippedCompare(rhs.title) }
+                if lhsPub.isEmpty { return .orderedDescending }
+                if rhsPub.isEmpty { return .orderedAscending }
+                return lhsPub > rhsPub ? .orderedAscending : .orderedDescending
+            case .publicationDateOldestFirst:
+                let lhsPub = lhs.publicationDate ?? ""
+                let rhsPub = rhs.publicationDate ?? ""
+                if lhsPub == rhsPub { return lhs.title.articleStrippedCompare(rhs.title) }
+                if lhsPub.isEmpty { return .orderedDescending }
+                if rhsPub.isEmpty { return .orderedAscending }
+                return lhsPub < rhsPub ? .orderedAscending : .orderedDescending
             case .seriesPosition:
                 let lhsSeriesName = lhs.series?.first?.name ?? ""
                 let rhsSeriesName = rhs.series?.first?.name ?? ""
@@ -229,6 +253,11 @@ public enum MediaGridSortOption: String, CaseIterable, Identifiable, Sendable {
                 return lhsPosition < rhsPosition ? .orderedAscending : .orderedDescending
         }
     }
+}
+
+private func effectiveProgress(_ book: BookMetadata) -> Double {
+    if book.status?.name.lowercased() == "read" { return 1.0 }
+    return book.progress
 }
 
 public enum MediaGridFormatFilterOption: String, CaseIterable, Identifiable, Sendable {

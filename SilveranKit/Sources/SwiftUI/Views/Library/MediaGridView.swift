@@ -224,6 +224,16 @@ struct MediaGridView: View {
                     KeyPathComparator(\BookMetadata.sortableSeries, order: .forward),
                     \BookMetadata.sortableSeries,
                 )
+            case .publicationDateNewestFirst:
+                return (
+                    KeyPathComparator(\BookMetadata.sortablePublicationYear, order: .reverse),
+                    \BookMetadata.sortablePublicationYear,
+                )
+            case .publicationDateOldestFirst:
+                return (
+                    KeyPathComparator(\BookMetadata.sortablePublicationYear, order: .forward),
+                    \BookMetadata.sortablePublicationYear,
+                )
         }
     }
     #endif
@@ -1356,6 +1366,7 @@ struct MediaGridView: View {
             seriesPositionBadge: seriesPositionBadge,
             coverPreference: coverPreference,
             progressStyle: progressStyle,
+            sortOption: selectedSortOption,
             onSelect: { selected in
                 selectItem(selected)
             },
@@ -1375,6 +1386,7 @@ struct MediaGridView: View {
             seriesPositionBadge: seriesPositionBadge,
             coverPreference: coverPreference,
             progressStyle: progressStyle,
+            sortOption: selectedSortOption,
             onSelect: { selected in
                 selectItem(selected)
             },

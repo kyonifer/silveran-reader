@@ -69,6 +69,7 @@ public enum CoverPreference: String, CaseIterable, Identifiable, Sendable {
 public enum ProgressIndicatorStyle: String, CaseIterable, Identifiable, Sendable {
     case line
     case circle
+    case text
     case none
 
     public var id: String { rawValue }
@@ -77,6 +78,7 @@ public enum ProgressIndicatorStyle: String, CaseIterable, Identifiable, Sendable
         switch self {
             case .line: "Line"
             case .circle: "Circle"
+            case .text: "Text"
             case .none: "None"
         }
     }
@@ -85,6 +87,7 @@ public enum ProgressIndicatorStyle: String, CaseIterable, Identifiable, Sendable
         switch self {
             case .line: "minus"
             case .circle: "circle.dotted"
+            case .text: "percent"
             case .none: "eye.slash"
         }
     }

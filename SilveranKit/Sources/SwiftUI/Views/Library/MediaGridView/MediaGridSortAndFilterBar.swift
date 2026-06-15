@@ -99,34 +99,36 @@ struct MediaGridSortAndFilterBar: View {
 
     @ViewBuilder
     private var sortMenu: some View {
-        Menu {
-            ForEach(MediaGridView.SortOption.menuFields, id: \.self) { field in
-                Button {
-                    handleSortFieldTap(field)
-                } label: {
-                    sortMenuRow(for: field)
+        HStack(spacing: 4) {
+            Menu {
+                ForEach(MediaGridView.SortOption.menuFields, id: \.self) { field in
+                    Button {
+                        selectedSortOption = MediaGridView.SortOption.defaultOption(for: field)
+                    } label: {
+                        sortMenuRow(for: field)
+                    }
                 }
+            } label: {
+                #if os(iOS)
+                Label("Sort", systemImage: "arrow.up.arrow.down")
+                #else
+                Text("Sort: \(selectedSortOption.sortField.label)")
+                #endif
             }
-        } label: {
-            #if os(iOS)
-            Label("Sort", systemImage: "arrow.up.arrow.down")
-            #else
-            Label(
-                "Sort: \(selectedSortOption.sortField.label)",
-                systemImage: selectedSortOption.isAscending ? "arrow.up" : "arrow.down",
-            )
+            #if os(macOS)
+            .menuStyle(.borderlessButton)
             #endif
-        }
-        #if os(macOS)
-        .menuStyle(.borderlessButton)
-        #endif
-    }
 
-    private func handleSortFieldTap(_ field: MediaGridView.SortOption.SortField) {
-        if selectedSortOption.sortField == field && field.isToggleable {
-            selectedSortOption = selectedSortOption.toggled
-        } else {
-            selectedSortOption = MediaGridView.SortOption.defaultOption(for: field)
+            if selectedSortOption.sortField.isToggleable {
+                Button {
+                    selectedSortOption = selectedSortOption.toggled
+                } label: {
+                    Image(systemName: selectedSortOption.isAscending ? "arrow.up" : "arrow.down")
+                }
+                #if os(macOS)
+                .buttonStyle(.borderless)
+                #endif
+            }
         }
     }
 
@@ -137,7 +139,7 @@ struct MediaGridSortAndFilterBar: View {
             Text(field.label)
             Spacer()
             if isSelected && field.isToggleable {
-                Image(systemName: selectedSortOption.isAscending ? "arrow.up" : "arrow.down")
+                Image(systemName: !selectedSortOption.isAscending ? "arrow.up" : "arrow.down")
                     .imageScale(.small)
             } else if isSelected {
                 Image(systemName: "checkmark")
@@ -670,21 +672,26 @@ struct MediaGridSortAndFilterBar: View {
             Toggle("Source Badge", isOn: $showSourceBadge)
             Toggle("Series Position", isOn: $showSeriesPositionBadge)
 
-            Text("Progress")
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(.secondary)
-                .padding(.top, 4)
-            HStack(spacing: 8) {
-                ForEach(ProgressIndicatorStyle.allCases) { style in
-                    Button {
-                        progressStyle = style
-                    } label: {
-                        Image(systemName: style.iconName)
-                            .frame(width: 32, height: 28)
+            let showProgress = Binding<Bool>(
+                get: { progressStyle != .none },
+                set: { progressStyle = $0 ? .circle : .none }
+            )
+            Toggle("Progress Indicator", isOn: showProgress)
+
+            if progressStyle != .none {
+                HStack(spacing: 4) {
+                    ForEach(ProgressIndicatorStyle.allCases.filter { $0 != .none }) { style in
+                        Button {
+                            progressStyle = style
+                        } label: {
+                            Image(systemName: style.iconName)
+                                .frame(width: 24, height: 24)
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(progressStyle == style ? .accentColor : .secondary)
                     }
-                    .buttonStyle(.bordered)
-                    .tint(progressStyle == style ? .accentColor : .secondary)
                 }
+                .padding(.leading, 16)
             }
         }
     }
