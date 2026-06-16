@@ -314,85 +314,99 @@ struct MediaItemCardView: View {
             ZStack(alignment: .center) {
                 VStack(spacing: 0) {
                     Spacer(minLength: 0)
-                    if shouldRenderDoubleCover {
-                        DoubleCoverView(
-                            item: item,
-                            placeholderColor: placeholderColor,
-                            coverWidth: metrics.coverWidth,
-                            containerAspectRatio: containerAspectRatio,
-                            cornerRadius: metrics.coverCornerRadius,
-                            isSwapping: {
-                                #if os(macOS)
-                                return $doubleCoverSwapping
-                                #else
-                                return .constant(false)
-                                #endif
-                            }(),
-                            showReadaloudWedge: showAudioIndicator && item.hasAvailableReadaloud,
-                            isHoveringCard: {
-                                #if os(macOS)
-                                return isHovered
-                                #else
-                                return false
-                                #endif
-                            }(),
-                            debugContext: debugContext,
-                        )
-                        .frame(width: metrics.coverWidth)
-                        .aspectRatio(containerAspectRatio, contentMode: .fit)
-                    } else {
-                        MediaItemCoverImage(
-                            item: item,
-                            placeholderColor: placeholderColor,
-                            variant: coverVariant,
-                            cornerRadius: metrics.coverCornerRadius,
-                            debugContext: debugContext,
-                        )
-                        .frame(width: metrics.coverWidth)
-                        .aspectRatio(containerAspectRatio, contentMode: .fit)
-                    }
-                    Spacer(minLength: 0)
-                }
-                .overlay(alignment: .bottomLeading) {
-                    if let sourceLabel = sourceLabel {
-                        SourceBadge(label: sourceLabel)
-                            .padding(4)
-                    }
-                }
-                .overlay(alignment: .topTrailing) {
-                    if showAudioIndicator && !shouldRenderDoubleCover {
-                        AudioIndicatorBadge(item: item, coverVariant: coverVariant)
-                            .padding(.trailing, 4)
-                            .padding(.top, 4)
-                    }
-                }
-                .overlay(alignment: .bottomTrailing) {
-                    let progress = mediaViewModel.progress(for: item.id)
-                    if progress > 0 {
-                        if progressStyle == .circle {
-                            CircularProgressBadge(progress: progress)
-                                .padding(.trailing, 4)
-                                .padding(.bottom, 4)
-                        } else if progressStyle == .text {
-                            ProgressTextBadge(progress: progress)
-                                .padding(.trailing, 4)
-                                .padding(.bottom, 4)
+                    Group {
+                        if shouldRenderDoubleCover {
+                            DoubleCoverView(
+                                item: item,
+                                placeholderColor: placeholderColor,
+                                coverWidth: metrics.coverWidth,
+                                containerAspectRatio: containerAspectRatio,
+                                cornerRadius: metrics.coverCornerRadius,
+                                isSwapping: {
+                                    #if os(macOS)
+                                    return $doubleCoverSwapping
+                                    #else
+                                    return .constant(false)
+                                    #endif
+                                }(),
+                                showReadaloudWedge: showAudioIndicator && item.hasAvailableReadaloud,
+                                notchProgress: {
+                                    let p = mediaViewModel.progress(for: item.id)
+                                    return (progressStyle == .circle && p > 0) ? p : nil
+                                }(),
+                                isHoveringCard: {
+                                    #if os(macOS)
+                                    return isHovered
+                                    #else
+                                    return false
+                                    #endif
+                                }(),
+                                debugContext: debugContext,
+                            )
+                            .frame(width: metrics.coverWidth)
+                            .aspectRatio(containerAspectRatio, contentMode: .fit)
+                        } else {
+                            MediaItemCoverImage(
+                                item: item,
+                                placeholderColor: placeholderColor,
+                                variant: coverVariant,
+                                cornerRadius: metrics.coverCornerRadius,
+                                debugContext: debugContext,
+                            )
+                            .frame(width: metrics.coverWidth)
+                            .aspectRatio(coverVariant.displayAspectRatio, contentMode: .fit)
                         }
                     }
-                }
-                .overlay(alignment: .topLeading) {
-                    if let badge = seriesPositionBadge {
-                        Text(badge)
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 3)
-                            .background(
-                                .black.opacity(0.6),
-                                in: RoundedRectangle(cornerRadius: 6, style: .continuous),
-                            )
-                            .padding(4)
+                    // Badges attach to the cover (sized to the artwork), not the slot, so they
+                    // track the visible cover even when it is letterboxed in a taller slot.
+                    .overlay(alignment: .bottomLeading) {
+                        if let sourceLabel = sourceLabel {
+                            SourceBadge(label: sourceLabel)
+                                .padding(4)
+                        }
                     }
+                    .overlay(alignment: .topTrailing) {
+                        if showAudioIndicator && !shouldRenderDoubleCover {
+                            AudioIndicatorBadge(item: item, coverVariant: coverVariant)
+                                .padding(.trailing, 4)
+                                .padding(.top, 4)
+                        }
+                    }
+                    .overlay(alignment: .bottomTrailing) {
+                        let progress = mediaViewModel.progress(for: item.id)
+                        if progress > 0 {
+                            // Circle progress lives in the bottom notch for double covers; over a
+                            // single cover it gets a dark backing disc for contrast.
+                            if progressStyle == .circle && !shouldRenderDoubleCover {
+                                CircularProgressBadge(progress: progress, showsBackground: true)
+                                    .padding(.trailing, 4)
+                                    .padding(.bottom, 4)
+                            } else if progressStyle == .text {
+                                ProgressTextBadge(progress: progress)
+                                    .padding(.trailing, 4)
+                                    .padding(.bottom, 4)
+                            }
+                        }
+                    }
+                    .overlay(alignment: .topLeading) {
+                        if let badge = seriesPositionBadge {
+                            Text(badge)
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 3)
+                                .background(
+                                    .black.opacity(0.6),
+                                    in: RoundedRectangle(cornerRadius: 6, style: .continuous),
+                                )
+                                .padding(4)
+                        }
+                    }
+                    .overlay(
+                        RoundedRectangle(cornerRadius: metrics.coverCornerRadius, style: .continuous)
+                            .strokeBorder(isSelected ? Color.accentColor : Color.clear, lineWidth: 2)
+                    )
+                    Spacer(minLength: 0)
                 }
 
                 #if os(macOS)
@@ -406,10 +420,6 @@ struct MediaItemCardView: View {
                 #endif
             }
             .frame(height: metrics.coverContainerHeight - 7)
-            .overlay(
-                RoundedRectangle(cornerRadius: metrics.coverCornerRadius, style: .continuous)
-                    .strokeBorder(isSelected ? Color.accentColor : Color.clear, lineWidth: 2)
-            )
 
             if progressStyle == .line {
                 MediaProgressBar(progress: mediaViewModel.progress(for: item.id))
@@ -558,6 +568,7 @@ struct MediaItemCardView: View {
 
 struct CircularProgressBadge: View {
     let progress: Double
+    var showsBackground: Bool = false
 
     var body: some View {
         let clamped = min(max(progress, 0), 1)
@@ -570,6 +581,15 @@ struct CircularProgressBadge: View {
                 .rotationEffect(.degrees(-90))
         }
         .frame(width: 18, height: 18)
+        // Background sits behind without affecting the ring's layout, so the ring stays the
+        // same size whether or not the backing disc is shown.
+        .background {
+            if showsBackground {
+                Circle()
+                    .fill(Color.black.opacity(0.78))
+                    .frame(width: 24, height: 24)
+            }
+        }
     }
 }
 
@@ -692,6 +712,7 @@ struct DoubleCoverView: View {
     let cornerRadius: CGFloat
     @Binding var isSwapping: Bool
     var showReadaloudWedge: Bool = false
+    var notchProgress: Double? = nil
     var isHoveringCard: Bool = false
     var debugContext: String? = nil
 
@@ -787,6 +808,13 @@ struct DoubleCoverView: View {
                         .frame(width: 22)
                         .foregroundStyle(.tint)
                         .offset(x: scaledWidth / 2, y: -(audioSize / 2 + xShift))
+                        .zIndex(100)
+                }
+
+                if let notchProgress, !swapped {
+                    // Mirror of the readaloud wedge in the bottom-right notch.
+                    CircularProgressBadge(progress: notchProgress)
+                        .offset(x: scaledWidth / 2, y: audioSize / 2 + xShift)
                         .zIndex(100)
                 }
             }

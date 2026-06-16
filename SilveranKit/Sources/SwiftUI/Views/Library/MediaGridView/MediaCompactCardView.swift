@@ -59,6 +59,8 @@ struct MediaCompactCardView: View {
             coverVariant == .standard ? .audioSquare : .standard
         let fallbackState = mediaViewModel.coverState(for: item, variant: fallbackVariant)
         let displayImage = coverState.image ?? fallbackState.image
+        let shownVariant: MediaViewModel.CoverVariant =
+            coverState.image == nil && fallbackState.image != nil ? fallbackVariant : coverVariant
         let standardCoverState = mediaViewModel.coverState(for: item, variant: .standard)
         let audioCoverState = mediaViewModel.coverState(for: item, variant: .audioSquare)
         let shouldRenderDoubleCover =
@@ -76,17 +78,18 @@ struct MediaCompactCardView: View {
                         containerAspectRatio: aspectRatio,
                         cornerRadius: 8,
                         isSwapping: .constant(false),
+                        showReadaloudWedge: showAudioIndicator && item.hasAvailableReadaloud,
+                        notchProgress: (progressStyle == .circle && progress > 0) ? progress : nil,
                     )
                     .frame(width: tileSize, height: tileSize / aspectRatio)
                 } else {
                     RoundedCoverArtwork(
                         image: displayImage,
                         placeholderColor: placeholderColor,
-                        variant: coverState.image == nil && fallbackState.image != nil
-                            ? fallbackVariant : coverVariant,
+                        variant: shownVariant,
                         cornerRadius: 8,
                     )
-                    .frame(width: tileSize, height: tileSize / aspectRatio)
+                    .frame(width: tileSize, height: tileSize / shownVariant.displayAspectRatio)
                 }
             }
             .stableCoverRendering()
@@ -107,8 +110,8 @@ struct MediaCompactCardView: View {
             }
             .overlay(alignment: .bottomTrailing) {
                 if progress > 0 {
-                    if progressStyle == .circle {
-                        CircularProgressBadge(progress: progress)
+                    if progressStyle == .circle && !shouldRenderDoubleCover {
+                        CircularProgressBadge(progress: progress, showsBackground: true)
                             .padding(.trailing, 3)
                             .padding(.bottom, 3)
                     } else if progressStyle == .text {
@@ -125,7 +128,7 @@ struct MediaCompactCardView: View {
                 }
             }
             .overlay(alignment: .topTrailing) {
-                if showAudioIndicator {
+                if showAudioIndicator && !shouldRenderDoubleCover {
                     AudioIndicatorBadge(item: item, coverVariant: coverVariant)
                         .padding(.trailing, 2)
                         .padding(.top, 2)
@@ -156,6 +159,8 @@ struct MediaCompactCardView: View {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 2)
             )
+            // Slot keeps a uniform row height; the cover (and its badges) center within it.
+            .frame(width: tileSize, height: tileSize / aspectRatio)
         }
         .contentShape(Rectangle())
         #if os(macOS)
