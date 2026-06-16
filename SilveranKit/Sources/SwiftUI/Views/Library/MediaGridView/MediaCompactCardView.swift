@@ -152,9 +152,9 @@ struct MediaCompactCardView: View {
                 }
             }
             #if os(macOS)
-            .overlay(alignment: .top) {
+            .overlay {
                 if isHovered {
-                    topTabBar
+                    playOverlay
                 }
             }
             #endif
@@ -293,24 +293,62 @@ struct MediaCompactCardView: View {
             }
         }
 
-        var iconName: String {
+        @ViewBuilder
+        func iconView(size: CGFloat) -> some View {
             switch self {
-                case .ebook: return "book.fill"
-                case .audio: return "headphones"
-                case .synced: return "text.bubble"
+                case .ebook:
+                    Image("ebookIcon")
+                        .renderingMode(.template)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: size, height: size)
+                case .audio:
+                    Image(systemName: "headphones")
+                        .font(.system(size: size))
+                case .synced:
+                    ReadaloudIcon(size: size)
             }
         }
     }
 
-    private var topTabBar: some View {
-        HStack(spacing: 0) {
-            ForEach(TabCategory.allCases, id: \.self) { tab in
-                tabButton(for: tab)
+    private enum ButtonSize {
+        case large, medium, small
+        var frame: CGFloat { switch self { case .large: 44; case .medium: 37; case .small: 30 } }
+        var icon: CGFloat { switch self { case .large: 26; case .medium: 22; case .small: 18 } }
+        var playIcon: CGFloat { switch self { case .large: 36; case .medium: 28; case .small: 24 } }
+    }
+
+    private var availableTabs: [TabCategory] {
+        [.ebook, .synced, .audio].filter { tabStatus(for: $0) != .unavailable }
+    }
+
+    private func buttonSize(for tab: TabCategory, in tabs: [TabCategory]) -> ButtonSize {
+        let hasSynced = tabs.contains(.synced)
+        switch tabs.count {
+            case 1: return .large
+            case 2: return hasSynced ? (tab == .synced ? .large : .small) : .medium
+            default: return tab == .synced ? .large : .small
+        }
+    }
+
+    private var playOverlay: some View {
+        Group {
+            let tabs = availableTabs
+            if !tabs.isEmpty {
+                let slots: [TabCategory] = tabs.contains(.synced) ? [.ebook, .synced, .audio] : tabs
+                HStack(spacing: 8) {
+                    ForEach(slots, id: \.self) { tab in
+                        let size = buttonSize(for: tab, in: tabs)
+                        if tabs.contains(tab) {
+                            tabButton(for: tab, size: size)
+                        } else {
+                            Color.clear
+                                .frame(width: size.frame, height: size.frame)
+                        }
+                    }
+                }
             }
         }
-        .frame(width: tileSize, height: 40)
-        .background(Color.black.opacity(0.7))
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private enum TabStatus: Equatable {
@@ -349,59 +387,61 @@ struct MediaCompactCardView: View {
         return available ? .availableNotDownloaded : .unavailable
     }
 
-    private func statusColor(for status: TabStatus) -> Color {
-        switch status {
-            case .unavailable: return .gray.opacity(0.4)
-            case .availableNotDownloaded: return .blue
-            case .downloaded: return .green
-            case .downloading: return .blue
-            case .failed: return .red
-        }
-    }
-
     @ViewBuilder
-    private func tabButton(for tab: TabCategory) -> some View {
+    private func tabButton(for tab: TabCategory, size: ButtonSize) -> some View {
         let status = tabStatus(for: tab)
-        let color = statusColor(for: status)
         let isTabHovered = hoveredTab == tab
 
         Button {
             handleTabTap(for: tab)
         } label: {
             ZStack {
-                if case .downloading(let progress) = status {
-                    DownloadCancelProgressIcon(
-                        progress: progress,
-                        color: color,
-                        size: 24,
-                        lineWidth: 2.5,
-                        showsCancel: isTabHovered,
-                    )
-                } else if status == .failed {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 18))
-                        .foregroundStyle(.red)
-                } else if isTabHovered && status == .availableNotDownloaded {
-                    Image(systemName: "arrow.down.circle.fill")
-                        .font(.system(size: 24))
-                } else if isTabHovered && status == .downloaded {
-                    Image(systemName: "play.circle.fill")
-                        .font(.system(size: 24))
-                } else if tab == .synced {
-                    ReadaloudIcon(size: 26)
-                } else {
-                    Image(systemName: tab.iconName)
-                        .font(.system(size: 20))
-                }
+                Circle()
+                    .fill(Color.black.opacity(0.85))
+                    .frame(width: size.frame, height: size.frame)
+                tabIcon(for: tab, status: status, isHovered: isTabHovered, size: size)
             }
-            .foregroundStyle(color)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .contentShape(Rectangle())
+            .frame(width: size.frame, height: size.frame)
+            .contentShape(Circle())
         }
         .buttonStyle(.plain)
-        .disabled(status == .unavailable)
         .onHover { hovering in
             hoveredTab = hovering ? tab : nil
+        }
+    }
+
+    @ViewBuilder
+    private func tabIcon(
+        for tab: TabCategory,
+        status: TabStatus,
+        isHovered: Bool,
+        size: ButtonSize
+    ) -> some View {
+        if case .downloading(let progress) = status {
+            DownloadCancelProgressIcon(
+                progress: progress,
+                color: .white,
+                size: size.icon,
+                lineWidth: 2.5,
+                showsCancel: isHovered,
+            )
+        } else if status == .failed {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: size.icon))
+                .foregroundStyle(.red)
+        } else if isHovered && status == .availableNotDownloaded {
+            Image(systemName: "arrow.down.circle.fill")
+                .font(.system(size: size.playIcon))
+                .foregroundStyle(.white)
+        } else if isHovered && status == .downloaded {
+            Image(systemName: "play.circle.fill")
+                .font(.system(size: size.playIcon))
+                .foregroundStyle(.tint)
+        } else {
+            tab.iconView(size: size.icon)
+                .foregroundStyle(
+                    status == .downloaded ? AnyShapeStyle(.tint) : AnyShapeStyle(Color.white)
+                )
         }
     }
 

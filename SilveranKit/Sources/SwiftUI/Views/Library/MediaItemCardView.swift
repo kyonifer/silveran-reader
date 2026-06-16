@@ -77,6 +77,7 @@ struct MediaItemCardView: View {
     let seriesPositionBadge: String?
     let coverPreference: CoverPreference
     let progressStyle: ProgressIndicatorStyle
+    var sortOption: MediaGridSortOption = .titleAZ
     let onSelect: (BookMetadata) -> Void
     let onInfo: (BookMetadata) -> Void
     var onEditMetadata: (([String]) -> Void)? = nil
@@ -310,7 +311,7 @@ struct MediaItemCardView: View {
             isDoubleCover && standardCoverState.image != nil && audioCoverState.image != nil
 
         return VStack(alignment: .leading, spacing: 0) {
-            ZStack(alignment: .top) {
+            ZStack(alignment: .center) {
                 VStack(spacing: 0) {
                     Spacer(minLength: 0)
                     if shouldRenderDoubleCover {
@@ -325,6 +326,14 @@ struct MediaItemCardView: View {
                                 return $doubleCoverSwapping
                                 #else
                                 return .constant(false)
+                                #endif
+                            }(),
+                            showReadaloudWedge: showAudioIndicator && item.hasAvailableReadaloud,
+                            isHoveringCard: {
+                                #if os(macOS)
+                                return isHovered
+                                #else
+                                return false
                                 #endif
                             }(),
                             debugContext: debugContext,
@@ -418,6 +427,9 @@ struct MediaItemCardView: View {
                 .frame(height: metrics.contentSpacing)
 
             VStack(alignment: .leading, spacing: 0) {
+                authorRow
+                    .padding(.bottom, metrics.titleToAuthorGap)
+
                 Text(item.title)
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.primary)
@@ -427,9 +439,6 @@ struct MediaItemCardView: View {
                     .frame(maxWidth: .infinity, alignment: .topLeading)
                     .padding(.horizontal, 8)
                     .frame(height: metrics.titleContainerHeight, alignment: .top)
-
-                authorRow
-                    .padding(.top, metrics.titleToAuthorGap)
             }
         }
         .padding(
@@ -470,7 +479,7 @@ struct MediaItemCardView: View {
 
     private var authorRow: some View {
         HStack(spacing: 2) {
-            Text(item.authors?.first?.name ?? "")
+            Text(topLineText)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
@@ -480,6 +489,73 @@ struct MediaItemCardView: View {
         .padding(.leading, 8)
         .padding(.trailing, 2)
         .padding(.bottom, 4)
+    }
+
+    // The top line normally shows the author. When sorting by a different field, it
+    // surfaces that field's value instead, so the active sort is visible on each card.
+    private var topLineText: String {
+        let author = item.authors?.first?.name ?? ""
+        func nonEmpty(_ value: String) -> String { value.isEmpty ? author : value }
+
+        switch sortOption.field {
+            case .title, .author:
+                return author
+            case .allCreators:
+                return nonEmpty(item.sortableAllCreators)
+            case .publicationDate:
+                return nonEmpty(item.sortablePublicationYear)
+            case .series:
+                if let series = item.series?.first {
+                    if let position = series.formattedPosition {
+                        return "\(position) - \(series.name)"
+                    }
+                    return series.name
+                }
+                return author
+            case .recentlyAdded:
+                return formattedDate(item.sortableAdded) ?? author
+            case .recentlyRead:
+                return formattedDate(item.sortableLastRead) ?? author
+            case .alignedAt:
+                return formattedDate(item.sortableAlignedAt) ?? author
+            case .progress:
+                let value = min(max(mediaViewModel.progress(for: item.id), 0), 1)
+                return "\(Int((value * 100).rounded()))%"
+            case .subtitle:
+                return nonEmpty(item.sortableSubtitle)
+            case .narrator:
+                return nonEmpty(item.sortableNarrator)
+            case .language:
+                return nonEmpty(item.sortableLanguage)
+            case .collections:
+                return nonEmpty(item.sortableCollections)
+            case .status:
+                return nonEmpty(item.sortableStatus)
+            case .tags:
+                return nonEmpty(item.sortableTags)
+            case .source:
+                return nonEmpty(item.sortableSource)
+            case .alignedByVersion:
+                return nonEmpty(item.sortableAlignedByVersion)
+            case .alignedWith:
+                return nonEmpty(item.sortableAlignedWith)
+        }
+    }
+
+    private func formattedDate(_ isoString: String) -> String? {
+        guard !isoString.isEmpty else { return nil }
+        let withFractional = ISO8601DateFormatter()
+        withFractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let withoutFractional = ISO8601DateFormatter()
+        withoutFractional.formatOptions = [.withInternetDateTime]
+        let dateOnly = ISO8601DateFormatter()
+        dateOnly.formatOptions = [.withFullDate]
+        for formatter in [withFractional, withoutFractional, dateOnly] {
+            if let date = formatter.date(from: isoString) {
+                return date.formatted(date: .abbreviated, time: .omitted)
+            }
+        }
+        return nil
     }
 
     private func resolveCoverVariant(for item: BookMetadata) -> MediaViewModel.CoverVariant {
@@ -627,12 +703,13 @@ struct DoubleCoverView: View {
     let containerAspectRatio: CGFloat
     let cornerRadius: CGFloat
     @Binding var isSwapping: Bool
+    var showReadaloudWedge: Bool = false
+    var isHoveringCard: Bool = false
     var debugContext: String? = nil
 
     #if os(macOS)
-    @State private var isHovered = false
     @State private var swapPhase: SwapPhase = .idle
-    @State private var audioHoverTask: Task<Void, Never>?
+    @State private var swapTask: Task<Void, Never>?
 
     enum SwapPhase {
         case idle
@@ -643,27 +720,19 @@ struct DoubleCoverView: View {
 
     var body: some View {
         let containerHeight = coverWidth / containerAspectRatio
-        let scale: CGFloat = {
-            #if os(macOS)
-            return isHovered ? 0.70 : 0.80
-            #else
-            return 0.80
-            #endif
-        }()
+        #if os(macOS)
+        let swapped = swapPhase != .idle
+        let scale: CGFloat = isHoveringCard ? 0.70 : 0.80
+        let spread: CGFloat = isHoveringCard ? 0.15 : 0.10
+        #else
+        let swapped = false
+        let scale: CGFloat = 0.80
+        let spread: CGFloat = 0.10
+        #endif
         let scaledWidth = coverWidth * scale
         let ebookHeight = scaledWidth / 0.67
         let audioSize = scaledWidth
-        let xSpread: CGFloat = {
-            #if os(macOS)
-            return isHovered ? 0.15 : 0.10
-            #else
-            return 0.10
-            #endif
-        }()
-        let xShift = coverWidth * xSpread
-
-        let ebookState = mediaViewModel.coverState(for: item, variant: .standard)
-        let audioState = mediaViewModel.coverState(for: item, variant: .audioSquare)
+        let xShift = coverWidth * spread
 
         #if os(macOS)
         let audioXOffset: CGFloat =
@@ -672,30 +741,15 @@ struct DoubleCoverView: View {
                 case .slidingOut: coverWidth * 0.35
                 case .swapped: xShift
             }
-        let audioScale: CGFloat =
-            switch swapPhase {
-                case .idle: 1.0
-                case .slidingOut: 1.1
-                case .swapped: 1.1
-            }
-        let audioZ: Double =
-            switch swapPhase {
-                case .idle: 10
-                case .slidingOut: 30
-                case .swapped: 30
-            }
+        let audioScale: CGFloat = swapPhase == .slidingOut ? 1.1 : 1.0
+        let audioZ: Double = swapPhase == .idle ? 10 : 30
         let ebookXOffset: CGFloat =
             switch swapPhase {
                 case .idle: -xShift
                 case .slidingOut: -coverWidth * 0.25
                 case .swapped: -xShift
             }
-        let ebookZ: Double =
-            switch swapPhase {
-                case .idle: 20
-                case .slidingOut: 5
-                case .swapped: 5
-            }
+        let ebookZ: Double = swapPhase == .idle ? 20 : 5
         #else
         let audioXOffset = xShift
         let audioScale: CGFloat = 1.0
@@ -703,6 +757,9 @@ struct DoubleCoverView: View {
         let ebookXOffset = -xShift
         let ebookZ: Double = 20
         #endif
+
+        let ebookState = mediaViewModel.coverState(for: item, variant: .standard)
+        let audioState = mediaViewModel.coverState(for: item, variant: .audioSquare)
 
         ZStack {
             if ebookState.image != nil && audioState.image != nil {
@@ -713,27 +770,13 @@ struct DoubleCoverView: View {
                     )
                     .stableCoverRendering()
                     .scaleEffect(audioScale)
+                    .contentShape(Rectangle())
                     .offset(x: audioXOffset)
                     .zIndex(audioZ)
                     #if os(macOS)
-                .onHover { hovering in
-                    audioHoverTask?.cancel()
-                    if hovering {
-                        audioHoverTask = Task { @MainActor in
-                            try? await Task.sleep(for: .milliseconds(250))
-                            guard !Task.isCancelled else { return }
-                            withAnimation(.easeInOut(duration: 0.25)) {
-                                swapPhase = .slidingOut
-                                isSwapping = true
-                            }
-                            try? await Task.sleep(for: .milliseconds(250))
-                            guard !Task.isCancelled else { return }
-                            withAnimation(.easeInOut(duration: 0.25)) {
-                                swapPhase = .swapped
-                            }
-                        }
+                    .onTapGesture {
+                        toggleSwap()
                     }
-                }
                     #endif
 
                 coverImage(state: ebookState)
@@ -744,20 +787,29 @@ struct DoubleCoverView: View {
                     .stableCoverRendering()
                     .offset(x: ebookXOffset)
                     .zIndex(ebookZ)
+
+                if showReadaloudWedge && !swapped {
+                    // Nestled in the empty top-right corner with an equal gap to the ebook's right
+                    // edge (horizontal) and the audio's top edge (vertical). The badge half-size
+                    // cancels out of both gaps, so they stay equal at any icon size or hover spread.
+                    Image("readalong")
+                        .renderingMode(.template)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 22)
+                        .foregroundStyle(.tint)
+                        .shadow(color: .black.opacity(0.6), radius: 2)
+                        .offset(x: scaledWidth / 2, y: -(audioSize / 2 + xShift))
+                        .zIndex(100)
+                }
             }
         }
         .frame(width: coverWidth, height: containerHeight)
+        .animation(.easeInOut(duration: 0.25), value: isHoveringCard)
         #if os(macOS)
-        .onHover { hovering in
-            withAnimation(.easeInOut(duration: 0.25)) {
-                isHovered = hovering
-            }
-            if !hovering {
-                audioHoverTask?.cancel()
-                withAnimation(.easeInOut(duration: 0.3)) {
-                    swapPhase = .idle
-                    isSwapping = false
-                }
+        .onAppear {
+            if swapPhase == .idle && persistedAudioFront {
+                swapPhase = .swapped
             }
         }
         #endif
@@ -802,6 +854,39 @@ struct DoubleCoverView: View {
             "[MetadataCoverRefresh] doubleCover[\(context)] \(message) title='\(item.title)' id=\(item.id)"
         )
     }
+
+    #if os(macOS)
+    private static let audioFrontKey = "doubleCoverAudioFront"
+
+    private var persistedAudioFront: Bool {
+        let ids = UserDefaults.standard.stringArray(forKey: Self.audioFrontKey) ?? []
+        return ids.contains("\(item.id)")
+    }
+
+    private func persistAudioFront(_ front: Bool) {
+        var ids = Set(UserDefaults.standard.stringArray(forKey: Self.audioFrontKey) ?? [])
+        if front { ids.insert("\(item.id)") } else { ids.remove("\(item.id)") }
+        UserDefaults.standard.set(Array(ids), forKey: Self.audioFrontKey)
+    }
+
+    private func toggleSwap() {
+        swapTask?.cancel()
+        let goingToSwapped = swapPhase == .idle
+        persistAudioFront(goingToSwapped)
+        isSwapping = true
+        swapTask = Task { @MainActor in
+            withAnimation(.easeInOut(duration: 0.25)) { swapPhase = .slidingOut }
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeInOut(duration: 0.25)) {
+                swapPhase = goingToSwapped ? .swapped : .idle
+            }
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled else { return }
+            isSwapping = false
+        }
+    }
+    #endif
 
     @ViewBuilder
     private func coverImage(state: MediaViewModel.CoverImageState) -> some View {

@@ -1319,6 +1319,7 @@ struct MediaGridView: View {
             seriesPositionBadge: seriesPositionBadge,
             coverPreference: coverPreference,
             progressStyle: progressStyle,
+            sortOption: selectedSortOption,
             onSelect: { selected in
                 selectItem(selected)
             },
@@ -1338,6 +1339,7 @@ struct MediaGridView: View {
             seriesPositionBadge: seriesPositionBadge,
             coverPreference: coverPreference,
             progressStyle: progressStyle,
+            sortOption: selectedSortOption,
             onSelect: { selected in
                 selectItem(selected)
             },

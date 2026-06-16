@@ -54,14 +54,6 @@ struct MediaItemCardTopTabs: View {
             }
         }
 
-        var iconName: String {
-            switch self {
-                case .ebook: return "book.fill"
-                case .audio: return "headphones"
-                case .synced: return "text.bubble"
-            }
-        }
-
         var title: String {
             switch self {
                 case .ebook: return "Ebook"
@@ -71,14 +63,19 @@ struct MediaItemCardTopTabs: View {
         }
 
         @ViewBuilder
-        var icon: some View {
+        func iconView(size: CGFloat) -> some View {
             switch self {
                 case .ebook:
-                    Image(systemName: "book.fill")
+                    Image("ebookIcon")
+                        .renderingMode(.template)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: size, height: size)
                 case .audio:
                     Image(systemName: "headphones")
+                        .font(.system(size: size))
                 case .synced:
-                    ReadaloudIcon(size: 26)
+                    ReadaloudIcon(size: size)
             }
         }
     }
@@ -161,7 +158,28 @@ struct MediaItemCardTopTabsButtonOverlay: View {
     @State private var hoveredTab: MediaItemCardTopTabs.TabCategory?
     @State private var showConnectionAlert = false
 
-    private let buttonHeight: CGFloat = 40
+    private enum ButtonSize {
+        case large, medium, small
+        var frame: CGFloat { switch self { case .large: 44; case .medium: 37; case .small: 30 } }
+        var icon: CGFloat { switch self { case .large: 26; case .medium: 22; case .small: 18 } }
+        var playIcon: CGFloat { switch self { case .large: 36; case .medium: 28; case .small: 24 } }
+    }
+
+    private var availableTabs: [MediaItemCardTopTabs.TabCategory] {
+        [.ebook, .synced, .audio].filter { tabStatus(for: $0) != .unavailable }
+    }
+
+    private func buttonSize(
+        for tab: MediaItemCardTopTabs.TabCategory,
+        in tabs: [MediaItemCardTopTabs.TabCategory]
+    ) -> ButtonSize {
+        let hasSynced = tabs.contains(.synced)
+        switch tabs.count {
+            case 1: return .large
+            case 2: return hasSynced ? (tab == .synced ? .large : .small) : .medium
+            default: return tab == .synced ? .large : .small
+        }
+    }
 
     private var hasConnectionError: Bool {
         if mediaViewModel.lastNetworkOpSucceeded == false { return true }
@@ -188,14 +206,22 @@ struct MediaItemCardTopTabsButtonOverlay: View {
     var body: some View {
         Group {
             if isHoveringCard {
-                HStack(spacing: 0) {
-                    ForEach(MediaItemCardTopTabs.TabCategory.allCases, id: \.self) { tab in
-                        tabButton(for: tab)
+                let tabs = availableTabs
+                if !tabs.isEmpty {
+                    let slots: [MediaItemCardTopTabs.TabCategory] =
+                        tabs.contains(.synced) ? [.ebook, .synced, .audio] : tabs
+                    HStack(spacing: 8) {
+                        ForEach(slots, id: \.self) { tab in
+                            let size = buttonSize(for: tab, in: tabs)
+                            if tabs.contains(tab) {
+                                tabButton(for: tab, size: size)
+                            } else {
+                                Color.clear
+                                    .frame(width: size.frame, height: size.frame)
+                            }
+                        }
                     }
                 }
-                .frame(width: coverWidth, height: buttonHeight)
-                .background(Color.black.opacity(0.7))
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
         }
         .alert(connectionAlertTitle, isPresented: $showConnectionAlert) {
@@ -206,53 +232,26 @@ struct MediaItemCardTopTabsButtonOverlay: View {
     }
 
     @ViewBuilder
-    private func tabButton(for tab: MediaItemCardTopTabs.TabCategory) -> some View {
+    private func tabButton(
+        for tab: MediaItemCardTopTabs.TabCategory,
+        size: ButtonSize
+    ) -> some View {
         let status = tabStatus(for: tab)
         let isHovered = hoveredTab == tab
-        let statusColor = status.color
 
         Button {
             handleTabTap(for: tab)
         } label: {
             ZStack {
-                Group {
-                    if case .downloading(let progress) = status {
-                        DownloadCancelProgressIcon(
-                            progress: progress,
-                            color: statusColor,
-                            size: 24,
-                            lineWidth: 2.5,
-                            showsCancel: isHovered,
-                        )
-                    } else if isHovered && status == .availableNotDownloaded {
-                        if hasConnectionError {
-                            ZStack {
-                                Circle()
-                                    .fill(.red)
-                                    .frame(width: 24, height: 24)
-                                Image(systemName: "exclamationmark")
-                                    .font(.system(size: 14, weight: .bold))
-                                    .foregroundStyle(.white)
-                            }
-                        } else {
-                            Image(systemName: "arrow.down.circle.fill")
-                                .font(.system(size: 24))
-                        }
-                    } else if isHovered && status == .downloaded {
-                        Image(systemName: "play.circle.fill")
-                            .font(.system(size: 24))
-                    } else {
-                        tab.icon
-                            .font(.system(size: 20))
-                    }
-                }
-                .foregroundStyle(statusColor)
+                Circle()
+                    .fill(Color.black.opacity(0.85))
+                    .frame(width: size.frame, height: size.frame)
+                tabIcon(for: tab, status: status, isHovered: isHovered, size: size)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .contentShape(Rectangle())
+            .frame(width: size.frame, height: size.frame)
+            .contentShape(Circle())
         }
         .buttonStyle(.plain)
-        .disabled(status.isUnavailable)
         .accessibilityLabel("\(tab.title): \(accessibilityLabel(for: status))")
         #if os(macOS)
         .onHover { hovering in
@@ -270,6 +269,48 @@ struct MediaItemCardTopTabsButtonOverlay: View {
             }
         }
         #endif
+    }
+
+    @ViewBuilder
+    private func tabIcon(
+        for tab: MediaItemCardTopTabs.TabCategory,
+        status: MediaItemCardTopTabs.TabStatus,
+        isHovered: Bool,
+        size: ButtonSize
+    ) -> some View {
+        if case .downloading(let progress) = status {
+            DownloadCancelProgressIcon(
+                progress: progress,
+                color: .white,
+                size: size.icon,
+                lineWidth: 2.5,
+                showsCancel: isHovered,
+            )
+        } else if isHovered && status == .availableNotDownloaded {
+            if hasConnectionError {
+                ZStack {
+                    Circle()
+                        .fill(.red)
+                        .frame(width: size.icon, height: size.icon)
+                    Image(systemName: "exclamationmark")
+                        .font(.system(size: size.icon * 0.6, weight: .bold))
+                        .foregroundStyle(.white)
+                }
+            } else {
+                Image(systemName: "arrow.down.circle.fill")
+                    .font(.system(size: size.playIcon))
+                    .foregroundStyle(.white)
+            }
+        } else if isHovered && status == .downloaded {
+            Image(systemName: "play.circle.fill")
+                .font(.system(size: size.playIcon))
+                .foregroundStyle(.tint)
+        } else {
+            tab.iconView(size: size.icon)
+                .foregroundStyle(
+                    status == .downloaded ? AnyShapeStyle(.tint) : AnyShapeStyle(Color.white)
+                )
+        }
     }
 
     private func tabStatus(
