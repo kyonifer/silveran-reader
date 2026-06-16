@@ -112,10 +112,16 @@ struct MediaCompactCardView: View {
                 }
             }
             .overlay(alignment: .bottomTrailing) {
-                if progressStyle == .circle && progress > 0 {
-                    CircularProgressBadge(progress: progress)
-                        .padding(.trailing, 3)
-                        .padding(.bottom, 3)
+                if progress > 0 {
+                    if progressStyle == .circle {
+                        CircularProgressBadge(progress: progress)
+                            .padding(.trailing, 3)
+                            .padding(.bottom, 3)
+                    } else if progressStyle == .text {
+                        ProgressTextBadge(progress: progress)
+                            .padding(.trailing, 3)
+                            .padding(.bottom, 3)
+                    }
                 }
             }
             .overlay(alignment: .bottomLeading) {

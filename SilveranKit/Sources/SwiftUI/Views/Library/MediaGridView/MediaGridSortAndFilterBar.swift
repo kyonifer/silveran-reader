@@ -99,31 +99,41 @@ struct MediaGridSortAndFilterBar: View {
 
     @ViewBuilder
     private var sortMenu: some View {
-        Menu {
-            ForEach(MediaGridView.SortOption.menuFields, id: \.self) { field in
-                Button {
-                    handleSortFieldTap(field)
-                } label: {
-                    sortMenuRow(for: field)
+        HStack(spacing: 2) {
+            Menu {
+                ForEach(MediaGridView.SortOption.menuFields, id: \.self) { field in
+                    Button {
+                        handleSortFieldTap(field)
+                    } label: {
+                        sortMenuRow(for: field)
+                    }
                 }
+            } label: {
+                #if os(iOS)
+                Label("Sort", systemImage: "arrow.up.arrow.down")
+                #else
+                Text("Sort: \(selectedSortOption.sortField.label)")
+                #endif
             }
-        } label: {
-            #if os(iOS)
-            Label("Sort", systemImage: "arrow.up.arrow.down")
-            #else
-            Label(
-                "Sort: \(selectedSortOption.sortField.label)",
-                systemImage: selectedSortOption.isAscending ? "arrow.up" : "arrow.down",
-            )
+            #if os(macOS)
+            .menuStyle(.borderlessButton)
+            .fixedSize()
             #endif
+
+            Button {
+                selectedSortOption = selectedSortOption.toggled
+            } label: {
+                Image(systemName: selectedSortOption.isAscending ? "arrow.up" : "arrow.down")
+            }
+            #if os(macOS)
+            .buttonStyle(.borderless)
+            #endif
+            .help("Reverse sort direction")
         }
-        #if os(macOS)
-        .menuStyle(.borderlessButton)
-        #endif
     }
 
     private func handleSortFieldTap(_ field: MediaGridView.SortOption.SortField) {
-        if selectedSortOption.sortField == field && field.isToggleable {
+        if selectedSortOption.sortField == field {
             selectedSortOption = selectedSortOption.toggled
         } else {
             selectedSortOption = MediaGridView.SortOption.defaultOption(for: field)
@@ -136,11 +146,8 @@ struct MediaGridSortAndFilterBar: View {
         HStack {
             Text(field.label)
             Spacer()
-            if isSelected && field.isToggleable {
+            if isSelected {
                 Image(systemName: selectedSortOption.isAscending ? "arrow.up" : "arrow.down")
-                    .imageScale(.small)
-            } else if isSelected {
-                Image(systemName: "checkmark")
                     .imageScale(.small)
             }
         }
@@ -152,7 +159,6 @@ struct MediaGridSortAndFilterBar: View {
             clearMenuItem
             formatSection
             statusSection
-            sourceSection
             locationSection
             otherSection
         } label: {
@@ -219,9 +225,13 @@ struct MediaGridSortAndFilterBar: View {
         let narrators = availableNarrators
         let translators = availableTranslators
         let publicationYears = availablePublicationYears
+        let sources = availableSources.sorted {
+            $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+        }
+        let hasSources = !sources.isEmpty && contextFilters.sourceID == nil
 
         if !tags.isEmpty || !series.isEmpty || !authors.isEmpty || !narrators.isEmpty
-            || !translators.isEmpty || !publicationYears.isEmpty
+            || !translators.isEmpty || !publicationYears.isEmpty || hasSources
         {
             Divider()
             Section("Other") {
@@ -407,6 +417,29 @@ struct MediaGridSortAndFilterBar: View {
                         Label("Select Rating", systemImage: "star")
                     }
                 }
+
+                if hasSources {
+                    Menu {
+                        Button {
+                            selectedSourceID = nil
+                        } label: {
+                            menuRowLabel(text: "All Sources", isSelected: selectedSourceID == nil)
+                        }
+
+                        ForEach(sources) { source in
+                            Button {
+                                selectedSourceID = source.id
+                            } label: {
+                                menuRowLabel(
+                                    text: source.name,
+                                    isSelected: selectedSourceID == source.id,
+                                )
+                            }
+                        }
+                    } label: {
+                        Label("By Source", systemImage: "externaldrive")
+                    }
+                }
             }
         }
     }
@@ -422,38 +455,6 @@ struct MediaGridSortAndFilterBar: View {
                     } label: {
                         menuRowLabel(text: option.label, isSelected: selectedLocation == option)
                     }
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var sourceSection: some View {
-        let sources = availableSources.sorted {
-            $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
-        }
-        if !sources.isEmpty && contextFilters.sourceID == nil {
-            Divider()
-            Section("Source") {
-                Menu {
-                    Button {
-                        selectedSourceID = nil
-                    } label: {
-                        menuRowLabel(text: "All Sources", isSelected: selectedSourceID == nil)
-                    }
-
-                    ForEach(sources) { source in
-                        Button {
-                            selectedSourceID = source.id
-                        } label: {
-                            menuRowLabel(
-                                text: source.name,
-                                isSelected: selectedSourceID == source.id,
-                            )
-                        }
-                    }
-                } label: {
-                    Label("By Source", systemImage: "externaldrive")
                 }
             }
         }

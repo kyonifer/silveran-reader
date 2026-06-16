@@ -80,154 +80,157 @@ public struct LibraryNamedBooksGroup: Sendable {
     public var books: [BookMetadata]
 }
 
-public enum MediaGridSortOption: String, CaseIterable, Identifiable, Sendable {
-    case titleAZ
-    case titleZA
-    case authorAZ
-    case authorZA
-    case progressHighToLow
-    case progressLowToHigh
-    case recentlyRead
-    case recentlyAdded
-    case seriesPosition
+public struct MediaGridSortOption: RawRepresentable, Equatable, Hashable, Sendable {
+    public var field: SortField
+    public var ascending: Bool
 
-    public var id: String { rawValue }
-
-    public var label: String {
-        switch self {
-            case .titleAZ: "Title A-Z"
-            case .titleZA: "Title Z-A"
-            case .authorAZ: "Author A-Z"
-            case .authorZA: "Author Z-A"
-            case .progressHighToLow: "Progress High-Low"
-            case .progressLowToHigh: "Progress Low-High"
-            case .recentlyRead: "Recently Read"
-            case .recentlyAdded: "Recently Added"
-            case .seriesPosition: "Series Position"
-        }
+    public init(field: SortField, ascending: Bool) {
+        self.field = field
+        self.ascending = ascending
     }
 
+    public init?(rawValue: String) {
+        if let legacy = Self.legacyOptions[rawValue] {
+            self = legacy
+            return
+        }
+        let parts = rawValue.split(separator: ":", maxSplits: 1)
+        guard let raw = parts.first, let field = SortField(rawValue: String(raw)) else {
+            return nil
+        }
+        self.field = field
+        self.ascending = parts.count > 1 ? parts[1] == "asc" : field.defaultAscending
+    }
+
+    private static let legacyOptions: [String: MediaGridSortOption] = [
+        "titleAZ": .init(field: .title, ascending: true),
+        "titleZA": .init(field: .title, ascending: false),
+        "authorAZ": .init(field: .author, ascending: true),
+        "authorZA": .init(field: .author, ascending: false),
+        "progressHighToLow": .init(field: .progress, ascending: false),
+        "progressLowToHigh": .init(field: .progress, ascending: true),
+        "seriesPosition": .init(field: .series, ascending: true),
+    ]
+
+    public var rawValue: String { "\(field.rawValue):\(ascending ? "asc" : "desc")" }
+
+    public static let titleAZ = MediaGridSortOption(field: .title, ascending: true)
+
+    public var label: String { field.label }
     public var shortLabel: String { label }
-
-    public var sortField: SortField {
-        switch self {
-            case .titleAZ, .titleZA: return .title
-            case .authorAZ, .authorZA: return .author
-            case .progressHighToLow, .progressLowToHigh: return .progress
-            case .recentlyRead: return .recentlyRead
-            case .recentlyAdded: return .recentlyAdded
-            case .seriesPosition: return .seriesPosition
-        }
-    }
-
-    public var isAscending: Bool {
-        switch self {
-            case .titleAZ, .authorAZ, .progressLowToHigh, .seriesPosition: return true
-            case .titleZA, .authorZA, .progressHighToLow, .recentlyRead, .recentlyAdded:
-                return false
-        }
-    }
+    public var sortField: SortField { field }
+    public var isAscending: Bool { ascending }
 
     public var toggled: MediaGridSortOption {
-        switch self {
-            case .titleAZ: return .titleZA
-            case .titleZA: return .titleAZ
-            case .authorAZ: return .authorZA
-            case .authorZA: return .authorAZ
-            case .progressHighToLow: return .progressLowToHigh
-            case .progressLowToHigh: return .progressHighToLow
-            case .recentlyRead, .recentlyAdded, .seriesPosition: return self
-        }
+        MediaGridSortOption(field: field, ascending: !ascending)
     }
 
-    public static var menuFields: [SortField] {
-        [.title, .author, .progress, .recentlyRead, .recentlyAdded, .seriesPosition]
-    }
+    public static var menuFields: [SortField] { SortField.allCases }
 
     public static func defaultOption(for field: SortField) -> MediaGridSortOption {
-        switch field {
-            case .title: return .titleAZ
-            case .author: return .authorAZ
-            case .progress: return .progressHighToLow
-            case .recentlyRead: return .recentlyRead
-            case .recentlyAdded: return .recentlyAdded
-            case .seriesPosition: return .seriesPosition
-        }
+        MediaGridSortOption(field: field, ascending: field.defaultAscending)
     }
 
     public enum SortField: String, CaseIterable, Sendable {
-        case title, author, progress, recentlyRead, recentlyAdded, seriesPosition
+        case title, author, publicationDate, series, recentlyAdded, recentlyRead, progress
+        case subtitle, narrator, language, collections, status, tags, allCreators, source
+        case alignedAt, alignedByVersion, alignedWith
 
         public var label: String {
             switch self {
                 case .title: return "Title"
                 case .author: return "Author"
+                case .publicationDate: return "Pub Date"
+                case .series: return "Series"
+                case .recentlyAdded: return "Date Added"
+                case .recentlyRead: return "Date Read"
                 case .progress: return "Progress"
-                case .recentlyRead: return "Recently Read"
-                case .recentlyAdded: return "Recently Added"
-                case .seriesPosition: return "Series Position"
+                case .subtitle: return "Subtitle"
+                case .narrator: return "Narrator"
+                case .language: return "Language"
+                case .collections: return "Collections"
+                case .status: return "Status"
+                case .tags: return "Tags"
+                case .allCreators: return "Creators"
+                case .source: return "Source"
+                case .alignedAt: return "Aligned At"
+                case .alignedByVersion: return "Aligned Version"
+                case .alignedWith: return "Aligned With"
             }
         }
 
-        public var isToggleable: Bool {
+        public var defaultAscending: Bool {
             switch self {
-                case .title, .author, .progress: return true
-                case .recentlyRead, .recentlyAdded, .seriesPosition: return false
+                case .progress, .publicationDate, .recentlyAdded, .recentlyRead: return false
+                default: return true
+            }
+        }
+
+        // String fields compare generically via these keys; progress and series are special-cased.
+        public var sortableKey: (KeyPath<BookMetadata, String> & Sendable)? {
+            switch self {
+                case .title: return \BookMetadata.sortableTitle
+                case .author: return \BookMetadata.sortableAuthor
+                case .publicationDate: return \BookMetadata.sortablePublicationYear
+                case .recentlyAdded: return \BookMetadata.sortableAdded
+                case .recentlyRead: return \BookMetadata.sortableLastRead
+                case .subtitle: return \BookMetadata.sortableSubtitle
+                case .narrator: return \BookMetadata.sortableNarrator
+                case .language: return \BookMetadata.sortableLanguage
+                case .collections: return \BookMetadata.sortableCollections
+                case .status: return \BookMetadata.sortableStatus
+                case .tags: return \BookMetadata.sortableTags
+                case .allCreators: return \BookMetadata.sortableAllCreators
+                case .source: return \BookMetadata.sortableSource
+                case .alignedAt: return \BookMetadata.sortableAlignedAt
+                case .alignedByVersion: return \BookMetadata.sortableAlignedByVersion
+                case .alignedWith: return \BookMetadata.sortableAlignedWith
+                case .series, .progress: return nil
             }
         }
     }
 
     public func comparison(_ lhs: BookMetadata, _ rhs: BookMetadata) -> ComparisonResult {
-        switch self {
-            case .titleAZ:
-                return lhs.title.articleStrippedCompare(rhs.title)
-            case .titleZA:
-                return rhs.title.articleStrippedCompare(lhs.title)
-            case .authorAZ:
-                let lhsAuthor = lhs.authors?.first?.name ?? ""
-                let rhsAuthor = rhs.authors?.first?.name ?? ""
-                let result = lhsAuthor.localizedCaseInsensitiveCompare(rhsAuthor)
-                return result == .orderedSame ? lhs.title.articleStrippedCompare(rhs.title) : result
-            case .authorZA:
-                let lhsAuthor = lhs.authors?.first?.name ?? ""
-                let rhsAuthor = rhs.authors?.first?.name ?? ""
-                let result = rhsAuthor.localizedCaseInsensitiveCompare(lhsAuthor)
-                return result == .orderedSame ? lhs.title.articleStrippedCompare(rhs.title) : result
-            case .progressHighToLow:
-                if lhs.progress == rhs.progress {
-                    return lhs.title.articleStrippedCompare(rhs.title)
-                }
-                return lhs.progress > rhs.progress ? .orderedAscending : .orderedDescending
-            case .progressLowToHigh:
-                if lhs.progress == rhs.progress {
-                    return lhs.title.articleStrippedCompare(rhs.title)
-                }
-                return lhs.progress < rhs.progress ? .orderedAscending : .orderedDescending
-            case .recentlyRead:
-                let lhsDate = lhs.position?.updatedAt ?? ""
-                let rhsDate = rhs.position?.updatedAt ?? ""
-                if lhsDate == rhsDate { return lhs.title.articleStrippedCompare(rhs.title) }
-                return lhsDate > rhsDate ? .orderedAscending : .orderedDescending
-            case .recentlyAdded:
-                let lhsDate = lhs.createdAt ?? ""
-                let rhsDate = rhs.createdAt ?? ""
-                if lhsDate == rhsDate { return lhs.title.articleStrippedCompare(rhs.title) }
-                return lhsDate > rhsDate ? .orderedAscending : .orderedDescending
-            case .seriesPosition:
-                let lhsSeriesName = lhs.series?.first?.name ?? ""
-                let rhsSeriesName = rhs.series?.first?.name ?? ""
-                if lhsSeriesName.isEmpty && rhsSeriesName.isEmpty {
-                    return lhs.title.articleStrippedCompare(rhs.title)
-                }
-                if lhsSeriesName.isEmpty { return .orderedDescending }
-                if rhsSeriesName.isEmpty { return .orderedAscending }
-                let seriesResult = lhsSeriesName.articleStrippedCompare(rhsSeriesName)
-                if seriesResult != .orderedSame { return seriesResult }
-                let lhsPosition = lhs.series?.first?.position ?? .greatestFiniteMagnitude
-                let rhsPosition = rhs.series?.first?.position ?? .greatestFiniteMagnitude
-                if lhsPosition == rhsPosition { return lhs.title.articleStrippedCompare(rhs.title) }
-                return lhsPosition < rhsPosition ? .orderedAscending : .orderedDescending
+        let primary = ascending ? ascendingComparison(lhs, rhs) : reversedComparison(ascendingComparison(lhs, rhs))
+        if primary != .orderedSame { return primary }
+        return lhs.sortableTitle.articleStrippedCompare(rhs.sortableTitle)
+    }
+
+    private func ascendingComparison(_ lhs: BookMetadata, _ rhs: BookMetadata) -> ComparisonResult {
+        switch field {
+            case .progress:
+                let lhsP = lhs.sortableProgress, rhsP = rhs.sortableProgress
+                if lhsP == rhsP { return .orderedSame }
+                return lhsP < rhsP ? .orderedAscending : .orderedDescending
+            case .series:
+                return Self.seriesComparison(lhs, rhs)
+            default:
+                guard let key = field.sortableKey else { return .orderedSame }
+                return lhs[keyPath: key].localizedCaseInsensitiveCompare(rhs[keyPath: key])
         }
+    }
+
+    static func seriesComparison(_ lhs: BookMetadata, _ rhs: BookMetadata) -> ComparisonResult {
+        let lhsSeriesName = lhs.series?.first?.name ?? ""
+        let rhsSeriesName = rhs.series?.first?.name ?? ""
+        if lhsSeriesName.isEmpty || rhsSeriesName.isEmpty {
+            if lhsSeriesName.isEmpty && rhsSeriesName.isEmpty { return .orderedSame }
+            return lhsSeriesName.isEmpty ? .orderedDescending : .orderedAscending
+        }
+        let seriesResult = lhsSeriesName.articleStrippedCompare(rhsSeriesName)
+        if seriesResult != .orderedSame { return seriesResult }
+        let lhsPosition = lhs.series?.first?.position ?? .greatestFiniteMagnitude
+        let rhsPosition = rhs.series?.first?.position ?? .greatestFiniteMagnitude
+        if lhsPosition == rhsPosition { return .orderedSame }
+        return lhsPosition < rhsPosition ? .orderedAscending : .orderedDescending
+    }
+}
+
+func reversedComparison(_ result: ComparisonResult) -> ComparisonResult {
+    switch result {
+        case .orderedAscending: return .orderedDescending
+        case .orderedDescending: return .orderedAscending
+        case .orderedSame: return .orderedSame
     }
 }
 
@@ -843,7 +846,7 @@ public actor LibraryDerivationActor {
         return filtered.sorted { lhs, rhs in
             if lhs.id == rhs.id { return false }
             let result: ComparisonResult
-            if request.sortOption == .seriesPosition, let filter = request.selectedSeries {
+            if request.sortOption.field == .series, let filter = request.selectedSeries {
                 let normalizedFilter = filter.lowercased()
                 let lhsPosition =
                     lhs.series?.first(where: { $0.name.lowercased() == normalizedFilter })?.position
@@ -851,11 +854,13 @@ public actor LibraryDerivationActor {
                 let rhsPosition =
                     rhs.series?.first(where: { $0.name.lowercased() == normalizedFilter })?.position
                     ?? .greatestFiniteMagnitude
+                let base: ComparisonResult
                 if lhsPosition == rhsPosition {
-                    result = lhs.title.articleStrippedCompare(rhs.title)
+                    base = lhs.title.articleStrippedCompare(rhs.title)
                 } else {
-                    result = lhsPosition < rhsPosition ? .orderedAscending : .orderedDescending
+                    base = lhsPosition < rhsPosition ? .orderedAscending : .orderedDescending
                 }
+                result = request.sortOption.ascending ? base : reversedComparison(base)
             } else {
                 result = request.sortOption.comparison(lhs, rhs)
             }

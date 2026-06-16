@@ -901,7 +901,9 @@ struct MediaTableView: NSViewRepresentable {
                         KeyPathComparator(\BookMetadata.sortableSeries, order: order)
                     ]
                 case "progress":
-                    parent.sortOrder = [KeyPathComparator(\BookMetadata.progress, order: order)]
+                    parent.sortOrder = [
+                        KeyPathComparator(\BookMetadata.sortableProgress, order: order)
+                    ]
                 case "narrator":
                     parent.sortOrder = [
                         KeyPathComparator(\BookMetadata.sortableNarrator, order: order)

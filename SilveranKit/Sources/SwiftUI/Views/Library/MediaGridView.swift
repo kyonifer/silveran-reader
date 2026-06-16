@@ -178,52 +178,15 @@ struct MediaGridView: View {
     private static func tableComparator(for sortOption: SortOption) -> (
         comparator: KeyPathComparator<BookMetadata>, keyPath: AnyKeyPath
     ) {
-        switch sortOption {
-            case .titleAZ:
-                return (
-                    KeyPathComparator(\BookMetadata.sortableTitle, order: .forward),
-                    \BookMetadata.sortableTitle,
-                )
-            case .titleZA:
-                return (
-                    KeyPathComparator(\BookMetadata.sortableTitle, order: .reverse),
-                    \BookMetadata.sortableTitle,
-                )
-            case .authorAZ:
-                return (
-                    KeyPathComparator(\BookMetadata.sortableAuthor, order: .forward),
-                    \BookMetadata.sortableAuthor,
-                )
-            case .authorZA:
-                return (
-                    KeyPathComparator(\BookMetadata.sortableAuthor, order: .reverse),
-                    \BookMetadata.sortableAuthor,
-                )
-            case .progressHighToLow:
-                return (
-                    KeyPathComparator(\BookMetadata.progress, order: .reverse),
-                    \BookMetadata.progress,
-                )
-            case .progressLowToHigh:
-                return (
-                    KeyPathComparator(\BookMetadata.progress, order: .forward),
-                    \BookMetadata.progress,
-                )
-            case .recentlyRead:
-                return (
-                    KeyPathComparator(\BookMetadata.sortableLastRead, order: .reverse),
-                    \BookMetadata.sortableLastRead,
-                )
-            case .recentlyAdded:
-                return (
-                    KeyPathComparator(\BookMetadata.sortableAdded, order: .reverse),
-                    \BookMetadata.sortableAdded,
-                )
-            case .seriesPosition:
-                return (
-                    KeyPathComparator(\BookMetadata.sortableSeries, order: .forward),
-                    \BookMetadata.sortableSeries,
-                )
+        let order: SortOrder = sortOption.ascending ? .forward : .reverse
+        if let key = sortOption.field.sortableKey {
+            return (KeyPathComparator(key, order: order), key)
+        }
+        switch sortOption.field {
+            case .progress:
+                return (KeyPathComparator(\BookMetadata.sortableProgress, order: order), \BookMetadata.sortableProgress)
+            default:
+                return (KeyPathComparator(\BookMetadata.sortableSeries, order: order), \BookMetadata.sortableSeries)
         }
     }
     #endif
@@ -646,7 +609,7 @@ struct MediaGridView: View {
                     AlphabetScrubber(
                         items: cachedDisplayItems,
                         textForItem: { item in
-                            selectedSortOption == .authorAZ
+                            selectedSortOption.field == .author
                                 ? (item.authors?.first?.name ?? item.title)
                                 : item.title
                         },
@@ -1492,7 +1455,8 @@ struct MediaGridView: View {
 
     #if os(iOS)
     private var shouldShowAlphabetScrubber: Bool {
-        let isAlphabeticalSort = selectedSortOption == .titleAZ || selectedSortOption == .authorAZ
+        let isAlphabeticalSort =
+            selectedSortOption.field == .title || selectedSortOption.field == .author
         return isAlphabeticalSort
     }
     #endif

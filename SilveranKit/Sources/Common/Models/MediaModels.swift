@@ -821,6 +821,10 @@ public struct BookMetadata: Codable, Sendable, Identifiable, Hashable {
         return min(max(raw, 0), 1)
     }
 
+    public var sortableProgress: Double {
+        status?.name.lowercased() == "read" ? 1.0 : progress
+    }
+
     public var tagNames: [String] {
         tags?.compactMap { tag in
             return tag.name.trimmingCharacters(in: .whitespacesAndNewlines)

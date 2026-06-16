@@ -364,10 +364,14 @@ struct MediaItemCardView: View {
                     }
                 }
                 .overlay(alignment: .bottomTrailing) {
-                    if progressStyle == .circle {
-                        let progress = mediaViewModel.progress(for: item.id)
-                        if progress > 0 {
+                    let progress = mediaViewModel.progress(for: item.id)
+                    if progress > 0 {
+                        if progressStyle == .circle {
                             CircularProgressBadge(progress: progress)
+                                .padding(.trailing, 4)
+                                .padding(.bottom, 4)
+                        } else if progressStyle == .text {
+                            ProgressTextBadge(progress: progress)
                                 .padding(.trailing, 4)
                                 .padding(.bottom, 4)
                         }
@@ -497,6 +501,20 @@ struct CircularProgressBadge: View {
                 .rotationEffect(.degrees(-90))
         }
         .frame(width: 18, height: 18)
+    }
+}
+
+struct ProgressTextBadge: View {
+    let progress: Double
+
+    var body: some View {
+        let clamped = min(max(progress, 0), 1)
+        Text("\(Int((clamped * 100).rounded()))%")
+            .font(.system(size: 11, weight: .bold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
     }
 }
 
