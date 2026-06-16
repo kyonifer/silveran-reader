@@ -34,7 +34,7 @@ struct GroupedBooksCardView: View {
                         if showBookCountBadge {
                             Text("\(books.count)")
                                 .font(.system(size: 10, weight: .semibold))
-                                .foregroundStyle(.gray)
+                                .foregroundStyle(.white.opacity(0.96))
                                 .padding(.horizontal, 5)
                                 .padding(.vertical, 3)
                                 .background(.black.opacity(0.7), in: Capsule())

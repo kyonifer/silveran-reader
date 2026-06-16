@@ -74,25 +74,19 @@ struct MediaCompactCardView: View {
                         placeholderColor: placeholderColor,
                         coverWidth: tileSize,
                         containerAspectRatio: aspectRatio,
-                        cornerRadius: 6,
+                        cornerRadius: 8,
                         isSwapping: .constant(false),
                     )
                     .frame(width: tileSize, height: tileSize / aspectRatio)
                 } else {
-                    ZStack {
-                        if displayImage == nil {
-                            placeholderColor
-                        }
-                        if let image = displayImage {
-                            image
-                                .resizable()
-                                .interpolation(.high)
-                                .scaledToFit()
-                        }
-                    }
+                    RoundedCoverArtwork(
+                        image: displayImage,
+                        placeholderColor: placeholderColor,
+                        variant: coverState.image == nil && fallbackState.image != nil
+                            ? fallbackVariant : coverVariant,
+                        cornerRadius: 8,
+                    )
                     .frame(width: tileSize, height: tileSize / aspectRatio)
-                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                    .stableCoverRendering()
                 }
             }
             .stableCoverRendering()
@@ -159,7 +153,7 @@ struct MediaCompactCardView: View {
             }
             #endif
             .overlay(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 2)
             )
         }

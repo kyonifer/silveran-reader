@@ -249,7 +249,7 @@ public enum MediaGridFormatFilterOption: String, CaseIterable, Identifiable, Sen
         switch self {
             case .all: "All Titles"
             case .readaloud: "Readaloud"
-            case .ebook: "Ebook Without Audio"
+            case .ebook: "Ebook"
             case .audiobook: "Audiobook"
             case .ebookOnly: "Ebook Only"
             case .audiobookOnly: "Audiobook Only"

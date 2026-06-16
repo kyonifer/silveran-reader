@@ -16,6 +16,61 @@ extension View {
     }
 }
 
+extension MediaViewModel.CoverVariant {
+    var displayAspectRatio: CGFloat {
+        switch self {
+            case .standard: return 0.67
+            case .audioSquare: return 1.0
+        }
+    }
+}
+
+struct RoundedCoverArtwork: View {
+    let image: Image?
+    let placeholderColor: Color
+    let variant: MediaViewModel.CoverVariant
+    let cornerRadius: CGFloat
+
+    var body: some View {
+        GeometryReader { geometry in
+            let artworkSize = fittedArtworkSize(
+                containerSize: geometry.size,
+                aspectRatio: variant.displayAspectRatio,
+            )
+
+            ZStack {
+                if let image {
+                    image
+                        .resizable()
+                        .interpolation(.high)
+                        .scaledToFill()
+                } else {
+                    placeholderColor
+                }
+            }
+            .frame(width: artworkSize.width, height: artworkSize.height)
+            .stableCoverRendering()
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
+        }
+    }
+
+    private func fittedArtworkSize(containerSize: CGSize, aspectRatio: CGFloat) -> CGSize {
+        guard containerSize.width > 0, containerSize.height > 0, aspectRatio > 0 else {
+            return .zero
+        }
+
+        let containerAspectRatio = containerSize.width / containerSize.height
+        if containerAspectRatio > aspectRatio {
+            let height = containerSize.height
+            return CGSize(width: height * aspectRatio, height: height)
+        } else {
+            let width = containerSize.width
+            return CGSize(width: width, height: width / aspectRatio)
+        }
+    }
+}
+
 enum MediaGridViewUtilities {
     #if os(macOS)
     static func nextSelectableItem(

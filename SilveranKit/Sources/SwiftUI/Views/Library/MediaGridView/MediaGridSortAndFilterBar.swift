@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct MediaGridSortAndFilterBar: View {
+    @Environment(MediaViewModel.self) private var mediaViewModel
     @Binding var selectedSortOption: MediaGridView.SortOption
     @Binding var selectedFormatFilter: MediaGridView.FormatFilterOption
     @Binding var selectedTag: String?
@@ -546,6 +547,8 @@ struct MediaGridSortAndFilterBar: View {
                 displayPopoverSection
             }
 
+            accentColorPopoverSection
+
             Divider()
 
             Button("Reset to Defaults") {
@@ -569,6 +572,51 @@ struct MediaGridSortAndFilterBar: View {
         showSourceBadge = false
         showSeriesPositionBadge = false
         progressStyle = .circle
+    }
+
+    @ViewBuilder
+    private var accentColorPopoverSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Accent Color")
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.secondary)
+            HStack(spacing: 8) {
+                ColorPicker(
+                    "",
+                    selection: Binding(
+                        get: {
+                            Color(hex: mediaViewModel.cachedConfig.library.accentColorHex)
+                                ?? .storytellerOrange
+                        },
+                        set: { newColor in
+                            if let hex = newColor.hexString() {
+                                persistAccentColor(hex)
+                            }
+                        },
+                    ),
+                    supportsOpacity: false,
+                )
+                .labelsHidden()
+                #if os(macOS)
+                Button("System") {
+                    if let hex = Color(nsColor: NSColor.controlAccentColor).hexString() {
+                        persistAccentColor(hex)
+                    }
+                }
+                .controlSize(.small)
+                #endif
+                Button("Reset") {
+                    persistAccentColor(kDefaultAccentColorHex)
+                }
+                .controlSize(.small)
+            }
+        }
+    }
+
+    private func persistAccentColor(_ hex: String) {
+        Task {
+            try? await SettingsActor.shared.updateConfig(accentColorHex: hex)
+        }
     }
 
     @ViewBuilder

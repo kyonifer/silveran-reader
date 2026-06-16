@@ -308,7 +308,7 @@ public enum LibrarySidebarDefaults {
                         content: .downloaded,
                     ),
                     SidebarItemDescription(
-                        name: "Currently Downloading",
+                        name: "Downloading",
                         systemImage: "arrow.down.circle.dotted",
                         badge: -1,
                         content: .currentlyDownloading,

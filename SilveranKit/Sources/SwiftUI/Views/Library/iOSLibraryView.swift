@@ -669,7 +669,7 @@ struct MoreMenuView: View {
                 }
                 if hasIncompleteDownloads {
                     NavigationLink(value: MoreDestination.currentlyDownloading) {
-                        Label("Currently Downloading", systemImage: "arrow.down.circle.dotted")
+                        Label("Downloading", systemImage: "arrow.down.circle.dotted")
                     }
                 }
                 NavigationLink(value: MoreDestination.addBook) {

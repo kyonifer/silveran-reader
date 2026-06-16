@@ -87,7 +87,7 @@ struct WatchDownloadMenuView: View {
                     } label: {
                         Label {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("Currently Downloading")
+                                Text("Downloading")
                                     .font(.caption)
                                 Text("\(incompleteDownloads.count) in progress")
                                     .font(.caption2)

@@ -23,7 +23,7 @@ struct CurrentlyDownloadingView: View {
                 #endif
             }
         }
-        .navigationTitle("Currently Downloading")
+        .navigationTitle("Downloading")
         #if !os(macOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif

@@ -574,38 +574,6 @@ private struct MacGeneralSettingsView: View {
                     "When the server has a newer reading position (from another device), automatically jump to that position."
                 )
 
-                Divider()
-                    .padding(.vertical, 8)
-
-                HStack {
-                    Text("Accent Color")
-                    Spacer()
-                    ColorPicker(
-                        "",
-                        selection: Binding(
-                            get: { Color(hex: library.accentColorHex) ?? .storytellerOrange },
-                            set: { newColor in
-                                if let hex = newColor.hexString() {
-                                    library.accentColorHex = hex
-                                }
-                            },
-                        ),
-                        supportsOpacity: false,
-                    )
-                    .labelsHidden()
-                    Button("System") {
-                        if let hex = Color(nsColor: NSColor.controlAccentColor).hexString() {
-                            library.accentColorHex = hex
-                        }
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    Button("Reset") {
-                        library.accentColorHex = kDefaultAccentColorHex
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                }
             }
 
         }

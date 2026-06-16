@@ -56,7 +56,7 @@ struct MediaItemCardMetrics {
         return MediaItemCardMetrics(
             tileWidth: tileWidth,
             cardPadding: cardPadding,
-            coverCornerRadius: max(12, tileWidth * 0.06),
+            coverCornerRadius: max(8, tileWidth * 0.045),
             contentSpacing: contentSpacing,
             coverWidth: coverWidth,
             maxCardHeight: maxCardHeight,
@@ -345,17 +345,11 @@ struct MediaItemCardView: View {
                             item: item,
                             placeholderColor: placeholderColor,
                             variant: coverVariant,
+                            cornerRadius: metrics.coverCornerRadius,
                             debugContext: debugContext,
                         )
                         .frame(width: metrics.coverWidth)
                         .aspectRatio(containerAspectRatio, contentMode: .fit)
-                        .clipShape(
-                            RoundedRectangle(
-                                cornerRadius: metrics.coverCornerRadius,
-                                style: .continuous,
-                            )
-                        )
-                        .stableCoverRendering()
                     }
                     Spacer(minLength: 0)
                 }
@@ -495,15 +489,14 @@ struct MediaItemCardView: View {
     // surfaces that field's value instead, so the active sort is visible on each card.
     private var topLineText: String {
         let author = item.authors?.first?.name ?? ""
-        func nonEmpty(_ value: String) -> String { value.isEmpty ? author : value }
 
         switch sortOption.field {
             case .title, .author:
                 return author
             case .allCreators:
-                return nonEmpty(item.sortableAllCreators)
+                return item.sortableAllCreators
             case .publicationDate:
-                return nonEmpty(item.sortablePublicationYear)
+                return item.sortablePublicationYear
             case .series:
                 if let series = item.series?.first {
                     if let position = series.formattedPosition {
@@ -511,34 +504,34 @@ struct MediaItemCardView: View {
                     }
                     return series.name
                 }
-                return author
+                return ""
             case .recentlyAdded:
-                return formattedDate(item.sortableAdded) ?? author
+                return formattedDate(item.sortableAdded) ?? ""
             case .recentlyRead:
-                return formattedDate(item.sortableLastRead) ?? author
+                return formattedDate(item.sortableLastRead) ?? ""
             case .alignedAt:
-                return formattedDate(item.sortableAlignedAt) ?? author
+                return formattedDate(item.sortableAlignedAt) ?? ""
             case .progress:
                 let value = min(max(mediaViewModel.progress(for: item.id), 0), 1)
                 return "\(Int((value * 100).rounded()))%"
             case .subtitle:
-                return nonEmpty(item.sortableSubtitle)
+                return item.sortableSubtitle
             case .narrator:
-                return nonEmpty(item.sortableNarrator)
+                return item.sortableNarrator
             case .language:
-                return nonEmpty(item.sortableLanguage)
+                return item.sortableLanguage
             case .collections:
-                return nonEmpty(item.sortableCollections)
+                return item.sortableCollections
             case .status:
-                return nonEmpty(item.sortableStatus)
+                return item.sortableStatus
             case .tags:
-                return nonEmpty(item.sortableTags)
+                return item.sortableTags
             case .source:
-                return nonEmpty(item.sortableSource)
+                return item.sortableSource
             case .alignedByVersion:
-                return nonEmpty(item.sortableAlignedByVersion)
+                return item.sortableAlignedByVersion
             case .alignedWith:
-                return nonEmpty(item.sortableAlignedWith)
+                return item.sortableAlignedWith
         }
     }
 
@@ -616,6 +609,7 @@ private struct MediaItemCoverImage: View {
     let item: BookMetadata
     let placeholderColor: Color
     let variant: MediaViewModel.CoverVariant
+    let cornerRadius: CGFloat
     let debugContext: String?
 
     var body: some View {
@@ -625,19 +619,13 @@ private struct MediaItemCoverImage: View {
         let fallbackState = mediaViewModel.coverState(for: item, variant: fallbackVariant)
         let displayImage = coverState.image ?? fallbackState.image
 
-        ZStack {
-            if displayImage == nil {
-                placeholderColor
-            }
-            if let image = displayImage {
-                image
-                    .resizable()
-                    .interpolation(.high)
-                    .scaledToFit()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .transition(.opacity.combined(with: .scale))
-            }
-        }
+        RoundedCoverArtwork(
+            image: displayImage,
+            placeholderColor: placeholderColor,
+            variant: coverState.image == nil && fallbackState.image != nil ? fallbackVariant : variant,
+            cornerRadius: cornerRadius,
+        )
+        .transition(.opacity.combined(with: .scale))
         .animation(.easeInOut(duration: 0.2), value: displayImage != nil)
         .task(id: taskIdentifier) {
             debugCoverLog(
@@ -765,10 +753,10 @@ struct DoubleCoverView: View {
             if ebookState.image != nil && audioState.image != nil {
                 coverImage(state: audioState)
                     .frame(width: audioSize, height: audioSize)
-                    .clipShape(
-                        RoundedRectangle(cornerRadius: cornerRadius * 0.8, style: .continuous)
-                    )
                     .stableCoverRendering()
+                    .clipShape(
+                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    )
                     .scaleEffect(audioScale)
                     .contentShape(Rectangle())
                     .offset(x: audioXOffset)
@@ -781,10 +769,10 @@ struct DoubleCoverView: View {
 
                 coverImage(state: ebookState)
                     .frame(width: scaledWidth, height: ebookHeight)
-                    .clipShape(
-                        RoundedRectangle(cornerRadius: cornerRadius * 0.8, style: .continuous)
-                    )
                     .stableCoverRendering()
+                    .clipShape(
+                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    )
                     .offset(x: ebookXOffset)
                     .zIndex(ebookZ)
 
@@ -798,7 +786,6 @@ struct DoubleCoverView: View {
                         .scaledToFit()
                         .frame(width: 22)
                         .foregroundStyle(.tint)
-                        .shadow(color: .black.opacity(0.6), radius: 2)
                         .offset(x: scaledWidth / 2, y: -(audioSize / 2 + xShift))
                         .zIndex(100)
                 }
@@ -961,7 +948,7 @@ struct AudioIndicatorBadge: View {
         if let badge {
             ZStack {
                 Circle()
-                    .fill(Color.black.opacity(0.7))
+                    .fill(Color.black.opacity(0.78))
                 switch badge {
                     case .readaloud:
                         Image("readalong")
@@ -969,15 +956,15 @@ struct AudioIndicatorBadge: View {
                             .resizable()
                             .aspectRatio(contentMode: .fit)
                             .frame(width: 12, height: 12)
-                            .foregroundStyle(.gray)
+                            .foregroundStyle(.white.opacity(0.92))
                     case .headphones:
                         Image(systemName: "headphones")
                             .font(.system(size: 9, weight: .semibold))
-                            .foregroundStyle(.gray)
+                            .foregroundStyle(.white.opacity(0.92))
                     case .book:
                         Image(systemName: "book.fill")
                             .font(.system(size: 9, weight: .semibold))
-                            .foregroundStyle(.gray)
+                            .foregroundStyle(.white.opacity(0.92))
                 }
             }
             .frame(width: 18, height: 18)
