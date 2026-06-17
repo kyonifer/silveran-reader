@@ -802,7 +802,7 @@ struct DoubleCoverView: View {
                         .zIndex(100)
                 }
 
-                if let notchProgress, !swapped {
+                if let notchProgress {
                     // Mirror of the readaloud wedge in the bottom-right notch.
                     CircularProgressBadge(progress: notchProgress)
                         .offset(x: scaledWidth / 2, y: audioSize / 2 + xShift)
