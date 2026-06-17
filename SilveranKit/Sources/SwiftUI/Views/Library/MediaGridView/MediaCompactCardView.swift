@@ -19,6 +19,7 @@ struct MediaCompactCardView: View {
     @State private var isHovered = false
     @State private var hoveredTab: TabCategory?
     #endif
+    private let availableMediaColor = Color.gray.opacity(0.72)
     #if os(iOS)
     @Environment(\.mediaNavigationPath) private var mediaNavigationPath
     @Environment(\.editMetadataAction) private var editMetadataAction
@@ -396,7 +397,7 @@ struct MediaCompactCardView: View {
         } label: {
             ZStack {
                 Circle()
-                    .fill(Color.black.opacity(0.85))
+                    .fill(Color.black.opacity(0.82))
                     .frame(width: size.frame, height: size.frame)
                 tabIcon(for: tab, status: status, isHovered: isTabHovered, size: size)
             }
@@ -431,15 +432,16 @@ struct MediaCompactCardView: View {
         } else if isHovered && status == .availableNotDownloaded {
             Image(systemName: "arrow.down.circle.fill")
                 .font(.system(size: size.playIcon))
-                .foregroundStyle(.white)
+                .foregroundStyle(availableMediaColor)
         } else if isHovered && status == .downloaded {
             Image(systemName: "play.circle.fill")
                 .font(.system(size: size.playIcon))
-                .foregroundStyle(.tint)
+                .foregroundStyle(.white)
         } else {
             tab.iconView(size: size.icon)
                 .foregroundStyle(
-                    status == .downloaded ? AnyShapeStyle(.tint) : AnyShapeStyle(Color.white)
+                    status == .downloaded
+                        ? AnyShapeStyle(Color.white) : AnyShapeStyle(availableMediaColor)
                 )
         }
     }

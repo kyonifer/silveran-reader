@@ -157,6 +157,7 @@ struct MediaItemCardTopTabsButtonOverlay: View {
 
     @State private var hoveredTab: MediaItemCardTopTabs.TabCategory?
     @State private var showConnectionAlert = false
+    private let availableMediaColor = Color.gray.opacity(0.72)
 
     private enum ButtonSize {
         case large, medium, small
@@ -244,7 +245,7 @@ struct MediaItemCardTopTabsButtonOverlay: View {
         } label: {
             ZStack {
                 Circle()
-                    .fill(Color.black.opacity(0.85))
+                    .fill(Color.black.opacity(0.82))
                     .frame(width: size.frame, height: size.frame)
                 tabIcon(for: tab, status: status, isHovered: isHovered, size: size)
             }
@@ -299,16 +300,17 @@ struct MediaItemCardTopTabsButtonOverlay: View {
             } else {
                 Image(systemName: "arrow.down.circle.fill")
                     .font(.system(size: size.playIcon))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(availableMediaColor)
             }
         } else if isHovered && status == .downloaded {
             Image(systemName: "play.circle.fill")
                 .font(.system(size: size.playIcon))
-                .foregroundStyle(.tint)
+                .foregroundStyle(.white)
         } else {
             tab.iconView(size: size.icon)
                 .foregroundStyle(
-                    status == .downloaded ? AnyShapeStyle(.tint) : AnyShapeStyle(Color.white)
+                    status == .downloaded
+                        ? AnyShapeStyle(Color.white) : AnyShapeStyle(availableMediaColor)
                 )
         }
     }
