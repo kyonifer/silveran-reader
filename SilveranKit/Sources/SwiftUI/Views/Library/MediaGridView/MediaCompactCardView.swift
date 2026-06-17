@@ -432,7 +432,7 @@ struct MediaCompactCardView: View {
         } else if isHovered && status == .availableNotDownloaded {
             Image(systemName: "arrow.down.circle.fill")
                 .font(.system(size: size.playIcon))
-                .foregroundStyle(availableMediaColor)
+                .foregroundStyle(.white)
         } else if isHovered && status == .downloaded {
             Image(systemName: "play.circle.fill")
                 .font(.system(size: size.playIcon))
