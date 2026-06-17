@@ -504,9 +504,9 @@ struct MediaItemCardView: View {
             case .title, .author:
                 return author
             case .allCreators:
-                return item.sortableAllCreators
+                return (item.creators ?? []).compactMap(\.name).joined(separator: ", ")
             case .publicationDate:
-                return item.sortablePublicationYear
+                return BookMetadata.publicationYear(from: item.publicationDate) ?? ""
             case .series:
                 if let series = item.series?.first {
                     if let position = series.formattedPosition {
@@ -525,23 +525,23 @@ struct MediaItemCardView: View {
                 let value = min(max(mediaViewModel.progress(for: item.id), 0), 1)
                 return "\(Int((value * 100).rounded()))%"
             case .subtitle:
-                return item.sortableSubtitle
+                return item.subtitle ?? ""
             case .narrator:
-                return item.sortableNarrator
+                return item.narrators?.first?.name ?? ""
             case .language:
-                return item.sortableLanguage
+                return item.language ?? ""
             case .collections:
-                return item.sortableCollections
+                return item.collections?.map(\.name).joined(separator: ", ") ?? ""
             case .status:
-                return item.sortableStatus
+                return item.status?.name ?? ""
             case .tags:
-                return item.sortableTags
+                return item.tagNames.joined(separator: ", ")
             case .source:
                 return item.sortableSource
             case .alignedByVersion:
-                return item.sortableAlignedByVersion
+                return item.alignedByStorytellerVersion ?? ""
             case .alignedWith:
-                return item.sortableAlignedWith
+                return item.alignedWith ?? ""
         }
     }
 

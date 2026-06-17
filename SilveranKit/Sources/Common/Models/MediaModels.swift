@@ -832,7 +832,7 @@ public struct BookMetadata: Codable, Sendable, Identifiable, Hashable {
     }
 
     public var sortableAuthor: String {
-        authors?.first?.name ?? ""
+        authors?.first?.name ?? "\u{FFFF}"
     }
 
     public var sortableSeries: SeriesSortKey {
@@ -843,11 +843,11 @@ public struct BookMetadata: Codable, Sendable, Identifiable, Hashable {
     }
 
     public var sortableNarrator: String {
-        narrators?.first?.name ?? ""
+        narrators?.first?.name ?? "\u{FFFF}"
     }
 
     public var sortableStatus: String {
-        status?.name ?? ""
+        status?.name ?? "\u{FFFF}"
     }
 
     public var sortableAdded: String {
@@ -855,45 +855,47 @@ public struct BookMetadata: Codable, Sendable, Identifiable, Hashable {
     }
 
     public var sortableLastRead: String {
-        position?.updatedAt ?? ""
+        position?.updatedAt ?? "\u{FFFF}"
     }
 
     public var sortableTags: String {
-        tagNames.joined(separator: ", ")
+        let value = tagNames.joined(separator: ", ")
+        return value.isEmpty ? "\u{FFFF}" : value
     }
 
     public var sortableTranslator: String {
-        (creators ?? []).first(where: { $0.role == "trl" })?.name ?? ""
+        (creators ?? []).first(where: { $0.role == "trl" })?.name ?? "\u{FFFF}"
     }
 
     public var sortableTitle: String { title.articleStripped }
 
-    public var sortableSubtitle: String { subtitle ?? "" }
+    public var sortableSubtitle: String { subtitle ?? "\u{FFFF}" }
 
-    public var sortableLanguage: String { language ?? "" }
+    public var sortableLanguage: String { language ?? "\u{FFFF}" }
 
     public var sortableCollections: String {
-        collections?.map(\.name).joined(separator: ", ") ?? ""
+        collections?.map(\.name).joined(separator: ", ") ?? "\u{FFFF}"
     }
 
     public var sortableAllCreators: String {
-        (creators ?? []).compactMap(\.name).joined(separator: ", ")
+        let value = (creators ?? []).compactMap(\.name).joined(separator: ", ")
+        return value.isEmpty ? "\u{FFFF}" : value
     }
 
-    public var sortableAlignedAt: String { alignedAt ?? "" }
+    public var sortableAlignedAt: String { alignedAt ?? "\u{FFFF}" }
 
-    public var sortableAlignedByVersion: String { alignedByStorytellerVersion ?? "" }
+    public var sortableAlignedByVersion: String { alignedByStorytellerVersion ?? "\u{FFFF}" }
 
-    public var sortableAlignedWith: String { alignedWith ?? "" }
+    public var sortableAlignedWith: String { alignedWith ?? "\u{FFFF}" }
 
     public var sortableSource: String { source ?? "" }
 
     public func sortableCreator(role: String) -> String {
-        (creators ?? []).first(where: { $0.role == role })?.name ?? ""
+        (creators ?? []).first(where: { $0.role == role })?.name ?? "\u{FFFF}"
     }
 
     public var sortablePublicationYear: String {
-        Self.publicationYear(from: publicationDate) ?? ""
+        Self.publicationYear(from: publicationDate) ?? "\u{FFFF}"
     }
 
     public static func publicationYear(from publicationDate: String?) -> String? {
