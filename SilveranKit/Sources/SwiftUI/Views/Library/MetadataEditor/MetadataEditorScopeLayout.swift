@@ -598,6 +598,7 @@ struct WorkMetadataLayout: View {
                     suggestions: suggestions,
                     onChange: { viewModel.markDirty(field: field, for: bookId) },
                 )
+                .id("\(bookId).\(field)")
 
                 if field == "tags", !values.wrappedValue.isEmpty {
                     Button("Remove all tags") {
@@ -649,6 +650,7 @@ struct WorkMetadataLayout: View {
                 suggestionsByRole: viewModel.libraryCreatorNamesByRole,
                 onChange: { viewModel.markDirty(field: "creators", for: bookId) },
             )
+            .id("\(bookId).creators")
         }
     }
 
@@ -671,6 +673,7 @@ struct WorkMetadataLayout: View {
                 suggestions: librarySeriesNames,
                 onChange: { viewModel.markDirty(field: "series", for: bookId) },
             )
+            .id("\(bookId).series")
         }
     }
 
@@ -703,6 +706,7 @@ struct WorkMetadataLayout: View {
                 },
                 onChange: { viewModel.markDirty(field: "collections", for: bookId) },
             )
+            .id("\(bookId).collections")
         }
     }
 
@@ -1248,6 +1252,7 @@ struct EditionMetadataLayout: View {
                 suggestions: editionSuggestions(for: field),
                 onChange: { viewModel.markDirty(field: field, for: bookId) },
             )
+            .id("\(bookId).\(scope.title).\(field)")
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
