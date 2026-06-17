@@ -11,6 +11,71 @@ extension Scene {
     }
 }
 
+@MainActor
+private enum WindowMenuShortcutInstaller {
+    private static var didInstall = false
+    private static var observer: NSObjectProtocol?
+
+    static func install() {
+        guard !didInstall else { return }
+        didInstall = true
+
+        Task { @MainActor in
+            apply()
+        }
+
+        observer = NotificationCenter.default.addObserver(
+            forName: NSApplication.didUpdateNotification,
+            object: NSApp,
+            queue: .main,
+        ) { _ in
+            Task { @MainActor in
+                apply()
+            }
+        }
+    }
+
+    private static func apply() {
+        guard let windowMenu = NSApp.mainMenu?.item(withTitle: "Window")?.submenu else { return }
+
+        setShortcut(
+            in: windowMenu,
+            title: "Library",
+            key: "l",
+            modifiers: [.command],
+        )
+        setShortcut(
+            in: windowMenu,
+            title: "Debug Log",
+            key: "d",
+            modifiers: [.command, .option],
+        )
+        setShortcut(
+            in: windowMenu,
+            title: "Content Server",
+            key: "c",
+            modifiers: [.command, .shift],
+        )
+        setShortcut(
+            in: windowMenu,
+            title: "MP3 to M4B Converter",
+            key: "m",
+            modifiers: [.command, .shift],
+        )
+    }
+
+    private static func setShortcut(
+        in menu: NSMenu,
+        title: String,
+        key: String,
+        modifiers: NSEvent.ModifierFlags,
+    ) {
+        guard let item = menu.items.first(where: { $0.title == title }) else { return }
+        item.keyEquivalent = key
+        item.keyEquivalentModifierMask = modifiers
+    }
+}
+
 // TODO: Remove most of this when proper book opening is implemented.
 // This is debug code
 struct SilveranReaderApp: App {
@@ -22,6 +87,7 @@ struct SilveranReaderApp: App {
     init() {
         StorytellerFontRegistration.registerBundledFonts()
         SidebarSelectionColor.install()
+        WindowMenuShortcutInstaller.install()
         Task {
             await SilveranMigrations.runMigrations()
             await BookServiceActor.shared.reloadSourceRegistry()
@@ -83,14 +149,6 @@ struct SilveranReaderApp: App {
             DebugLogView()
         }
         .defaultSize(width: 800, height: 500)
-        .commands {
-            CommandGroup(after: .help) {
-                Button("Debug Log...") {
-                    openWindow(id: "DebugLog")
-                }
-                .keyboardShortcut("D", modifiers: [.command, .option])
-            }
-        }
     }
 
     private var libraryScene: some Scene {
@@ -105,38 +163,7 @@ struct SilveranReaderApp: App {
             // Most secondary windows (reader, metadata editor, server tools) only make
             // sense when opened from a book context, so drop the synthesized File > New items.
             CommandGroup(replacing: .newItem) {}
-            CommandGroup(after: .windowArrangement) {
-                Button("Show Library") {
-                    openWindow(id: "MyLibrary")
-                }
-                .keyboardShortcut("0", modifiers: .command)
-                Button("Show Library") {
-                    openWindow(id: "MyLibrary")
-                }
-                .keyboardShortcut("l", modifiers: .command)
-                Button("Show Reader") {
-                    Self.raiseReaderWindow()
-                }
-                .keyboardShortcut("r", modifiers: .command)
-            }
         }
-    }
-
-    /// Brings the frontmost open reader window forward. No-op when none are open, since a
-    /// reader window has no meaning without a book to display.
-    @MainActor
-    private static func raiseReaderWindow() {
-        let readerWindows = NSApp.orderedWindows.filter { window in
-            guard window.isVisible || window.isMiniaturized else { return false }
-            let id = window.identifier?.rawValue ?? ""
-            let title = window.title
-            return id.contains("EbookPlayer") || id.contains("AudiobookPlayer")
-                || title == "Ebook Reader" || title == "Audiobook Player"
-        }
-        guard let target = readerWindows.first else { return }
-        if target.isMiniaturized { target.deminiaturize(nil) }
-        target.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
     }
 
     private var libraryViewContent: some View {
@@ -196,17 +223,6 @@ struct SilveranReaderApp: App {
                     openWindow(id: "ReadaloudGenerator")
                 }
                 .keyboardShortcut("R", modifiers: [.command, .shift])
-
-                Button("MP3 to M4B...") {
-                    openWindow(id: "MP3ToM4BConverter")
-                }
-                .keyboardShortcut("M", modifiers: [.command, .shift])
-
-                Divider()
-
-                Button("Content Server…") {
-                    openWindow(id: "ContentServer")
-                }
             }
         }
     }

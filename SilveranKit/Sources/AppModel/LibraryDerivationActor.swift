@@ -125,7 +125,28 @@ public struct MediaGridSortOption: RawRepresentable, Equatable, Hashable, Sendab
         MediaGridSortOption(field: field, ascending: !ascending)
     }
 
-    public static var menuFields: [SortField] { SortField.allCases }
+    public static var menuFields: [SortField] {
+        [
+            .title,
+            .subtitle,
+            .author,
+            .series,
+            .progress,
+            .narrator,
+            .language,
+            .collections,
+            .publicationDate,
+            .status,
+            .recentlyAdded,
+            .recentlyRead,
+            .tags,
+            .source,
+            .allCreators,
+            .alignedAt,
+            .alignedByVersion,
+            .alignedWith,
+        ]
+    }
 
     public static func defaultOption(for field: SortField) -> MediaGridSortOption {
         MediaGridSortOption(field: field, ascending: field.defaultAscending)

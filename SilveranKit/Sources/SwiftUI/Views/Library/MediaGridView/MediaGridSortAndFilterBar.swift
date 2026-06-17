@@ -158,10 +158,7 @@ struct MediaGridSortAndFilterBar: View {
     private var formatMenu: some View {
         Menu {
             clearMenuItem
-            formatSection
-            statusSection
-            locationSection
-            otherSection
+            filterSubmenus
         } label: {
             #if os(iOS)
             Label("Filters", systemImage: "line.3.horizontal.decrease")
@@ -179,7 +176,7 @@ struct MediaGridSortAndFilterBar: View {
 
     @ViewBuilder
     private var formatSection: some View {
-        Section("Format") {
+        Menu {
             ForEach(MediaGridView.FormatFilterOption.allCases) { option in
                 Button {
                     selectedFormatFilter = option
@@ -187,6 +184,8 @@ struct MediaGridSortAndFilterBar: View {
                     menuRowLabel(text: option.label, isSelected: option == selectedFormatFilter)
                 }
             }
+        } label: {
+            Label("Format", systemImage: "books.vertical")
         }
     }
 
@@ -196,8 +195,7 @@ struct MediaGridSortAndFilterBar: View {
         if statuses.isEmpty || contextFilters.status != nil {
             EmptyView()
         } else {
-            Divider()
-            Section("Status") {
+            Menu {
                 Button {
                     selectedStatus = nil
                 } label: {
@@ -214,12 +212,14 @@ struct MediaGridSortAndFilterBar: View {
                         menuRowLabel(text: status, isSelected: selectedStatus == status)
                     }
                 }
+            } label: {
+                Label("Status", systemImage: "checkmark.circle")
             }
         }
     }
 
     @ViewBuilder
-    private var otherSection: some View {
+    private var filterSubmenus: some View {
         let tags = availableTags
         let series = availableSeries
         let authors = availableAuthors
@@ -231,225 +231,251 @@ struct MediaGridSortAndFilterBar: View {
         }
         let hasSources = !sources.isEmpty && contextFilters.sourceID == nil
 
-        if !tags.isEmpty || !series.isEmpty || !authors.isEmpty || !narrators.isEmpty
-            || !translators.isEmpty || !publicationYears.isEmpty || hasSources
-        {
-            Divider()
-            Section("Other") {
-                if !tags.isEmpty {
-                    if contextFilters.tag == nil {
-                        Menu {
-                            Button {
-                                selectedTag = nil
-                            } label: {
-                                menuRowLabel(text: "All Tags", isSelected: selectedTag == nil)
-                            }
+        formatSection
 
-                            ForEach(tags, id: \.self) { tag in
-                                Button {
-                                    selectedTag = tag
-                                } label: {
-                                    menuRowLabel(text: tag, isSelected: selectedTag == tag)
-                                }
-                            }
-                        } label: {
-                            Label("Select Tag", systemImage: "tag")
-                        }
-                    }
-                }
+        if !authors.isEmpty, contextFilters.author == nil {
+            authorFilterMenu(authors)
+        }
 
-                if !series.isEmpty {
-                    if contextFilters.series == nil {
-                        Menu {
-                            Button {
-                                selectedSeries = nil
-                            } label: {
-                                menuRowLabel(text: "All Series", isSelected: selectedSeries == nil)
-                            }
+        if !series.isEmpty, contextFilters.series == nil {
+            seriesFilterMenu(series)
+        }
 
-                            ForEach(series, id: \.self) { seriesName in
-                                Button {
-                                    selectedSeries = seriesName
-                                } label: {
-                                    menuRowLabel(
-                                        text: seriesName,
-                                        isSelected: selectedSeries == seriesName,
-                                    )
-                                }
-                            }
-                        } label: {
-                            Label("Select Series", systemImage: "books.vertical")
-                        }
-                    }
-                }
+        if !narrators.isEmpty, contextFilters.narrator == nil {
+            narratorFilterMenu(narrators)
+        }
 
-                if !authors.isEmpty {
-                    if contextFilters.author == nil {
-                        Menu {
-                            Button {
-                                selectedAuthor = nil
-                            } label: {
-                                menuRowLabel(
-                                    text: "All Authors",
-                                    isSelected: selectedAuthor == nil,
-                                )
-                            }
+        if !translators.isEmpty, contextFilters.translator == nil {
+            translatorFilterMenu(translators)
+        }
 
-                            ForEach(authors, id: \.self) { authorName in
-                                Button {
-                                    selectedAuthor = authorName
-                                } label: {
-                                    menuRowLabel(
-                                        text: authorName,
-                                        isSelected: selectedAuthor == authorName,
-                                    )
-                                }
-                            }
-                        } label: {
-                            Label("Select Author", systemImage: "person.2")
-                        }
-                    }
-                }
+        if !publicationYears.isEmpty, contextFilters.publicationYear == nil {
+            publicationYearFilterMenu(publicationYears)
+        }
 
-                if !narrators.isEmpty {
-                    if contextFilters.narrator == nil {
-                        Menu {
-                            Button {
-                                selectedNarrator = nil
-                            } label: {
-                                menuRowLabel(
-                                    text: "All Narrators",
-                                    isSelected: selectedNarrator == nil,
-                                )
-                            }
+        statusSection
 
-                            ForEach(narrators, id: \.self) { narratorName in
-                                Button {
-                                    selectedNarrator = narratorName
-                                } label: {
-                                    menuRowLabel(
-                                        text: narratorName,
-                                        isSelected: selectedNarrator == narratorName,
-                                    )
-                                }
-                            }
-                        } label: {
-                            Label("Select Narrator", systemImage: "mic")
-                        }
-                    }
-                }
+        if !tags.isEmpty, contextFilters.tag == nil {
+            tagFilterMenu(tags)
+        }
 
-                if !translators.isEmpty {
-                    if contextFilters.translator == nil {
-                        Menu {
-                            Button {
-                                selectedTranslator = nil
-                            } label: {
-                                menuRowLabel(
-                                    text: "All Translators",
-                                    isSelected: selectedTranslator == nil,
-                                )
-                            }
+        let ratings = availableRatings
+        if !ratings.isEmpty && contextFilters.rating == nil {
+            ratingFilterMenu(ratings)
+        }
 
-                            ForEach(translators, id: \.self) { translatorName in
-                                Button {
-                                    selectedTranslator = translatorName
-                                } label: {
-                                    menuRowLabel(
-                                        text: translatorName,
-                                        isSelected: selectedTranslator == translatorName,
-                                    )
-                                }
-                            }
-                        } label: {
-                            Label("Select Translator", systemImage: "character.book.closed.fill")
-                        }
-                    }
-                }
+        if hasSources {
+            sourceFilterMenu(sources)
+        }
 
-                if !publicationYears.isEmpty {
-                    if contextFilters.publicationYear == nil {
-                        Menu {
-                            Button {
-                                selectedPublicationYear = nil
-                            } label: {
-                                menuRowLabel(
-                                    text: "All Years",
-                                    isSelected: selectedPublicationYear == nil,
-                                )
-                            }
+        locationSection
+    }
 
-                            ForEach(publicationYears, id: \.self) { year in
-                                Button {
-                                    selectedPublicationYear = year
-                                } label: {
-                                    menuRowLabel(
-                                        text: year,
-                                        isSelected: selectedPublicationYear == year,
-                                    )
-                                }
-                            }
-                        } label: {
-                            Label("Select Year", systemImage: "calendar")
-                        }
-                    }
-                }
+    @ViewBuilder
+    private func authorFilterMenu(_ authors: [String]) -> some View {
+        Menu {
+            Button {
+                selectedAuthor = nil
+            } label: {
+                menuRowLabel(
+                    text: "All Authors",
+                    isSelected: selectedAuthor == nil,
+                )
+            }
 
-                let ratings = availableRatings
-                if !ratings.isEmpty && contextFilters.rating == nil {
-                    Menu {
-                        Button {
-                            selectedRating = nil
-                        } label: {
-                            menuRowLabel(text: "All Ratings", isSelected: selectedRating == nil)
-                        }
-
-                        ForEach(ratings, id: \.self) { rating in
-                            Button {
-                                selectedRating = rating
-                            } label: {
-                                menuRowLabel(
-                                    text: rating == "Unrated" ? "Unrated" : "\(rating) Stars",
-                                    isSelected: selectedRating == rating,
-                                )
-                            }
-                        }
-                    } label: {
-                        Label("Select Rating", systemImage: "star")
-                    }
-                }
-
-                if hasSources {
-                    Menu {
-                        Button {
-                            selectedSourceID = nil
-                        } label: {
-                            menuRowLabel(text: "All Sources", isSelected: selectedSourceID == nil)
-                        }
-
-                        ForEach(sources) { source in
-                            Button {
-                                selectedSourceID = source.id
-                            } label: {
-                                menuRowLabel(
-                                    text: source.name,
-                                    isSelected: selectedSourceID == source.id,
-                                )
-                            }
-                        }
-                    } label: {
-                        Label("By Source", systemImage: "externaldrive")
-                    }
+            ForEach(authors, id: \.self) { authorName in
+                Button {
+                    selectedAuthor = authorName
+                } label: {
+                    menuRowLabel(
+                        text: authorName,
+                        isSelected: selectedAuthor == authorName,
+                    )
                 }
             }
+        } label: {
+            Label("Author", systemImage: "person.2")
+        }
+    }
+
+    @ViewBuilder
+    private func seriesFilterMenu(_ series: [String]) -> some View {
+        Menu {
+            Button {
+                selectedSeries = nil
+            } label: {
+                menuRowLabel(text: "All Series", isSelected: selectedSeries == nil)
+            }
+
+            ForEach(series, id: \.self) { seriesName in
+                Button {
+                    selectedSeries = seriesName
+                } label: {
+                    menuRowLabel(
+                        text: seriesName,
+                        isSelected: selectedSeries == seriesName,
+                    )
+                }
+            }
+        } label: {
+            Label("Series", systemImage: "books.vertical")
+        }
+    }
+
+    @ViewBuilder
+    private func narratorFilterMenu(_ narrators: [String]) -> some View {
+        Menu {
+            Button {
+                selectedNarrator = nil
+            } label: {
+                menuRowLabel(
+                    text: "All Narrators",
+                    isSelected: selectedNarrator == nil,
+                )
+            }
+
+            ForEach(narrators, id: \.self) { narratorName in
+                Button {
+                    selectedNarrator = narratorName
+                } label: {
+                    menuRowLabel(
+                        text: narratorName,
+                        isSelected: selectedNarrator == narratorName,
+                    )
+                }
+            }
+        } label: {
+            Label("Narrator", systemImage: "mic")
+        }
+    }
+
+    @ViewBuilder
+    private func translatorFilterMenu(_ translators: [String]) -> some View {
+        Menu {
+            Button {
+                selectedTranslator = nil
+            } label: {
+                menuRowLabel(
+                    text: "All Translators",
+                    isSelected: selectedTranslator == nil,
+                )
+            }
+
+            ForEach(translators, id: \.self) { translatorName in
+                Button {
+                    selectedTranslator = translatorName
+                } label: {
+                    menuRowLabel(
+                        text: translatorName,
+                        isSelected: selectedTranslator == translatorName,
+                    )
+                }
+            }
+        } label: {
+            Label("Translator", systemImage: "character.book.closed.fill")
+        }
+    }
+
+    @ViewBuilder
+    private func publicationYearFilterMenu(_ publicationYears: [String]) -> some View {
+        Menu {
+            Button {
+                selectedPublicationYear = nil
+            } label: {
+                menuRowLabel(
+                    text: "All Years",
+                    isSelected: selectedPublicationYear == nil,
+                )
+            }
+
+            ForEach(publicationYears, id: \.self) { year in
+                Button {
+                    selectedPublicationYear = year
+                } label: {
+                    menuRowLabel(
+                        text: year,
+                        isSelected: selectedPublicationYear == year,
+                    )
+                }
+            }
+        } label: {
+            Label("Pub Year", systemImage: "calendar")
+        }
+    }
+
+    @ViewBuilder
+    private func tagFilterMenu(_ tags: [String]) -> some View {
+        Menu {
+            Button {
+                selectedTag = nil
+            } label: {
+                menuRowLabel(text: "All Tags", isSelected: selectedTag == nil)
+            }
+
+            ForEach(tags, id: \.self) { tag in
+                Button {
+                    selectedTag = tag
+                } label: {
+                    menuRowLabel(text: tag, isSelected: selectedTag == tag)
+                }
+            }
+        } label: {
+            Label("Tag", systemImage: "tag")
+        }
+    }
+
+    @ViewBuilder
+    private func ratingFilterMenu(_ ratings: [String]) -> some View {
+        Menu {
+            Button {
+                selectedRating = nil
+            } label: {
+                menuRowLabel(text: "All Ratings", isSelected: selectedRating == nil)
+            }
+
+            ForEach(ratings, id: \.self) { rating in
+                Button {
+                    selectedRating = rating
+                } label: {
+                    menuRowLabel(
+                        text: rating == "Unrated" ? "Unrated" : "\(rating) Stars",
+                        isSelected: selectedRating == rating,
+                    )
+                }
+            }
+        } label: {
+            Label("Rating", systemImage: "star")
+        }
+    }
+
+    @ViewBuilder
+    private func sourceFilterMenu(_ sources: [BookSourceRecord]) -> some View {
+        Menu {
+            Button {
+                selectedSourceID = nil
+            } label: {
+                menuRowLabel(text: "All Sources", isSelected: selectedSourceID == nil)
+            }
+
+            ForEach(sources) { source in
+                Button {
+                    selectedSourceID = source.id
+                } label: {
+                    menuRowLabel(
+                        text: source.name,
+                        isSelected: selectedSourceID == source.id,
+                    )
+                }
+            }
+        } label: {
+            Label("Source", systemImage: "externaldrive")
         }
     }
 
     @ViewBuilder
     private var locationSection: some View {
         if contextFilters.location == nil {
-            Divider()
-            Section("Location") {
+            Menu {
                 ForEach(MediaGridView.LocationFilterOption.allCases) { option in
                     Button {
                         selectedLocation = option
@@ -457,6 +483,8 @@ struct MediaGridSortAndFilterBar: View {
                         menuRowLabel(text: option.label, isSelected: selectedLocation == option)
                     }
                 }
+            } label: {
+                Label("Location", systemImage: "externaldrive")
             }
         }
     }
