@@ -506,7 +506,7 @@ struct MediaItemCardView: View {
             case .allCreators:
                 return item.sortableAllCreators
             case .publicationDate:
-                return item.sortablePublicationYear
+                return formattedDate(item.publicationDate) ?? item.sortablePublicationYear
             case .series:
                 if let series = item.series?.first {
                     if let position = series.formattedPosition {
@@ -520,7 +520,7 @@ struct MediaItemCardView: View {
             case .recentlyRead:
                 return formattedDate(item.sortableLastRead) ?? ""
             case .alignedAt:
-                return formattedDate(item.sortableAlignedAt) ?? ""
+                return formattedDate(item.alignedAt) ?? ""
             case .progress:
                 let value = min(max(mediaViewModel.progress(for: item.id), 0), 1)
                 return "\(Int((value * 100).rounded()))%"
@@ -545,18 +545,9 @@ struct MediaItemCardView: View {
         }
     }
 
-    private func formattedDate(_ isoString: String) -> String? {
-        guard !isoString.isEmpty else { return nil }
-        let withFractional = ISO8601DateFormatter()
-        withFractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        let withoutFractional = ISO8601DateFormatter()
-        withoutFractional.formatOptions = [.withInternetDateTime]
-        let dateOnly = ISO8601DateFormatter()
-        dateOnly.formatOptions = [.withFullDate]
-        for formatter in [withFractional, withoutFractional, dateOnly] {
-            if let date = formatter.date(from: isoString) {
-                return date.formatted(date: .abbreviated, time: .omitted)
-            }
+    private func formattedDate(_ isoString: String?) -> String? {
+        if let date = BookMetadata.parsedDate(from: isoString) {
+            return date.formatted(date: .abbreviated, time: .omitted)
         }
         return nil
     }

@@ -629,7 +629,7 @@ struct MediaTableView: NSViewRepresentable {
             \BookMetadata.sortableNarrator: "narrator",
             \BookMetadata.sortableLanguage: "language",
             \BookMetadata.sortableCollections: "collections",
-            \BookMetadata.sortablePublicationYear: "publicationYear",
+            \BookMetadata.sortablePublicationDate: "publicationYear",
             \BookMetadata.sortableStatus: "status",
             \BookMetadata.sortableAdded: "added",
             \BookMetadata.sortableLastRead: "lastRead",
@@ -918,7 +918,7 @@ struct MediaTableView: NSViewRepresentable {
                     ]
                 case "publicationYear":
                     parent.sortOrder = [
-                        KeyPathComparator(\BookMetadata.sortablePublicationYear, order: order)
+                        KeyPathComparator(\BookMetadata.sortablePublicationDate, order: order)
                     ]
                 case "status":
                     parent.sortOrder = [
@@ -1774,7 +1774,7 @@ struct MediaTableView: NSViewRepresentable {
             let cell =
                 tableView.makeView(withIdentifier: cellID, owner: self) as? DateCellView
                 ?? DateCellView(identifier: cellID)
-            let parsedDate = dateString.flatMap { DateFormatterCache.shared.parseDate($0) }
+            let parsedDate = BookMetadata.parsedDate(from: dateString)
             cell.configure(date: parsedDate, rawString: dateString ?? "")
             return cell
         }
@@ -1788,7 +1788,7 @@ struct MediaTableView: NSViewRepresentable {
             let cell =
                 tableView.makeView(withIdentifier: cellID, owner: self) as? LinkDateCellView
                 ?? LinkDateCellView(identifier: cellID)
-            let parsedDate = dateString.flatMap { DateFormatterCache.shared.parseDate($0) }
+            let parsedDate = BookMetadata.parsedDate(from: dateString)
             cell.configure(date: parsedDate, rawString: dateString ?? "", linkTarget: linkTarget)
             return cell
         }
@@ -2990,54 +2990,4 @@ private struct MediaIndicatorCellContent: View {
     }
 }
 
-@MainActor
-private final class DateFormatterCache {
-    static let shared = DateFormatterCache()
-
-    private let isoWithFractional: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter
-    }()
-    private let isoWithoutFractional: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter
-    }()
-    private let fallbackFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter
-    }()
-    private let fallbackWithTimeFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
-        return formatter
-    }()
-    private let jsDateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "EEE MMM dd yyyy HH:mm:ss 'GMT'xx"
-        return formatter
-    }()
-
-    func parseDate(_ dateString: String) -> Date? {
-        isoWithFractional.date(from: dateString)
-            ?? isoWithoutFractional.date(from: dateString)
-            ?? fallbackWithTimeFormatter.date(from: dateString)
-            ?? fallbackFormatter.date(from: dateString)
-            ?? parseJSDate(dateString)
-    }
-
-    private func parseJSDate(_ dateString: String) -> Date? {
-        // JS Date.toString(): "Mon Dec 15 2025 17:23:45 GMT+0100 (Central European Standard Time)"
-        let stripped: String
-        if let parenRange = dateString.range(of: " (") {
-            stripped = String(dateString[..<parenRange.lowerBound])
-        } else {
-            stripped = dateString
-        }
-        return jsDateFormatter.date(from: stripped)
-    }
-}
 #endif

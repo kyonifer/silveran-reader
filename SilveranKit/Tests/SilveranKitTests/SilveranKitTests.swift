@@ -45,6 +45,22 @@ import Testing
     #expect(condition.matches(book, progress: 0))
 }
 
+@Test func publicationDateSortKeyUsesFullDateWithinYear() async throws {
+    let january = makeBook(publicationDate: "1950-01-02T00:00:00.000Z")
+    let september = makeBook(publicationDate: "1950-09-16")
+
+    #expect(january.sortablePublicationYear == september.sortablePublicationYear)
+    #expect(january.sortablePublicationDate < september.sortablePublicationDate)
+}
+
+@Test func alignedAtSortKeyAndParserUseRawAlignedDate() async throws {
+    var book = makeBook(publicationDate: nil)
+    book.alignedAt = "Mon Dec 15 2025 17:23:45 GMT+0100 (Central European Standard Time)"
+
+    #expect(BookMetadata.parsedDate(from: book.alignedAt) != nil)
+    #expect(!book.sortableAlignedAt.isEmpty)
+}
+
 @Test func malformedLocatorFragmentsDecodeAsNoFragments() throws {
     let data = """
         {
@@ -109,4 +125,29 @@ import Testing
     let body = formURLEncodedBody(["password": ">-\",+&= a"])
     let encoded = try #require(body.flatMap { String(data: $0, encoding: .utf8) })
     #expect(encoded == "password=%3E-%22,%2B%26%3D%20a")
+}
+
+private func makeBook(publicationDate: String?) -> BookMetadata {
+    BookMetadata(
+        uuid: UUID().uuidString,
+        title: "Book",
+        subtitle: nil,
+        description: nil,
+        language: nil,
+        createdAt: nil,
+        updatedAt: nil,
+        publicationDate: publicationDate,
+        authors: nil,
+        narrators: nil,
+        creators: nil,
+        series: nil,
+        tags: nil,
+        collections: nil,
+        ebook: nil,
+        audiobook: nil,
+        readaloud: nil,
+        status: nil,
+        position: nil,
+        rating: nil,
+    )
 }

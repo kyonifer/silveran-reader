@@ -192,7 +192,7 @@ public struct MediaGridSortOption: RawRepresentable, Equatable, Hashable, Sendab
             switch self {
                 case .title: return \BookMetadata.sortableTitle
                 case .author: return \BookMetadata.sortableAuthor
-                case .publicationDate: return \BookMetadata.sortablePublicationYear
+                case .publicationDate: return \BookMetadata.sortablePublicationDate
                 case .recentlyAdded: return \BookMetadata.sortableAdded
                 case .recentlyRead: return \BookMetadata.sortableLastRead
                 case .subtitle: return \BookMetadata.sortableSubtitle

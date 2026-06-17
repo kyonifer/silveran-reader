@@ -880,7 +880,9 @@ public struct BookMetadata: Codable, Sendable, Identifiable, Hashable {
         (creators ?? []).compactMap(\.name).joined(separator: ", ")
     }
 
-    public var sortableAlignedAt: String { alignedAt ?? "" }
+    public var sortableAlignedAt: String {
+        Self.sortableDateKey(from: alignedAt)
+    }
 
     public var sortableAlignedByVersion: String { alignedByStorytellerVersion ?? "" }
 
@@ -894,6 +896,80 @@ public struct BookMetadata: Codable, Sendable, Identifiable, Hashable {
 
     public var sortablePublicationYear: String {
         Self.publicationYear(from: publicationDate) ?? ""
+    }
+
+    public var sortablePublicationDate: String {
+        Self.sortableDateKey(from: publicationDate)
+    }
+
+    public static func parsedDate(from dateString: String?) -> Date? {
+        guard let dateString else { return nil }
+        let trimmed = dateString.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        let isoWithFractional = ISO8601DateFormatter()
+        isoWithFractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let isoWithoutFractional = ISO8601DateFormatter()
+        isoWithoutFractional.formatOptions = [.withInternetDateTime]
+        let isoDateOnly = ISO8601DateFormatter()
+        isoDateOnly.formatOptions = [.withFullDate]
+
+        if let date = isoWithFractional.date(from: trimmed)
+            ?? isoWithoutFractional.date(from: trimmed)
+            ?? isoDateOnly.date(from: trimmed)
+        {
+            return date
+        }
+
+        let fallbackFormats = [
+            "yyyy-MM-dd HH:mm:ss",
+            "yyyy-MM-dd",
+            "yyyy-MM",
+            "yyyy",
+        ]
+        for format in fallbackFormats {
+            let formatter = DateFormatter()
+            formatter.calendar = Calendar(identifier: .gregorian)
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.timeZone = TimeZone(secondsFromGMT: 0)
+            formatter.dateFormat = format
+            if let date = formatter.date(from: trimmed) {
+                return date
+            }
+        }
+
+        let jsFormatter = DateFormatter()
+        jsFormatter.calendar = Calendar(identifier: .gregorian)
+        jsFormatter.locale = Locale(identifier: "en_US_POSIX")
+        jsFormatter.dateFormat = "EEE MMM dd yyyy HH:mm:ss 'GMT'xx"
+        let stripped: String
+        if let parenRange = trimmed.range(of: " (") {
+            stripped = String(trimmed[..<parenRange.lowerBound])
+        } else {
+            stripped = trimmed
+        }
+        return jsFormatter.date(from: stripped)
+    }
+
+    private static func sortableDateKey(from dateString: String?) -> String {
+        guard let date = parsedDate(from: dateString) else {
+            return dateString?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let components = calendar.dateComponents(
+            [.year, .month, .day, .hour, .minute, .second],
+            from: date,
+        )
+        return String(
+            format: "%04d%02d%02d%02d%02d%02d",
+            components.year ?? 0,
+            components.month ?? 0,
+            components.day ?? 0,
+            components.hour ?? 0,
+            components.minute ?? 0,
+            components.second ?? 0,
+        )
     }
 
     public static func publicationYear(from publicationDate: String?) -> String? {
