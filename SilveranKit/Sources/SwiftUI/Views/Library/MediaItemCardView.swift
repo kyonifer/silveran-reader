@@ -788,7 +788,7 @@ struct DoubleCoverView: View {
                     .offset(x: ebookXOffset)
                     .zIndex(ebookZ)
 
-                if showReadaloudWedge && !swapped {
+                if showReadaloudWedge {
                     // Nestled in the empty top-right corner with an equal gap to the ebook's right
                     // edge (horizontal) and the audio's top edge (vertical). The badge half-size
                     // cancels out of both gaps, so they stay equal at any icon size or hover spread.
