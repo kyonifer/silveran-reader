@@ -2,6 +2,7 @@ import Foundation
 import Testing
 
 @testable import SilveranKitCommon
+@testable import SilveranKitAppModel
 @testable import SilveranKitMacApp
 
 @Test func publicationYearExtractsFourDigitYearFromSupportedDates() async throws {
@@ -59,6 +60,24 @@ import Testing
 
     #expect(BookMetadata.parsedDate(from: book.alignedAt) != nil)
     #expect(!book.sortableAlignedAt.isEmpty)
+}
+
+@MainActor
+@Test func smartShelfBooksUsePublishedDerivationSnapshot() async throws {
+    let shelf = SmartShelf(name: "Recent", conditions: [])
+    let book = makeBook(publicationDate: nil)
+    let viewModel = MediaViewModel(
+        injectLibrary: BookLibrary(bookMetaData: [book], ebookCoverCache: [:], audiobookCoverCache: [:])
+    )
+
+    #expect(viewModel.booksForShelf(shelf).isEmpty)
+
+    viewModel.libraryViewSnapshot = LibraryViewSnapshot(
+        generation: 1,
+        smartShelfBooks: [shelf.id: [book]],
+    )
+
+    #expect(viewModel.booksForShelf(shelf).map(\.id) == [book.id])
 }
 
 @Test func malformedLocatorFragmentsDecodeAsNoFragments() throws {

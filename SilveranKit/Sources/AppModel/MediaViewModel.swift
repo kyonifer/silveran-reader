@@ -576,6 +576,9 @@ public final class MediaViewModel {
     }
 
     public func smartShelfBooks(for shelf: SmartShelf) async -> [BookMetadata] {
+        if let cached = libraryViewSnapshot.smartShelfBooks[shelf.id] {
+            return cached
+        }
         if let cached = smartShelfBooksCache[shelf.id] {
             return cached
         }
@@ -2490,7 +2493,7 @@ public final class MediaViewModel {
     }
 
     public func booksForShelf(_ shelf: SmartShelf) -> [BookMetadata] {
-        smartShelfBooksCache[shelf.id] ?? []
+        libraryViewSnapshot.smartShelfBooks[shelf.id] ?? smartShelfBooksCache[shelf.id] ?? []
     }
 
     public func showSyncNotification(_ notification: SyncNotification) {
