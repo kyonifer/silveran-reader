@@ -506,7 +506,8 @@ struct MediaItemCardView: View {
             case .allCreators:
                 return item.sortableAllCreators
             case .publicationDate:
-                return formattedDate(item.publicationDate) ?? item.sortablePublicationYear
+                let formatted = SilveranDate.full(item.publicationDateValue)
+                return formatted.isEmpty ? item.sortablePublicationYear : formatted
             case .series:
                 if let series = item.series?.first {
                     if let position = series.formattedPosition {
@@ -516,11 +517,11 @@ struct MediaItemCardView: View {
                 }
                 return ""
             case .recentlyAdded:
-                return formattedDate(item.sortableAdded) ?? ""
+                return SilveranDate.full(item.createdAtValue)
             case .recentlyRead:
-                return formattedDate(item.sortableLastRead) ?? ""
+                return SilveranDate.full(item.lastReadValue)
             case .alignedAt:
-                return formattedDate(item.alignedAt) ?? ""
+                return SilveranDate.full(item.alignedAtValue)
             case .progress:
                 let value = min(max(mediaViewModel.progress(for: item.id), 0), 1)
                 return "\(Int((value * 100).rounded()))%"
@@ -545,12 +546,6 @@ struct MediaItemCardView: View {
         }
     }
 
-    private func formattedDate(_ isoString: String?) -> String? {
-        if let date = BookMetadata.parsedDate(from: isoString) {
-            return date.formatted(date: .abbreviated, time: .omitted)
-        }
-        return nil
-    }
 
     private func resolveCoverVariant(for item: BookMetadata) -> MediaViewModel.CoverVariant {
         mediaViewModel.coverVariant(for: item, preference: coverPreference)

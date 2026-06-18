@@ -339,12 +339,8 @@ public actor HardcoverActor {
         let description = book["description"] as? String
         let releaseDate: String? = {
             guard let raw = book["release_date"] as? String else { return nil }
-            let df = ISO8601DateFormatter()
-            df.formatOptions = [.withFullDate]
-            if let date = df.date(from: raw) {
-                let full = ISO8601DateFormatter()
-                full.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-                return full.string(from: date)
+            if let date = SilveranDate.parse(raw, field: .releaseDate) {
+                return SilveranDate.isoFull(from: date)
             }
             return raw
         }()

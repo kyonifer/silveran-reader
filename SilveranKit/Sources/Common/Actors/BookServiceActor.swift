@@ -226,7 +226,7 @@ public actor BookServiceActor {
     {
         await ensureSourceRegistryLoaded()
 
-        let now = ISO8601DateFormatter().string(from: Date())
+        let now = SilveranDate.isoTimestamp(from: Date())
         let sourceID = await sourceIDForNewSource(
             kind: configuration.kind,
             configuredPath: configuration.storagePath,
@@ -319,7 +319,7 @@ public actor BookServiceActor {
             kind: kind,
             capabilities: capabilities(for: kind),
             createdAt: existing.createdAt,
-            updatedAt: ISO8601DateFormatter().string(from: Date()),
+            updatedAt: SilveranDate.isoTimestamp(from: Date()),
             storagePath: updatedStoragePath(
                 existing: existing,
                 configuration: configuration,

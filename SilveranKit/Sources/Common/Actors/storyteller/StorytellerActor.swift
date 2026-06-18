@@ -758,19 +758,8 @@ public actor StorytellerActor {
             return String(numeric)
         }
 
-        let date: Date?
-        if let isoDate = ISO8601DateFormatter().date(from: updatedAt) {
-            date = isoDate
-        } else {
-            let formatter = DateFormatter()
-            formatter.locale = Locale(identifier: "en_US_POSIX")
-            formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
-            formatter.timeZone = .current
-            date = formatter.date(from: updatedAt)
-        }
-
-        guard let date else { return nil }
-        return String(Int64(date.timeIntervalSince1970 * 1000))
+        guard let date = SilveranDate.parse(updatedAt, field: .coverVersion) else { return nil }
+        return SilveranDate.epochMillisString(from: date)
     }
 
     private func handleDownloadFailure(

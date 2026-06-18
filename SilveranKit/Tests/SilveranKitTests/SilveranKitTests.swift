@@ -58,8 +58,8 @@ import Testing
     var book = makeBook(publicationDate: nil)
     book.alignedAt = "Mon Dec 15 2025 17:23:45 GMT+0100 (Central European Standard Time)"
 
-    #expect(BookMetadata.parsedDate(from: book.alignedAt) != nil)
-    #expect(!book.sortableAlignedAt.isEmpty)
+    #expect(SilveranDate.parse(book.alignedAt, field: .alignedAt) != nil)
+    #expect(book.sortableAlignedAt != "99999999999999")
 }
 
 @MainActor

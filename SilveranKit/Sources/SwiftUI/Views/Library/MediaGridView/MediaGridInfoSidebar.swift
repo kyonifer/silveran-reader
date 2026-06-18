@@ -352,30 +352,7 @@ struct MediaGridInfoSidebar: View {
     }
 
     private func formatDate(_ isoString: String) -> String {
-        let iso8601Formatter = ISO8601DateFormatter()
-        iso8601Formatter.formatOptions = [.withInternetDateTime]
-
-        let legacyFormatter = DateFormatter()
-        legacyFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
-        legacyFormatter.timeZone = TimeZone(identifier: "UTC")
-        legacyFormatter.locale = Locale(identifier: "en_US_POSIX")
-
-        guard
-            let date = iso8601Formatter.date(from: isoString)
-                ?? legacyFormatter.date(from: isoString)
-        else {
-            return "Parse failed: \(isoString)"
-        }
-
-        let outputFormatter = DateFormatter()
-        outputFormatter.dateStyle = .medium
-        outputFormatter.timeStyle = .medium
-        outputFormatter.timeZone = TimeZone.current
-        outputFormatter.locale = Locale.current
-
-        let timeZoneName =
-            TimeZone.current.localizedName(for: .shortStandard, locale: .current)
-            ?? TimeZone.current.identifier
-        return "\(outputFormatter.string(from: date)) (\(timeZoneName))"
+        guard let date = SilveranDate.parse(isoString, field: .lastRead) else { return isoString }
+        return SilveranDate.dateTimeWithZone(date)
     }
 }

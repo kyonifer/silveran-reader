@@ -466,7 +466,7 @@ extension FilesystemActor {
     func writeMigrationSentinel(_ migrationID: String) throws {
         let sentinelDir = migrationSentinelDirectory()
         try ensureDirectoryExists(at: sentinelDir)
-        let payload = "\(ISO8601DateFormatter().string(from: Date()))\n"
+        let payload = "\(SilveranDate.isoTimestamp(from: Date()))\n"
         try payload.write(
             to: migrationSentinelURL(migrationID),
             atomically: true,

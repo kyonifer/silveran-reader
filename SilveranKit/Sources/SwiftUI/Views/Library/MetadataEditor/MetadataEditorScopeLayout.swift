@@ -194,20 +194,6 @@ struct WorkMetadataLayout: View {
         }
     }
 
-    private static let dateToNoonUTC: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
-        formatter.timeZone = TimeZone(identifier: "UTC")
-        return formatter
-    }()
-
-    private static let dateFromNoonUTC: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        formatter.timeZone = TimeZone(identifier: "UTC")
-        return formatter
-    }()
-
     private func fieldGroup<Content: View>(_ title: String, @ViewBuilder content: () -> Content)
         -> some View
     {
@@ -258,20 +244,13 @@ struct WorkMetadataLayout: View {
                 MetadataEditorDatePicker(
                     selection: Binding(
                         get: {
-                            if let date = Self.dateToNoonUTC.date(
-                                from: "\(dateString)T12:00:00.000Z"
-                            ) {
-                                return date
-                            }
-                            let today = Self.dateFromNoonUTC.string(from: Date())
-                            return Self.dateToNoonUTC.date(from: "\(today)T12:00:00.000Z") ?? Date()
+                            SilveranDate.parse(dateString, field: .publicationDate) ?? Date()
                         },
                         set: { newDate in
                             guard let index = viewModel.books.firstIndex(where: { $0.id == bookId })
                             else { return }
-                            viewModel.books[index].publicationDate = Self.dateFromNoonUTC.string(
-                                from: newDate
-                            )
+                            viewModel.books[index].publicationDate = SilveranDate.isoDay(
+                                from: newDate)
                             viewModel.markDirty(field: "publicationDate", for: bookId)
                         },
                     )
@@ -283,20 +262,13 @@ struct WorkMetadataLayout: View {
                     "",
                     selection: Binding(
                         get: {
-                            if let date = Self.dateToNoonUTC.date(
-                                from: "\(dateString)T12:00:00.000Z"
-                            ) {
-                                return date
-                            }
-                            let today = Self.dateFromNoonUTC.string(from: Date())
-                            return Self.dateToNoonUTC.date(from: "\(today)T12:00:00.000Z") ?? Date()
+                            SilveranDate.parse(dateString, field: .publicationDate) ?? Date()
                         },
                         set: { newDate in
                             guard let index = viewModel.books.firstIndex(where: { $0.id == bookId })
                             else { return }
-                            viewModel.books[index].publicationDate = Self.dateFromNoonUTC.string(
-                                from: newDate
-                            )
+                            viewModel.books[index].publicationDate = SilveranDate.isoDay(
+                                from: newDate)
                             viewModel.markDirty(field: "publicationDate", for: bookId)
                         },
                     ),
@@ -314,7 +286,7 @@ struct WorkMetadataLayout: View {
                             guard let index = viewModel.books.firstIndex(where: { $0.id == bookId })
                             else { return }
                             viewModel.books[index].publicationDate =
-                                noDate ? "" : Self.dateFromNoonUTC.string(from: Date())
+                                noDate ? "" : SilveranDate.isoDay(from: Date())
                             viewModel.markDirty(field: "publicationDate", for: bookId)
                         },
                     ),
@@ -751,20 +723,6 @@ struct EditionMetadataLayout: View {
         #endif
     }
 
-    private static let dateToNoonUTC: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
-        formatter.timeZone = TimeZone(identifier: "UTC")
-        return formatter
-    }()
-
-    private static let dateFromNoonUTC: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        formatter.timeZone = TimeZone(identifier: "UTC")
-        return formatter
-    }()
-
     var body: some View {
         GeometryReader { proxy in
             let horizontalPadding: CGFloat = 24
@@ -1169,14 +1127,7 @@ struct EditionMetadataLayout: View {
                     MetadataEditorDatePicker(
                         selection: Binding(
                             get: {
-                                if let date = Self.dateToNoonUTC.date(
-                                    from: "\(dateString)T12:00:00.000Z"
-                                ) {
-                                    return date
-                                }
-                                let today = Self.dateFromNoonUTC.string(from: Date())
-                                return Self.dateToNoonUTC.date(from: "\(today)T12:00:00.000Z")
-                                    ?? Date()
+                                SilveranDate.parse(dateString, field: .publicationDate) ?? Date()
                             },
                             set: { _ in },
                         )
@@ -1187,14 +1138,7 @@ struct EditionMetadataLayout: View {
                         "",
                         selection: Binding(
                             get: {
-                                if let date = Self.dateToNoonUTC.date(
-                                    from: "\(dateString)T12:00:00.000Z"
-                                ) {
-                                    return date
-                                }
-                                let today = Self.dateFromNoonUTC.string(from: Date())
-                                return Self.dateToNoonUTC.date(from: "\(today)T12:00:00.000Z")
-                                    ?? Date()
+                                SilveranDate.parse(dateString, field: .publicationDate) ?? Date()
                             },
                             set: { _ in },
                         ),

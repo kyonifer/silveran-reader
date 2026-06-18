@@ -11,7 +11,7 @@ extension FilesystemActor {
     }
 
     private func createLegacyBookSourceRecords() throws -> [BookSourceRecord] {
-        let now = ISO8601DateFormatter().string(from: Date())
+        let now = SilveranDate.isoTimestamp(from: Date())
         let storytellerID = try legacySourceID(
             legacyRoot: legacySourceCacheRootDirectory(),
             modernRoot: sourceCacheRootDirectory(),

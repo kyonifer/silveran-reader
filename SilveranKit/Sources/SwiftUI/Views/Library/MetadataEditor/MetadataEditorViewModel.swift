@@ -703,10 +703,8 @@ final class MetadataEditorViewModel {
             let pubDate = book.publicationDate.trimmingCharacters(in: .whitespacesAndNewlines)
             if !pubDate.isEmpty {
                 let dateRegex = /^\d{4}-\d{2}-\d{2}$/
-                let fullFmt = ISO8601DateFormatter()
-                fullFmt.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
                 let isValidDate = pubDate.wholeMatch(of: dateRegex) != nil
-                let isValidFull = fullFmt.date(from: pubDate) != nil
+                let isValidFull = SilveranDate.parse(pubDate, field: .publicationDate) != nil
                 if !isValidDate && !isValidFull {
                     errors.append(
                         ValidationError(

@@ -802,6 +802,7 @@ struct MediaTableView: NSViewRepresentable {
                         cellID: cellID,
                         dateString: item.publicationDate,
                         linkTarget: target,
+                        field: .publicationDate,
                     )
                 case "status":
                     let statusName = item.status?.name ?? ""
@@ -817,12 +818,14 @@ struct MediaTableView: NSViewRepresentable {
                         tableView: tableView,
                         cellID: cellID,
                         dateString: item.createdAt,
+                        field: .createdAt,
                     )
                 case "lastRead":
                     return makeDateCell(
                         tableView: tableView,
                         cellID: cellID,
                         dateString: item.position?.updatedAt,
+                        field: .lastRead,
                     )
                 case "tags":
                     return makeTagsCell(tableView: tableView, cellID: cellID, item: item)
@@ -839,6 +842,7 @@ struct MediaTableView: NSViewRepresentable {
                         tableView: tableView,
                         cellID: cellID,
                         dateString: item.alignedAt,
+                        field: .alignedAt,
                     )
                 case "alignedByVersion":
                     return makeTextCell(
@@ -1770,11 +1774,12 @@ struct MediaTableView: NSViewRepresentable {
             tableView: NSTableView,
             cellID: NSUserInterfaceItemIdentifier,
             dateString: String?,
+            field: SilveranDate.Field = .generic,
         ) -> NSView {
             let cell =
                 tableView.makeView(withIdentifier: cellID, owner: self) as? DateCellView
                 ?? DateCellView(identifier: cellID)
-            let parsedDate = BookMetadata.parsedDate(from: dateString)
+            let parsedDate = SilveranDate.parse(dateString, field: field)
             cell.configure(date: parsedDate, rawString: dateString ?? "")
             return cell
         }
@@ -1784,11 +1789,12 @@ struct MediaTableView: NSViewRepresentable {
             cellID: NSUserInterfaceItemIdentifier,
             dateString: String?,
             linkTarget: MetadataLinkTarget?,
+            field: SilveranDate.Field = .generic,
         ) -> NSView {
             let cell =
                 tableView.makeView(withIdentifier: cellID, owner: self) as? LinkDateCellView
                 ?? LinkDateCellView(identifier: cellID)
-            let parsedDate = BookMetadata.parsedDate(from: dateString)
+            let parsedDate = SilveranDate.parse(dateString, field: field)
             cell.configure(date: parsedDate, rawString: dateString ?? "", linkTarget: linkTarget)
             return cell
         }
@@ -2134,23 +2140,6 @@ private final class DateCellView: NSTableCellView {
     private static let fullWidthThreshold: CGFloat = 110
     private static let monthYearWidthThreshold: CGFloat = 85
 
-    private let displayFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .none
-        return formatter
-    }()
-    private let monthYearFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMM yyyy"
-        return formatter
-    }()
-    private let yearFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy"
-        return formatter
-    }()
-
     init(identifier: NSUserInterfaceItemIdentifier) {
         super.init(frame: .zero)
         self.identifier = identifier
@@ -2194,11 +2183,11 @@ private final class DateCellView: NSTableCellView {
         }
 
         if bounds.width >= Self.fullWidthThreshold {
-            label.stringValue = displayFormatter.string(from: date)
+            label.stringValue = SilveranDate.full(date)
         } else if bounds.width >= Self.monthYearWidthThreshold {
-            label.stringValue = monthYearFormatter.string(from: date)
+            label.stringValue = SilveranDate.monthYear(date)
         } else {
-            label.stringValue = yearFormatter.string(from: date)
+            label.stringValue = SilveranDate.year(date)
         }
     }
 
@@ -2220,23 +2209,6 @@ private final class LinkDateCellView: NSTableCellView {
 
     private static let fullWidthThreshold: CGFloat = 110
     private static let monthYearWidthThreshold: CGFloat = 85
-
-    private let displayFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .none
-        return formatter
-    }()
-    private let monthYearFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMM yyyy"
-        return formatter
-    }()
-    private let yearFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy"
-        return formatter
-    }()
 
     init(identifier: NSUserInterfaceItemIdentifier) {
         super.init(frame: .zero)
@@ -2282,11 +2254,11 @@ private final class LinkDateCellView: NSTableCellView {
         }
 
         if bounds.width >= Self.fullWidthThreshold {
-            label.stringValue = displayFormatter.string(from: date)
+            label.stringValue = SilveranDate.full(date)
         } else if bounds.width >= Self.monthYearWidthThreshold {
-            label.stringValue = monthYearFormatter.string(from: date)
+            label.stringValue = SilveranDate.monthYear(date)
         } else {
-            label.stringValue = yearFormatter.string(from: date)
+            label.stringValue = SilveranDate.year(date)
         }
     }
 

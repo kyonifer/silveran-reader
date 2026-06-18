@@ -664,11 +664,7 @@ public struct SyncHistoryEntry: Codable, Sendable, Hashable {
     }
 
     private static func formatTimestamp(_ timestamp: Double) -> String {
-        let date = Date(timeIntervalSince1970: timestamp / 1000)
-        let formatter = DateFormatter()
-        formatter.dateStyle = .short
-        formatter.timeStyle = .medium
-        return formatter.string(from: date)
+        SilveranDate.shortDateTime(Date(timeIntervalSince1970: timestamp / 1000))
     }
 }
 
@@ -850,13 +846,25 @@ public struct BookMetadata: Codable, Sendable, Identifiable, Hashable {
         status?.name ?? ""
     }
 
-    public var sortableAdded: String {
-        createdAt ?? ""
+    public var createdAtValue: Date? {
+        SilveranDate.parse(createdAt, field: .createdAt, context: title)
     }
 
-    public var sortableLastRead: String {
-        position?.updatedAt ?? ""
+    public var lastReadValue: Date? {
+        SilveranDate.parse(position?.updatedAt, field: .lastRead, context: title)
     }
+
+    public var alignedAtValue: Date? {
+        SilveranDate.parse(alignedAt, field: .alignedAt, context: title)
+    }
+
+    public var publicationDateValue: Date? {
+        SilveranDate.parse(publicationDate, field: .publicationDate, context: title)
+    }
+
+    public var sortableAdded: String { SilveranDate.sortKey(createdAtValue) }
+
+    public var sortableLastRead: String { SilveranDate.sortKey(lastReadValue) }
 
     public var sortableTags: String {
         tagNames.joined(separator: ", ")
@@ -880,9 +888,7 @@ public struct BookMetadata: Codable, Sendable, Identifiable, Hashable {
         (creators ?? []).compactMap(\.name).joined(separator: ", ")
     }
 
-    public var sortableAlignedAt: String {
-        Self.sortableDateKey(from: alignedAt)
-    }
+    public var sortableAlignedAt: String { SilveranDate.sortKey(alignedAtValue) }
 
     public var sortableAlignedByVersion: String { alignedByStorytellerVersion ?? "" }
 
@@ -898,88 +904,11 @@ public struct BookMetadata: Codable, Sendable, Identifiable, Hashable {
         Self.publicationYear(from: publicationDate) ?? ""
     }
 
-    public var sortablePublicationDate: String {
-        Self.sortableDateKey(from: publicationDate)
-    }
-
-    public static func parsedDate(from dateString: String?) -> Date? {
-        guard let dateString else { return nil }
-        let trimmed = dateString.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-
-        let isoWithFractional = ISO8601DateFormatter()
-        isoWithFractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        let isoWithoutFractional = ISO8601DateFormatter()
-        isoWithoutFractional.formatOptions = [.withInternetDateTime]
-        let isoDateOnly = ISO8601DateFormatter()
-        isoDateOnly.formatOptions = [.withFullDate]
-
-        if let date = isoWithFractional.date(from: trimmed)
-            ?? isoWithoutFractional.date(from: trimmed)
-            ?? isoDateOnly.date(from: trimmed)
-        {
-            return date
-        }
-
-        let fallbackFormats = [
-            "yyyy-MM-dd HH:mm:ss",
-            "yyyy-MM-dd",
-            "yyyy-MM",
-            "yyyy",
-        ]
-        for format in fallbackFormats {
-            let formatter = DateFormatter()
-            formatter.calendar = Calendar(identifier: .gregorian)
-            formatter.locale = Locale(identifier: "en_US_POSIX")
-            formatter.timeZone = TimeZone(secondsFromGMT: 0)
-            formatter.dateFormat = format
-            if let date = formatter.date(from: trimmed) {
-                return date
-            }
-        }
-
-        let jsFormatter = DateFormatter()
-        jsFormatter.calendar = Calendar(identifier: .gregorian)
-        jsFormatter.locale = Locale(identifier: "en_US_POSIX")
-        jsFormatter.dateFormat = "EEE MMM dd yyyy HH:mm:ss 'GMT'xx"
-        let stripped: String
-        if let parenRange = trimmed.range(of: " (") {
-            stripped = String(trimmed[..<parenRange.lowerBound])
-        } else {
-            stripped = trimmed
-        }
-        return jsFormatter.date(from: stripped)
-    }
-
-    private static func sortableDateKey(from dateString: String?) -> String {
-        guard let date = parsedDate(from: dateString) else {
-            return dateString?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        }
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
-        let components = calendar.dateComponents(
-            [.year, .month, .day, .hour, .minute, .second],
-            from: date,
-        )
-        return String(
-            format: "%04d%02d%02d%02d%02d%02d",
-            components.year ?? 0,
-            components.month ?? 0,
-            components.day ?? 0,
-            components.hour ?? 0,
-            components.minute ?? 0,
-            components.second ?? 0,
-        )
-    }
+    public var sortablePublicationDate: String { SilveranDate.sortKey(publicationDateValue) }
 
     public static func publicationYear(from publicationDate: String?) -> String? {
-        guard let publicationDate else { return nil }
-        let trimmed = publicationDate.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.count >= 4 else { return nil }
-
-        let year = String(trimmed.prefix(4))
-        guard year.allSatisfy(\.isNumber) else { return nil }
-        return year
+        let year = SilveranDate.year(SilveranDate.parse(publicationDate, field: .publicationDate))
+        return year.isEmpty ? nil : year
     }
 }
 

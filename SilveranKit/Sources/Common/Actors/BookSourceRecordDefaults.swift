@@ -2,7 +2,7 @@ import Foundation
 
 extension FilesystemActor {
     func createDefaultBookSources() throws -> [BookSourceRecord] {
-        let now = ISO8601DateFormatter().string(from: Date())
+        let now = SilveranDate.isoTimestamp(from: Date())
         let sources = [
             try createDefaultBookSource(
                 kind: .storyteller,

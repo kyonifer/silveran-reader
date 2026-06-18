@@ -509,25 +509,8 @@ struct iOSBookDetailView: View {
     }
 
     private func formatDate(_ isoString: String) -> String {
-        let inputFormatter = DateFormatter()
-        inputFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
-        inputFormatter.timeZone = TimeZone(identifier: "UTC")
-        inputFormatter.locale = Locale(identifier: "en_US_POSIX")
-
-        guard let date = inputFormatter.date(from: isoString) else {
-            return "Parse failed: \(isoString)"
-        }
-
-        let outputFormatter = DateFormatter()
-        outputFormatter.dateStyle = .medium
-        outputFormatter.timeStyle = .medium
-        outputFormatter.timeZone = TimeZone.current
-        outputFormatter.locale = Locale.current
-
-        let timeZoneName =
-            TimeZone.current.localizedName(for: .shortStandard, locale: .current)
-            ?? TimeZone.current.identifier
-        return "\(outputFormatter.string(from: date)) (\(timeZoneName))"
+        guard let date = SilveranDate.parse(isoString, field: .lastRead) else { return isoString }
+        return SilveranDate.dateTimeWithZone(date)
     }
 }
 
