@@ -244,7 +244,7 @@ struct WorkMetadataLayout: View {
                 MetadataEditorDatePicker(
                     selection: Binding(
                         get: {
-                            SilveranDate.parse(dateString, field: .publicationDate) ?? Date()
+                            SilveranDate.calendarDay(dateString) ?? Date()
                         },
                         set: { newDate in
                             guard let index = viewModel.books.firstIndex(where: { $0.id == bookId })
@@ -262,7 +262,7 @@ struct WorkMetadataLayout: View {
                     "",
                     selection: Binding(
                         get: {
-                            SilveranDate.parse(dateString, field: .publicationDate) ?? Date()
+                            SilveranDate.calendarDay(dateString) ?? Date()
                         },
                         set: { newDate in
                             guard let index = viewModel.books.firstIndex(where: { $0.id == bookId })
@@ -1127,7 +1127,7 @@ struct EditionMetadataLayout: View {
                     MetadataEditorDatePicker(
                         selection: Binding(
                             get: {
-                                SilveranDate.parse(dateString, field: .publicationDate) ?? Date()
+                                SilveranDate.calendarDay(dateString) ?? Date()
                             },
                             set: { _ in },
                         )
@@ -1138,7 +1138,7 @@ struct EditionMetadataLayout: View {
                         "",
                         selection: Binding(
                             get: {
-                                SilveranDate.parse(dateString, field: .publicationDate) ?? Date()
+                                SilveranDate.calendarDay(dateString) ?? Date()
                             },
                             set: { _ in },
                         ),

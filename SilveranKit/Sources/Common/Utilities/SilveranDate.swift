@@ -121,6 +121,17 @@ public enum SilveranDate {
         return jsToString.date(from: stripped)
     }
 
+    /// A `Date` anchored at noon UTC on the same calendar day as `string`. Use this for date-only
+    /// `DatePicker` bindings: a picker renders in the local time zone, and noon keeps the calendar
+    /// day stable across zones (within ±12h) rather than slipping to the previous day at midnight
+    /// UTC.
+    public static func calendarDay(_ string: String?) -> Date? {
+        guard let date = parse(string) else { return nil }
+        var components = utcCalendar.dateComponents([.year, .month, .day], from: date)
+        components.hour = 12
+        return utcCalendar.date(from: components)
+    }
+
     // MARK: - Sorting
 
     /// A lexicographically sortable, fixed-width key. `nil` sorts after every real date (it lands
