@@ -554,7 +554,9 @@ struct MediaGridSortAndFilterBar: View {
         }
         #else
         .sheet(isPresented: $showViewOptions) {
-            viewOptionsPopoverContent
+            ScrollView {
+                viewOptionsPopoverContent
+            }
             .presentationDetents([.medium])
             .presentationDragIndicator(.visible)
         }

@@ -359,7 +359,7 @@ struct BookSourceEditorView: View {
                     await saveSource()
                 }
 
-                if isExistingSource && kind == .storyteller {
+                if kind == .storyteller {
                     actionRowButton(
                         title: "Test Connection",
                         isDisabled: isLoading || !canSave,
@@ -407,12 +407,14 @@ struct BookSourceEditorView: View {
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
         .modifier(SoftScrollEdgeModifier())
-        .frame(maxWidth: 600)
-        .frame(maxWidth: .infinity, alignment: .center)
         #if os(macOS)
+        .frame(minWidth: 640, idealWidth: 660, maxWidth: 700, minHeight: 480)
         .safeAreaInset(edge: .bottom, spacing: 0) {
             macActionBar
         }
+        #else
+        .frame(maxWidth: 600)
+        .frame(maxWidth: .infinity, alignment: .center)
         #endif
         .navigationTitle(isExistingSource ? name : "Add Book Source")
         #if os(iOS)
@@ -455,6 +457,8 @@ struct BookSourceEditorView: View {
                     } label: {
                         Label(removeActionTitle, systemImage: "trash")
                             .foregroundStyle(.red)
+                            .lineLimit(1)
+                            .fixedSize()
                     }
                     .disabled(isLoading)
                 }
@@ -469,7 +473,7 @@ struct BookSourceEditorView: View {
                     dismiss()
                 }
 
-                if isExistingSource && kind == .storyteller {
+                if kind == .storyteller {
                     Button("Test Connection") {
                         Task {
                             await testConnection()
@@ -596,18 +600,22 @@ struct BookSourceEditorView: View {
                 ProgressView()
                     .controlSize(.small)
             case .success:
-                HStack {
+                HStack(spacing: 4) {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundStyle(.green)
                     Text("Connected")
                         .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .fixedSize()
                 }
             case .failure:
-                HStack {
+                HStack(spacing: 4) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundStyle(.red)
                     Text("Failed")
                         .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .fixedSize()
                 }
         }
     }
@@ -703,22 +711,28 @@ struct BookSourceEditorView: View {
     }
 
     private func testConnection() async {
-        guard let sourceID else { return }
-
         await MainActor.run {
             isLoading = true
             connectionStatus = .testing
         }
 
-        let success = await BookServiceActor.shared.testBookSourceConnection(sourceID: sourceID)
+        let result = await StorytellerActor.validateCredentials(
+            baseURL: serverURL,
+            username: username,
+            password: password,
+        )
 
         await MainActor.run {
             isLoading = false
-            if success {
-                hasSavedCredentials = true
-                connectionStatus = .success
-            } else {
-                connectionStatus = .failure("Could not connect to this server.")
+            switch result {
+                case .success:
+                    connectionStatus = .success
+                case .invalidCredentials:
+                    connectionStatus = .failure(
+                        "Invalid username or password. Please check your credentials."
+                    )
+                case .failure(let message):
+                    connectionStatus = .failure(message)
             }
         }
     }

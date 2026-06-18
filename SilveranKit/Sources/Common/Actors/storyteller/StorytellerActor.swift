@@ -412,6 +412,56 @@ public actor StorytellerActor {
         return success
     }
 
+    public enum CredentialTestResult: Sendable {
+        case success
+        case invalidCredentials
+        case failure(String)
+    }
+
+    /// Validates Storyteller credentials without registering or mutating any source.
+    /// Uses an ephemeral session with a short timeout so it never hangs the UI.
+    public static func validateCredentials(
+        baseURL baseURLString: String,
+        username: String,
+        password: String,
+    ) async -> CredentialTestResult {
+        let trimmedURL = baseURLString.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let baseURL = URL(string: trimmedURL), baseURL.scheme != nil else {
+            return .failure("Invalid server URL")
+        }
+
+        let apiBaseURL = resolveAPIBaseURL(from: baseURL)
+        let tokenURL = apiBaseURL.appendingPathComponent("token")
+
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 20
+        configuration.timeoutIntervalForResource = 20
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel() }
+
+        do {
+            _ = try await httpPost(
+                tokenURL.absoluteString,
+                headers: [
+                    "Content-Type": "application/x-www-form-urlencoded; charset=utf-8",
+                    "Accept": "application/json",
+                ],
+                formParameters: [
+                    "usernameOrEmail": username,
+                    "password": password,
+                ],
+                session: session,
+            )
+            return .success
+        } catch HTTPRequestError.unauthorized {
+            return .invalidCredentials
+        } catch let error as URLError {
+            return .failure(error.localizedDescription)
+        } catch {
+            return .failure("Could not connect to this server.")
+        }
+    }
+
     public func configureCredentials(
         baseURL baseURLString: String,
         username: String,
