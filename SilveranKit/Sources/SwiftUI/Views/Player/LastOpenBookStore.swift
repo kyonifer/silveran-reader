@@ -1,5 +1,7 @@
 #if os(iOS)
 import Foundation
+import SwiftUI
+import UIKit
 
 public enum LastOpenBookStore {
     public struct Route: Codable, Equatable {
@@ -98,11 +100,32 @@ public enum LastOpenBookStore {
             )
         else { return nil }
 
+        // coverArt is not Codable, so it is lost when the route is persisted. Reload it from
+        // the on-disk cover cache, mirroring MediaItemCardView.makePlayerBookData: the primary
+        // art is the audio square when an audiobook exists, otherwise the standard cover.
+        let hasAudio = metadata.hasAvailableAudiobook
+        let audioCover = await loadCachedCover(bookID: metadata.uuid, audio: true)
+        let standardCover = await loadCachedCover(bookID: metadata.uuid, audio: false)
+        // Primary art is the audio square when an audiobook exists, falling back to the
+        // standard cover (and vice versa) so the player shows something when only one variant
+        // was cached.
+        let primaryCover = hasAudio ? (audioCover ?? standardCover) : (standardCover ?? audioCover)
+        let ebookCover = hasAudio ? standardCover : nil
+
         return PlayerBookData(
             metadata: metadata,
             localMediaPath: localMediaPath,
             category: route.category,
+            coverArt: primaryCover,
+            ebookCoverArt: ebookCover,
         )
+    }
+
+    private static func loadCachedCover(bookID: String, audio: Bool) async -> Image? {
+        guard let data = await BookServiceActor.shared.cachedCoverData(for: bookID, audio: audio),
+            let uiImage = UIImage(data: data)
+        else { return nil }
+        return Image(uiImage: uiImage)
     }
 
     static func clearIfMatching(bookId: String, category: LocalMediaCategory) {
