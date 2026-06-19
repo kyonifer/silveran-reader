@@ -117,6 +117,7 @@ struct MediaGridView: View {
     @State private var selectedPublicationYear: String? = nil
     @State private var selectedRating: String? = nil
     @State private var selectedStatus: String? = nil
+    @State private var selectedProgress: ProgressCondition? = nil
     @State private var selectedLocation: LocationFilterOption = .all
     @State private var selectedSourceID: BookSourceID? = nil
     @State private var shouldEnsureActiveItemVisible: Bool = false
@@ -184,9 +185,30 @@ struct MediaGridView: View {
         }
         switch sortOption.field {
             case .progress:
-                return (KeyPathComparator(\BookMetadata.sortableProgress, order: order), \BookMetadata.sortableProgress)
+                return (
+                    KeyPathComparator(\BookMetadata.sortableProgress, order: order),
+                    \BookMetadata.sortableProgress,
+                )
+            case .pages:
+                return (
+                    KeyPathComparator(\BookMetadata.sortablePages, order: order),
+                    \BookMetadata.sortablePages,
+                )
+            case .duration:
+                return (
+                    KeyPathComparator(\BookMetadata.sortableDuration, order: order),
+                    \BookMetadata.sortableDuration,
+                )
+            case .fileSize:
+                return (
+                    KeyPathComparator(\BookMetadata.sortableFileSize, order: order),
+                    \BookMetadata.sortableFileSize,
+                )
             default:
-                return (KeyPathComparator(\BookMetadata.sortableSeries, order: order), \BookMetadata.sortableSeries)
+                return (
+                    KeyPathComparator(\BookMetadata.sortableSeries, order: order),
+                    \BookMetadata.sortableSeries,
+                )
         }
     }
     #endif
@@ -373,6 +395,7 @@ struct MediaGridView: View {
         _selectedPublicationYear = State(initialValue: nil)
         _selectedRating = State(initialValue: nil)
         _selectedStatus = State(initialValue: nil)
+        _selectedProgress = State(initialValue: nil)
         _selectedLocation = State(initialValue: .all)
 
         let defaultSortRaw: String
@@ -705,6 +728,7 @@ struct MediaGridView: View {
                 selectedTag: selectedTag,
                 selectedSeries: selectedSeries,
                 selectedStatus: selectedStatus,
+                selectedProgress: selectedProgress,
                 selectedLocation: selectedLocation,
                 selectedSourceID: selectedSourceID,
                 selectedNarrator: selectedNarrator,
@@ -809,6 +833,7 @@ struct MediaGridView: View {
             || selectedPublicationYear != nil
             || selectedRating != nil
             || selectedStatus != nil
+            || selectedProgress != nil
             || selectedLocation != .all
             || selectedSourceID != nil
     }
@@ -850,6 +875,7 @@ struct MediaGridView: View {
                 selectedPublicationYear: $selectedPublicationYear,
                 selectedRating: $selectedRating,
                 selectedStatus: $selectedStatus,
+                selectedProgress: $selectedProgress,
                 selectedLocation: $selectedLocation,
                 selectedSourceID: $selectedSourceID,
                 contextFilters: contextFilters,
@@ -925,6 +951,7 @@ struct MediaGridView: View {
             selectedPublicationYear: $selectedPublicationYear,
             selectedRating: $selectedRating,
             selectedStatus: $selectedStatus,
+            selectedProgress: $selectedProgress,
             selectedLocation: $selectedLocation,
             selectedSourceID: $selectedSourceID,
             contextFilters: contextFilters,
@@ -1252,6 +1279,7 @@ struct MediaGridView: View {
                 selectedTag: selectedTag,
                 selectedSeries: selectedSeries,
                 selectedStatus: selectedStatus,
+                selectedProgress: selectedProgress,
                 selectedLocation: selectedLocation,
                 selectedSourceID: selectedSourceID,
                 selectedNarrator: selectedNarrator,
@@ -1518,6 +1546,7 @@ struct MediaGridView: View {
             selectedPublicationYear: selectedPublicationYear,
             selectedRating: selectedRating,
             selectedStatus: selectedStatus,
+            selectedProgress: selectedProgress,
             selectedLocation: selectedLocation,
             selectedSourceID: selectedSourceID,
             selectedSourceName: sourceName(for: selectedSourceID),
@@ -1586,6 +1615,7 @@ private struct FilterChangeModifier: ViewModifier {
     let selectedTag: String?
     let selectedSeries: String?
     let selectedStatus: String?
+    let selectedProgress: ProgressCondition?
     let selectedLocation: MediaGridView.LocationFilterOption
     let selectedSourceID: BookSourceID?
     let selectedNarrator: String?
@@ -1608,6 +1638,7 @@ private struct FilterChangeModifier: ViewModifier {
             .onChange(of: selectedTag) { _, _ in onFilterChanged() }
             .onChange(of: selectedSeries) { _, _ in onFilterChanged() }
             .onChange(of: selectedStatus) { _, _ in onFilterChanged() }
+            .onChange(of: selectedProgress) { _, _ in onFilterChanged() }
             .onChange(of: selectedLocation) { _, _ in onFilterChanged() }
             .onChange(of: selectedSourceID) { _, _ in onFilterChanged() }
             .onChange(of: selectedNarrator) { _, _ in onFilterChanged() }

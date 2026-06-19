@@ -250,7 +250,8 @@ struct WorkMetadataLayout: View {
                             guard let index = viewModel.books.firstIndex(where: { $0.id == bookId })
                             else { return }
                             viewModel.books[index].publicationDate = SilveranDate.isoDay(
-                                from: newDate)
+                                from: newDate
+                            )
                             viewModel.markDirty(field: "publicationDate", for: bookId)
                         },
                     )
@@ -268,7 +269,8 @@ struct WorkMetadataLayout: View {
                             guard let index = viewModel.books.firstIndex(where: { $0.id == bookId })
                             else { return }
                             viewModel.books[index].publicationDate = SilveranDate.isoDay(
-                                from: newDate)
+                                from: newDate
+                            )
                             viewModel.markDirty(field: "publicationDate", for: bookId)
                         },
                     ),

@@ -1,8 +1,8 @@
 import Foundation
 import Testing
 
-@testable import SilveranKitCommon
 @testable import SilveranKitAppModel
+@testable import SilveranKitCommon
 @testable import SilveranKitMacApp
 
 @Test func publicationYearExtractsFourDigitYearFromSupportedDates() async throws {
@@ -67,7 +67,11 @@ import Testing
     let shelf = SmartShelf(name: "Recent", conditions: [])
     let book = makeBook(publicationDate: nil)
     let viewModel = MediaViewModel(
-        injectLibrary: BookLibrary(bookMetaData: [book], ebookCoverCache: [:], audiobookCoverCache: [:])
+        injectLibrary: BookLibrary(
+            bookMetaData: [book],
+            ebookCoverCache: [:],
+            audiobookCoverCache: [:],
+        )
     )
 
     #expect(viewModel.booksForShelf(shelf).isEmpty)

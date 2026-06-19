@@ -354,10 +354,36 @@ struct MediaTableView: NSViewRepresentable {
 
     private static let defaultVisibleColumns: Set<String> = ["cover", "title", "series", "media"]
     private static let defaultColumnOrder = [
-        "cover", "title", "subtitle", "author", "series", "progress", "narrator",
-        "language", "collections", "publicationYear", "status", "added", "lastRead",
-        "tags", "source", "media", "allCreators", "alignedAt", "alignedByVersion", "alignedWith",
+        "cover", "title", "subtitle", "author", "narrator", "series", "publicationYear",
+        "language", "pages", "duration",
+        "tags", "collections", "added", "lastRead", "status", "progress", "fileSize", "source",
+        "media", "allCreators", "alignedAt", "alignedByVersion", "alignedWith",
     ]
+
+    /// The table column id a canonical metadata field maps to, or nil if the field has no single
+    /// column (Creators/Alignment are submenus; Location is filter-only).
+    static func columnID(for field: LibraryMetadataField) -> String? {
+        switch field {
+            case .title: return "title"
+            case .subtitle: return "subtitle"
+            case .author: return "author"
+            case .narrator: return "narrator"
+            case .series: return "series"
+            case .publicationDate: return "publicationYear"
+            case .language: return "language"
+            case .pages: return "pages"
+            case .duration: return "duration"
+            case .tags: return "tags"
+            case .collections: return "collections"
+            case .dateAdded: return "added"
+            case .dateRead: return "lastRead"
+            case .status: return "status"
+            case .progress: return "progress"
+            case .fileSize: return "fileSize"
+            case .source: return "source"
+            case .creators, .alignment, .location: return nil
+        }
+    }
 
     static func creatorColumnID(for roleCode: String) -> String {
         "creator_\(roleCode)"
@@ -499,6 +525,9 @@ struct MediaTableView: NSViewRepresentable {
             "progress": ("Progress", 60, 100, 140),
             "narrator": ("Narrator", 80, 120, 10000),
             "language": ("Language", 50, 80, 10000),
+            "pages": ("Pages", 50, 70, 10000),
+            "duration": ("Duration", 60, 90, 10000),
+            "fileSize": ("File Size", 60, 90, 10000),
             "collections": ("Collections", 80, 120, 10000),
             "publicationYear": ("Published", 80, 100, 10000),
             "status": ("Status", 60, 80, 10000),
@@ -515,11 +544,11 @@ struct MediaTableView: NSViewRepresentable {
 
     private static let ascendingSortColumns: Set<String> = [
         "title", "subtitle", "author", "series", "narrator", "language", "collections",
-        "publicationYear", "status", "added", "tags", "allCreators",
+        "publicationYear", "status", "added", "tags", "allCreators", "pages",
         "alignedByVersion", "alignedWith", "source",
     ]
     private static let descendingSortColumns: Set<String> = [
-        "lastRead", "progress", "alignedAt",
+        "lastRead", "progress", "alignedAt", "duration", "fileSize",
     ]
 
     private func setupColumns(tableView: NSTableView, context: Context) {
@@ -628,6 +657,9 @@ struct MediaTableView: NSViewRepresentable {
             \BookMetadata.progress: "progress",
             \BookMetadata.sortableNarrator: "narrator",
             \BookMetadata.sortableLanguage: "language",
+            \BookMetadata.sortablePages: "pages",
+            \BookMetadata.sortableDuration: "duration",
+            \BookMetadata.sortableFileSize: "fileSize",
             \BookMetadata.sortableCollections: "collections",
             \BookMetadata.sortablePublicationDate: "publicationYear",
             \BookMetadata.sortableStatus: "status",
@@ -786,6 +818,27 @@ struct MediaTableView: NSViewRepresentable {
                         text: item.language ?? "",
                         secondary: true,
                     )
+                case "pages":
+                    return makeTextCell(
+                        tableView: tableView,
+                        cellID: cellID,
+                        text: item.pagesDisplay,
+                        secondary: true,
+                    )
+                case "duration":
+                    return makeTextCell(
+                        tableView: tableView,
+                        cellID: cellID,
+                        text: item.durationDisplay,
+                        secondary: true,
+                    )
+                case "fileSize":
+                    return makeTextCell(
+                        tableView: tableView,
+                        cellID: cellID,
+                        text: item.fileSizeDisplay,
+                        secondary: true,
+                    )
                 case "collections":
                     let names = item.collections?.map(\.name).joined(separator: ", ") ?? ""
                     return makeTextCell(
@@ -915,6 +968,18 @@ struct MediaTableView: NSViewRepresentable {
                 case "language":
                     parent.sortOrder = [
                         KeyPathComparator(\BookMetadata.sortableLanguage, order: order)
+                    ]
+                case "pages":
+                    parent.sortOrder = [
+                        KeyPathComparator(\BookMetadata.sortablePages, order: order)
+                    ]
+                case "duration":
+                    parent.sortOrder = [
+                        KeyPathComparator(\BookMetadata.sortableDuration, order: order)
+                    ]
+                case "fileSize":
+                    parent.sortOrder = [
+                        KeyPathComparator(\BookMetadata.sortableFileSize, order: order)
                     ]
                 case "collections":
                     parent.sortOrder = [

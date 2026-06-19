@@ -313,9 +313,18 @@ struct MediaCompactCardView: View {
 
     private enum ButtonSize {
         case large, medium, small
-        var frame: CGFloat { switch self { case .large: 44; case .medium: 37; case .small: 30 } }
-        var icon: CGFloat { switch self { case .large: 26; case .medium: 22; case .small: 18 } }
-        var playIcon: CGFloat { switch self { case .large: 36; case .medium: 28; case .small: 24 } }
+        var frame: CGFloat {
+            switch self { case .large: 44 case .medium: 37 case .small: 30
+            }
+        }
+        var icon: CGFloat {
+            switch self { case .large: 26 case .medium: 22 case .small: 18
+            }
+        }
+        var playIcon: CGFloat {
+            switch self { case .large: 36 case .medium: 28 case .small: 24
+            }
+        }
     }
 
     private var availableTabs: [TabCategory] {
@@ -335,7 +344,8 @@ struct MediaCompactCardView: View {
         Group {
             let tabs = availableTabs
             if !tabs.isEmpty {
-                let slots: [TabCategory] = tabs.contains(.synced) ? [.ebook, .synced, .audio] : tabs
+                let slots: [TabCategory] =
+                    tabs.contains(.synced) ? [.ebook, .synced, .audio] : tabs
                 HStack(spacing: 8) {
                     ForEach(slots, id: \.self) { tab in
                         let size = buttonSize(for: tab, in: tabs)
@@ -415,7 +425,7 @@ struct MediaCompactCardView: View {
         for tab: TabCategory,
         status: TabStatus,
         isHovered: Bool,
-        size: ButtonSize
+        size: ButtonSize,
     ) -> some View {
         if case .downloading(let progress) = status {
             DownloadCancelProgressIcon(

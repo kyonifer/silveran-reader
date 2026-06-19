@@ -102,13 +102,17 @@ public final class SettingsViewModel {
     }
 
     private var userHighlightColors: [String] {
-        [userHighlightColor1, userHighlightColor2, userHighlightColor3,
-         userHighlightColor4, userHighlightColor5, userHighlightColor6]
+        [
+            userHighlightColor1, userHighlightColor2, userHighlightColor3,
+            userHighlightColor4, userHighlightColor5, userHighlightColor6,
+        ]
     }
 
     private var userHighlightLabels: [String] {
-        [userHighlightLabel1, userHighlightLabel2, userHighlightLabel3,
-         userHighlightLabel4, userHighlightLabel5, userHighlightLabel6]
+        [
+            userHighlightLabel1, userHighlightLabel2, userHighlightLabel3,
+            userHighlightLabel4, userHighlightLabel5, userHighlightLabel6,
+        ]
     }
 
     public func hexColor(for color: HighlightColor) -> String {

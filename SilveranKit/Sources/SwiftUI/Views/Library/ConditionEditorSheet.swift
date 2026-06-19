@@ -10,7 +10,7 @@ struct ConditionEditorSheet: View {
     let onAdd: ([ShelfCondition]) -> Void
 
     @State private var ratingMode: RatingMode = .single
-    @State private var ratingComparison: RatingComparison = .greaterThanOrEqual
+    @State private var ratingComparison: NumericComparison = .greaterThanOrEqual
     @State private var ratingValue = 3
     @State private var ratingRangeLow = 2
     @State private var ratingRangeHigh = 4
@@ -26,6 +26,15 @@ struct ConditionEditorSheet: View {
     @State private var selectedItems: Set<String> = []
     @State private var searchText = ""
     @State private var presenceMode: PresenceMode = .selectSpecific
+
+    @State private var numericMode: RatingMode = .single
+    @State private var numericComparison: NumericComparison = .greaterThanOrEqual
+    @State private var numericValue = 0
+    @State private var numericRangeLow = 0
+    @State private var numericRangeHigh = 0
+
+    @State private var dateComparison: YearComparison = .newerThan
+    @State private var selectedDate = Date()
 
     private enum PresenceMode: String, CaseIterable, Hashable {
         case selectSpecific = "Select Specific"
@@ -64,6 +73,11 @@ struct ConditionEditorSheet: View {
         var narratorSet = Set<String>()
         var translatorSet = Set<String>()
         var yearSet = Set<String>()
+        var languageSet = Set<String>()
+        var collectionSet = Set<String>()
+        var sourceSet = Set<String>()
+        var alignedWithSet = Set<String>()
+        var alignedVersionSet = Set<String>()
 
         for book in books {
             for tag in book.tagNames { tagSet.insert(tag) }
@@ -75,6 +89,15 @@ struct ConditionEditorSheet: View {
             }
             let year = book.sortablePublicationYear
             if !year.isEmpty { yearSet.insert(year) }
+            if let language = book.language, !language.isEmpty { languageSet.insert(language) }
+            for collection in book.collections ?? [] { collectionSet.insert(collection.name) }
+            if let source = book.source, !source.isEmpty { sourceSet.insert(source) }
+            if let alignedWith = book.alignedWith, !alignedWith.isEmpty {
+                alignedWithSet.insert(alignedWith)
+            }
+            if let version = book.alignedByStorytellerVersion, !version.isEmpty {
+                alignedVersionSet.insert(version)
+            }
         }
 
         return [
@@ -84,6 +107,11 @@ struct ConditionEditorSheet: View {
             .narrator: narratorSet.sorted(),
             .translator: translatorSet.sorted(),
             .publicationYear: yearSet.sorted(),
+            .language: languageSet.sorted(),
+            .collection: collectionSet.sorted(),
+            .source: sourceSet.sorted(),
+            .alignedWith: alignedWithSet.sorted(),
+            .alignedVersion: alignedVersionSet.sorted(),
         ]
     }
 
@@ -226,6 +254,33 @@ struct ConditionEditorSheet: View {
                     itemLabel: "Translators",
                     supportsPresence: true,
                 )
+            case .language:
+                multiSelectEditor(items: availableValues[.language] ?? [], itemLabel: "Languages")
+            case .collection:
+                multiSelectEditor(
+                    items: availableValues[.collection] ?? [],
+                    itemLabel: "Collections",
+                )
+            case .source:
+                multiSelectEditor(items: availableValues[.source] ?? [], itemLabel: "Sources")
+            case .alignedWith:
+                multiSelectEditor(
+                    items: availableValues[.alignedWith] ?? [],
+                    itemLabel: "Alignment Engines",
+                )
+            case .alignedVersion:
+                multiSelectEditor(
+                    items: availableValues[.alignedVersion] ?? [],
+                    itemLabel: "Alignment Versions",
+                )
+            case .pages:
+                numericEditor(unitLabel: "pages")
+            case .duration:
+                numericEditor(unitLabel: "minutes")
+            case .fileSize:
+                numericEditor(unitLabel: "MB")
+            case .dateAdded, .dateRead, .alignedAt:
+                dateEditor
             case .boolean:
                 EmptyView()
         }
@@ -288,7 +343,7 @@ struct ConditionEditorSheet: View {
     private var singleRatingEditor: some View {
         VStack(spacing: 16) {
             Picker("Comparison", selection: $ratingComparison) {
-                ForEach(RatingComparison.allCases) { comp in
+                ForEach(NumericComparison.allCases) { comp in
                     Text(comp.label).tag(comp)
                 }
             }
@@ -349,6 +404,111 @@ struct ConditionEditorSheet: View {
                     .foregroundStyle(star <= count ? .yellow : .secondary)
             }
         }
+    }
+
+    // MARK: - Numeric editor (pages / duration / file size)
+
+    @ViewBuilder
+    private func numericEditor(unitLabel: String) -> some View {
+        VStack(spacing: 20) {
+            Picker("Mode", selection: $numericMode) {
+                ForEach(RatingMode.allCases, id: \.self) { mode in
+                    Text(mode.rawValue).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .padding(.horizontal)
+
+            Spacer()
+
+            if numericMode == .single {
+                VStack(spacing: 16) {
+                    Picker("Comparison", selection: $numericComparison) {
+                        ForEach(NumericComparison.allCases) { comp in
+                            Text(comp.label).tag(comp)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .frame(maxWidth: 300)
+
+                    numericField(value: $numericValue, unitLabel: unitLabel)
+
+                    Text(verbatim: "\(numericComparison.symbol) \(numericValue) \(unitLabel)")
+                        .foregroundStyle(.secondary)
+                        .font(.callout)
+                }
+            } else {
+                VStack(spacing: 16) {
+                    HStack {
+                        Text("From").frame(width: 48, alignment: .leading)
+                        numericField(value: $numericRangeLow, unitLabel: unitLabel)
+                    }
+                    HStack {
+                        Text("To").frame(width: 48, alignment: .leading)
+                        numericField(value: $numericRangeHigh, unitLabel: unitLabel)
+                    }
+                    if numericRangeLow < numericRangeHigh {
+                        Text(
+                            verbatim:
+                                "Between \(numericRangeLow) and \(numericRangeHigh) \(unitLabel)"
+                        )
+                        .foregroundStyle(.secondary)
+                        .font(.callout)
+                    } else {
+                        Text("'From' must be less than 'To'")
+                            .foregroundStyle(.red)
+                            .font(.callout)
+                    }
+                }
+            }
+
+            Spacer()
+        }
+        .padding(.top)
+    }
+
+    private func numericField(value: Binding<Int>, unitLabel: String) -> some View {
+        HStack(spacing: 8) {
+            TextField(unitLabel, value: value, format: .number)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 120)
+                .multilineTextAlignment(.trailing)
+            Stepper("", value: value, in: 0...Int.max)
+                .labelsHidden()
+            Text(unitLabel).foregroundStyle(.secondary)
+        }
+    }
+
+    // MARK: - Date editor (date added / date read / aligned at)
+
+    private var dateEditor: some View {
+        VStack(spacing: 20) {
+            Picker("Comparison", selection: $dateComparison) {
+                ForEach(YearComparison.allCases) { comp in
+                    Text(comp.label).tag(comp)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(maxWidth: 350)
+            .padding(.horizontal)
+
+            Spacer()
+
+            DatePicker(
+                "Date",
+                selection: $selectedDate,
+                displayedComponents: .date,
+            )
+            .datePickerStyle(.graphical)
+            .labelsHidden()
+            .frame(maxWidth: 320)
+
+            Spacer()
+        }
+        .padding(.top)
     }
 
     // MARK: - Publication Year editor
@@ -668,6 +828,12 @@ struct ConditionEditorSheet: View {
                 return !selectedItems.isEmpty
             case .tag, .series, .author, .narrator, .translator:
                 return presenceMode != .selectSpecific || !selectedItems.isEmpty
+            case .language, .collection, .source, .alignedWith, .alignedVersion:
+                return !selectedItems.isEmpty
+            case .pages, .duration, .fileSize:
+                return numericMode == .single || numericRangeLow < numericRangeHigh
+            case .dateAdded, .dateRead, .alignedAt:
+                return true
             case .boolean:
                 return false
         }
@@ -748,9 +914,48 @@ struct ConditionEditorSheet: View {
                 if presenceMode == .anyPresent { return [.hasTranslator] }
                 if presenceMode == .nonePresent { return [.noTranslator] }
                 return [.translator(mode: inclusionMode, values: Array(selectedItems).sorted())]
+            case .language:
+                return [.language(mode: inclusionMode, values: Array(selectedItems).sorted())]
+            case .collection:
+                return [.collection(mode: inclusionMode, values: Array(selectedItems).sorted())]
+            case .source:
+                return [.source(mode: inclusionMode, values: Array(selectedItems).sorted())]
+            case .alignedWith:
+                return [.alignedWith(mode: inclusionMode, values: Array(selectedItems).sorted())]
+            case .alignedVersion:
+                return [
+                    .alignedVersion(mode: inclusionMode, values: Array(selectedItems).sorted())
+                ]
+            case .pages:
+                return numericConditions { .pages(comparison: $0, value: $1) }
+            case .duration:
+                return numericConditions { .duration(comparison: $0, value: $1 * 60) }
+            case .fileSize:
+                return numericConditions { .fileSize(comparison: $0, value: $1 * 1024 * 1024) }
+            case .dateAdded:
+                return [.dateAddedComparison(comparison: dateComparison, value: selectedDate)]
+            case .dateRead:
+                return [.dateReadComparison(comparison: dateComparison, value: selectedDate)]
+            case .alignedAt:
+                return [.alignedAtComparison(comparison: dateComparison, value: selectedDate)]
             case .boolean:
                 return nil
         }
+    }
+
+    /// Builds one comparison condition (single mode) or a low/high pair (range mode) from the
+    /// numeric editor state. `make` receives the friendly-unit value; callers convert to the
+    /// canonical unit they store (seconds / bytes).
+    private func numericConditions(
+        _ make: (NumericComparison, Int) -> ShelfCondition
+    ) -> [ShelfCondition] {
+        if numericMode == .single {
+            return [make(numericComparison, numericValue)]
+        }
+        return [
+            make(.greaterThanOrEqual, numericRangeLow),
+            make(.lessThanOrEqual, numericRangeHigh),
+        ]
     }
 }
 #endif

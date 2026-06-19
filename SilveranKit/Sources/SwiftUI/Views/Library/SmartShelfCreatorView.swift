@@ -252,26 +252,54 @@ struct SmartShelfCreatorView: View {
 
     private var addConditionMenu: some View {
         Menu {
-            ForEach(ShelfConditionType.allCases) { type in
-                if type == .boolean {
-                    Button {
-                        identifiedConditions.append(IdentifiedCondition(.orSeparator))
-                    } label: {
-                        Label("OR", systemImage: type.systemImage)
-                    }
-                } else {
-                    Button {
-                        selectedConditionType = type
-                    } label: {
-                        Label(type.label, systemImage: type.systemImage)
-                    }
-                }
-            }
+            addConditionMenuContent
         } label: {
             Label("Add Condition", systemImage: "plus.circle")
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
+    }
+
+    /// Registry-driven, mirroring the sort/columns/filter menus: fields appear in canonical order
+    /// with a divider on each section change, Alignment as a nested submenu, the translator extra
+    /// grouped with the narrator, and the shelf-only Format/Rating/OR appended last.
+    @ViewBuilder
+    private var addConditionMenuContent: some View {
+        let fields = LibraryMetadataField.shelfFields
+        ForEach(Array(fields.enumerated()), id: \.element.field) { index, descriptor in
+            if index > 0, descriptor.section != fields[index - 1].section {
+                Divider()
+            }
+            if descriptor.isSubmenu,
+                let types = ShelfConditionType.submenuTypes(for: descriptor.field)
+            {
+                Menu {
+                    ForEach(types) { conditionButton($0) }
+                } label: {
+                    Label(descriptor.label, systemImage: "waveform")
+                }
+            } else if let type = ShelfConditionType.from(descriptor.field) {
+                conditionButton(type)
+                if type == .narrator { conditionButton(.translator) }
+            }
+        }
+
+        Divider()
+        conditionButton(.format)
+        conditionButton(.rating)
+        Button {
+            identifiedConditions.append(IdentifiedCondition(.orSeparator))
+        } label: {
+            Label("OR", systemImage: ShelfConditionType.boolean.systemImage)
+        }
+    }
+
+    private func conditionButton(_ type: ShelfConditionType) -> some View {
+        Button {
+            selectedConditionType = type
+        } label: {
+            Label(type.label, systemImage: type.systemImage)
+        }
     }
 
     // MARK: - Condition merge logic
@@ -289,7 +317,8 @@ struct SmartShelfCreatorView: View {
     private func isInclusionCondition(_ condition: ShelfCondition) -> Bool {
         switch condition {
             case .format, .status, .location, .progress,
-                .tag, .series, .author, .narrator, .translator, .publicationYear:
+                .tag, .series, .author, .narrator, .translator, .publicationYear,
+                .language, .collection, .source, .alignedWith, .alignedVersion:
                 return true
             default:
                 return false
@@ -330,6 +359,11 @@ struct SmartShelfCreatorView: View {
             case (.narrator(let m1, _), .narrator(let m2, _)): return m1 == m2
             case (.translator(let m1, _), .translator(let m2, _)): return m1 == m2
             case (.publicationYear(let m1, _), .publicationYear(let m2, _)): return m1 == m2
+            case (.language(let m1, _), .language(let m2, _)): return m1 == m2
+            case (.collection(let m1, _), .collection(let m2, _)): return m1 == m2
+            case (.source(let m1, _), .source(let m2, _)): return m1 == m2
+            case (.alignedWith(let m1, _), .alignedWith(let m2, _)): return m1 == m2
+            case (.alignedVersion(let m1, _), .alignedVersion(let m2, _)): return m1 == m2
             default: return false
         }
     }
@@ -358,6 +392,16 @@ struct SmartShelfCreatorView: View {
                 return .translator(mode: m, values: mergedValues(v1, v2))
             case (.publicationYear(let m, let v1), .publicationYear(_, let v2)):
                 return .publicationYear(mode: m, values: mergedValues(v1, v2))
+            case (.language(let m, let v1), .language(_, let v2)):
+                return .language(mode: m, values: mergedValues(v1, v2))
+            case (.collection(let m, let v1), .collection(_, let v2)):
+                return .collection(mode: m, values: mergedValues(v1, v2))
+            case (.source(let m, let v1), .source(_, let v2)):
+                return .source(mode: m, values: mergedValues(v1, v2))
+            case (.alignedWith(let m, let v1), .alignedWith(_, let v2)):
+                return .alignedWith(mode: m, values: mergedValues(v1, v2))
+            case (.alignedVersion(let m, let v1), .alignedVersion(_, let v2)):
+                return .alignedVersion(mode: m, values: mergedValues(v1, v2))
             default:
                 return existing
         }

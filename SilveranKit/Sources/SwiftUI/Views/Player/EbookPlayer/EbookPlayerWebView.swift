@@ -426,7 +426,10 @@ class HighlightableWebView: WKWebView {
 
     func presentShare(for text: String, atViewportRect rect: CGRect?) {
         guard !text.isEmpty, let presenter = nearestViewController() else { return }
-        let activityVC = UIActivityViewController(activityItems: [text], applicationActivities: nil)
+        let activityVC = UIActivityViewController(
+            activityItems: [text],
+            applicationActivities: nil,
+        )
         if let pop = activityVC.popoverPresentationController {
             pop.sourceView = self
             pop.sourceRect = rect ?? CGRect(x: bounds.midX, y: bounds.midY, width: 0, height: 0)

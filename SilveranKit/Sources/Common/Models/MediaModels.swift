@@ -205,6 +205,9 @@ public struct BookAsset: Codable, Sendable, Hashable {
     public let missing: Int
     public let isEpub2: Bool?
     public let isEpub3: Bool?
+    public let pageCount: Int?
+    public let duration: Double?
+    public let fileSize: Int?
     public let createdAt: String?
     public let updatedAt: String?
 
@@ -224,6 +227,9 @@ public struct BookAsset: Codable, Sendable, Hashable {
         missing: Int,
         isEpub2: Bool? = nil,
         isEpub3: Bool? = nil,
+        pageCount: Int? = nil,
+        duration: Double? = nil,
+        fileSize: Int? = nil,
         createdAt: String?,
         updatedAt: String?,
     ) {
@@ -232,6 +238,9 @@ public struct BookAsset: Codable, Sendable, Hashable {
         self.missing = missing
         self.isEpub2 = isEpub2
         self.isEpub3 = isEpub3
+        self.pageCount = pageCount
+        self.duration = duration
+        self.fileSize = fileSize
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
@@ -245,6 +254,9 @@ public struct BookAsset: Codable, Sendable, Hashable {
         missing = container.decodeLenientBoolAsInt(forKey: .missing, defaultValue: 0)
         isEpub2 = container.decodeLenientIntAsBool(forKey: .isEpub2)
         isEpub3 = container.decodeLenientIntAsBool(forKey: .isEpub3)
+        pageCount = container.decodeLenient(Int.self, forKey: .pageCount)
+        duration = container.decodeLenient(Double.self, forKey: .duration)
+        fileSize = container.decodeLenient(Int.self, forKey: .fileSize)
     }
 }
 
@@ -257,6 +269,9 @@ public struct BookReadaloud: Codable, Sendable, Hashable {
     public let stageProgress: Double?
     public let queuePosition: Int?
     public let restartPending: Int?
+    public let pageCount: Int?
+    public let duration: Double?
+    public let fileSize: Int?
     public let createdAt: String?
     public let updatedAt: String?
 
@@ -308,6 +323,9 @@ public struct BookReadaloud: Codable, Sendable, Hashable {
         stageProgress: Double?,
         queuePosition: Int?,
         restartPending: Int?,
+        pageCount: Int? = nil,
+        duration: Double? = nil,
+        fileSize: Int? = nil,
         createdAt: String?,
         updatedAt: String?,
     ) {
@@ -319,6 +337,9 @@ public struct BookReadaloud: Codable, Sendable, Hashable {
         self.stageProgress = stageProgress
         self.queuePosition = queuePosition
         self.restartPending = restartPending
+        self.pageCount = pageCount
+        self.duration = duration
+        self.fileSize = fileSize
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
@@ -331,6 +352,9 @@ public struct BookReadaloud: Codable, Sendable, Hashable {
         currentStage = container.decodeLenient(String.self, forKey: .currentStage)
         stageProgress = container.decodeLenient(Double.self, forKey: .stageProgress)
         queuePosition = container.decodeLenient(Int.self, forKey: .queuePosition)
+        pageCount = container.decodeLenient(Int.self, forKey: .pageCount)
+        duration = container.decodeLenient(Double.self, forKey: .duration)
+        fileSize = container.decodeLenient(Int.self, forKey: .fileSize)
         createdAt = container.decodeLenient(String.self, forKey: .createdAt)
         updatedAt = container.decodeLenient(String.self, forKey: .updatedAt)
         missing = container.decodeLenientBoolAsInt(forKey: .missing, defaultValue: 0)
@@ -757,6 +781,8 @@ public struct BookMetadata: Codable, Sendable, Identifiable, Hashable {
     public let status: BookStatus?
     public let position: BookReadingPosition?
     public let rating: Double?
+    public var pageCount: Int? = nil
+    public var duration: Double? = nil
     public var alignedAt: String? = nil
     public var alignedByStorytellerVersion: String? = nil
     public var alignedWith: String? = nil
@@ -819,6 +845,56 @@ public struct BookMetadata: Codable, Sendable, Identifiable, Hashable {
 
     public var sortableProgress: Double {
         status?.name.lowercased() == "read" ? 1.0 : progress
+    }
+
+    // Pages/duration/file size are denormalized onto the book by the server but fall back to the
+    // per-asset values so a book still reports them when only the asset carries the number.
+    public var pageCountValue: Int? {
+        pageCount ?? ebook?.pageCount ?? readaloud?.pageCount
+    }
+
+    public var durationValue: Double? {
+        duration ?? audiobook?.duration ?? readaloud?.duration
+    }
+
+    public var fileSizeValue: Int? {
+        let sizes = [ebook?.fileSize, audiobook?.fileSize].compactMap { $0 }
+        if !sizes.isEmpty { return sizes.reduce(0, +) }
+        // A readaloud-only/synced book carries its size on the readaloud asset; fall back to it
+        // rather than reporting blank, mirroring pageCountValue/durationValue.
+        return readaloud?.fileSize
+    }
+
+    // Numeric sort keys. Missing values coalesce to 0, so they sort as the smallest value (first
+    // when ascending, last when descending) — consistent with how the app sorts empty string
+    // fields.
+    public var sortablePages: Int { pageCountValue ?? 0 }
+    public var sortableDuration: Double { durationValue ?? 0 }
+    public var sortableFileSize: Int { fileSizeValue ?? 0 }
+
+    public var pagesDisplay: String {
+        guard let pages = pageCountValue, pages > 0 else { return "" }
+        return "\(pages)"
+    }
+
+    public var durationDisplay: String {
+        guard let seconds = durationValue, seconds > 0 else { return "" }
+        return Self.formatDuration(seconds: Int(seconds.rounded()))
+    }
+
+    public var fileSizeDisplay: String {
+        guard let bytes = fileSizeValue, bytes > 0 else { return "" }
+        return Self.formatFileSize(bytes: bytes)
+    }
+
+    public static func formatDuration(seconds: Int) -> String {
+        let hours = seconds / 3600
+        let minutes = (seconds % 3600) / 60
+        return hours > 0 ? "\(hours)h \(minutes)m" : "\(minutes)m"
+    }
+
+    public static func formatFileSize(bytes: Int) -> String {
+        ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
     }
 
     public var tagNames: [String] {

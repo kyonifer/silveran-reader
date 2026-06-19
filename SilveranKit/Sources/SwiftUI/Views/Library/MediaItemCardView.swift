@@ -329,7 +329,8 @@ struct MediaItemCardView: View {
                                     return .constant(false)
                                     #endif
                                 }(),
-                                showReadaloudWedge: showAudioIndicator && item.hasAvailableReadaloud,
+                                showReadaloudWedge: showAudioIndicator
+                                    && item.hasAvailableReadaloud,
                                 notchProgress: {
                                     let p = mediaViewModel.progress(for: item.id)
                                     return (progressStyle == .circle && p > 0) ? p : nil
@@ -403,8 +404,11 @@ struct MediaItemCardView: View {
                         }
                     }
                     .overlay(
-                        RoundedRectangle(cornerRadius: metrics.coverCornerRadius, style: .continuous)
-                            .strokeBorder(isSelected ? Color.accentColor : Color.clear, lineWidth: 2)
+                        RoundedRectangle(
+                            cornerRadius: metrics.coverCornerRadius,
+                            style: .continuous,
+                        )
+                        .strokeBorder(isSelected ? Color.accentColor : Color.clear, lineWidth: 2)
                     )
                     Spacer(minLength: 0)
                 }
@@ -531,6 +535,12 @@ struct MediaItemCardView: View {
                 return item.sortableNarrator
             case .language:
                 return item.sortableLanguage
+            case .pages:
+                return item.pagesDisplay
+            case .duration:
+                return item.durationDisplay
+            case .fileSize:
+                return item.fileSizeDisplay
             case .collections:
                 return item.sortableCollections
             case .status:
@@ -545,7 +555,6 @@ struct MediaItemCardView: View {
                 return item.sortableAlignedWith
         }
     }
-
 
     private func resolveCoverVariant(for item: BookMetadata) -> MediaViewModel.CoverVariant {
         mediaViewModel.coverVariant(for: item, preference: coverPreference)
@@ -589,7 +598,10 @@ struct ProgressTextBadge: View {
             .foregroundStyle(.white)
             .padding(.horizontal, 6)
             .padding(.vertical, 3)
-            .background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .background(
+                .black.opacity(0.6),
+                in: RoundedRectangle(cornerRadius: 6, style: .continuous),
+            )
     }
 }
 
@@ -628,7 +640,8 @@ private struct MediaItemCoverImage: View {
         RoundedCoverArtwork(
             image: displayImage,
             placeholderColor: placeholderColor,
-            variant: coverState.image == nil && fallbackState.image != nil ? fallbackVariant : variant,
+            variant: coverState.image == nil && fallbackState.image != nil
+                ? fallbackVariant : variant,
             cornerRadius: cornerRadius,
         )
         .transition(.opacity.combined(with: .scale))
@@ -769,9 +782,9 @@ struct DoubleCoverView: View {
                     .offset(x: audioXOffset)
                     .zIndex(audioZ)
                     #if os(macOS)
-                    .onTapGesture {
-                        toggleSwap()
-                    }
+                .onTapGesture {
+                    toggleSwap()
+                }
                     #endif
 
                 coverImage(state: ebookState)

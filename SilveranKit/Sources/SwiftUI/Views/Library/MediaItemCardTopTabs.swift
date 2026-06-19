@@ -161,9 +161,18 @@ struct MediaItemCardTopTabsButtonOverlay: View {
 
     private enum ButtonSize {
         case large, medium, small
-        var frame: CGFloat { switch self { case .large: 44; case .medium: 37; case .small: 30 } }
-        var icon: CGFloat { switch self { case .large: 26; case .medium: 22; case .small: 18 } }
-        var playIcon: CGFloat { switch self { case .large: 36; case .medium: 28; case .small: 24 } }
+        var frame: CGFloat {
+            switch self { case .large: 44 case .medium: 37 case .small: 30
+            }
+        }
+        var icon: CGFloat {
+            switch self { case .large: 26 case .medium: 22 case .small: 18
+            }
+        }
+        var playIcon: CGFloat {
+            switch self { case .large: 36 case .medium: 28 case .small: 24
+            }
+        }
     }
 
     private var availableTabs: [MediaItemCardTopTabs.TabCategory] {
@@ -172,7 +181,7 @@ struct MediaItemCardTopTabsButtonOverlay: View {
 
     private func buttonSize(
         for tab: MediaItemCardTopTabs.TabCategory,
-        in tabs: [MediaItemCardTopTabs.TabCategory]
+        in tabs: [MediaItemCardTopTabs.TabCategory],
     ) -> ButtonSize {
         let hasSynced = tabs.contains(.synced)
         switch tabs.count {
@@ -235,7 +244,7 @@ struct MediaItemCardTopTabsButtonOverlay: View {
     @ViewBuilder
     private func tabButton(
         for tab: MediaItemCardTopTabs.TabCategory,
-        size: ButtonSize
+        size: ButtonSize,
     ) -> some View {
         let status = tabStatus(for: tab)
         let isHovered = hoveredTab == tab
@@ -277,7 +286,7 @@ struct MediaItemCardTopTabsButtonOverlay: View {
         for tab: MediaItemCardTopTabs.TabCategory,
         status: MediaItemCardTopTabs.TabStatus,
         isHovered: Bool,
-        size: ButtonSize
+        size: ButtonSize,
     ) -> some View {
         if case .downloading(let progress) = status {
             DownloadCancelProgressIcon(

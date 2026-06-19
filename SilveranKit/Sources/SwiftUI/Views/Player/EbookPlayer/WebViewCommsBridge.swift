@@ -562,7 +562,8 @@ class WebViewCommsBridge {
             throw WebViewCommsBridgeError.webViewNotAvailable
         }
 
-        let escaped = colorId
+        let escaped =
+            colorId
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "'", with: "\\'")
         _ = try await webView.evaluateJavaScript(

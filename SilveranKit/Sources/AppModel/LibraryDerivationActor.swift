@@ -125,28 +125,32 @@ public struct MediaGridSortOption: RawRepresentable, Equatable, Hashable, Sendab
         MediaGridSortOption(field: field, ascending: !ascending)
     }
 
-    public static var menuFields: [SortField] {
-        [
-            .title,
-            .subtitle,
-            .author,
-            .series,
-            .progress,
-            .narrator,
-            .language,
-            .collections,
-            .publicationDate,
-            .status,
-            .recentlyAdded,
-            .recentlyRead,
-            .tags,
-            .source,
-            .allCreators,
-            .alignedAt,
-            .alignedByVersion,
-            .alignedWith,
-        ]
+    /// The SortField a canonical metadata field maps to, or nil if the field isn't directly
+    /// sortable (Subtitle/Tags/Collections/Source/Creators are excluded from sorting, and the
+    /// Alignment submenu expands to ``alignmentSortFields`` rather than one field).
+    public static func sortField(for field: LibraryMetadataField) -> SortField? {
+        switch field {
+            case .title: return .title
+            case .author: return .author
+            case .narrator: return .narrator
+            case .series: return .series
+            case .publicationDate: return .publicationDate
+            case .language: return .language
+            case .pages: return .pages
+            case .duration: return .duration
+            case .dateAdded: return .recentlyAdded
+            case .dateRead: return .recentlyRead
+            case .status: return .status
+            case .progress: return .progress
+            case .fileSize: return .fileSize
+            case .subtitle, .tags, .collections, .source, .location, .creators, .alignment:
+                return nil
+        }
     }
+
+    public static let alignmentSortFields: [SortField] = [
+        .alignedAt, .alignedByVersion, .alignedWith,
+    ]
 
     public static func defaultOption(for field: SortField) -> MediaGridSortOption {
         MediaGridSortOption(field: field, ascending: field.defaultAscending)
@@ -155,6 +159,7 @@ public struct MediaGridSortOption: RawRepresentable, Equatable, Hashable, Sendab
     public enum SortField: String, CaseIterable, Sendable {
         case title, author, publicationDate, series, recentlyAdded, recentlyRead, progress
         case subtitle, narrator, language, collections, status, tags, allCreators, source
+        case pages, duration, fileSize
         case alignedAt, alignedByVersion, alignedWith
 
         public var label: String {
@@ -174,6 +179,9 @@ public struct MediaGridSortOption: RawRepresentable, Equatable, Hashable, Sendab
                 case .tags: return "Tags"
                 case .allCreators: return "Creators"
                 case .source: return "Source"
+                case .pages: return "Pages"
+                case .duration: return "Duration"
+                case .fileSize: return "File Size"
                 case .alignedAt: return "Aligned At"
                 case .alignedByVersion: return "Aligned Version"
                 case .alignedWith: return "Aligned With"
@@ -182,7 +190,9 @@ public struct MediaGridSortOption: RawRepresentable, Equatable, Hashable, Sendab
 
         public var defaultAscending: Bool {
             switch self {
-                case .progress, .publicationDate, .recentlyAdded, .recentlyRead: return false
+                case .progress, .publicationDate, .recentlyAdded, .recentlyRead, .duration,
+                    .fileSize:
+                    return false
                 default: return true
             }
         }
@@ -206,13 +216,15 @@ public struct MediaGridSortOption: RawRepresentable, Equatable, Hashable, Sendab
                 case .alignedAt: return \BookMetadata.sortableAlignedAt
                 case .alignedByVersion: return \BookMetadata.sortableAlignedByVersion
                 case .alignedWith: return \BookMetadata.sortableAlignedWith
-                case .series, .progress: return nil
+                case .series, .progress, .pages, .duration, .fileSize: return nil
             }
         }
     }
 
     public func comparison(_ lhs: BookMetadata, _ rhs: BookMetadata) -> ComparisonResult {
-        let primary = ascending ? ascendingComparison(lhs, rhs) : reversedComparison(ascendingComparison(lhs, rhs))
+        let primary =
+            ascending
+            ? ascendingComparison(lhs, rhs) : reversedComparison(ascendingComparison(lhs, rhs))
         if primary != .orderedSame { return primary }
         return lhs.sortableTitle.articleStrippedCompare(rhs.sortableTitle)
     }
@@ -220,15 +232,27 @@ public struct MediaGridSortOption: RawRepresentable, Equatable, Hashable, Sendab
     private func ascendingComparison(_ lhs: BookMetadata, _ rhs: BookMetadata) -> ComparisonResult {
         switch field {
             case .progress:
-                let lhsP = lhs.sortableProgress, rhsP = rhs.sortableProgress
+                let lhsP = lhs.sortableProgress
+                let rhsP = rhs.sortableProgress
                 if lhsP == rhsP { return .orderedSame }
                 return lhsP < rhsP ? .orderedAscending : .orderedDescending
+            case .pages:
+                return Self.numericComparison(lhs.sortablePages, rhs.sortablePages)
+            case .duration:
+                return Self.numericComparison(lhs.sortableDuration, rhs.sortableDuration)
+            case .fileSize:
+                return Self.numericComparison(lhs.sortableFileSize, rhs.sortableFileSize)
             case .series:
                 return Self.seriesComparison(lhs, rhs)
             default:
                 guard let key = field.sortableKey else { return .orderedSame }
                 return lhs[keyPath: key].localizedCaseInsensitiveCompare(rhs[keyPath: key])
         }
+    }
+
+    static func numericComparison<T: Comparable>(_ lhs: T, _ rhs: T) -> ComparisonResult {
+        if lhs == rhs { return .orderedSame }
+        return lhs < rhs ? .orderedAscending : .orderedDescending
     }
 
     static func seriesComparison(_ lhs: BookMetadata, _ rhs: BookMetadata) -> ComparisonResult {
@@ -415,6 +439,7 @@ public struct MediaGridRenderRequest: Sendable {
     public var selectedPublicationYear: String?
     public var selectedRating: String?
     public var selectedStatus: String?
+    public var selectedProgress: ProgressCondition?
     public var selectedLocation: MediaGridLocationFilterOption
     public var selectedSourceID: BookSourceID?
     public var selectedSourceName: String?
@@ -436,6 +461,7 @@ public struct MediaGridRenderRequest: Sendable {
         selectedPublicationYear: String?,
         selectedRating: String?,
         selectedStatus: String?,
+        selectedProgress: ProgressCondition? = nil,
         selectedLocation: MediaGridLocationFilterOption,
         selectedSourceID: BookSourceID?,
         selectedSourceName: String?,
@@ -456,6 +482,7 @@ public struct MediaGridRenderRequest: Sendable {
         self.selectedPublicationYear = selectedPublicationYear
         self.selectedRating = selectedRating
         self.selectedStatus = selectedStatus
+        self.selectedProgress = selectedProgress
         self.selectedLocation = selectedLocation
         self.selectedSourceID = selectedSourceID
         self.selectedSourceName = selectedSourceName
@@ -835,6 +862,9 @@ public actor LibraryDerivationActor {
         if let selectedSourceID = request.selectedSourceID {
             filtered = filtered.filter { $0.sourceID == selectedSourceID }
         }
+        if let progress = request.selectedProgress {
+            filtered = filtered.filter { progress.matches(progressFraction: $0.sortableProgress) }
+        }
 
         switch request.contextFilters.location ?? request.selectedLocation {
             case .all:
@@ -904,6 +934,7 @@ public actor LibraryDerivationActor {
         if let rating = request.selectedRating {
             parts.append(rating == "Unrated" ? "Unrated" : "\(rating) Stars")
         }
+        if let progress = request.selectedProgress { parts.append(progress.label) }
         appendContextFilterSummaries(request.contextFilters, to: &parts)
         if request.contextFilters.location == nil, request.selectedLocation != .all {
             parts.append(request.selectedLocation.shortLabel)

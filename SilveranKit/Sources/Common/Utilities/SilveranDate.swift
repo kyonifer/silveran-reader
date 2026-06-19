@@ -144,7 +144,12 @@ public enum SilveranDate {
         )
         return String(
             format: "%04d%02d%02d%02d%02d%02d",
-            c.year ?? 0, c.month ?? 0, c.day ?? 0, c.hour ?? 0, c.minute ?? 0, c.second ?? 0,
+            c.year ?? 0,
+            c.month ?? 0,
+            c.day ?? 0,
+            c.hour ?? 0,
+            c.minute ?? 0,
+            c.second ?? 0,
         )
     }
 
@@ -246,10 +251,12 @@ public enum SilveranDate {
     private nonisolated(unsafe) static let yearMonth = utcFormatter("yyyy-MM")
     private nonisolated(unsafe) static let yearOnly = utcFormatter("yyyy")
     private nonisolated(unsafe) static let jsToString = utcFormatter(
-        "EEE MMM dd yyyy HH:mm:ss 'GMT'xx")
+        "EEE MMM dd yyyy HH:mm:ss 'GMT'xx"
+    )
     private nonisolated(unsafe) static let isoDayFormatter = utcFormatter("yyyy-MM-dd")
     private nonisolated(unsafe) static let isoFullFormatter = utcFormatter(
-        "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+        "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
+    )
 
     private nonisolated(unsafe) static let displayFull: DateFormatter = {
         let formatter = DateFormatter()
@@ -359,7 +366,8 @@ final class InconsistentDateDetector: @unchecked Sendable {
         let byFormat = stats[field] ?? [:]
         let header =
             "[SilveranDate][InconsistentDates] field=\(field.rawValue) — \(byFormat.count) distinct format(s):"
-        let lines = byFormat
+        let lines =
+            byFormat
             .sorted { $0.value.count > $1.value.count }
             .map { format, entry in
                 let name = format.rawValue.padding(toLength: 18, withPad: " ", startingAt: 0)

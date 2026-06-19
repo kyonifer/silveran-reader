@@ -12,6 +12,7 @@ struct MediaGridSortAndFilterBar: View {
     @Binding var selectedPublicationYear: String?
     @Binding var selectedRating: String?
     @Binding var selectedStatus: String?
+    @Binding var selectedProgress: ProgressCondition?
     @Binding var selectedLocation: MediaGridView.LocationFilterOption
     @Binding var selectedSourceID: BookSourceID?
     let contextFilters: MediaGridView.ContextFilters
@@ -102,13 +103,7 @@ struct MediaGridSortAndFilterBar: View {
     private var sortMenu: some View {
         HStack(spacing: 2) {
             Menu {
-                ForEach(MediaGridView.SortOption.menuFields, id: \.self) { field in
-                    Button {
-                        handleSortFieldTap(field)
-                    } label: {
-                        sortMenuRow(for: field)
-                    }
-                }
+                sortMenuContent
             } label: {
                 #if os(iOS)
                 Label("Sort", systemImage: "arrow.up.arrow.down")
@@ -138,6 +133,34 @@ struct MediaGridSortAndFilterBar: View {
             selectedSortOption = selectedSortOption.toggled
         } else {
             selectedSortOption = MediaGridView.SortOption.defaultOption(for: field)
+        }
+    }
+
+    @ViewBuilder
+    private var sortMenuContent: some View {
+        let fields = LibraryMetadataField.sortFields
+        ForEach(Array(fields.enumerated()), id: \.element.field) { index, descriptor in
+            if index > 0, fields[index - 1].section != descriptor.section {
+                Divider()
+            }
+            if descriptor.isSubmenu {
+                Menu(descriptor.label) {
+                    ForEach(MediaGridView.SortOption.alignmentSortFields, id: \.self) { field in
+                        sortButton(for: field)
+                    }
+                }
+            } else if let field = MediaGridView.SortOption.sortField(for: descriptor.field) {
+                sortButton(for: field)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func sortButton(for field: MediaGridView.SortOption.SortField) -> some View {
+        Button {
+            handleSortFieldTap(field)
+        } label: {
+            sortMenuRow(for: field)
         }
     }
 
@@ -220,55 +243,101 @@ struct MediaGridSortAndFilterBar: View {
 
     @ViewBuilder
     private var filterSubmenus: some View {
-        let tags = availableTags
-        let series = availableSeries
-        let authors = availableAuthors
-        let narrators = availableNarrators
-        let translators = availableTranslators
-        let publicationYears = availablePublicationYears
-        let sources = availableSources.sorted {
-            $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
-        }
-        let hasSources = !sources.isEmpty && contextFilters.sourceID == nil
-
+        // Format and Rating are filter-only (not shared metadata) and lead the menu; the shared
+        // fields then follow the canonical LibraryMetadataField order.
         formatSection
-
-        if !authors.isEmpty, contextFilters.author == nil {
-            authorFilterMenu(authors)
-        }
-
-        if !series.isEmpty, contextFilters.series == nil {
-            seriesFilterMenu(series)
-        }
-
-        if !narrators.isEmpty, contextFilters.narrator == nil {
-            narratorFilterMenu(narrators)
-        }
-
-        if !translators.isEmpty, contextFilters.translator == nil {
-            translatorFilterMenu(translators)
-        }
-
-        if !publicationYears.isEmpty, contextFilters.publicationYear == nil {
-            publicationYearFilterMenu(publicationYears)
-        }
-
-        statusSection
-
-        if !tags.isEmpty, contextFilters.tag == nil {
-            tagFilterMenu(tags)
-        }
 
         let ratings = availableRatings
         if !ratings.isEmpty && contextFilters.rating == nil {
             ratingFilterMenu(ratings)
         }
 
-        if hasSources {
-            sourceFilterMenu(sources)
+        let fields = LibraryMetadataField.filterFields
+        ForEach(Array(fields.enumerated()), id: \.element.field) { index, descriptor in
+            if index > 0, descriptor.section != fields[index - 1].section {
+                Divider()
+            }
+            filterEntry(for: descriptor.field)
+            // Translator is a creator role with no registry entry; group it with the creators.
+            if descriptor.field == .narrator {
+                translatorFilterEntry
+            }
         }
+    }
 
-        locationSection
+    @ViewBuilder
+    private func filterEntry(for field: LibraryMetadataField) -> some View {
+        switch field {
+            case .author:
+                let authors = availableAuthors
+                if !authors.isEmpty, contextFilters.author == nil {
+                    authorFilterMenu(authors)
+                }
+            case .narrator:
+                let narrators = availableNarrators
+                if !narrators.isEmpty, contextFilters.narrator == nil {
+                    narratorFilterMenu(narrators)
+                }
+            case .series:
+                let series = availableSeries
+                if !series.isEmpty, contextFilters.series == nil {
+                    seriesFilterMenu(series)
+                }
+            case .publicationDate:
+                let years = availablePublicationYears
+                if !years.isEmpty, contextFilters.publicationYear == nil {
+                    publicationYearFilterMenu(years)
+                }
+            case .tags:
+                let tags = availableTags
+                if !tags.isEmpty, contextFilters.tag == nil {
+                    tagFilterMenu(tags)
+                }
+            case .status:
+                statusSection
+            case .progress:
+                progressSection
+            case .source:
+                let sources = availableSources.sorted {
+                    $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+                }
+                if !sources.isEmpty && contextFilters.sourceID == nil {
+                    sourceFilterMenu(sources)
+                }
+            case .location:
+                locationSection
+            default:
+                EmptyView()
+        }
+    }
+
+    @ViewBuilder
+    private var progressSection: some View {
+        Menu {
+            Button {
+                selectedProgress = nil
+            } label: {
+                menuRowLabel(text: "All Progress", isSelected: selectedProgress == nil)
+            }
+
+            ForEach(ProgressCondition.allCases) { progress in
+                Button {
+                    selectedProgress = progress
+                } label: {
+                    menuRowLabel(text: progress.label, isSelected: selectedProgress == progress)
+                }
+            }
+        } label: {
+            Label("Progress", systemImage: "chart.bar")
+        }
+    }
+
+    @ViewBuilder
+    private var translatorFilterEntry: some View {
+        let translators = availableTranslators
+        if !translators.isEmpty, contextFilters.translator == nil {
+            translatorFilterMenu(translators)
+        }
     }
 
     @ViewBuilder
@@ -522,6 +591,7 @@ struct MediaGridSortAndFilterBar: View {
             || selectedPublicationYear != nil
             || selectedRating != nil
             || selectedStatus != nil
+            || selectedProgress != nil
             || selectedLocation != .all
             || selectedSourceID != nil
     }
@@ -536,6 +606,7 @@ struct MediaGridSortAndFilterBar: View {
         selectedPublicationYear = nil
         selectedRating = nil
         selectedStatus = nil
+        selectedProgress = nil
         selectedLocation = .all
         selectedSourceID = nil
     }
@@ -773,24 +844,7 @@ struct MediaGridSortAndFilterBar: View {
     private var columnsMenu: some View {
         Menu {
             columnToggle(id: "cover", label: "Cover")
-            columnToggle(id: "title", label: "Title")
-            columnToggle(id: "subtitle", label: "Subtitle")
-            columnToggle(id: "author", label: "Author")
-            columnToggle(id: "series", label: "Series")
-            columnToggle(id: "progress", label: "Progress")
-            columnToggle(id: "narrator", label: "Narrator")
-            columnToggle(id: "language", label: "Language")
-            columnToggle(id: "collections", label: "Collections")
-            columnToggle(id: "publicationYear", label: "Publication Date")
-            columnToggle(id: "status", label: "Status")
-            columnToggle(id: "added", label: "Added")
-            columnToggle(id: "lastRead", label: "Last Read")
-            columnToggle(id: "tags", label: "Tags")
-            columnToggle(id: "source", label: "Source")
-            columnToggle(id: "media", label: "Media")
-            Divider()
-            creatorsSubmenu
-            alignmentDataSubmenu
+            columnsMenuContent
             Divider()
             Button("Reset to Defaults") {
                 onResetColumns?()
@@ -799,6 +853,28 @@ struct MediaGridSortAndFilterBar: View {
             Label("Columns", systemImage: "rectangle.split.3x1")
         }
         .menuStyle(.borderlessButton)
+    }
+
+    @ViewBuilder
+    private var columnsMenuContent: some View {
+        let fields = LibraryMetadataField.columnFields
+        ForEach(Array(fields.enumerated()), id: \.element.field) { index, descriptor in
+            if index > 0, fields[index - 1].section != descriptor.section {
+                // Media (table-only, not book metadata) sits at the end of section 2.
+                if descriptor.section == 3 {
+                    columnToggle(id: "media", label: "Media")
+                }
+                Divider()
+            }
+            switch descriptor.field {
+                case .creators: creatorsSubmenu
+                case .alignment: alignmentDataSubmenu
+                default:
+                    if let id = MediaTableView.columnID(for: descriptor.field) {
+                        columnToggle(id: id, label: descriptor.label)
+                    }
+            }
+        }
     }
 
     @ViewBuilder
