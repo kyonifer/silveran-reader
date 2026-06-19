@@ -721,6 +721,7 @@ private struct iOSCircularProgress: View {
 
 private struct iOSCreateReadaloudButton: View {
     let item: BookMetadata
+    @Environment(MediaViewModel.self) private var mediaViewModel
     @State private var isStartingAlignment = false
     @State private var isCancelingAlignment = false
     @State private var showConfirmation = false
@@ -735,6 +736,14 @@ private struct iOSCreateReadaloudButton: View {
 
     private var isErrorOrStopped: Bool {
         readaloudStatus == "ERROR" || readaloudStatus == "STOPPED"
+    }
+
+    private var canCreateOnServer: Bool {
+        mediaViewModel.isServerBook(item.id)
+    }
+
+    private var canCreateLocally: Bool {
+        mediaViewModel.isServerBook(item.id) || mediaViewModel.isLocalFolderBook(item.id)
     }
 
     private var statusText: String? {
@@ -774,16 +783,7 @@ private struct iOSCreateReadaloudButton: View {
         }
         .alert("Create Readaloud", isPresented: $showConfirmation) {
             Button("Create") {
-                Task {
-                    isStartingAlignment = true
-                    _ = await BookServiceActor.shared.startAlignment(
-                        for: item.uuid,
-                        sourceID: item.sourceID,
-                        restart: isErrorOrStopped ? .full : .none,
-                    )
-                    await BookServiceActor.shared.fetchLibraryInformation()
-                    isStartingAlignment = false
-                }
+                startServerAlignment()
             }
             Button("Cancel", role: .cancel) {}
         } message: {
@@ -794,35 +794,75 @@ private struct iOSCreateReadaloudButton: View {
     }
 
     private var createButton: some View {
-        Button {
-            showConfirmation = true
-        } label: {
-            HStack(spacing: 6) {
-                if isStartingAlignment {
-                    ProgressView()
-                        .controlSize(.small)
-                        .tint(.green)
-                } else {
-                    Image(systemName: "plus")
-                        .font(.system(size: 14, weight: .semibold))
+        Menu {
+            if canCreateOnServer {
+                Button {
+                    showConfirmation = true
+                } label: {
+                    Label("Create on Server", systemImage: "server.rack")
                 }
-                Text("Readaloud")
-                    .font(.system(size: 15, weight: .semibold))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.6)
             }
-            .frame(maxWidth: .infinity)
-            .foregroundStyle(.green)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 12)
-            .background(
-                Capsule()
-                    .strokeBorder(style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
-                    .foregroundStyle(.green.opacity(0.5))
-            )
+
+            if canCreateLocally {
+                Button {
+                    openLocalGenerator()
+                } label: {
+                    Label("Create Locally", systemImage: "iphone")
+                }
+            }
+        } label: {
+            createButtonContent
         }
         .buttonStyle(.plain)
-        .disabled(isStartingAlignment)
+        .disabled(isStartingAlignment || (!canCreateOnServer && !canCreateLocally))
+    }
+
+    private var createButtonContent: some View {
+        HStack(spacing: 6) {
+            if isStartingAlignment {
+                ProgressView()
+                    .controlSize(.small)
+                    .tint(.green)
+            } else {
+                Image(systemName: "plus")
+                    .font(.system(size: 14, weight: .semibold))
+            }
+            Text("Readaloud")
+                .font(.system(size: 15, weight: .semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+        }
+        .frame(maxWidth: .infinity)
+        .foregroundStyle(.green)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 12)
+        .background(
+            Capsule()
+                .strokeBorder(style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
+                .foregroundStyle(.green.opacity(0.5))
+        )
+    }
+
+    private func startServerAlignment() {
+        Task {
+            isStartingAlignment = true
+            _ = await BookServiceActor.shared.startAlignment(
+                for: item.uuid,
+                sourceID: item.sourceID,
+                restart: isErrorOrStopped ? .full : .none,
+            )
+            await BookServiceActor.shared.fetchLibraryInformation()
+            isStartingAlignment = false
+        }
+    }
+
+    private func openLocalGenerator() {
+        if let data = LocalReadaloudAlignmentLauncher.data(
+            for: item,
+            mediaViewModel: mediaViewModel,
+        ) {
+            NotificationCenter.default.post(name: .silveranCreateReadaloud, object: data)
+        }
     }
 
     private var processingButton: some View {

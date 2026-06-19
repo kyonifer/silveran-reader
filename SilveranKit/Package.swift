@@ -6,7 +6,7 @@ let package = Package(
     name: "SilveranKit",
     platforms: [
         .macOS(.v15),
-        .iOS(.v17),
+        .iOS(.v18),
         .watchOS(.v10),
         .tvOS(.v17),
     ],
@@ -14,6 +14,10 @@ let package = Package(
         .library(name: "SilveranKitCommon", targets: ["SilveranKitCommon"]),
         .library(name: "SilveranKitAppModel", targets: ["SilveranKitAppModel"]),
         .library(name: "SilveranKitSwiftUI", targets: ["SilveranKitSwiftUI"]),
+        .library(
+            name: "SilveranKitReadaloudGenerator",
+            targets: ["SilveranKitReadaloudGenerator"],
+        ),
         .library(name: "SilveranKitiOSApp", targets: ["SilveranKitiOSApp"]),
         .library(name: "SilveranKitMacApp", targets: ["SilveranKitMacApp"]),
         .library(name: "SilveranKitContentServer", targets: ["SilveranKitContentServer"]),
@@ -29,7 +33,7 @@ let package = Package(
         .package(url: "https://github.com/swiftlang/swift-syntax.git", from: "600.0.0"),
         .package(url: "https://github.com/weichsel/ZIPFoundation.git", from: "0.9.0"),
         .package(url: "https://github.com/scinfu/SwiftSoup.git", from: "2.7.0"),
-        .package(url: "https://github.com/kyonifer/StoryAlign.git", from: "1.2.0"),
+        .package(url: "https://github.com/kyonifer/StoryAlign.git", from: "1.2.4"),
         .package(url: "https://github.com/hummingbird-project/hummingbird.git", from: "2.0.0"),
     ],
     targets: [
@@ -72,6 +76,7 @@ let package = Package(
             dependencies: [
                 "SilveranKitCommon",
                 "SilveranKitSwiftUI",
+                "SilveranKitReadaloudGenerator",
             ],
             path: "Sources/iOSApp",
         ),
@@ -80,10 +85,21 @@ let package = Package(
             dependencies: [
                 "SilveranKitCommon",
                 "SilveranKitSwiftUI",
+                "SilveranKitReadaloudGenerator",
                 "SilveranKitContentServer",
-                .product(name: "StoryAlignCore", package: "StoryAlign"),
             ],
             path: "Sources/macApp",
+        ),
+        .target(
+            name: "SilveranKitReadaloudGenerator",
+            dependencies: [
+                "SilveranKitCommon",
+                "SilveranKitAppModel",
+                "SilveranKitSwiftUI",
+                .product(name: "StoryAlignCore", package: "StoryAlign"),
+                .product(name: "ZIPFoundation", package: "ZIPFoundation"),
+            ],
+            path: "Sources/ReadaloudGenerator",
         ),
         .target(
             name: "SilveranKitContentServer",

@@ -134,6 +134,7 @@ struct MediaItemCardView: View {
         }
 
         iOSStatusContextMenu
+        iOSReadaloudContextMenuContent(item: item)
 
         Divider()
 

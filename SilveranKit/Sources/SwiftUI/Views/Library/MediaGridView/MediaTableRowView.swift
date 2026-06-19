@@ -62,6 +62,8 @@ struct MediaTableRowView: View {
                 Label("Edit Metadata...", systemImage: "pencil")
             }
         }
+
+        iOSReadaloudContextMenuContent(item: item)
     }
 
     private func handleDetailsNavigation() {

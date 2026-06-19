@@ -1,6 +1,10 @@
 import Foundation
 import SilveranKitCommon
 
+extension Notification.Name {
+    public static let silveranCreateReadaloud = Notification.Name("silveranCreateReadaloud")
+}
+
 public enum ReadaloudGeneratorDestination: String, Codable, Hashable, Sendable {
     case file
     case source

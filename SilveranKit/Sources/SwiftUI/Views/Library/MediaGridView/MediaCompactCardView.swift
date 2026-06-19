@@ -215,6 +215,7 @@ struct MediaCompactCardView: View {
         }
 
         iOSStatusContextMenu
+        iOSReadaloudContextMenuContent(item: item)
     }
 
     private var iOSCurrentItem: BookMetadata {

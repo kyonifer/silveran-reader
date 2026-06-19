@@ -20,21 +20,20 @@ struct MediaDownloadOptionsList: View {
             ForEach(options) { option in
                 MediaDownloadOptionRow(item: item, option: option, onAction: onAction)
             }
-            #if os(macOS)
             if item.canShowCreateReadaloud {
                 CreateReadaloudRow(item: item)
             }
-            #endif
         }
     }
 }
 
-#if os(macOS)
 struct CreateReadaloudRow: View {
     let item: BookMetadata
     @State private var isStartingAlignment = false
     @State private var isCancelingAlignment = false
+    #if os(macOS)
     @Environment(\.openWindow) private var openWindow
+    #endif
     @Environment(MediaViewModel.self) private var mediaViewModel
 
     private var readaloudStatus: String? {
@@ -158,6 +157,7 @@ struct CreateReadaloudRow: View {
         .font(.caption)
     }
 
+    @ViewBuilder
     private var createMenu: some View {
         ZStack {
             if isStartingAlignment {
@@ -193,7 +193,7 @@ struct CreateReadaloudRow: View {
                             for: item,
                             mediaViewModel: mediaViewModel,
                         ) {
-                            openWindow(id: "ReadaloudGenerator", value: data)
+                            openReadaloudGenerator(data)
                         }
                     } label: {
                         Label("Create Locally", systemImage: "desktopcomputer")
@@ -203,9 +203,19 @@ struct CreateReadaloudRow: View {
             } label: {
                 Color.clear
             }
+            #if os(macOS)
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
+            #endif
         }
+    }
+
+    private func openReadaloudGenerator(_ data: ReadaloudGeneratorData) {
+        #if os(macOS)
+        openWindow(id: "ReadaloudGenerator", value: data)
+        #else
+        NotificationCenter.default.post(name: .silveranCreateReadaloud, object: data)
+        #endif
     }
 
     @ViewBuilder
@@ -233,7 +243,6 @@ struct CreateReadaloudRow: View {
         .disabled(isCancelingAlignment)
     }
 }
-#endif
 
 struct MediaDownloadOptionRow: View {
     let item: BookMetadata

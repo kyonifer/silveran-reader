@@ -1,10 +1,8 @@
-#if os(macOS)
-import AppKit
 import Foundation
 import SilveranKitAppModel
 
 @MainActor
-enum LocalReadaloudAlignmentLauncher {
+public enum LocalReadaloudAlignmentLauncher {
     static func data(
         for item: BookMetadata,
         mediaViewModel: MediaViewModel,
@@ -55,4 +53,3 @@ enum LocalReadaloudAlignmentLauncher {
     }
 
 }
-#endif

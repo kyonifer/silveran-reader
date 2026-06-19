@@ -2,7 +2,7 @@ name: Silveran
 options:
   minimumXcodeGenVersion: 2.38.0
   deploymentTarget:
-    iOS: "17.0"
+    iOS: "18.0"
     macOS: "15.0"
     watchOS: "10.0"
     tvOS: "17.0"
@@ -97,7 +97,7 @@ targets:
     platform: iOS
     settings:
       base:
-        IPHONEOS_DEPLOYMENT_TARGET: 17.0
+        IPHONEOS_DEPLOYMENT_TARGET: 18.0
         CODE_SIGN_ENTITLEMENTS: XCodeWrapper/SilveranReaderIos.entitlements
         CODE_SIGN_STYLE: Automatic
         INFOPLIST_FILE: XCodeWrapper/Info-iOS.plist

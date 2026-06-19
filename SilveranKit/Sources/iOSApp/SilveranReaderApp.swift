@@ -1,5 +1,6 @@
 #if os(iOS)
 import SilveranKitCommon
+import SilveranKitReadaloudGenerator
 import SilveranKitSwiftUI
 import SwiftUI
 import UIKit
@@ -134,8 +135,11 @@ struct SilveranReaderApp: App {
 
 private struct iOSRootView: View {
     let startupTask: Task<Void, Never>
+    @Environment(MediaViewModel.self) private var mediaViewModel
     @State private var restoreStartupFinished = !LastOpenBookStore.hasSavedRoute
     @State private var restoredPlayer: PlayerBookData?
+    @State private var readaloudGeneratorData: ReadaloudGeneratorData?
+    @State private var isShowingReadaloudGenerator = false
 
     var body: some View {
         Group {
@@ -148,6 +152,24 @@ private struct iOSRootView: View {
                 }
             } else {
                 iOSLibraryView()
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .silveranCreateReadaloud)) {
+            notification in
+            readaloudGeneratorData = notification.object as? ReadaloudGeneratorData
+            isShowingReadaloudGenerator = true
+        }
+        .sheet(isPresented: $isShowingReadaloudGenerator) {
+            NavigationStack {
+                ReadaloudGeneratorView(initialData: readaloudGeneratorData)
+                    .environment(mediaViewModel)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button("Done") {
+                                isShowingReadaloudGenerator = false
+                            }
+                        }
+                    }
             }
         }
         .task {

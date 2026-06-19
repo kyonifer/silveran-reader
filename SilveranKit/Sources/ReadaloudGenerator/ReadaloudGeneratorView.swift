@@ -1,11 +1,21 @@
-import AppKit
 import SilveranKitAppModel
+import SilveranKitSwiftUI
 import StoryAlignCore
 import SwiftUI
 import UniformTypeIdentifiers
 
+#if canImport(AppKit)
+import AppKit
+#endif
+
+#if canImport(UIKit)
+import UIKit
+#endif
+
 public struct ReadaloudGeneratorView: View {
     @State private var viewModel = ReadaloudGeneratorViewModel()
+    @State private var fileImporterRequest: FileImporterRequest?
+    @State private var isShowingDownloadRequiredAlert = false
     @Environment(\.dismiss) private var dismiss
     @Environment(MediaViewModel.self) private var mediaViewModel
     private let initialData: ReadaloudGeneratorData?
@@ -19,34 +29,11 @@ public struct ReadaloudGeneratorView: View {
             headerView
             Divider()
             ScrollView {
-                HStack(alignment: .top, spacing: 0) {
-                    VStack(alignment: .leading, spacing: 20) {
-                        if isSourceWorkflow {
-                            sourceBookSection
-                            sourceInputMediaSection
-                        } else {
-                            inputFilesSection
-                        }
-                        modelSection
-                        outputSection
-                    }
-                    .frame(width: 360, alignment: .topLeading)
-
-                    Divider()
-                        .padding(.horizontal, 20)
-
-                    VStack(alignment: .leading, spacing: 20) {
-                        optionsSection
-                        if !viewModel.availableChapters.isEmpty {
-                            chapterRangeSection
-                        }
-                    }
-                    .frame(width: 360, alignment: .topLeading)
-                }
-                .padding(20)
+                formContent
             }
             .onChange(of: viewModel.epubURL) { _, _ in
                 viewModel.loadChapters()
+                ensureDefaultOutputURL()
             }
             if case .processing = viewModel.state {
                 Divider()
@@ -76,11 +63,87 @@ public struct ReadaloudGeneratorView: View {
             .foregroundStyle(.blue)
             .padding(.bottom, 12)
         }
-        .frame(width: 820, height: 760)
+        .readaloudGeneratorSizing()
+        .fileImporter(
+            isPresented: fileImporterBinding,
+            allowedContentTypes: fileImporterRequest?.allowedContentTypes ?? [],
+            allowsMultipleSelection: fileImporterRequest?.allowsMultipleSelection ?? false,
+        ) { result in
+            guard let request = fileImporterRequest else { return }
+            fileImporterRequest = nil
+            if case .success(let urls) = result {
+                request.onSelect(urls)
+            }
+        }
+        .alert("Download Media First", isPresented: $isShowingDownloadRequiredAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(
+                "Local alignment needs both the ebook and audiobook to be available locally. Use the download buttons in the Input Media section on the left, then try again."
+            )
+        }
         .task {
             await viewModel.loadUploadSources()
             await viewModel.configure(with: initialData)
+            ensureDefaultOutputURL()
         }
+    }
+
+    @ViewBuilder
+    private var formContent: some View {
+        #if os(iOS)
+        VStack(alignment: .leading, spacing: 20) {
+            leftColumn
+            Divider()
+            rightColumn
+        }
+        .padding(20)
+        #else
+        HStack(alignment: .top, spacing: 0) {
+            leftColumn
+                .frame(width: 360, alignment: .topLeading)
+
+            Divider()
+                .padding(.horizontal, 20)
+
+            rightColumn
+                .frame(width: 360, alignment: .topLeading)
+        }
+        .padding(20)
+        #endif
+    }
+
+    private var leftColumn: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            if isSourceWorkflow {
+                sourceBookSection
+                sourceInputMediaSection
+            } else {
+                inputFilesSection
+            }
+            modelSection
+            outputSection
+        }
+    }
+
+    private var rightColumn: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            optionsSection
+            if !viewModel.availableChapters.isEmpty {
+                chapterRangeSection
+            }
+        }
+    }
+
+    private var fileImporterBinding: Binding<Bool> {
+        Binding(
+            get: { fileImporterRequest != nil },
+            set: { isPresented in
+                if !isPresented {
+                    fileImporterRequest = nil
+                }
+            },
+        )
     }
 
     private var headerView: some View {
@@ -160,6 +223,7 @@ public struct ReadaloudGeneratorView: View {
 
                 if viewModel.selectedModelSize == .custom {
                     Button("Browse...") {
+                        #if os(macOS)
                         let panel = NSOpenPanel()
                         panel.allowedContentTypes = [UTType(filenameExtension: "bin")!]
                         panel.allowsMultipleSelection = false
@@ -167,6 +231,16 @@ public struct ReadaloudGeneratorView: View {
                         if panel.runModal() == .OK {
                             viewModel.customModelPath = panel.url
                         }
+                        #else
+                        fileImporterRequest = FileImporterRequest(
+                            allowedContentTypes: [UTType(filenameExtension: "bin")].compactMap {
+                                $0
+                            },
+                            allowsMultipleSelection: false,
+                        ) { urls in
+                            viewModel.customModelPath = urls.first
+                        }
+                        #endif
                     }
                 } else if viewModel.isModelDownloaded {
                     Image(systemName: "checkmark.circle.fill")
@@ -365,6 +439,9 @@ public struct ReadaloudGeneratorView: View {
                     }
                     .disabled(viewModel.state == .processing || viewModel.uploadSources.isEmpty)
                 } else {
+                    #if os(iOS)
+                    temporaryOutputRow(suggestedFilename: suggestedName)
+                    #else
                     filePickerRow(
                         label: "Save to:",
                         url: viewModel.outputURL,
@@ -375,6 +452,7 @@ public struct ReadaloudGeneratorView: View {
                     ) { url in
                         viewModel.outputURL = url
                     }
+                    #endif
                 }
             }
         }
@@ -463,10 +541,10 @@ public struct ReadaloudGeneratorView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(nsColor: .controlBackgroundColor).opacity(0.55))
+        .background(controlBackgroundColor.opacity(0.55))
         .overlay(
             RoundedRectangle(cornerRadius: 8)
-                .stroke(Color(nsColor: .separatorColor).opacity(0.55), lineWidth: 1)
+                .stroke(separatorColor.opacity(0.55), lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
@@ -549,10 +627,10 @@ public struct ReadaloudGeneratorView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(nsColor: .controlBackgroundColor).opacity(0.35))
+        .background(controlBackgroundColor.opacity(0.35))
         .overlay(
             RoundedRectangle(cornerRadius: 8)
-                .stroke(Color(nsColor: .separatorColor).opacity(0.45), lineWidth: 1)
+                .stroke(separatorColor.opacity(0.45), lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
@@ -578,6 +656,7 @@ public struct ReadaloudGeneratorView: View {
             .textFieldStyle(.roundedBorder)
 
             Button("Browse...") {
+                #if os(macOS)
                 let panel = NSOpenPanel()
                 panel.allowsMultipleSelection = false
                 panel.canChooseDirectories = true
@@ -585,7 +664,29 @@ public struct ReadaloudGeneratorView: View {
                 if panel.runModal() == .OK, let url = panel.url {
                     setOutputFolder(url, suggestedFilename: suggestedFilename)
                 }
+                #else
+                fileImporterRequest = FileImporterRequest(
+                    allowedContentTypes: [.folder],
+                    allowsMultipleSelection: false,
+                ) { urls in
+                    if let url = urls.first {
+                        setOutputFolder(url, suggestedFilename: suggestedFilename)
+                    }
+                }
+                #endif
             }
+        }
+    }
+
+    private func temporaryOutputRow(suggestedFilename: String?) -> some View {
+        let filename = suggestedFilename ?? "readaloud.epub"
+        return lockedSelectionRow(
+            iconName: "square.and.arrow.up",
+            title: filename,
+            detail: "Available to share after creation",
+        )
+        .onAppear {
+            ensureDefaultOutputURL(suggestedFilename: suggestedFilename)
         }
     }
 
@@ -698,15 +799,22 @@ public struct ReadaloudGeneratorView: View {
 
             if case .saved(let url) = completion {
                 HStack {
+                    #if os(macOS)
                     Button("Show in Finder") {
                         NSWorkspace.shared.selectFile(
                             url.path,
                             inFileViewerRootedAtPath: url.deletingLastPathComponent().path,
                         )
                     }
+                    #endif
                     Button("Open") {
+                        #if os(macOS)
                         NSWorkspace.shared.open(url)
+                        #else
+                        openFile(url)
+                        #endif
                     }
+                    ShareLink(item: url)
                 }
             }
         }
@@ -759,6 +867,7 @@ public struct ReadaloudGeneratorView: View {
                     Spacer()
 
                     Button {
+                        ensureDefaultOutputURL()
                         refreshSourceMediaInputs()
                         if isSourceWorkflowMediaMissing || viewModel.isMissingSourceWorkflowMedia {
                             showDownloadRequiredAlert()
@@ -768,13 +877,13 @@ public struct ReadaloudGeneratorView: View {
                     } label: {
                         Text("Create Readaloud")
                             .foregroundStyle(
-                                isDisabled ? Color(nsColor: .disabledControlTextColor) : .white
+                                isDisabled ? disabledTextColor : .white
                             )
                     }
                     .keyboardShortcut(.defaultAction)
                     .disabled(isDisabled)
                     .buttonStyle(.borderedProminent)
-                    .tint(isDisabled ? Color(nsColor: .disabledControlTextColor) : .accentColor)
+                    .tint(isDisabled ? disabledTextColor : .accentColor)
                 }
             }
         }
@@ -797,7 +906,11 @@ public struct ReadaloudGeneratorView: View {
         if viewModel.uploadAllToServer {
             return viewModel.selectedUploadSourceID == nil || !viewModel.isModelDownloaded
         }
+        #if os(iOS)
+        return !viewModel.isModelDownloaded
+        #else
         return viewModel.outputURL == nil || !viewModel.isModelDownloaded
+        #endif
     }
 
     private var isSourceWorkflowMediaMissing: Bool {
@@ -860,9 +973,12 @@ public struct ReadaloudGeneratorView: View {
             if viewModel.selectedUploadSourceID == nil {
                 return "Select an output source"
             }
-        } else if viewModel.outputURL == nil {
+        }
+        #if os(macOS)
+        if !viewModel.uploadAllToServer && viewModel.outputURL == nil {
             return isSourceWorkflow ? "Select output folder" : "Select output location"
         }
+        #endif
         if !isSourceWorkflow {
             if viewModel.epubURL == nil {
                 return "Select an EPUB file"
@@ -884,13 +1000,7 @@ public struct ReadaloudGeneratorView: View {
     }
 
     private func showDownloadRequiredAlert() {
-        let alert = NSAlert()
-        alert.messageText = "Download Media First"
-        alert.informativeText =
-            "Local alignment needs both the ebook and audiobook to be available locally. Use the download buttons in the Input Media section on the left, then try again."
-        alert.alertStyle = .informational
-        alert.addButton(withTitle: "OK")
-        alert.runModal()
+        isShowingDownloadRequiredAlert = true
     }
 
     private func filePickerRow(
@@ -912,6 +1022,7 @@ public struct ReadaloudGeneratorView: View {
                 .truncationMode(.middle)
 
             Button("Browse...") {
+                #if os(macOS)
                 if isSavePanel {
                     let panel = NSSavePanel()
                     panel.allowedContentTypes = allowedTypes
@@ -929,6 +1040,14 @@ public struct ReadaloudGeneratorView: View {
                         onSelect(panel.url)
                     }
                 }
+                #else
+                fileImporterRequest = FileImporterRequest(
+                    allowedContentTypes: allowedTypes,
+                    allowsMultipleSelection: false,
+                ) { urls in
+                    onSelect(urls.first)
+                }
+                #endif
             }
         }
     }
@@ -950,6 +1069,7 @@ public struct ReadaloudGeneratorView: View {
                 .truncationMode(.middle)
 
             Button("Browse...") {
+                #if os(macOS)
                 let panel = NSOpenPanel()
                 panel.allowedContentTypes = allowedTypes
                 panel.allowsMultipleSelection = true
@@ -957,6 +1077,14 @@ public struct ReadaloudGeneratorView: View {
                 if panel.runModal() == .OK {
                     onSelect(panel.urls)
                 }
+                #else
+                fileImporterRequest = FileImporterRequest(
+                    allowedContentTypes: allowedTypes,
+                    allowsMultipleSelection: true,
+                ) { urls in
+                    onSelect(urls)
+                }
+                #endif
             }
         }
     }
@@ -972,6 +1100,52 @@ public struct ReadaloudGeneratorView: View {
         }
     }
 
+    private func ensureDefaultOutputURL(suggestedFilename: String? = nil) {
+        #if os(iOS)
+        guard !viewModel.uploadAllToServer, viewModel.outputURL == nil else { return }
+        let filename =
+            suggestedFilename
+            ?? viewModel.epubURL.map { defaultReadaloudFilename(for: $0) }
+            ?? "readaloud.epub"
+        viewModel.outputURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(filename, isDirectory: false)
+        #endif
+    }
+
+    private func defaultReadaloudFilename(for epubURL: URL) -> String {
+        "\(epubURL.deletingPathExtension().lastPathComponent)-readaloud.epub"
+    }
+
+    private func openFile(_ url: URL) {
+        #if canImport(UIKit)
+        UIApplication.shared.open(url)
+        #endif
+    }
+
+    private var controlBackgroundColor: Color {
+        #if os(macOS)
+        Color(nsColor: .controlBackgroundColor)
+        #else
+        Color(uiColor: .secondarySystemBackground)
+        #endif
+    }
+
+    private var separatorColor: Color {
+        #if os(macOS)
+        Color(nsColor: .separatorColor)
+        #else
+        Color(uiColor: .separator)
+        #endif
+    }
+
+    private var disabledTextColor: Color {
+        #if os(macOS)
+        Color(nsColor: .disabledControlTextColor)
+        #else
+        Color(uiColor: .tertiaryLabel)
+        #endif
+    }
+
     private var audioFileTypes: [UTType] {
         [
             UTType(filenameExtension: "m4b"),
@@ -984,5 +1158,22 @@ public struct ReadaloudGeneratorView: View {
             UTType(filenameExtension: "wav"),
             .audio,
         ].compactMap { $0 }
+    }
+}
+
+private struct FileImporterRequest {
+    let allowedContentTypes: [UTType]
+    let allowsMultipleSelection: Bool
+    let onSelect: ([URL]) -> Void
+}
+
+extension View {
+    @ViewBuilder
+    fileprivate func readaloudGeneratorSizing() -> some View {
+        #if os(macOS)
+        frame(width: 820, height: 760)
+        #else
+        frame(maxWidth: .infinity, maxHeight: .infinity)
+        #endif
     }
 }
