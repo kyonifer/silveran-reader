@@ -74,6 +74,7 @@ struct HomeView: View {
         .circle.rawValue
     @AppStorage("home.sectionConfig") private var homeSectionConfigJSON: String = "[]"
     @AppStorage("sidebar.config") private var sidebarConfigJSON: String = ""
+    @State private var lastProgressStyle: ProgressIndicatorStyle = .circle
 
     private var coverPreference: CoverPreference {
         CoverPreference(rawValue: coverPrefRaw) ?? .preferEbook
@@ -1080,21 +1081,33 @@ struct HomeView: View {
                 Toggle("Audio Indicator", isOn: $showAudioIndicator)
                 Toggle("Source Badge", isOn: $showSourceBadge)
                 Toggle("Series Position", isOn: $showSeriesPositionBadge)
+                Toggle(
+                    "Progress",
+                    isOn: Binding(
+                        get: { progressStyle != .none },
+                        set: { show in
+                            if show {
+                                progressStyleRaw = lastProgressStyle.rawValue
+                            } else {
+                                lastProgressStyle = progressStyle
+                                progressStyleRaw = ProgressIndicatorStyle.none.rawValue
+                            }
+                        },
+                    ),
+                )
 
-                Text("Progress")
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 4)
-                HStack(spacing: 8) {
-                    ForEach(ProgressIndicatorStyle.allCases) { style in
-                        Button {
-                            progressStyleRaw = style.rawValue
-                        } label: {
-                            Image(systemName: style.iconName)
-                                .frame(width: 32, height: 28)
+                if progressStyle != .none {
+                    HStack(spacing: 8) {
+                        ForEach(ProgressIndicatorStyle.selectableStyles) { style in
+                            Button {
+                                progressStyleRaw = style.rawValue
+                            } label: {
+                                Image(systemName: style.iconName)
+                                    .frame(width: 32, height: 28)
+                            }
+                            .buttonStyle(.bordered)
+                            .tint(progressStyle == style ? .accentColor : .secondary)
                         }
-                        .buttonStyle(.bordered)
-                        .tint(progressStyle == style ? .accentColor : .secondary)
                     }
                 }
             }

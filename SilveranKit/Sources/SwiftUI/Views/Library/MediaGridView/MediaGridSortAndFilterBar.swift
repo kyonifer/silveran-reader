@@ -45,6 +45,7 @@ struct MediaGridSortAndFilterBar: View {
     #endif
 
     @State private var showViewOptions = false
+    @State private var lastProgressStyle: ProgressIndicatorStyle = .circle
 
     var body: some View {
         HStack(spacing: 12) {
@@ -819,21 +820,33 @@ struct MediaGridSortAndFilterBar: View {
             Toggle("Audio Indicator", isOn: $showAudioIndicator)
             Toggle("Source Badge", isOn: $showSourceBadge)
             Toggle("Series Position", isOn: $showSeriesPositionBadge)
+            Toggle(
+                "Progress",
+                isOn: Binding(
+                    get: { progressStyle != .none },
+                    set: { show in
+                        if show {
+                            progressStyle = lastProgressStyle
+                        } else {
+                            lastProgressStyle = progressStyle
+                            progressStyle = .none
+                        }
+                    },
+                ),
+            )
 
-            Text("Progress")
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(.secondary)
-                .padding(.top, 4)
-            HStack(spacing: 8) {
-                ForEach(ProgressIndicatorStyle.allCases) { style in
-                    Button {
-                        progressStyle = style
-                    } label: {
-                        Image(systemName: style.iconName)
-                            .frame(width: 32, height: 28)
+            if progressStyle != .none {
+                HStack(spacing: 8) {
+                    ForEach(ProgressIndicatorStyle.selectableStyles) { style in
+                        Button {
+                            progressStyle = style
+                        } label: {
+                            Image(systemName: style.iconName)
+                                .frame(width: 32, height: 28)
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(progressStyle == style ? .accentColor : .secondary)
                     }
-                    .buttonStyle(.bordered)
-                    .tint(progressStyle == style ? .accentColor : .secondary)
                 }
             }
         }

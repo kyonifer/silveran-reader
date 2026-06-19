@@ -74,6 +74,8 @@ public enum ProgressIndicatorStyle: String, CaseIterable, Identifiable, Sendable
 
     public var id: String { rawValue }
 
+    public static var selectableStyles: [ProgressIndicatorStyle] { [.line, .circle, .text] }
+
     public var label: String {
         switch self {
             case .line: "Line"
