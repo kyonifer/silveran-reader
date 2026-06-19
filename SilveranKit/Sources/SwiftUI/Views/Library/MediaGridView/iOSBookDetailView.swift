@@ -9,7 +9,6 @@ struct iOSBookDetailView: View {
     @State private var showingSyncHistory = false
     @State private var currentChapter: String?
     @State private var selectedStatusName: String?
-    @State private var availableStatuses: [BookStatus] = []
     @State private var isUpdatingStatus = false
     @State private var showOfflineError = false
     @State private var showingOptionsSheet = false
@@ -51,7 +50,7 @@ struct iOSBookDetailView: View {
         .sheet(isPresented: $showingOptionsSheet) {
             BookOptionsSheet(
                 item: item,
-                availableStatuses: availableStatuses,
+                availableStatuses: sortedStatuses,
                 selectedStatusName: $selectedStatusName,
                 isUpdatingStatus: $isUpdatingStatus,
                 showOfflineError: $showOfflineError,
@@ -65,9 +64,6 @@ struct iOSBookDetailView: View {
         }
         .task {
             await loadCurrentChapter()
-        }
-        .task(id: currentItem.sourceID) {
-            await loadAvailableStatuses()
         }
         .onAppear {
             selectedStatusName = currentItem.status?.name
@@ -125,9 +121,8 @@ struct iOSBookDetailView: View {
     }
 
     private var sortedStatuses: [BookStatus] {
-        availableStatuses.sorted {
-            $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
-        }
+        guard let sourceID = currentItem.sourceID else { return [] }
+        return mediaViewModel.availableStatusesBySourceID[sourceID] ?? []
     }
 
     private func updateStatus(to statusName: String) async {
@@ -152,14 +147,6 @@ struct iOSBookDetailView: View {
         if !success {
             selectedStatusName = currentItem.status?.name
         }
-    }
-
-    private func loadAvailableStatuses() async {
-        guard let sourceID = currentItem.sourceID else {
-            availableStatuses = []
-            return
-        }
-        availableStatuses = await BookServiceActor.shared.getAvailableStatuses(sourceID: sourceID)
     }
 
     private var headerSection: some View {
@@ -885,7 +872,6 @@ private struct CompactStatusPicker: View {
     @Environment(MediaViewModel.self) private var mediaViewModel
 
     @State private var selectedStatusName: String?
-    @State private var availableStatuses: [BookStatus] = []
     @State private var isUpdating = false
     @State private var showOfflineError = false
 
@@ -894,9 +880,8 @@ private struct CompactStatusPicker: View {
     }
 
     private var sortedStatuses: [BookStatus] {
-        availableStatuses.sorted {
-            $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
-        }
+        guard let sourceID = currentItem.sourceID else { return [] }
+        return mediaViewModel.availableStatusesBySourceID[sourceID] ?? []
     }
 
     var body: some View {
@@ -945,9 +930,6 @@ private struct CompactStatusPicker: View {
         .onAppear {
             selectedStatusName = currentItem.status?.name
         }
-        .task(id: currentItem.sourceID) {
-            await loadAvailableStatuses()
-        }
         .onChange(of: currentItem.status?.name) { _, newValue in
             selectedStatusName = newValue
         }
@@ -980,14 +962,6 @@ private struct CompactStatusPicker: View {
         if !success {
             selectedStatusName = currentItem.status?.name
         }
-    }
-
-    private func loadAvailableStatuses() async {
-        guard let sourceID = currentItem.sourceID else {
-            availableStatuses = []
-            return
-        }
-        availableStatuses = await BookServiceActor.shared.getAvailableStatuses(sourceID: sourceID)
     }
 }
 

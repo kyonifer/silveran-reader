@@ -5,7 +5,6 @@ struct BookStatusSection: View {
     @Environment(MediaViewModel.self) private var mediaViewModel: MediaViewModel
 
     @State private var selectedStatusName: String?
-    @State private var availableStatuses: [BookStatus] = []
     @State private var isUpdating = false
     @State private var showOfflineError = false
 
@@ -14,9 +13,8 @@ struct BookStatusSection: View {
     }
 
     private var sortedStatuses: [BookStatus] {
-        availableStatuses.sorted {
-            $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
-        }
+        guard let sourceID = currentItem.sourceID else { return [] }
+        return mediaViewModel.availableStatusesBySourceID[sourceID] ?? []
     }
 
     var body: some View {
@@ -36,9 +34,6 @@ struct BookStatusSection: View {
         }
         .onAppear {
             selectedStatusName = currentItem.status?.name
-        }
-        .task(id: currentItem.sourceID) {
-            await loadAvailableStatuses()
         }
         .onChange(of: currentItem.status?.name) { _, newValue in
             selectedStatusName = newValue
@@ -94,13 +89,5 @@ struct BookStatusSection: View {
         if !success {
             selectedStatusName = currentItem.status?.name
         }
-    }
-
-    private func loadAvailableStatuses() async {
-        guard let sourceID = currentItem.sourceID else {
-            availableStatuses = []
-            return
-        }
-        availableStatuses = await BookServiceActor.shared.getAvailableStatuses(sourceID: sourceID)
     }
 }

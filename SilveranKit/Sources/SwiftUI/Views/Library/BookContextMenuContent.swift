@@ -26,27 +26,81 @@ struct BookContextMenuContent: View {
             }
         }
 
+        statusSection
+
         deleteSection
 
-        alignSection
+        processingMenu
 
-        if hasServerActions {
+        serverMediaSection
+    }
+
+    private var currentItem: BookMetadata {
+        mediaViewModel.library.bookMetaData.first { $0.uuid == item.uuid } ?? item
+    }
+
+    private var sortedStatuses: [BookStatus] {
+        guard let currentSourceID else { return [] }
+        return mediaViewModel.availableStatusesBySourceID[currentSourceID] ?? []
+    }
+
+    private var currentSourceID: BookSourceID? {
+        currentItem.sourceID ?? item.sourceID
+    }
+
+    @ViewBuilder
+    private var statusSection: some View {
+        if currentSourceID != nil, !sortedStatuses.isEmpty {
             Divider()
 
             Menu {
-                processingSection
-
-                epubUpgradeSection
-
-                serverMediaSection
+                ForEach(sortedStatuses, id: \.name) { status in
+                    Button {
+                        setStatus(status.name)
+                    } label: {
+                        if status.name == currentItem.status?.name {
+                            Label(status.name, systemImage: "checkmark")
+                        } else {
+                            Text(status.name)
+                        }
+                    }
+                    .disabled(status.name == currentItem.status?.name)
+                }
             } label: {
-                Label("Server Actions", systemImage: "server.rack")
+                Label("Set Status", systemImage: "bookmark")
             }
         }
     }
 
-    private var hasServerActions: Bool {
-        mediaViewModel.isServerBook(item.id)
+    private func setStatus(_ name: String) {
+        guard name != currentItem.status?.name else { return }
+        Task {
+            let success = await BookServiceActor.shared.updateStatus(
+                forBooks: [item.uuid],
+                sourceID: currentSourceID,
+                toStatusNamed: name,
+            )
+            if !success {
+                mediaViewModel.showSyncNotification(
+                    SyncNotification(
+                        message: "Failed to update status",
+                        type: .error,
+                    )
+                )
+            }
+        }
+    }
+
+    private var showLocalAlign: Bool {
+        canAlignFromSource
+    }
+
+    private var showServerProcessing: Bool {
+        mediaViewModel.isServerBook(item.id) && hasProcessingActions
+    }
+
+    private var hasAnyProcessingActions: Bool {
+        showLocalAlign || showServerProcessing || item.canUpgradeToEpub3
     }
 
     private var canAlignFromSource: Bool {
@@ -66,28 +120,50 @@ struct BookContextMenuContent: View {
     }
 
     @ViewBuilder
-    private var alignSection: some View {
-        if canAlignFromSource {
+    private var processingMenu: some View {
+        if hasAnyProcessingActions {
             Divider()
 
-            Button {
-                if let data = LocalReadaloudAlignmentLauncher.data(
-                    for: item,
-                    mediaViewModel: mediaViewModel,
-                ) {
-                    openWindow(
-                        id: "ReadaloudGenerator",
-                        value: data,
-                    )
+            Menu {
+                if showLocalAlign {
+                    Section("This Mac") {
+                        localAlignButton
+                    }
+                }
+
+                if showServerProcessing || item.canUpgradeToEpub3 {
+                    Section("Server") {
+                        if showServerProcessing {
+                            serverProcessingActions
+                        }
+                        epubUpgradeButton
+                    }
                 }
             } label: {
-                Label("\(alignMenuTitle) Locally", systemImage: "desktopcomputer")
+                Label("Processing", systemImage: "wand.and.stars")
             }
         }
     }
 
     @ViewBuilder
-    private var processingSection: some View {
+    private var localAlignButton: some View {
+        Button {
+            if let data = LocalReadaloudAlignmentLauncher.data(
+                for: item,
+                mediaViewModel: mediaViewModel,
+            ) {
+                openWindow(
+                    id: "ReadaloudGenerator",
+                    value: data,
+                )
+            }
+        } label: {
+            Label(alignMenuTitle, systemImage: "desktopcomputer")
+        }
+    }
+
+    @ViewBuilder
+    private var serverProcessingActions: some View {
         let status = item.readaloud?.status?.uppercased() ?? ""
         let hasEbookAndAudio = item.hasAvailableEbook && item.hasAvailableAudiobook
 
@@ -178,15 +254,15 @@ struct BookContextMenuContent: View {
                     await BookServiceActor.shared.fetchLibraryInformation()
                 }
             } label: {
-                Label("Create Readaloud", systemImage: "text.bubble")
+                Label("Create Readaloud", systemImage: "cloud")
             }
         }
     }
 
     @ViewBuilder
-    private var epubUpgradeSection: some View {
+    private var epubUpgradeButton: some View {
         if item.canUpgradeToEpub3 {
-            if hasProcessingActions {
+            if showServerProcessing {
                 Divider()
             }
             Button {
@@ -393,9 +469,8 @@ struct BookContextMenuContent: View {
     @ViewBuilder
     private var serverMediaSection: some View {
         if mediaViewModel.isServerBook(item.id) {
-            if hasProcessingActions || item.canUpgradeToEpub3 {
-                Divider()
-            }
+            Divider()
+
             Button {
                 openWindow(
                     id: "ServerMediaManagement",

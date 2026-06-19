@@ -213,6 +213,58 @@ struct MediaCompactCardView: View {
                 Label("Edit Metadata...", systemImage: "pencil")
             }
         }
+
+        iOSStatusContextMenu
+    }
+
+    private var iOSCurrentItem: BookMetadata {
+        mediaViewModel.library.bookMetaData.first { $0.uuid == item.uuid } ?? item
+    }
+
+    private var iOSStatusOptions: [BookStatus] {
+        guard let sourceID = iOSCurrentItem.sourceID else { return [] }
+        return mediaViewModel.availableStatusesBySourceID[sourceID] ?? []
+    }
+
+    @ViewBuilder
+    private var iOSStatusContextMenu: some View {
+        if !iOSStatusOptions.isEmpty {
+            Menu {
+                ForEach(iOSStatusOptions, id: \.name) { status in
+                    Button {
+                        setStatus(status.name)
+                    } label: {
+                        if status.name == iOSCurrentItem.status?.name {
+                            Label(status.name, systemImage: "checkmark")
+                        } else {
+                            Text(status.name)
+                        }
+                    }
+                    .disabled(status.name == iOSCurrentItem.status?.name)
+                }
+            } label: {
+                Label("Set Status", systemImage: "bookmark")
+            }
+        }
+    }
+
+    private func setStatus(_ name: String) {
+        guard name != iOSCurrentItem.status?.name else { return }
+        Task {
+            let success = await BookServiceActor.shared.updateStatus(
+                forBooks: [item.uuid],
+                sourceID: iOSCurrentItem.sourceID,
+                toStatusNamed: name,
+            )
+            if !success {
+                mediaViewModel.showSyncNotification(
+                    SyncNotification(
+                        message: "Failed to update status",
+                        type: .error,
+                    )
+                )
+            }
+        }
     }
 
     private func handleDetailsNavigation() {

@@ -100,6 +100,7 @@ public final class MediaViewModel {
     public var connectionStatus: ConnectionStatus = .disconnected
     public var sourceConnectionInfos: [SourceConnectionInfo] = []
     public var availableStatuses: [BookStatus] = []
+    public var availableStatusesBySourceID: [BookSourceID: [BookStatus]] = [:]
     public var lastNetworkOpSucceeded: Bool? = nil
 
     /// True when a network op failed or any Storyteller source is unreachable. Folder
@@ -142,6 +143,8 @@ public final class MediaViewModel {
 
     @ObservationIgnored private var downloadManagerObserverId: UUID?
     @ObservationIgnored private var cachedMediaObserverId: UUID?
+    @ObservationIgnored private var availableStatusLoadTasks: [BookSourceID: Task<Void, Never>] =
+        [:]
     var downloadStatuses: [String: DownloadProgressState] = [:]
     private var incompleteDownloadCount: Int = 0
     private var cachedBookPaths: [String: MediaPaths] = [:]
@@ -375,7 +378,6 @@ public final class MediaViewModel {
                         guard let self else { return }
                         let status = await BookServiceActor.shared.connectionStatus
                         let networkOp = await BookServiceActor.shared.lastNetworkOpSucceeded
-                        let wasConnected = self.connectionStatus == .connected
                         self.connectionStatus = status
                         self.lastNetworkOpSucceeded = networkOp
                         self.sourceConnectionInfos =
@@ -383,9 +385,15 @@ public final class MediaViewModel {
                         debugLogVerbose(
                             "[MediaViewModel] StorytellerActor notify: connectionStatus=\(status), lastNetworkOpSucceeded=\(String(describing: networkOp))"
                         )
-                        if !wasConnected && status == .connected && self.availableStatuses.isEmpty {
+                        if status == .connected {
                             let statuses = await BookServiceActor.shared.getAvailableStatuses()
-                            self.availableStatuses = statuses
+                            if statuses != self.availableStatuses {
+                                self.availableStatuses = statuses
+                            }
+                            self.refreshAvailableStatusCaches(
+                                for: self.library.bookMetaData,
+                                retryEmpty: true,
+                            )
                         }
                     }
                 }
@@ -768,6 +776,14 @@ public final class MediaViewModel {
         libraryVersion += 1
         invalidateDerivedCaches()
         debugLog("[PerfTrace][MediaViewModel] Updated library version=\(libraryVersion)")
+
+        if availableStatuses.isEmpty, !metadata.isEmpty {
+            Task { @MainActor [weak self] in
+                let statuses = await BookServiceActor.shared.getAvailableStatuses()
+                self?.availableStatuses = statuses
+            }
+        }
+        refreshAvailableStatusCaches(for: metadata)
         readBookIds = Set(
             metadata.compactMap { metadata in
                 guard let status = metadata.status?.name,
@@ -817,6 +833,48 @@ public final class MediaViewModel {
         debugLog(
             "[PerfTrace][MediaViewModel] applyLibraryMetadata end elapsedMs=\(String(format: "%.1f", elapsed)) changedStorytellerBooks=\(changedStorytellerBooks.count)"
         )
+    }
+
+    private func refreshAvailableStatusCaches(
+        for metadata: [BookMetadata],
+        retryEmpty: Bool = false,
+    ) {
+        let sourceIDs = Set(metadata.compactMap(\.sourceID))
+        availableStatusesBySourceID = availableStatusesBySourceID.filter {
+            sourceIDs.contains($0.key)
+        }
+        availableStatusLoadTasks = availableStatusLoadTasks.filter {
+            sourceIDs.contains($0.key)
+        }
+
+        for sourceID in sourceIDs {
+            if availableStatusLoadTasks[sourceID] != nil {
+                continue
+            }
+            if let cached = availableStatusesBySourceID[sourceID],
+                (!cached.isEmpty || !retryEmpty)
+            {
+                continue
+            }
+
+            availableStatusLoadTasks[sourceID] = Task { @MainActor [weak self] in
+                let statuses = await BookServiceActor.shared.getAvailableStatuses(sourceID: sourceID)
+                guard let self else { return }
+                self.availableStatusLoadTasks[sourceID] = nil
+                self.availableStatusesBySourceID[sourceID] = self.sortedUniqueStatuses(statuses)
+            }
+        }
+    }
+
+    private func sortedUniqueStatuses(_ statuses: [BookStatus]) -> [BookStatus] {
+        var seenNames = Set<String>()
+        return statuses
+            .filter { status in
+                seenNames.insert(status.name.lowercased()).inserted
+            }
+            .sorted {
+                $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+            }
     }
 
     private func invalidateDerivedCaches() {
