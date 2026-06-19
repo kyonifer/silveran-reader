@@ -747,16 +747,6 @@ struct SidebarView: View {
         if let sourceID = item.id.bookSourceIDFromSidebarItemID,
             let source = mediaViewModel.bookSources.first(where: { $0.id == sourceID })
         {
-            if source.kind == .localFolder {
-                Button {
-                    openWindow(
-                        id: "BulkImportFolder",
-                        value: BulkImportFolderData(sourceID: sourceID),
-                    )
-                } label: {
-                    Label("Bulk Import...", systemImage: "folder.badge.plus")
-                }
-            }
             Button {
                 editingBookSource = source
             } label: {

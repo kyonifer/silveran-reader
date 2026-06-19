@@ -375,17 +375,6 @@ extension SourceView {
 
     @ViewBuilder
     private func categoryContextMenu(for group: CategoryGroup) -> some View {
-        if sourceRecord(for: group.id)?.kind == .localFolder {
-            Button {
-                openWindow(
-                    id: "BulkImportFolder",
-                    value: BulkImportFolderData(sourceID: group.id),
-                )
-            } label: {
-                Label("Bulk Import...", systemImage: "folder.badge.plus")
-            }
-        }
-
         if let onEditMetadata {
             CategoryGroupMetadataContextMenuContent(
                 group: group,
@@ -420,6 +409,11 @@ extension SourceView {
             addBookSourceID: sourceID,
             sourceFilterID: sourceID,
             sourceFilterName: sourceName,
+            sourceFilterKind: source?.kind,
+            emptyStateMessage:
+                source?.kind == .localFolder
+                ? "Copy files into this folder source, or use Add Book to place media here."
+                : "Use Add Book to add files to this source.",
         ).navigationTitle(sourceName)
         #else
         MediaGridView(
@@ -437,6 +431,11 @@ extension SourceView {
             addBookSourceID: sourceID,
             sourceFilterID: sourceID,
             sourceFilterName: sourceName,
+            sourceFilterKind: source?.kind,
+            emptyStateMessage:
+                source?.kind == .localFolder
+                ? "Copy files into this folder source, or use Add Book to place media here."
+                : "Use Add Book to add files to this source.",
         ).navigationTitle(sourceName)
         #endif
     }

@@ -741,9 +741,6 @@ public final class MediaViewModel {
             }
 
             await self.refreshMetadata(source: "init")
-            if await BookServiceActor.shared.hasConnectedSource() {
-                let _ = await BookServiceActor.shared.fetchLibraryInformation()
-            }
         }
     }
 
@@ -852,13 +849,15 @@ public final class MediaViewModel {
                 continue
             }
             if let cached = availableStatusesBySourceID[sourceID],
-                (!cached.isEmpty || !retryEmpty)
+                !cached.isEmpty || !retryEmpty
             {
                 continue
             }
 
             availableStatusLoadTasks[sourceID] = Task { @MainActor [weak self] in
-                let statuses = await BookServiceActor.shared.getAvailableStatuses(sourceID: sourceID)
+                let statuses = await BookServiceActor.shared.getAvailableStatuses(
+                    sourceID: sourceID
+                )
                 guard let self else { return }
                 self.availableStatusLoadTasks[sourceID] = nil
                 self.availableStatusesBySourceID[sourceID] = self.sortedUniqueStatuses(statuses)
@@ -868,7 +867,8 @@ public final class MediaViewModel {
 
     private func sortedUniqueStatuses(_ statuses: [BookStatus]) -> [BookStatus] {
         var seenNames = Set<String>()
-        return statuses
+        return
+            statuses
             .filter { status in
                 seenNames.insert(status.name.lowercased()).inserted
             }

@@ -406,9 +406,15 @@ public actor AudiobookActor {
 
     private func resolveManifestHref(_ href: String, rootURL: URL) throws -> URL {
         let path = stripFragment(from: href)
+        if let url = URL(string: path), url.isFileURL {
+            return url
+        }
         let decoded = path.removingPercentEncoding ?? path
         guard !decoded.isEmpty else {
             throw AudiobookError.failedToLoadMetadata
+        }
+        if decoded.hasPrefix("/") {
+            return URL(fileURLWithPath: decoded)
         }
         return rootURL.appendingPathComponent(decoded, isDirectory: false)
     }

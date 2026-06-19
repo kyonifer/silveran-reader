@@ -7,7 +7,7 @@
 - Full metadata editing, including Hardcover/iTunes import
 - Embedded content server for sharing a local folder source over the LAN to Storyteller-compatible clients
 - Support for multiple Storyteller servers and local folders, including iCloud folders
-- MP3 audiobook support, and MP3 folder bulk import
+- MP3 audiobook support
 - tvOS reader customization
 
 ### Features
@@ -23,7 +23,6 @@
 - Added source-aware cached media handling for local folders and Storyteller-backed books, eliminating media duplicates
 - Added support for multi-file audio readaloud creation and alignment workflows
 - Add Book now targets a chosen book source and can add ebook, audiobook, and readaloud formats to either Storyteller or folder destinations.
-- Bulk import for folder sources, with scanning, grouping, skipped-file reporting, and a review step before import.
 - Performance improvements across the board, especially to grid view on large libraries
 - Source-aware library/sidebar views, including a Sources category and editable Media Sources sidebar entries that can be moved/renamed/hidden.
 - More table customization: alignment columns, creator-role columns, source badges, media columns, remembered column sizing/order, and reset-to-defaults behavior.

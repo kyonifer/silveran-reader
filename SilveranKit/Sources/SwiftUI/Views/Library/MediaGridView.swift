@@ -95,6 +95,7 @@ struct MediaGridView: View {
     let filteredItems: [BookMetadata]?
     let showAddBookButton: Bool
     let addBookSourceID: BookSourceID?
+    let sourceFilterKind: BookSourceKind?
     let emptyStateMessage: String
 
     #if os(macOS)
@@ -129,6 +130,7 @@ struct MediaGridView: View {
     @State private var showStickyControls: Bool = false
     @State private var showPermissionError: Bool = false
     @State private var permissionErrorMessage: String = ""
+    @State private var showLocalFolderHelp: Bool = false
     @AppStorage private var layoutStyleRaw: String
     @AppStorage private var coverPrefRaw: String
     @AppStorage private var coverSizeValue: Double
@@ -309,6 +311,7 @@ struct MediaGridView: View {
         addBookSourceID: BookSourceID? = nil,
         sourceFilterID: BookSourceID? = nil,
         sourceFilterName: String? = nil,
+        sourceFilterKind: BookSourceKind? = nil,
         emptyStateMessage: String =
             "Add a local folder or Storyteller server in Settings > Book Sources, then use Add Book to add files.",
     ) {
@@ -418,6 +421,7 @@ struct MediaGridView: View {
         self.filteredItems = filteredItems
         self.showAddBookButton = showAddBookButton
         self.addBookSourceID = addBookSourceID
+        self.sourceFilterKind = sourceFilterKind
         self.emptyStateMessage = emptyStateMessage
     }
 
@@ -567,6 +571,9 @@ struct MediaGridView: View {
             Text(permissionErrorMessage)
         }
         #endif
+        .sheet(isPresented: $showLocalFolderHelp) {
+            LocalFolderSourceHelpView()
+        }
     }
 
     #if os(macOS)
@@ -908,7 +915,6 @@ struct MediaGridView: View {
                 showLayoutOption: true,
                 showSortOption: false,
                 onAddBook: addBookAction,
-                onBulkImport: bulkImportAction,
                 columnCustomization: $columnCustomization,
                 availableCreatorRoles: cachedAvailableCreatorRoles,
                 enabledCreatorRoles: $enabledCreatorRoles,
@@ -932,6 +938,15 @@ struct MediaGridView: View {
                 .font(.body)
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)
+            if sourceFilterKind == .localFolder {
+                Button {
+                    showLocalFolderHelp = true
+                } label: {
+                    Label("Folder Layouts", systemImage: "questionmark.circle")
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.blue)
+            }
         }
         .frame(maxWidth: 500)
         .frame(maxWidth: .infinity, alignment: .center)
@@ -983,7 +998,6 @@ struct MediaGridView: View {
             filtersSummaryText: cachedFiltersSummary,
             showLayoutOption: true,
             onAddBook: addBookAction,
-            onBulkImport: bulkImportAction,
         )
     }
 
@@ -994,26 +1008,6 @@ struct MediaGridView: View {
         }
         return {
             openWindow(id: "UploadNewBook", value: UploadNewBookData(sourceID: addBookSourceID))
-        }
-        #else
-        return nil
-        #endif
-    }
-
-    private var bulkImportAction: (() -> Void)? {
-        #if os(macOS)
-        guard showAddBookButton,
-            let addBookSourceID,
-            mediaViewModel.bookSources.first(where: { $0.id == addBookSourceID })?.kind
-                == .localFolder
-        else {
-            return nil
-        }
-        return {
-            openWindow(
-                id: "BulkImportFolder",
-                value: BulkImportFolderData(sourceID: addBookSourceID),
-            )
         }
         #else
         return nil
@@ -1138,6 +1132,15 @@ struct MediaGridView: View {
                         .foregroundStyle(.tertiary)
                         .multilineTextAlignment(.center)
                     #endif
+                    if sourceFilterKind == .localFolder {
+                        Button {
+                            showLocalFolderHelp = true
+                        } label: {
+                            Label("Folder Layouts", systemImage: "questionmark.circle")
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.blue)
+                    }
                 }
                 .frame(maxWidth: 500)
                 .frame(maxWidth: .infinity, alignment: .center)

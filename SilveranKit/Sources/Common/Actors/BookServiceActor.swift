@@ -20,10 +20,14 @@ public actor BookServiceActor {
     private var lastUpdateErrorsBySourceID: [BookSourceID: String] = [:]
     private var libraryObservers: [UUID: @Sendable @MainActor () -> Void] = [:]
     private var localMediaObserverID: UUID?
+    private var startupRefreshStarted = false
 
     public init() {
         self.sourceRecords = []
         self.sourcesByID = [:]
+        Task {
+            await self.refreshLibraryAfterStartup()
+        }
     }
 
     private func ensureLocalMediaObserver() async {
@@ -39,6 +43,13 @@ public actor BookServiceActor {
         for (_, callback) in libraryObservers {
             await callback()
         }
+    }
+
+    private func refreshLibraryAfterStartup() async {
+        guard !startupRefreshStarted else { return }
+        startupRefreshStarted = true
+        _ = await fetchLibraryInformation()
+        await notifyLibraryObservers()
     }
 
     private func sourceActor(for sourceID: BookSourceID?) -> (any BookSourceActor)? {
@@ -621,6 +632,7 @@ public actor BookServiceActor {
                 let snapshot = await cachedLibrarySnapshot()
                 Task {
                     _ = await self.fetchLibraryInformation()
+                    await self.notifyLibraryObservers()
                 }
                 return snapshot
             case .refresh:
@@ -636,7 +648,7 @@ public actor BookServiceActor {
                 guard let sourceID = book.sourceID else { return true }
                 return !folderSourceIDs.contains(sourceID)
             }
-        let metadata = cachedMetadata + (await localFolderBooks())
+        let metadata = cachedMetadata + (await cachedLocalFolderBooks())
         return BookServiceLibrarySnapshot(
             books: metadata,
             mediaPaths: await resolvedLocalMediaPaths(for: metadata),
@@ -731,30 +743,28 @@ public actor BookServiceActor {
         return metadata
     }
 
-    public func planBulkImportIntoFolderSource(from folderURL: URL) async
-        -> FolderSourceBulkImportPlan
-    {
-        await FolderSourceBulkImportPlanner().planImport(from: folderURL)
-    }
-
-    public func commitBulkImportIntoFolderSource(
-        _ plan: FolderSourceBulkImportPlan,
-        sourceID: BookSourceID? = nil,
-    ) async -> FolderSourceBulkImportCommitResult {
+    public func cachedLocalFolderBooks(sourceID: BookSourceID? = nil) async -> [BookMetadata] {
         await ensureSourceRegistryLoaded()
-        guard let resolvedSourceID = resolveFolderSourceID(sourceID),
-            let folder = await folderSourceActor(for: resolvedSourceID)
-        else {
-            return FolderSourceBulkImportCommitResult(
-                importedCount: 0,
-                skippedCount: plan.groups.count,
-                failures: ["Folder source is not configured"],
-            )
-        }
+        let folderRecords =
+            if let sourceID {
+                sourceRecords.filter { $0.id == sourceID && $0.kind == .localFolder }
+            } else {
+                sourceRecords.filter { $0.kind == .localFolder }
+            }
 
-        let result = await folder.commitBulkImport(plan)
-        await notifyLibraryObservers()
-        return result
+        var metadata: [BookMetadata] = []
+        for record in folderRecords {
+            guard let folder = sourceActor(for: record.id) as? FolderSourceActor else { continue }
+            let sourceMetadata = await folder.cachedLibraryInformation()
+            let stamped = sourceMetadata.map { book in
+                var stamped = book
+                stamped.sourceID = stamped.sourceID ?? record.id
+                stamped.source = stamped.source ?? record.name
+                return stamped
+            }
+            metadata.append(contentsOf: stamped)
+        }
+        return metadata
     }
 
     public func localMediaDirectory(
@@ -974,6 +984,14 @@ public actor BookServiceActor {
     /// Storyteller mobile client (which reads `manifest.audiobook-manifest`) can open the result.
     /// Returns a temp file URL the caller is responsible for deleting after sending it.
     public func packageAudiobook(for bookID: String, sourceID: BookSourceID?) async -> URL? {
+        await ensureSourceRegistryLoaded()
+        if let resolvedSourceID = resolveExplicitSourceID(sourceID),
+            let folder = sourceActor(for: resolvedSourceID) as? FolderSourceActor,
+            let package = await folder.packageAudiobook(for: bookID)
+        {
+            return package
+        }
+
         guard
             let media = await resolveLocalMedia(for: bookID, sourceID: sourceID, category: .audio)
         else {

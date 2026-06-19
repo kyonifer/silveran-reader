@@ -404,8 +404,9 @@ public struct LibraryView: View {
                 )
                 #endif
             case .bookSource(let sourceID):
+                let source = mediaViewModel.bookSources.first(where: { $0.id == sourceID })
                 let sourceName =
-                    mediaViewModel.bookSources.first(where: { $0.id == sourceID })?.name
+                    source?.name
                     ?? "Book Source"
                 MediaGridView(
                     title: sourceName,
@@ -424,7 +425,11 @@ public struct LibraryView: View {
                     addBookSourceID: sourceID,
                     sourceFilterID: sourceID,
                     sourceFilterName: sourceName,
-                    emptyStateMessage: "Use Add Book to add files to this source.",
+                    sourceFilterKind: source?.kind,
+                    emptyStateMessage:
+                        source?.kind == .localFolder
+                        ? "Copy files into this folder source, or use Add Book to place media here."
+                        : "Use Add Book to add files to this source.",
                 )
                 .id(item.content.stableIdentifier)
             case .smartShelves:

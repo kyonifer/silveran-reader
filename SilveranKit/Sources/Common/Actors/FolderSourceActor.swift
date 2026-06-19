@@ -12,6 +12,7 @@ public actor FolderSourceActor: BookSourceActor {
 
     private var metadataCache: [BookMetadata] = []
     private var pathCache: [String: MediaPaths] = [:]
+    private var stateCache: FolderSourceLibraryState?
     private var activeFolderAccessURL: URL?
     private var activeFolderAccessDidStart = false
 
@@ -49,6 +50,29 @@ public actor FolderSourceActor: BookSourceActor {
             debugLog("[FolderSourceActor] Failed to fetch library: \(error)")
             return nil
         }
+    }
+
+    public func cachedLibraryInformation() async -> [BookMetadata] {
+        if !metadataCache.isEmpty {
+            return metadataCache
+        }
+        do {
+            let resolved = try await resolvedFolderURL()
+            defer { stopAccessing(resolved) }
+            let state = try await savedState(in: resolved.url)
+            let projected = projectLibrary(from: state, folderURL: resolved.url)
+            stateCache = state
+            metadataCache = projected.metadata
+            pathCache = projected.paths
+            return projected.metadata
+        } catch {
+            debugLog("[FolderSourceActor] Failed to load cached library: \(error)")
+            return []
+        }
+    }
+
+    func debugScanLibrary(in folderURL: URL) async throws -> [BookMetadata] {
+        try await scanLibrary(in: folderURL).metadata
     }
 
     public func fetchCoverImage(
@@ -114,7 +138,8 @@ public actor FolderSourceActor: BookSourceActor {
             case .ebook:
                 url = paths.ebookPath
             case .audio:
-                url = paths.audioPath
+                guard let folderURL = activeFolderAccessURL else { return nil }
+                url = try? await derivedAudiobookManifest(for: bookID, folderURL: folderURL)
             case .synced:
                 url = paths.syncedPath
         }
@@ -136,6 +161,78 @@ public actor FolderSourceActor: BookSourceActor {
         }
         activeFolderAccessURL = nil
         activeFolderAccessDidStart = false
+    }
+
+    public func packageAudiobook(for bookID: String) async -> URL? {
+        do {
+            let resolved = try await resolvedFolderURL()
+            defer { stopAccessing(resolved) }
+            if stateCache == nil {
+                _ = try await scanLibrary(in: resolved.url)
+            }
+            guard
+                let state = stateCache,
+                let work = state.works.first(where: { $0.uuid == bookID }),
+                let mediaID = work.mediaIDs[.audio],
+                let media = state.media.first(where: { $0.uuid == mediaID }),
+                !media.missing
+            else {
+                return nil
+            }
+
+            let audioFiles = media.relativePaths.map {
+                resolved.url.appendingPathComponent($0)
+            }.filter {
+                FileManager.default.fileExists(atPath: $0.path)
+            }
+            guard !audioFiles.isEmpty else { return nil }
+
+            let fm = FileManager.default
+            let stagingDir = fm.temporaryDirectory.appendingPathComponent(
+                "silveran-content-server",
+                isDirectory: true,
+            )
+            try fm.createDirectory(at: stagingDir, withIntermediateDirectories: true)
+            let zipURL = stagingDir.appendingPathComponent(
+                "\(bookID)-\(UUID().uuidString).audiobook"
+            )
+            if fm.fileExists(atPath: zipURL.path) {
+                try fm.removeItem(at: zipURL)
+            }
+
+            let manifestData = try await audiobookManifestData(
+                title: work.title,
+                audioFiles: audioFiles,
+            )
+            let manifestURL = stagingDir.appendingPathComponent(
+                "\(UUID().uuidString)-manifest.json"
+            )
+            try manifestData.write(to: manifestURL, options: .atomic)
+            defer { try? fm.removeItem(at: manifestURL) }
+
+            let archive = try Archive(url: zipURL, accessMode: .create)
+            for file in audioFiles {
+                try archive.addEntry(
+                    with: file.lastPathComponent,
+                    fileURL: file,
+                    compressionMethod: .none,
+                )
+            }
+            try archive.addEntry(
+                with: "manifest.json",
+                fileURL: manifestURL,
+                compressionMethod: .none,
+            )
+            try archive.addEntry(
+                with: "manifest.audiobook-manifest",
+                fileURL: manifestURL,
+                compressionMethod: .none,
+            )
+            return zipURL
+        } catch {
+            debugLog("[FolderSourceActor] packageAudiobook failed for \(bookID): \(error)")
+            return nil
+        }
     }
 
     private func retainFolderAccessForResolvedMedia() async throws {
@@ -166,25 +263,22 @@ public actor FolderSourceActor: BookSourceActor {
                 _ = try await scanLibrary(in: resolved.url)
             }
 
-            var latestMetadata = try await savedMetadata(in: resolved.url)
+            var state = try await savedState(in: resolved.url)
             var updatedAny = false
             for bookId in bookIds {
-                guard let index = latestMetadata.firstIndex(where: { $0.uuid == bookId }) else {
+                guard let index = state.works.firstIndex(where: { $0.uuid == bookId }) else {
                     continue
                 }
-                latestMetadata[index] = metadata(
-                    latestMetadata[index],
-                    status: status,
-                )
+                state.works[index].status = status
                 updatedAny = true
             }
 
             guard updatedAny else { return false }
-            try await filesystem.saveFolderSourceLibraryMetadata(
-                latestMetadata,
-                in: resolved.url,
-            )
-            metadataCache = latestMetadata
+            try await filesystem.saveFolderSourceLibraryState(state, in: resolved.url)
+            stateCache = state
+            let projected = projectLibrary(from: state, folderURL: resolved.url)
+            metadataCache = projected.metadata
+            pathCache = projected.paths
             return true
         } catch {
             debugLog("[FolderSourceActor] Failed to save status: \(error)")
@@ -447,72 +541,6 @@ public actor FolderSourceActor: BookSourceActor {
         _ = try await scanLibrary(in: resolved.url)
     }
 
-    public func commitBulkImport(_ plan: FolderSourceBulkImportPlan) async
-        -> FolderSourceBulkImportCommitResult
-    {
-        var importedCount = 0
-        var skippedCount = 0
-        var failures: [String] = []
-
-        for group in plan.groups {
-            guard group.isSelected else {
-                skippedCount += 1
-                continue
-            }
-
-            let title =
-                group.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                ? "Untitled Book"
-                : group.title
-            let ebookAssets = group.assets.filter { $0.selectedRole == .ebook }
-            let readaloudAssets = group.assets.filter { $0.selectedRole == .readaloud }
-            let audiobookAssets = group.assets.filter { $0.selectedRole == .audiobook }
-
-            do {
-                if let ebook = ebookAssets.first {
-                    _ = try await importMedia(
-                        from: ebook.url,
-                        category: .ebook,
-                        bookName: title,
-                        bookUUID: group.bookUUID,
-                    )
-                }
-                if let readaloud = readaloudAssets.first {
-                    _ = try await importMedia(
-                        from: readaloud.url,
-                        category: .synced,
-                        bookName: title,
-                        bookUUID: group.bookUUID,
-                    )
-                }
-                if !audiobookAssets.isEmpty {
-                    _ = try await importAudiobookFiles(
-                        from: audiobookAssets.map(\.url).sorted {
-                            $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent)
-                                == .orderedAscending
-                        },
-                        bookName: title,
-                        bookUUID: group.bookUUID,
-                    )
-                }
-
-                if ebookAssets.isEmpty && readaloudAssets.isEmpty && audiobookAssets.isEmpty {
-                    skippedCount += 1
-                } else {
-                    importedCount += 1
-                }
-            } catch {
-                failures.append("\(title): \(error.localizedDescription)")
-            }
-        }
-
-        return FolderSourceBulkImportCommitResult(
-            importedCount: importedCount,
-            skippedCount: skippedCount,
-            failures: failures,
-        )
-    }
-
     public func replaceAsset(
         _ asset: StorytellerUploadAsset,
         bookName: String,
@@ -613,51 +641,601 @@ public actor FolderSourceActor: BookSourceActor {
     private func scanLibrary(in folderURL: URL) async throws -> LocalLibraryManager.ScanResult {
         try await filesystem.ensureDirectoryExists(at: folderURL)
         try await filesystem.ensureSourceIDMarker(in: folderURL, sourceID: sourceRecordValue.id)
+        try await filesystem.removeFolderSourceDerivedAudiobooks(sourceID: sourceRecordValue.id)
 
-        let localScanResult = try await localLibrary.scanLocalMedia(
-            folderURL: folderURL,
-            sourceID: sourceRecordValue.id,
-        )
+        let previousState = try await savedState(in: folderURL)
+        let nextState = try await scanState(in: folderURL, previousState: previousState)
+        let projected = projectLibrary(from: nextState, folderURL: folderURL)
 
-        let savedMetadata = try await savedMetadata(in: folderURL)
-        let savedByUUID = savedMetadataByUUID(savedMetadata)
-        var mergedMetadata: [BookMetadata] = []
-        var mergedPaths: [String: MediaPaths] = [:]
+        logDuplicateFolderUUIDs(projected.metadata, folderURL: folderURL)
+        try await filesystem.saveFolderSourceLibraryState(nextState, in: folderURL)
+        stateCache = nextState
+        metadataCache = projected.metadata
+        pathCache = projected.paths
 
-        for scanned in localScanResult.metadata {
-            var merged = mergeSavedState(
-                into: scanned,
-                saved: savedByUUID[scanned.uuid],
-            )
-            merged.sourceID = sourceRecordValue.id
-            merged.source = sourceRecordValue.name
-            mergedMetadata.append(merged)
-
-            if let scannedPaths = localScanResult.paths[scanned.uuid] {
-                mergedPaths[scanned.uuid] = scannedPaths
-            }
-        }
-
-        logDuplicateFolderUUIDs(mergedMetadata, folderURL: folderURL)
-        try await filesystem.saveFolderSourceLibraryMetadata(mergedMetadata, in: folderURL)
-        metadataCache = mergedMetadata
-        pathCache = mergedPaths
-
-        return LocalLibraryManager.ScanResult(metadata: mergedMetadata, paths: mergedPaths)
+        return LocalLibraryManager.ScanResult(metadata: projected.metadata, paths: projected.paths)
     }
 
     private func savedMetadata(in folderURL: URL) async throws -> [BookMetadata] {
-        if let folderMetadata = try await filesystem.loadFolderSourceLibraryMetadata(in: folderURL)
-        {
-            return folderMetadata.map { book in
-                var stamped = book
-                stamped.sourceID = sourceRecordValue.id
-                stamped.source = sourceRecordValue.name
-                return stamped
+        let state = try await savedState(in: folderURL)
+        return projectLibrary(from: state, folderURL: folderURL).metadata
+    }
+
+    private func savedState(in folderURL: URL) async throws -> FolderSourceLibraryState {
+        if let state = try await filesystem.loadFolderSourceLibraryState(in: folderURL) {
+            return state
+        }
+        return FolderSourceLibraryState(sourceID: sourceRecordValue.id)
+    }
+
+    private struct FolderMediaCandidate: Sendable, Hashable {
+        let role: FolderSourceMediaRole
+        let urls: [URL]
+        let relativePaths: [String]
+        let extractedMetadata: BookMetadata?
+        let groupingDirectory: String
+        let groupingStem: String
+    }
+
+    private func scanState(
+        in folderURL: URL,
+        previousState: FolderSourceLibraryState,
+    ) async throws -> FolderSourceLibraryState {
+        let candidates = await mediaCandidates(in: folderURL)
+        let now = Date().ISO8601Format()
+        var previousMediaByPaths: [Set<String>: FolderSourceMedia] = [:]
+        for media in previousState.media {
+            previousMediaByPaths[Set(media.relativePaths)] = media
+        }
+        let previousWorkByMediaID = previousWorkLookup(previousState)
+        var media: [FolderSourceMedia] = []
+        var works: [FolderSourceWork] = []
+        var seenPreviousMediaIDs: Set<String> = []
+        var seenPreviousWorkIDs: Set<String> = []
+
+        for group in groupedCandidates(candidates) {
+            var mediaIDs: [FolderSourceMediaRole: String] = [:]
+            var groupMedia: [FolderSourceMedia] = []
+            for candidate in group {
+                let paths = Set(candidate.relativePaths)
+                let previous = previousMediaByPaths[paths]
+                let mediaRecord = mediaRecord(
+                    from: candidate,
+                    previous: previous,
+                    root: folderURL,
+                    now: now,
+                )
+                mediaIDs[candidate.role] = mediaRecord.uuid
+                groupMedia.append(mediaRecord)
+                media.append(mediaRecord)
+                if let previous {
+                    seenPreviousMediaIDs.insert(previous.uuid)
+                }
+            }
+
+            let previousWork = groupMedia.compactMap { previousWorkByMediaID[$0.uuid] }.first
+            for previousWork in groupMedia.compactMap({ previousWorkByMediaID[$0.uuid] }) {
+                seenPreviousWorkIDs.insert(previousWork.uuid)
+            }
+            works.append(
+                workRecord(
+                    from: group,
+                    mediaIDs: mediaIDs,
+                    previous: previousWork,
+                )
+            )
+        }
+
+        for previous in previousState.media where !seenPreviousMediaIDs.contains(previous.uuid) {
+            var missing = previous
+            missing.missing = true
+            media.append(missing)
+        }
+        for previous in previousState.works where !seenPreviousWorkIDs.contains(previous.uuid) {
+            works.append(previous)
+        }
+
+        return FolderSourceLibraryState(
+            sourceID: sourceRecordValue.id,
+            works: works.sorted { $0.title.articleStrippedCompare($1.title) == .orderedAscending },
+            media: media,
+        )
+    }
+
+    private func mediaCandidates(in root: URL) async -> [FolderMediaCandidate] {
+        var epubCandidates: [FolderMediaCandidate] = []
+        var audioByDirectory: [String: [URL]] = [:]
+        for url in regularFiles(in: root) {
+            let ext = url.pathExtension.lowercased()
+            if ext == "epub" {
+                let grouping = groupingLocation(for: url, root: root)
+                let role =
+                    mediaTypeSubfolderRole(for: relativeDirectory(for: url, root: root))
+                    ?? (localLibrary.isReadaloudEpub(at: url) ? .readaloud : .ebook)
+                let metadata = try? await localLibrary.extractMetadata(
+                    from: url,
+                    category: role.localMediaCategory,
+                )
+                let relativePath = relativePath(for: url, root: root)
+                epubCandidates.append(
+                    FolderMediaCandidate(
+                        role: role,
+                        urls: [url],
+                        relativePaths: [relativePath],
+                        extractedMetadata: metadata,
+                        groupingDirectory: grouping.directory,
+                        groupingStem: grouping.stem ?? groupingStem(for: url, metadata: metadata),
+                    )
+                )
+            } else if audiobookMediaExtensions.contains(ext) {
+                audioByDirectory[groupingLocation(for: url, root: root).directory, default: []]
+                    .append(url)
             }
         }
 
-        return []
+        let anchorStemsByDirectory = Dictionary(grouping: epubCandidates, by: \.groupingDirectory)
+            .mapValues { candidates in
+                Set(candidates.map(\.groupingStem).filter { !$0.isEmpty })
+            }
+        var audioCandidates: [FolderMediaCandidate] = []
+        for (directory, urls) in audioByDirectory {
+            let sorted = urls.sorted {
+                $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent)
+                    == .orderedAscending
+            }
+            let groups: [(stem: String, urls: [URL])]
+            if let mediaTypeStem = mediaTypeSubfolderGroupingStem(for: directory) {
+                groups = [(mediaTypeStem, sorted)]
+            } else {
+                groups = audioGroups(
+                    for: sorted,
+                    anchorStems: anchorStemsByDirectory[directory, default: []],
+                )
+            }
+            for group in groups where !group.stem.isEmpty {
+                let metadata = try? await localLibrary.extractMetadata(
+                    from: group.urls[0],
+                    category: .audio,
+                )
+                audioCandidates.append(
+                    FolderMediaCandidate(
+                        role: .audio,
+                        urls: group.urls,
+                        relativePaths: group.urls.map { relativePath(for: $0, root: root) },
+                        extractedMetadata: metadata,
+                        groupingDirectory: directory,
+                        groupingStem: group.stem,
+                    )
+                )
+            }
+        }
+
+        return epubCandidates + audioCandidates
+    }
+
+    private func regularFiles(in root: URL) -> [URL] {
+        guard
+            let enumerator = FileManager.default.enumerator(
+                at: root,
+                includingPropertiesForKeys: [
+                    .isRegularFileKey, .fileSizeKey, .contentModificationDateKey,
+                ],
+                options: [.skipsHiddenFiles, .skipsPackageDescendants],
+            )
+        else {
+            return []
+        }
+
+        var urls: [URL] = []
+        for case let url as URL in enumerator where isRegularFile(url) {
+            urls.append(url)
+        }
+        return urls
+    }
+
+    private func groupedCandidates(_ candidates: [FolderMediaCandidate])
+        -> [[FolderMediaCandidate]]
+    {
+        let byDirectory = Dictionary(grouping: candidates, by: \.groupingDirectory)
+        var groups: [[FolderMediaCandidate]] = []
+        for directoryCandidates in byDirectory.values {
+            let byStem = Dictionary(grouping: directoryCandidates, by: \.groupingStem)
+            for stemCandidates in byStem.values {
+                let byRole = Dictionary(grouping: stemCandidates, by: \.role)
+                let duplicateRole = byRole.values.contains { $0.count > 1 }
+                if duplicateRole {
+                    groups.append(contentsOf: stemCandidates.map { [$0] })
+                } else {
+                    groups.append(FolderSourceMediaRole.allCases.compactMap { byRole[$0]?.first })
+                }
+            }
+        }
+        return groups
+    }
+
+    private func mediaRecord(
+        from candidate: FolderMediaCandidate,
+        previous: FolderSourceMedia?,
+        root: URL,
+        now: String,
+    ) -> FolderSourceMedia {
+        var record =
+            previous
+            ?? FolderSourceMedia(
+                role: candidate.role,
+                relativePaths: candidate.relativePaths,
+                signature: signature(for: candidate.urls, root: root),
+                firstSeenAt: now,
+            )
+        if Set(record.relativePaths) != Set(candidate.relativePaths) {
+            record.previousRelativePaths.append(contentsOf: record.relativePaths)
+        }
+        record.role = candidate.role
+        record.relativePaths = candidate.relativePaths
+        record.signature = signature(for: candidate.urls, root: root)
+        record.extractedMetadata = candidate.extractedMetadata
+        record.missing = false
+        record.lastSeenAt = now
+        return record
+    }
+
+    private func workRecord(
+        from candidates: [FolderMediaCandidate],
+        mediaIDs: [FolderSourceMediaRole: String],
+        previous: FolderSourceWork?,
+    ) -> FolderSourceWork {
+        let preferredMetadata =
+            candidates.first(where: { $0.role == .ebook })?.extractedMetadata
+            ?? candidates.first(where: { $0.role == .readaloud })?.extractedMetadata
+            ?? candidates.first?.extractedMetadata
+        let title =
+            nonEmpty(preferredMetadata?.title)
+            ?? titleFromGroupingStem(candidates.first?.groupingStem)
+            ?? candidates.first?.urls.first?.deletingPathExtension().lastPathComponent
+            ?? "Untitled Book"
+        return FolderSourceWork(
+            uuid: previous?.uuid ?? UUID().uuidString,
+            title: title,
+            subtitle: preferredMetadata?.subtitle,
+            description: preferredMetadata?.description,
+            language: preferredMetadata?.language,
+            createdAt: previous?.createdAt ?? preferredMetadata?.createdAt,
+            updatedAt: preferredMetadata?.updatedAt ?? previous?.updatedAt,
+            publicationDate: preferredMetadata?.publicationDate,
+            authors: preferredMetadata?.authors,
+            narrators: preferredMetadata?.narrators,
+            creators: preferredMetadata?.creators,
+            series: preferredMetadata?.series,
+            tags: preferredMetadata?.tags,
+            collections: preferredMetadata?.collections,
+            status: previous?.status ?? preferredMetadata?.status,
+            position: previous?.position ?? preferredMetadata?.position,
+            rating: previous?.rating ?? preferredMetadata?.rating,
+            mediaIDs: mediaIDs,
+            groupingKey:
+                "\(candidates.first?.groupingDirectory ?? "")/\(candidates.first?.groupingStem ?? "")",
+            groupingReason: "Grouped by matching folder and filename prefix",
+        )
+    }
+
+    private func projectLibrary(
+        from state: FolderSourceLibraryState,
+        folderURL: URL,
+    ) -> LocalLibraryManager.ScanResult {
+        let mediaByID = Dictionary(uniqueKeysWithValues: state.media.map { ($0.uuid, $0) })
+        var metadata: [BookMetadata] = []
+        var paths: [String: MediaPaths] = [:]
+
+        for work in state.works {
+            let ebook = mediaByID[work.mediaIDs[.ebook] ?? ""]
+            let readaloud = mediaByID[work.mediaIDs[.readaloud] ?? ""]
+            let audio = mediaByID[work.mediaIDs[.audio] ?? ""]
+            var book = BookMetadata(
+                uuid: work.uuid,
+                title: work.title,
+                subtitle: work.subtitle,
+                description: work.description,
+                language: work.language,
+                createdAt: work.createdAt,
+                updatedAt: work.updatedAt,
+                publicationDate: work.publicationDate,
+                authors: work.authors,
+                narrators: work.narrators,
+                creators: work.creators,
+                series: work.series,
+                tags: work.tags,
+                collections: work.collections,
+                ebook: bookAsset(for: ebook, workID: work.uuid),
+                audiobook: bookAsset(for: audio, workID: work.uuid),
+                readaloud: bookReadaloud(for: readaloud, workID: work.uuid),
+                status: work.status,
+                position: work.position,
+                rating: work.rating,
+            )
+            book.sourceID = sourceRecordValue.id
+            book.source = sourceRecordValue.name
+            metadata.append(book)
+
+            var mediaPaths = MediaPaths()
+            if let ebook, !ebook.missing, let relativePath = ebook.relativePaths.first {
+                mediaPaths.ebookPath = folderURL.appendingPathComponent(relativePath)
+            }
+            if let readaloud, !readaloud.missing, let relativePath = readaloud.relativePaths.first {
+                mediaPaths.syncedPath = folderURL.appendingPathComponent(relativePath)
+            }
+            if let audio, !audio.missing, let relativePath = audio.relativePaths.first {
+                mediaPaths.audioPath = folderURL.appendingPathComponent(relativePath)
+            }
+            if mediaPaths.ebookPath != nil || mediaPaths.audioPath != nil
+                || mediaPaths.syncedPath != nil
+            {
+                paths[work.uuid] = mediaPaths
+            }
+        }
+
+        return LocalLibraryManager.ScanResult(metadata: metadata, paths: paths)
+    }
+
+    private func derivedAudiobookManifest(for bookID: String, folderURL: URL) async throws -> URL {
+        if stateCache == nil {
+            _ = try await scanLibrary(in: folderURL)
+        }
+        guard
+            let state = stateCache,
+            let work = state.works.first(where: { $0.uuid == bookID }),
+            let mediaID = work.mediaIDs[.audio],
+            let media = state.media.first(where: { $0.uuid == mediaID }),
+            !media.missing
+        else {
+            throw LocalMediaError.missingAudiobookManifest
+        }
+
+        let audioFiles = media.relativePaths.map {
+            folderURL.appendingPathComponent($0)
+        }.filter {
+            FileManager.default.fileExists(atPath: $0.path)
+        }
+        guard !audioFiles.isEmpty else {
+            throw LocalMediaError.missingAudiobookManifest
+        }
+
+        let manifestDirectory = await filesystem.folderSourceDerivedAudiobookDirectory(
+            sourceID: sourceRecordValue.id,
+            bookID: bookID,
+        )
+        try await filesystem.ensureDirectoryExists(at: manifestDirectory)
+        let manifestURL = manifestDirectory.appendingPathComponent(
+            "manifest.json",
+            isDirectory: false,
+        )
+        let manifestData = try await audiobookManifestData(
+            title: work.title,
+            audioFiles: audioFiles,
+            href: { $0.absoluteString },
+        )
+        try manifestData.write(to: manifestURL, options: .atomic)
+        return manifestURL
+    }
+
+    private func previousWorkLookup(_ state: FolderSourceLibraryState)
+        -> [String: FolderSourceWork]
+    {
+        var result: [String: FolderSourceWork] = [:]
+        for work in state.works {
+            for mediaID in work.mediaIDs.values {
+                result[mediaID] = work
+            }
+        }
+        return result
+    }
+
+    private func bookAsset(for media: FolderSourceMedia?, workID: String) -> BookAsset? {
+        guard let media else { return nil }
+        let extracted = media.extractedMetadata
+        let extractedAsset =
+            media.role == .audio ? extracted?.audiobook : extracted?.ebook
+        return BookAsset(
+            uuid: workID,
+            filepath: media.relativePaths.first ?? "",
+            missing: media.missing ? 1 : 0,
+            isEpub2: extractedAsset?.isEpub2,
+            isEpub3: extractedAsset?.isEpub3,
+            pageCount: extractedAsset?.pageCount,
+            duration: extractedAsset?.duration,
+            fileSize: Int(media.signature.totalSize),
+            createdAt: extractedAsset?.createdAt,
+            updatedAt: extractedAsset?.updatedAt,
+        )
+    }
+
+    private func bookReadaloud(for media: FolderSourceMedia?, workID: String) -> BookReadaloud? {
+        guard let media else { return nil }
+        let extracted = media.extractedMetadata?.readaloud
+        return BookReadaloud(
+            uuid: workID,
+            filepath: media.relativePaths.first,
+            missing: media.missing ? 1 : 0,
+            status: extracted?.status ?? "aligned",
+            currentStage: extracted?.currentStage,
+            stageProgress: extracted?.stageProgress,
+            queuePosition: extracted?.queuePosition,
+            restartPending: extracted?.restartPending,
+            pageCount: extracted?.pageCount,
+            duration: extracted?.duration,
+            fileSize: Int(media.signature.totalSize),
+            createdAt: extracted?.createdAt,
+            updatedAt: extracted?.updatedAt,
+        )
+    }
+
+    private func signature(for urls: [URL], root: URL) -> FolderSourceMediaSignature {
+        var totalSize: Int64 = 0
+        var modifiedAt: [String: Double] = [:]
+        for url in urls {
+            guard
+                let values = try? url.resourceValues(forKeys: [
+                    .fileSizeKey, .contentModificationDateKey,
+                ])
+            else {
+                continue
+            }
+            totalSize += Int64(values.fileSize ?? 0)
+            modifiedAt[relativePath(for: url, root: root)] =
+                values.contentModificationDate?.timeIntervalSince1970 ?? 0
+        }
+        return FolderSourceMediaSignature(
+            fileCount: urls.count,
+            totalSize: totalSize,
+            modifiedAt: modifiedAt,
+        )
+    }
+
+    private func relativePath(for url: URL, root: URL) -> String {
+        let rootPath = root.standardizedFileURL.path
+        let filePath = url.standardizedFileURL.path
+        guard filePath.hasPrefix(rootPath) else { return url.lastPathComponent }
+        let start = filePath.index(filePath.startIndex, offsetBy: rootPath.count)
+        return String(filePath[start...]).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+    }
+
+    private func relativeDirectory(for url: URL, root: URL) -> String {
+        let path = relativePath(for: url.deletingLastPathComponent(), root: root)
+        return path == "." ? "" : path
+    }
+
+    private func groupingLocation(for url: URL, root: URL) -> (directory: String, stem: String?) {
+        let directory = relativeDirectory(for: url, root: root)
+        guard let parent = mediaTypeSubfolderParentDirectory(for: directory) else {
+            return (directory, nil)
+        }
+        return (parent, mediaTypeSubfolderGroupingStem(for: parent))
+    }
+
+    private func mediaTypeSubfolderParentDirectory(for directory: String) -> String? {
+        let normalized = directory.replacingOccurrences(of: "\\", with: "/")
+        let parts = normalized.split(separator: "/", omittingEmptySubsequences: false).map(
+            String.init
+        )
+        guard let last = parts.last?.lowercased(),
+            ["audio", "ebook", "synced"].contains(last)
+        else {
+            return nil
+        }
+        let parent = parts.dropLast().joined(separator: "/")
+        return parent.isEmpty ? nil : parent
+    }
+
+    private func mediaTypeSubfolderRole(for directory: String) -> FolderSourceMediaRole? {
+        let normalized = directory.replacingOccurrences(of: "\\", with: "/")
+        let last = normalized.split(separator: "/", omittingEmptySubsequences: false).last?
+            .lowercased()
+        switch last {
+            case "ebook":
+                return .ebook
+            case "synced":
+                return .readaloud
+            case "audio":
+                return .audio
+            default:
+                return nil
+        }
+    }
+
+    private func mediaTypeSubfolderGroupingStem(for directory: String) -> String? {
+        let stem = normalizedGroupingText(lastPathComponent(inRelativePath: directory))
+        return stem.isEmpty ? nil : stem
+    }
+
+    private func lastPathComponent(inRelativePath path: String) -> String {
+        let normalized = path.replacingOccurrences(of: "\\", with: "/")
+        return normalized.split(separator: "/").last.map(String.init) ?? path
+    }
+
+    private func groupingStem(for url: URL, metadata _: BookMetadata?) -> String {
+        normalizedGroupingText(url.deletingPathExtension().lastPathComponent)
+    }
+
+    private func audioGroups(
+        for urls: [URL],
+        anchorStems: Set<String>,
+    ) -> [(stem: String, urls: [URL])] {
+        var grouped: [String: [URL]] = [:]
+        let anchors = anchorStems.sorted { lhs, rhs in
+            if lhs.count == rhs.count {
+                return lhs.localizedStandardCompare(rhs) == .orderedAscending
+            }
+            return lhs.count > rhs.count
+        }
+
+        for url in urls {
+            let stem = normalizedGroupingText(url.deletingPathExtension().lastPathComponent)
+            guard !stem.isEmpty else { continue }
+            let anchoredStem = anchors.first { anchor in
+                stem == anchor || stem.hasPrefix("\(anchor) ")
+            }
+            grouped[anchoredStem ?? stem, default: []].append(url)
+        }
+
+        return
+            grouped
+            .map {
+                (
+                    stem: $0.key,
+                    urls: $0.value.sorted {
+                        $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent)
+                            == .orderedAscending
+                    },
+                )
+            }
+            .sorted { lhs, rhs in
+                lhs.stem.localizedStandardCompare(rhs.stem) == .orderedAscending
+            }
+    }
+
+    private func normalizedGroupingText(_ text: String) -> String {
+        let roleWords = [
+            "readaloud", "read aloud", "media overlay", "media overlays", "audiobook",
+            "audio book", "ebook", "epub", "unabridged",
+        ]
+        var normalized = text.lowercased()
+        for word in roleWords {
+            normalized = normalized.replacingOccurrences(of: word, with: " ")
+        }
+        normalized = normalized.replacingOccurrences(
+            of: #"[\W_]+"#,
+            with: " ",
+            options: .regularExpression,
+        )
+        normalized = normalized.replacingOccurrences(
+            of: #"\b\d+\b$"#,
+            with: "",
+            options: .regularExpression,
+        )
+        return normalized.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func titleFromGroupingStem(_ stem: String?) -> String? {
+        guard let stem = nonEmpty(stem) else { return nil }
+        return stem.split(separator: " ").map { word in
+            word.prefix(1).uppercased() + word.dropFirst()
+        }.joined(separator: " ")
+    }
+
+    private func nonEmpty(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private func isRegularFile(_ url: URL) -> Bool {
+        (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
+    }
+
+    private func uuidSuffix(fromFolderName folderName: String) -> String? {
+        guard let range = folderName.range(of: " - ", options: .backwards) else { return nil }
+        let suffix = String(folderName[range.upperBound...])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return UUID(uuidString: suffix)?.uuidString
     }
 
     private func existingBookFolder(for bookID: String) -> URL? {
@@ -798,11 +1376,23 @@ public actor FolderSourceActor: BookSourceActor {
             throw LocalMediaError.missingAudiobookManifest
         }
 
+        let data = try await audiobookManifestData(title: title, audioFiles: audioFiles)
+        try data.write(
+            to: audioDirectory.appendingPathComponent("manifest.json", isDirectory: false),
+            options: .atomic,
+        )
+    }
+
+    private func audiobookManifestData(
+        title: String,
+        audioFiles: [URL],
+        href: (URL) -> String = { $0.lastPathComponent },
+    ) async throws -> Data {
         var readingOrder: [[String: Any]] = []
         var totalDuration = 0.0
         for audioFile in audioFiles {
             var item: [String: Any] = [
-                "href": audioFile.lastPathComponent,
+                "href": href(audioFile),
                 "type": mediaType(for: audioFile),
             ]
             if let duration = await audioDuration(for: audioFile) {
@@ -842,10 +1432,7 @@ public actor FolderSourceActor: BookSourceActor {
             withJSONObject: manifest,
             options: [.prettyPrinted, .sortedKeys],
         )
-        try data.write(
-            to: audioDirectory.appendingPathComponent("manifest.json", isDirectory: false),
-            options: .atomic,
-        )
+        return data
     }
 
     private func writeAsset(
@@ -1031,11 +1618,11 @@ public actor FolderSourceActor: BookSourceActor {
             _ = try await scanLibrary(in: resolved.url)
         }
 
-        var latestMetadata = try await savedMetadata(in: resolved.url)
-        guard let latestIndex = latestMetadata.firstIndex(where: { $0.uuid == bookId }) else {
+        var state = try await savedState(in: resolved.url)
+        guard let latestIndex = state.works.firstIndex(where: { $0.uuid == bookId }) else {
             return
         }
-        let latest = latestMetadata[latestIndex]
+        let latest = state.works[latestIndex]
         let latestTimestamp = latest.position?.timestamp ?? 0
         guard timestamp > latestTimestamp else { return }
 
@@ -1047,18 +1634,28 @@ public actor FolderSourceActor: BookSourceActor {
             createdAt: latest.position?.createdAt,
             updatedAt: updatedAtString,
         )
-        latestMetadata[latestIndex] = metadata(latest, position: newPosition)
-        metadataCache = latestMetadata
-        try await filesystem.saveFolderSourceLibraryMetadata(latestMetadata, in: resolved.url)
+        state.works[latestIndex].position = newPosition
+        stateCache = state
+        let projected = projectLibrary(from: state, folderURL: resolved.url)
+        metadataCache = projected.metadata
+        pathCache = projected.paths
+        try await filesystem.saveFolderSourceLibraryState(state, in: resolved.url)
     }
 
     private func removeMetadata(bookID: String) async throws {
         let resolved = try await resolvedFolderURL()
         defer { stopAccessing(resolved) }
 
-        metadataCache.removeAll { $0.uuid == bookID }
-        pathCache.removeValue(forKey: bookID)
-        try await filesystem.saveFolderSourceLibraryMetadata(metadataCache, in: resolved.url)
+        var state = try await savedState(in: resolved.url)
+        guard let work = state.works.first(where: { $0.uuid == bookID }) else { return }
+        let mediaIDs = Set(work.mediaIDs.values)
+        state.works.removeAll { $0.uuid == bookID }
+        state.media.removeAll { mediaIDs.contains($0.uuid) }
+        try await filesystem.saveFolderSourceLibraryState(state, in: resolved.url)
+        stateCache = state
+        let projected = projectLibrary(from: state, folderURL: resolved.url)
+        metadataCache = projected.metadata
+        pathCache = projected.paths
     }
 
     private func extractCover(for bookID: String) async -> Data? {

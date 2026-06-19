@@ -33,6 +33,26 @@ public actor FilesystemActor {
             .appendingPathComponent("EPUBExtraction", isDirectory: true)
     }
 
+    public func folderSourceDerivedAudiobookRootDirectory(sourceID: BookSourceID) -> URL {
+        derivedMediaRootDirectory()
+            .appendingPathComponent("FolderSourceAudiobooks", isDirectory: true)
+            .appendingPathComponent(sanitizedPathComponent(from: sourceID), isDirectory: true)
+    }
+
+    public func folderSourceDerivedAudiobookDirectory(
+        sourceID: BookSourceID,
+        bookID: String,
+    ) -> URL {
+        folderSourceDerivedAudiobookRootDirectory(sourceID: sourceID)
+            .appendingPathComponent(sanitizedPathComponent(from: bookID), isDirectory: true)
+    }
+
+    public func removeFolderSourceDerivedAudiobooks(sourceID: BookSourceID) throws {
+        let directory = folderSourceDerivedAudiobookRootDirectory(sourceID: sourceID)
+        guard FileManager.default.fileExists(atPath: directory.path) else { return }
+        try FileManager.default.removeItem(at: directory)
+    }
+
     public func sourceCacheDirectory(sourceID: BookSourceID) -> URL {
         return sourceCacheRootDirectory()
             .appendingPathComponent(sanitizedPathComponent(from: sourceID), isDirectory: true)
@@ -231,7 +251,7 @@ public actor FilesystemActor {
         return try decoder.decode([BookMetadata].self, from: data)
     }
 
-    public func saveFolderSourceLibraryMetadata(_ metadata: [BookMetadata], in directory: URL)
+    public func saveFolderSourceLibraryState(_ state: FolderSourceLibraryState, in directory: URL)
         throws
     {
         try ensureDirectoryExists(at: directory)
@@ -241,11 +261,12 @@ public actor FilesystemActor {
         )
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        let data = try encoder.encode(metadata)
+        let data = try encoder.encode(state)
         try write(data: data, to: metadataURL)
     }
 
-    public func loadFolderSourceLibraryMetadata(in directory: URL) throws -> [BookMetadata]? {
+    public func loadFolderSourceLibraryState(in directory: URL) throws -> FolderSourceLibraryState?
+    {
         let metadataURL = directory.appendingPathComponent(
             "library_metadata.json",
             isDirectory: false,
@@ -259,7 +280,7 @@ public actor FilesystemActor {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         let data = try Data(contentsOf: metadataURL)
-        return try decoder.decode([BookMetadata].self, from: data)
+        return try decoder.decode(FolderSourceLibraryState.self, from: data)
     }
 
     public func getConfigDirectory() -> URL {

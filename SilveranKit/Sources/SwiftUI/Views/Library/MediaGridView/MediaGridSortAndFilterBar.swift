@@ -36,7 +36,6 @@ struct MediaGridSortAndFilterBar: View {
     let showLayoutOption: Bool
     var showSortOption: Bool = true
     var onAddBook: (() -> Void)? = nil
-    var onBulkImport: (() -> Void)? = nil
     #if os(macOS)
     var columnCustomization: Binding<TableColumnCustomization<BookMetadata>>? = nil
     var availableCreatorRoles: Set<String> = []
@@ -55,7 +54,6 @@ struct MediaGridSortAndFilterBar: View {
             formatMenu
             Spacer()
             addBookButton
-            bulkImportButton
             #if os(macOS)
             if isTableLayout, columnCustomization != nil {
                 columnsMenu
@@ -78,21 +76,6 @@ struct MediaGridSortAndFilterBar: View {
             .buttonStyle(.borderless)
             #endif
             .help("Add book")
-        }
-    }
-
-    @ViewBuilder
-    private var bulkImportButton: some View {
-        if let onBulkImport {
-            Button {
-                onBulkImport()
-            } label: {
-                Label("Bulk Import", systemImage: "folder.badge.plus")
-            }
-            #if os(macOS)
-            .buttonStyle(.borderless)
-            #endif
-            .help("Bulk import folder")
         }
     }
 
