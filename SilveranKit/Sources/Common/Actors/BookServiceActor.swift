@@ -476,6 +476,7 @@ public actor BookServiceActor {
         sourcesByID.removeAll()
         sourceRegistryLoaded = false
         await ensureSourceRegistryLoaded()
+        _ = await fetchLibraryInformation()
         await notifyLibraryObservers()
     }
 

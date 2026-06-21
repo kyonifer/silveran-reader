@@ -136,6 +136,7 @@ public final class ReadaloudGeneratorViewModel {
     public private(set) var sourceWorkflowKind: BookSourceKind?
     public private(set) var uploadSources: [BookSourceRecord] = []
     public private(set) var sourceOutputBookID: String?
+    public private(set) var sourceWorkflowSourceID: BookSourceID?
     public private(set) var isLoadingSourceInputs = false
     public var selectedModelSize: WhisperModelSize = .tiny
     public var customModelPath: URL?
@@ -172,6 +173,7 @@ public final class ReadaloudGeneratorViewModel {
         guard let data else { return }
         sourceOutputBookID = data.bookID
         sourceWorkflowBookTitle = data.bookTitle
+        sourceWorkflowSourceID = data.sourceID
         selectedUploadSourceID = data.sourceID
         sourceWorkflowName = data.sourceName
         sourceWorkflowKind = data.sourceKind
@@ -189,6 +191,35 @@ public final class ReadaloudGeneratorViewModel {
         }
     }
 
+    public func refreshSourceInputs() async {
+        guard let bookID = sourceOutputBookID else { return }
+        isLoadingSourceInputs = true
+        defer { isLoadingSourceInputs = false }
+
+        async let ebookMedia = BookServiceActor.shared.resolveLocalMedia(
+            for: bookID,
+            sourceID: sourceWorkflowSourceID,
+            category: .ebook,
+        )
+        async let audioMedia = BookServiceActor.shared.resolveLocalMedia(
+            for: bookID,
+            sourceID: sourceWorkflowSourceID,
+            category: .audio,
+        )
+
+        let previousEpubURL = epubURL
+        epubURL = await ebookMedia?.url
+        if let audioURL = await audioMedia?.url {
+            audioURLs = resolveAudioURLs(audioURL)
+        } else {
+            audioURLs = []
+        }
+
+        if epubURL != nil, epubURL != previousEpubURL {
+            loadChapters()
+        }
+    }
+
     public var canStart: Bool {
         epubURL != nil && !audioURLs.isEmpty
             && (uploadAllToServer ? selectedUploadSourceID != nil : outputURL != nil)
@@ -198,6 +229,34 @@ public final class ReadaloudGeneratorViewModel {
 
     public var isMissingSourceWorkflowMedia: Bool {
         sourceOutputBookID != nil && (epubURL == nil || audioURLs.isEmpty)
+    }
+
+    private func resolveAudioURLs(_ url: URL) -> [URL] {
+        guard url.lastPathComponent == "manifest.json" else { return [url] }
+
+        struct Manifest: Decodable {
+            let readingOrder: [ReadingOrderItem]
+        }
+
+        struct ReadingOrderItem: Decodable {
+            let href: String
+        }
+
+        do {
+            let data = try Data(contentsOf: url)
+            let manifest = try JSONDecoder().decode(Manifest.self, from: data)
+            return manifest.readingOrder.compactMap { item in
+                if let absoluteURL = URL(string: item.href), absoluteURL.isFileURL {
+                    return FileManager.default.fileExists(atPath: absoluteURL.path)
+                        ? absoluteURL : nil
+                }
+                let audioURL = url.deletingLastPathComponent().appendingPathComponent(item.href)
+                return FileManager.default.fileExists(atPath: audioURL.path) ? audioURL : nil
+            }
+        } catch {
+            debugLog("[ReadaloudGenerator] Failed to resolve audiobook manifest: \(error)")
+            return []
+        }
     }
 
     public var isModelDownloaded: Bool {

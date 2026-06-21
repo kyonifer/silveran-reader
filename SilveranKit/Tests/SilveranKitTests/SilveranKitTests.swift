@@ -251,6 +251,37 @@ import Testing
     #expect(!FileManager.default.fileExists(atPath: manifestURL.path))
 }
 
+@Test func folderSourceScanDoesNotWipeDerivedAudiobookManifests() async throws {
+    let root = try makeTemporaryFolderSource()
+    defer { try? FileManager.default.removeItem(at: root) }
+    try Data([0]).write(to: root.appendingPathComponent("Loose Audiobook.mp3"))
+
+    let sourceID = "derived-survives-\(UUID().uuidString)"
+    let source = BookSourceRecord(
+        id: sourceID,
+        name: "Folder",
+        kind: .localFolder,
+        capabilities: .localFolder,
+        storagePath: root.path,
+    )
+
+    let derivedRoot = await FilesystemActor.shared.folderSourceDerivedAudiobookRootDirectory(
+        sourceID: sourceID
+    )
+    defer { try? FileManager.default.removeItem(at: derivedRoot) }
+    let derivedDir = await FilesystemActor.shared.folderSourceDerivedAudiobookDirectory(
+        sourceID: sourceID,
+        bookID: "cached-book",
+    )
+    try await FilesystemActor.shared.ensureDirectoryExists(at: derivedDir)
+    let manifestURL = derivedDir.appendingPathComponent("manifest.json", isDirectory: false)
+    try "{}".write(to: manifestURL, atomically: true, encoding: .utf8)
+
+    _ = try await FolderSourceActor(sourceRecord: source).debugScanLibrary(in: root)
+
+    #expect(FileManager.default.fileExists(atPath: manifestURL.path))
+}
+
 @Test func folderSourceGroupsSupportedMediaTypeSubfoldersAsOneWork() async throws {
     let root = try makeTemporaryFolderSource()
     defer { try? FileManager.default.removeItem(at: root) }
@@ -306,6 +337,199 @@ import Testing
     #expect(byTitle["Book One"]?.audiobook != nil)
     #expect(byTitle["Book Two"]?.ebook != nil)
     #expect(byTitle["Book Two"]?.audiobook != nil)
+}
+
+@Test func folderSourceGroupsAudioWhenEbookFilenameHasAuthorSuffix() async throws {
+    let root = try makeTemporaryFolderSource()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let folder = root.appendingPathComponent("stuff", isDirectory: true)
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    try Data([0]).write(
+        to: folder.appendingPathComponent(
+            "This Is How You Lose the Time War - Amal El-Mohtar.epub"
+        )
+    )
+    try Data([0]).write(
+        to: folder.appendingPathComponent("This Is How You Lose the Time War.m4b")
+    )
+
+    let source = BookSourceRecord(
+        id: "folder-source",
+        name: "Folder",
+        kind: .localFolder,
+        capabilities: .localFolder,
+        storagePath: root.path,
+    )
+    let metadata = try await FolderSourceActor(sourceRecord: source).debugScanLibrary(in: root)
+
+    #expect(metadata.count == 1)
+    #expect(metadata.first?.ebook != nil)
+    #expect(metadata.first?.audiobook != nil)
+}
+
+@Test func folderSourcePrunesDeletedBookRecordsOnRescan() async throws {
+    let root = try makeTemporaryFolderSource()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let oldBook = root.appendingPathComponent("Old Book.epub")
+    try Data([0]).write(to: oldBook)
+    try Data([0]).write(to: root.appendingPathComponent("Keeper.epub"))
+
+    let source = BookSourceRecord(
+        id: "folder-source",
+        name: "Folder",
+        kind: .localFolder,
+        capabilities: .localFolder,
+        storagePath: root.path,
+    )
+    let actor = FolderSourceActor(sourceRecord: source)
+    let first = try await actor.debugScanLibrary(in: root)
+    #expect(first.count == 2)
+
+    try FileManager.default.removeItem(at: oldBook)
+    let second = try await actor.debugScanLibrary(in: root)
+
+    #expect(second.count == 1)
+    #expect(second.first?.title == "Keeper")
+}
+
+@Test func folderSourceRetainsBooksWhenScanFindsNoFiles() async throws {
+    let root = try makeTemporaryFolderSource()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let book = root.appendingPathComponent("Only Book.epub")
+    try Data([0]).write(to: book)
+
+    let source = BookSourceRecord(
+        id: "folder-source",
+        name: "Folder",
+        kind: .localFolder,
+        capabilities: .localFolder,
+        storagePath: root.path,
+    )
+    let actor = FolderSourceActor(sourceRecord: source)
+    #expect(try await actor.debugScanLibrary(in: root).count == 1)
+
+    try FileManager.default.removeItem(at: book)
+    let afterEmptyScan = try await actor.debugScanLibrary(in: root)
+
+    #expect(afterEmptyScan.count == 1)
+    #expect(afterEmptyScan.first?.ebook?.missing == 1)
+}
+
+@Test func folderSourcePlansReadaloudBesideFlatCollectionMedia() async throws {
+    let root = try makeTemporaryFolderSource()
+    defer { try? FileManager.default.removeItem(at: root) }
+    try Data([0]).write(to: root.appendingPathComponent("Book One.epub"))
+    try Data([0]).write(to: root.appendingPathComponent("Book One 01.mp3"))
+
+    let source = BookSourceRecord(
+        id: "folder-source",
+        name: "Folder",
+        kind: .localFolder,
+        capabilities: .localFolder,
+        storagePath: root.path,
+    )
+    let actor = FolderSourceActor(sourceRecord: source)
+    let metadata = try await actor.debugScanLibrary(in: root)
+    let book = try #require(metadata.first { $0.title == "Book One" })
+
+    let destination = await actor.debugWriteDestinationDirectory(
+        in: root,
+        bookID: book.uuid,
+        category: .synced,
+    )
+
+    #expect(destination.isEmpty)
+}
+
+@Test func folderSourcePlansReadaloudToSyncedSubfolderForMediaTypeLayout() async throws {
+    let root = try makeTemporaryFolderSource()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let work = root.appendingPathComponent("Book One", isDirectory: true)
+    let ebook = work.appendingPathComponent("ebook", isDirectory: true)
+    let audio = work.appendingPathComponent("audio", isDirectory: true)
+    try FileManager.default.createDirectory(at: ebook, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: audio, withIntermediateDirectories: true)
+    try Data([0]).write(to: ebook.appendingPathComponent("book.epub"))
+    try Data([0]).write(to: audio.appendingPathComponent("book.mp3"))
+
+    let source = BookSourceRecord(
+        id: "folder-source",
+        name: "Folder",
+        kind: .localFolder,
+        capabilities: .localFolder,
+        storagePath: root.path,
+    )
+    let actor = FolderSourceActor(sourceRecord: source)
+    let metadata = try await actor.debugScanLibrary(in: root)
+    let book = try #require(metadata.first { $0.title == "Book One" })
+
+    let destination = await actor.debugWriteDestinationDirectory(
+        in: root,
+        bookID: book.uuid,
+        category: .synced,
+    )
+
+    #expect(destination == "Book One/synced")
+}
+
+@Test func folderSourceDeletePathValidationRejectsEscapes() async throws {
+    let root = try makeTemporaryFolderSource()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let source = BookSourceRecord(
+        id: "folder-source",
+        name: "Folder",
+        kind: .localFolder,
+        capabilities: .localFolder,
+        storagePath: root.path,
+    )
+    let actor = FolderSourceActor(sourceRecord: source)
+
+    var rejectedParentEscape = false
+    do {
+        _ = try await actor.debugValidatedMediaFilePath(in: root, relativePath: "../escape.mp3")
+    } catch {
+        rejectedParentEscape = true
+    }
+    var rejectedAbsolutePath = false
+    do {
+        _ = try await actor.debugValidatedMediaFilePath(in: root, relativePath: "/tmp/escape.mp3")
+    } catch {
+        rejectedAbsolutePath = true
+    }
+
+    #expect(rejectedParentEscape)
+    #expect(rejectedAbsolutePath)
+}
+
+@Test func folderSourceDeletePathValidationRejectsDirectories() async throws {
+    let root = try makeTemporaryFolderSource()
+    defer { try? FileManager.default.removeItem(at: root) }
+    try FileManager.default.createDirectory(
+        at: root.appendingPathComponent("Book One", isDirectory: true),
+        withIntermediateDirectories: true,
+    )
+
+    let source = BookSourceRecord(
+        id: "folder-source",
+        name: "Folder",
+        kind: .localFolder,
+        capabilities: .localFolder,
+        storagePath: root.path,
+    )
+    let actor = FolderSourceActor(sourceRecord: source)
+
+    var rejectedDirectory = false
+    do {
+        _ = try await actor.debugValidatedMediaFilePath(in: root, relativePath: "Book One")
+    } catch {
+        rejectedDirectory = true
+    }
+
+    #expect(rejectedDirectory)
+    #expect(
+        try await actor.debugValidatedMediaFilePath(in: root, relativePath: "missing.mp3")
+            == "missing.mp3"
+    )
 }
 
 private func makeBook(publicationDate: String?) -> BookMetadata {

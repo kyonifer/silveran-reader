@@ -16,6 +16,11 @@ public actor FolderSourceActor: BookSourceActor {
     private var activeFolderAccessURL: URL?
     private var activeFolderAccessDidStart = false
 
+    private enum FolderSourceWriteLayout {
+        case mediaTypeSubfolders
+        case sameFolder
+    }
+
     public init(
         sourceRecord: BookSourceRecord,
         filesystem: FilesystemActor = .shared,
@@ -73,6 +78,21 @@ public actor FolderSourceActor: BookSourceActor {
 
     func debugScanLibrary(in folderURL: URL) async throws -> [BookMetadata] {
         try await scanLibrary(in: folderURL).metadata
+    }
+
+    func debugWriteDestinationDirectory(
+        in folderURL: URL,
+        bookID: String,
+        category: LocalMediaCategory,
+    ) -> String {
+        guard let placement = writePlacement(for: bookID, root: folderURL) else { return "" }
+        let destination = destinationDirectory(for: category, placement: placement)
+        return relativePath(for: destination, root: folderURL)
+    }
+
+    func debugValidatedMediaFilePath(in folderURL: URL, relativePath: String) throws -> String {
+        let url = try validatedMediaFileURL(forRelativePath: relativePath, root: folderURL)
+        return self.relativePath(for: url, root: folderURL)
     }
 
     public func fetchCoverImage(
@@ -286,197 +306,9 @@ public actor FolderSourceActor: BookSourceActor {
         }
     }
 
-    public func importMedia(
-        from sourceFileURL: URL,
-        category: LocalMediaCategory,
-        bookName: String,
-        bookUUID: String? = nil,
-    ) async throws -> URL {
-        let shouldStopAccessingSource = sourceFileURL.startAccessingSecurityScopedResource()
-        defer {
-            if shouldStopAccessingSource {
-                sourceFileURL.stopAccessingSecurityScopedResource()
-            }
-        }
-
-        let resolved = try await resolvedFolderURL()
-        defer { stopAccessing(resolved) }
-
-        let extractedMetadata = try await extractImportMetadata(
-            from: sourceFileURL,
-            category: category,
-        )
-        let importUUID = bookUUID ?? extractedMetadata.uuid
-        var metadata = mergedBookMetadata(
-            scanned: extractedMetadata,
-            saved: BookMetadata(
-                uuid: importUUID,
-                title: extractedMetadata.title,
-                subtitle: extractedMetadata.subtitle,
-                description: extractedMetadata.description,
-                language: extractedMetadata.language,
-                createdAt: extractedMetadata.createdAt,
-                updatedAt: extractedMetadata.updatedAt,
-                publicationDate: extractedMetadata.publicationDate,
-                authors: extractedMetadata.authors,
-                narrators: extractedMetadata.narrators,
-                creators: extractedMetadata.creators,
-                series: extractedMetadata.series,
-                tags: extractedMetadata.tags,
-                collections: extractedMetadata.collections,
-                ebook: extractedMetadata.ebook,
-                audiobook: extractedMetadata.audiobook,
-                readaloud: extractedMetadata.readaloud,
-                status: extractedMetadata.status,
-                position: extractedMetadata.position,
-                rating: extractedMetadata.rating,
-            ),
-        )
-        metadata.sourceID = sourceRecordValue.id
-        metadata.source = sourceRecordValue.name
-
-        let effectiveCategory: LocalMediaCategory
-        if metadata.hasAvailableReadaloud {
-            effectiveCategory = .synced
-        } else if metadata.hasAvailableAudiobook {
-            effectiveCategory = .audio
-        } else {
-            effectiveCategory = category
-        }
-
-        let bookFolder =
-            existingBookFolder(for: metadata.uuid)
-            ?? resolved.url.appendingPathComponent(
-                folderName(title: bookName, uuid: metadata.uuid),
-                isDirectory: true,
-            )
-        let destinationDirectory = bookFolder.appendingPathComponent(
-            effectiveCategory.rawValue,
-            isDirectory: true,
-        )
-        try await filesystem.ensureDirectoryExists(at: destinationDirectory)
-
-        let destinationURL: URL
-        if effectiveCategory == .audio {
-            destinationURL = try await importAudiobookPackage(
-                from: sourceFileURL,
-                to: destinationDirectory,
-                title: metadata.title,
-            )
-        } else {
-            destinationURL = destinationDirectory.appendingPathComponent(
-                sourceFileURL.lastPathComponent,
-                isDirectory: false,
-            )
-            let fm = FileManager.default
-            if fm.fileExists(atPath: destinationURL.path) {
-                try fm.removeItem(at: destinationURL)
-            }
-            try fm.copyItem(at: sourceFileURL, to: destinationURL)
-        }
-
-        _ = try await scanLibrary(in: resolved.url)
-        return destinationURL
-    }
-
-    public func importAudiobookFiles(
-        from sourceFileURLs: [URL],
-        bookName: String,
-        bookUUID: String? = nil,
-    ) async throws -> URL {
-        guard let firstSourceURL = sourceFileURLs.first else {
-            throw LocalMediaError.importFailed("No audiobook files selected")
-        }
-
-        let accessScopes = sourceFileURLs.map { url in
-            (url, url.startAccessingSecurityScopedResource())
-        }
-        defer {
-            for (url, shouldStopAccessing) in accessScopes where shouldStopAccessing {
-                url.stopAccessingSecurityScopedResource()
-            }
-        }
-
-        let resolved = try await resolvedFolderURL()
-        defer { stopAccessing(resolved) }
-
-        let extractedMetadata = try await localLibrary.extractMetadata(
-            from: firstSourceURL,
-            category: .audio,
-        )
-        let importUUID = bookUUID ?? extractedMetadata.uuid
-        var metadata = mergedBookMetadata(
-            scanned: extractedMetadata,
-            saved: BookMetadata(
-                uuid: importUUID,
-                title: extractedMetadata.title,
-                subtitle: extractedMetadata.subtitle,
-                description: extractedMetadata.description,
-                language: extractedMetadata.language,
-                createdAt: extractedMetadata.createdAt,
-                updatedAt: extractedMetadata.updatedAt,
-                publicationDate: extractedMetadata.publicationDate,
-                authors: extractedMetadata.authors,
-                narrators: extractedMetadata.narrators,
-                creators: extractedMetadata.creators,
-                series: extractedMetadata.series,
-                tags: extractedMetadata.tags,
-                collections: extractedMetadata.collections,
-                ebook: nil,
-                audiobook: extractedMetadata.audiobook,
-                readaloud: nil,
-                status: extractedMetadata.status,
-                position: extractedMetadata.position,
-                rating: extractedMetadata.rating,
-            ),
-        )
-        metadata.sourceID = sourceRecordValue.id
-        metadata.source = sourceRecordValue.name
-
-        let bookFolder =
-            existingBookFolder(for: metadata.uuid)
-            ?? resolved.url.appendingPathComponent(
-                folderName(title: bookName, uuid: metadata.uuid),
-                isDirectory: true,
-            )
-        let destinationDirectory = bookFolder.appendingPathComponent(
-            LocalMediaCategory.audio.rawValue,
-            isDirectory: true,
-        )
-
-        let fm = FileManager.default
-        if fm.fileExists(atPath: destinationDirectory.path) {
-            try fm.removeItem(at: destinationDirectory)
-        }
-        try await filesystem.ensureDirectoryExists(at: destinationDirectory)
-
-        var destinationURLs: [URL] = []
-        for sourceURL in sourceFileURLs {
-            let destinationURL = destinationDirectory.appendingPathComponent(
-                sourceURL.lastPathComponent,
-                isDirectory: false,
-            )
-            try fm.copyItem(at: sourceURL, to: destinationURL)
-            destinationURLs.append(destinationURL)
-        }
-
-        try await writeAudiobookManifest(
-            in: destinationDirectory,
-            title: metadata.title,
-            audioFiles: destinationURLs,
-        )
-        let manifestURL = destinationDirectory.appendingPathComponent(
-            "manifest.json",
-            isDirectory: false,
-        )
-
-        _ = try await scanLibrary(in: resolved.url)
-        return manifestURL
-    }
-
     public func importBookAssets(
         bookUUID: String,
-        bookName: String,
+        bookName _: String,
         ebook: StorytellerUploadAsset? = nil,
         audiobooks: [StorytellerUploadAsset] = [],
         readaloud: StorytellerUploadAsset? = nil,
@@ -488,53 +320,37 @@ public actor FolderSourceActor: BookSourceActor {
         let resolved = try await resolvedFolderURL()
         defer { stopAccessing(resolved) }
 
-        let bookFolder =
-            existingBookFolder(for: bookUUID)
-            ?? resolved.url.appendingPathComponent(
-                folderName(title: bookName, uuid: bookUUID),
-                isDirectory: true,
+        guard let placement = writePlacement(for: bookUUID, root: resolved.url) else {
+            throw LocalMediaError.importFailed(
+                "Cannot place media: book \(bookUUID) has no files in the folder source"
             )
-        try await filesystem.ensureDirectoryExists(at: bookFolder)
+        }
 
         if let ebook {
             _ = try await writeAsset(
                 ebook,
-                to: bookFolder.appendingPathComponent(LocalMediaCategory.ebook.rawValue),
+                to: destinationDirectory(for: .ebook, placement: placement),
             )
         }
 
         if !audiobooks.isEmpty {
-            let audioDirectory = bookFolder.appendingPathComponent(
-                LocalMediaCategory.audio.rawValue,
-                isDirectory: true,
-            )
-            if FileManager.default.fileExists(atPath: audioDirectory.path) {
-                try FileManager.default.removeItem(at: audioDirectory)
-            }
+            let audioDirectory = destinationDirectory(for: .audio, placement: placement)
             try await filesystem.ensureDirectoryExists(at: audioDirectory)
 
-            var audioFiles: [URL] = []
             var usedFilenames: Set<String> = []
             for audiobook in audiobooks {
-                let destinationURL = try await writeAsset(
+                _ = try await writeAsset(
                     audiobook,
                     to: audioDirectory,
                     usedFilenames: &usedFilenames,
                 )
-                audioFiles.append(destinationURL)
             }
-
-            try await writeAudiobookManifest(
-                in: audioDirectory,
-                title: bookName,
-                audioFiles: audioFiles,
-            )
         }
 
         if let readaloud {
             _ = try await writeAsset(
                 readaloud,
-                to: bookFolder.appendingPathComponent(LocalMediaCategory.synced.rawValue),
+                to: destinationDirectory(for: .synced, placement: placement),
             )
         }
 
@@ -550,16 +366,14 @@ public actor FolderSourceActor: BookSourceActor {
             _ = await fetchLibraryInformation()
         }
 
-        let category = localMediaCategory(for: asset.format)
-        if let destinationDirectory = existingCategoryDirectory(
-            for: bookUUID,
-            category: category,
-        ) {
-            let fm = FileManager.default
-            if fm.fileExists(atPath: destinationDirectory.path) {
-                try fm.removeItem(at: destinationDirectory)
-            }
-        }
+        let resolved = try await resolvedFolderURL()
+        defer { stopAccessing(resolved) }
+
+        try deleteExistingMedia(
+            bookUUID,
+            category: localMediaCategory(for: asset.format),
+            root: resolved.url,
+        )
 
         switch asset.format {
             case .ebook:
@@ -587,22 +401,22 @@ public actor FolderSourceActor: BookSourceActor {
         if pathCache[bookID] == nil {
             _ = await fetchLibraryInformation()
         }
-        guard let paths = pathCache[bookID] else {
+
+        let resolved = try await resolvedFolderURL()
+        defer { stopAccessing(resolved) }
+
+        let media = mediaForWork(bookID: bookID).values
+        guard !media.isEmpty else {
             try await removeMetadata(bookID: bookID)
             return
         }
 
-        var bookFolder: URL?
-        if let ebookPath = paths.ebookPath {
-            bookFolder = ebookPath.deletingLastPathComponent().deletingLastPathComponent()
-        } else if let audioPath = paths.audioPath {
-            bookFolder = audioPath.deletingLastPathComponent().deletingLastPathComponent()
-        } else if let syncedPath = paths.syncedPath {
-            bookFolder = syncedPath.deletingLastPathComponent().deletingLastPathComponent()
+        let fm = FileManager.default
+        let urls = try media.flatMap(\.relativePaths).map {
+            try validatedMediaFileURL(forRelativePath: $0, root: resolved.url)
         }
-
-        if let bookFolder, FileManager.default.fileExists(atPath: bookFolder.path) {
-            try FileManager.default.removeItem(at: bookFolder)
+        for url in urls where fm.fileExists(atPath: url.path) {
+            try fm.removeItem(at: url)
         }
         try await removeMetadata(bookID: bookID)
     }
@@ -614,21 +428,10 @@ public actor FolderSourceActor: BookSourceActor {
         if pathCache[bookID] == nil {
             _ = await fetchLibraryInformation()
         }
-        guard
-            let destinationDirectory = existingCategoryDirectory(
-                for: bookID,
-                category: category,
-            )
-        else {
-            return
-        }
-
-        if FileManager.default.fileExists(atPath: destinationDirectory.path) {
-            try FileManager.default.removeItem(at: destinationDirectory)
-        }
-
         let resolved = try await resolvedFolderURL()
         defer { stopAccessing(resolved) }
+
+        try deleteExistingMedia(bookID, category: category, root: resolved.url)
         _ = try await scanLibrary(in: resolved.url)
     }
 
@@ -641,7 +444,6 @@ public actor FolderSourceActor: BookSourceActor {
     private func scanLibrary(in folderURL: URL) async throws -> LocalLibraryManager.ScanResult {
         try await filesystem.ensureDirectoryExists(at: folderURL)
         try await filesystem.ensureSourceIDMarker(in: folderURL, sourceID: sourceRecordValue.id)
-        try await filesystem.removeFolderSourceDerivedAudiobooks(sourceID: sourceRecordValue.id)
 
         let previousState = try await savedState(in: folderURL)
         let nextState = try await scanState(in: folderURL, previousState: previousState)
@@ -726,13 +528,17 @@ public actor FolderSourceActor: BookSourceActor {
             )
         }
 
-        for previous in previousState.media where !seenPreviousMediaIDs.contains(previous.uuid) {
-            var missing = previous
-            missing.missing = true
-            media.append(missing)
-        }
-        for previous in previousState.works where !seenPreviousWorkIDs.contains(previous.uuid) {
-            works.append(previous)
+        // An empty scan likely means the folder was briefly unreadable, not that every book was
+        // deleted; retain prior state rather than wiping the library.
+        if candidates.isEmpty {
+            for previous in previousState.media where !seenPreviousMediaIDs.contains(previous.uuid) {
+                var missing = previous
+                missing.missing = true
+                media.append(missing)
+            }
+            for previous in previousState.works where !seenPreviousWorkIDs.contains(previous.uuid) {
+                works.append(previous)
+            }
         }
 
         return FolderSourceLibraryState(
@@ -742,75 +548,90 @@ public actor FolderSourceActor: BookSourceActor {
         )
     }
 
+    private struct RawMediaFile {
+        let url: URL
+        let role: FolderSourceMediaRole
+        let directory: String
+        let stem: String
+    }
+
     private func mediaCandidates(in root: URL) async -> [FolderMediaCandidate] {
-        var epubCandidates: [FolderMediaCandidate] = []
-        var audioByDirectory: [String: [URL]] = [:]
+        var filesByDirectory: [String: [RawMediaFile]] = [:]
         for url in regularFiles(in: root) {
             let ext = url.pathExtension.lowercased()
+            let role: FolderSourceMediaRole
             if ext == "epub" {
-                let grouping = groupingLocation(for: url, root: root)
-                let role =
+                role =
                     mediaTypeSubfolderRole(for: relativeDirectory(for: url, root: root))
                     ?? (localLibrary.isReadaloudEpub(at: url) ? .readaloud : .ebook)
-                let metadata = try? await localLibrary.extractMetadata(
-                    from: url,
-                    category: role.localMediaCategory,
-                )
-                let relativePath = relativePath(for: url, root: root)
-                epubCandidates.append(
-                    FolderMediaCandidate(
-                        role: role,
-                        urls: [url],
-                        relativePaths: [relativePath],
-                        extractedMetadata: metadata,
-                        groupingDirectory: grouping.directory,
-                        groupingStem: grouping.stem ?? groupingStem(for: url, metadata: metadata),
-                    )
-                )
             } else if audiobookMediaExtensions.contains(ext) {
-                audioByDirectory[groupingLocation(for: url, root: root).directory, default: []]
-                    .append(url)
-            }
-        }
-
-        let anchorStemsByDirectory = Dictionary(grouping: epubCandidates, by: \.groupingDirectory)
-            .mapValues { candidates in
-                Set(candidates.map(\.groupingStem).filter { !$0.isEmpty })
-            }
-        var audioCandidates: [FolderMediaCandidate] = []
-        for (directory, urls) in audioByDirectory {
-            let sorted = urls.sorted {
-                $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent)
-                    == .orderedAscending
-            }
-            let groups: [(stem: String, urls: [URL])]
-            if let mediaTypeStem = mediaTypeSubfolderGroupingStem(for: directory) {
-                groups = [(mediaTypeStem, sorted)]
+                role = .audio
             } else {
-                groups = audioGroups(
-                    for: sorted,
-                    anchorStems: anchorStemsByDirectory[directory, default: []],
-                )
+                continue
             }
-            for group in groups where !group.stem.isEmpty {
-                let metadata = try? await localLibrary.extractMetadata(
-                    from: group.urls[0],
-                    category: .audio,
-                )
-                audioCandidates.append(
-                    FolderMediaCandidate(
-                        role: .audio,
-                        urls: group.urls,
-                        relativePaths: group.urls.map { relativePath(for: $0, root: root) },
-                        extractedMetadata: metadata,
-                        groupingDirectory: directory,
-                        groupingStem: group.stem,
-                    )
-                )
+
+            let location = groupingLocation(for: url, root: root)
+            let stem =
+                location.stem
+                ?? nonEmpty(normalizedGroupingText(url.deletingPathExtension().lastPathComponent))
+                ?? url.deletingPathExtension().lastPathComponent.lowercased()
+            filesByDirectory[location.directory, default: []].append(
+                RawMediaFile(url: url, role: role, directory: location.directory, stem: stem)
+            )
+        }
+
+        var candidates: [FolderMediaCandidate] = []
+        for (directory, files) in filesByDirectory {
+            let stems = Set(files.map(\.stem))
+            var byGroup: [String: [FolderSourceMediaRole: [URL]]] = [:]
+            for file in files {
+                let key = groupKey(for: file.stem, among: stems)
+                byGroup[key, default: [:]][file.role, default: []].append(file.url)
+            }
+
+            for (key, urlsByRole) in byGroup {
+                for (role, urls) in urlsByRole {
+                    let grouped = role == .audio ? [sortedByName(urls)] : urls.map { [$0] }
+                    for groupURLs in grouped {
+                        let metadata = try? await localLibrary.extractMetadata(
+                            from: groupURLs[0],
+                            category: role.localMediaCategory,
+                        )
+                        candidates.append(
+                            FolderMediaCandidate(
+                                role: role,
+                                urls: groupURLs,
+                                relativePaths: groupURLs.map { relativePath(for: $0, root: root) },
+                                extractedMetadata: metadata,
+                                groupingDirectory: directory,
+                                groupingStem: key,
+                            )
+                        )
+                    }
+                }
             }
         }
 
-        return epubCandidates + audioCandidates
+        return candidates
+    }
+
+    private func sortedByName(_ urls: [URL]) -> [URL] {
+        urls.sorted {
+            $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending
+        }
+    }
+
+    private func groupKey(for stem: String, among stems: Set<String>) -> String {
+        var best = stem
+        for candidate in stems where candidate != stem {
+            guard stem.hasPrefix("\(candidate) ") else { continue }
+            if candidate.count < best.count
+                || (candidate.count == best.count && candidate < best)
+            {
+                best = candidate
+            }
+        }
+        return best
     }
 
     private func regularFiles(in root: URL) -> [URL] {
@@ -1103,6 +924,14 @@ public actor FolderSourceActor: BookSourceActor {
         return path == "." ? "" : path
     }
 
+    private func relativeDirectory(inRelativePath path: String) -> String? {
+        let normalized = path.replacingOccurrences(of: "\\", with: "/")
+        guard let range = normalized.range(of: "/", options: .backwards) else {
+            return ""
+        }
+        return String(normalized[..<range.lowerBound])
+    }
+
     private func groupingLocation(for url: URL, root: URL) -> (directory: String, stem: String?) {
         let directory = relativeDirectory(for: url, root: root)
         guard let parent = mediaTypeSubfolderParentDirectory(for: directory) else {
@@ -1151,46 +980,6 @@ public actor FolderSourceActor: BookSourceActor {
         return normalized.split(separator: "/").last.map(String.init) ?? path
     }
 
-    private func groupingStem(for url: URL, metadata _: BookMetadata?) -> String {
-        normalizedGroupingText(url.deletingPathExtension().lastPathComponent)
-    }
-
-    private func audioGroups(
-        for urls: [URL],
-        anchorStems: Set<String>,
-    ) -> [(stem: String, urls: [URL])] {
-        var grouped: [String: [URL]] = [:]
-        let anchors = anchorStems.sorted { lhs, rhs in
-            if lhs.count == rhs.count {
-                return lhs.localizedStandardCompare(rhs) == .orderedAscending
-            }
-            return lhs.count > rhs.count
-        }
-
-        for url in urls {
-            let stem = normalizedGroupingText(url.deletingPathExtension().lastPathComponent)
-            guard !stem.isEmpty else { continue }
-            let anchoredStem = anchors.first { anchor in
-                stem == anchor || stem.hasPrefix("\(anchor) ")
-            }
-            grouped[anchoredStem ?? stem, default: []].append(url)
-        }
-
-        return
-            grouped
-            .map {
-                (
-                    stem: $0.key,
-                    urls: $0.value.sorted {
-                        $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent)
-                            == .orderedAscending
-                    },
-                )
-            }
-            .sorted { lhs, rhs in
-                lhs.stem.localizedStandardCompare(rhs.stem) == .orderedAscending
-            }
-    }
 
     private func normalizedGroupingText(_ text: String) -> String {
         let roleWords = [
@@ -1231,34 +1020,105 @@ public actor FolderSourceActor: BookSourceActor {
         (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
     }
 
-    private func uuidSuffix(fromFolderName folderName: String) -> String? {
-        guard let range = folderName.range(of: " - ", options: .backwards) else { return nil }
-        let suffix = String(folderName[range.upperBound...])
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        return UUID(uuidString: suffix)?.uuidString
-    }
-
-    private func existingBookFolder(for bookID: String) -> URL? {
-        guard let paths = pathCache[bookID] else { return nil }
-        let mediaPath = paths.ebookPath ?? paths.audioPath ?? paths.syncedPath
-        return mediaPath?.deletingLastPathComponent().deletingLastPathComponent()
-    }
-
-    private func existingCategoryDirectory(
+    private func writePlacement(
         for bookID: String,
+        root: URL,
+    ) -> (layout: FolderSourceWriteLayout, baseDirectory: URL)? {
+        let directories = mediaForWork(bookID: bookID).values
+            .flatMap(\.relativePaths)
+            .compactMap { relativeDirectory(inRelativePath: $0) }
+        guard !directories.isEmpty else { return nil }
+
+        if directories.contains(where: { mediaTypeSubfolderRole(for: $0) != nil }) {
+            let base = directories.compactMap(mediaTypeSubfolderParentDirectory(for:)).first ?? ""
+            return (.mediaTypeSubfolders, root.appendingPathComponent(base, isDirectory: true))
+        }
+        return (.sameFolder, root.appendingPathComponent(directories[0], isDirectory: true))
+    }
+
+    private func destinationDirectory(
+        for category: LocalMediaCategory,
+        placement: (layout: FolderSourceWriteLayout, baseDirectory: URL),
+    ) -> URL {
+        switch placement.layout {
+            case .mediaTypeSubfolders:
+                return placement.baseDirectory.appendingPathComponent(
+                    category.rawValue,
+                    isDirectory: true,
+                )
+            case .sameFolder:
+                return placement.baseDirectory
+        }
+    }
+
+    private func mediaForWork(bookID: String) -> [FolderSourceMediaRole: FolderSourceMedia] {
+        guard let state = stateCache,
+            let work = state.works.first(where: { $0.uuid == bookID })
+        else {
+            return [:]
+        }
+        let mediaByID = Dictionary(uniqueKeysWithValues: state.media.map { ($0.uuid, $0) })
+        var result: [FolderSourceMediaRole: FolderSourceMedia] = [:]
+        for (role, mediaID) in work.mediaIDs {
+            if let media = mediaByID[mediaID], !media.missing {
+                result[role] = media
+            }
+        }
+        return result
+    }
+
+    private func deleteExistingMedia(
+        _ bookID: String,
         category: LocalMediaCategory,
-    ) -> URL? {
-        guard let paths = pathCache[bookID] else { return nil }
-        let mediaPath: URL?
+        root: URL,
+    ) throws {
+        let role = mediaRole(for: category)
+        guard let media = mediaForWork(bookID: bookID)[role] else {
+            return
+        }
+        let fm = FileManager.default
+        let urls = try media.relativePaths.map {
+            try validatedMediaFileURL(forRelativePath: $0, root: root)
+        }
+        for url in urls where fm.fileExists(atPath: url.path) {
+            try fm.removeItem(at: url)
+        }
+    }
+
+    private func validatedMediaFileURL(forRelativePath path: String, root: URL) throws -> URL {
+        let normalized = path.replacingOccurrences(of: "\\", with: "/")
+        guard !normalized.isEmpty,
+            !normalized.hasPrefix("/"),
+            !normalized.split(separator: "/").contains("..")
+        else {
+            throw LocalMediaError.importFailed("Refusing unsafe media path \(path)")
+        }
+
+        let root = root.standardizedFileURL
+        let url = root.appendingPathComponent(normalized, isDirectory: false).standardizedFileURL
+        guard url.path.hasPrefix(root.path + "/") else {
+            throw LocalMediaError.importFailed("Refusing media path outside source folder \(path)")
+        }
+
+        var isDirectory: ObjCBool = false
+        if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory),
+            isDirectory.boolValue
+        {
+            throw LocalMediaError.importFailed("Refusing to delete media directory \(path)")
+        }
+
+        return url
+    }
+
+    private func mediaRole(for category: LocalMediaCategory) -> FolderSourceMediaRole {
         switch category {
             case .ebook:
-                mediaPath = paths.ebookPath
+                return .ebook
             case .audio:
-                mediaPath = paths.audioPath
+                return .audio
             case .synced:
-                mediaPath = paths.syncedPath
+                return .readaloud
         }
-        return mediaPath?.deletingLastPathComponent()
     }
 
     private func extractImportMetadata(
@@ -1300,86 +1160,6 @@ public actor FolderSourceActor: BookSourceActor {
             status: nil,
             position: nil,
             rating: nil,
-        )
-    }
-
-    private func importAudiobookPackage(
-        from sourceURL: URL,
-        to destinationDirectory: URL,
-        title: String,
-    ) async throws -> URL {
-        let fm = FileManager.default
-        if fm.fileExists(atPath: destinationDirectory.path) {
-            try fm.removeItem(at: destinationDirectory)
-        }
-        try await filesystem.ensureDirectoryExists(at: destinationDirectory)
-
-        if sourceURL.lastPathComponent == "manifest.json" {
-            try copyDirectoryContents(
-                from: sourceURL.deletingLastPathComponent(),
-                to: destinationDirectory,
-            )
-        } else if sourceURL.hasDirectoryPath {
-            try copyDirectoryContents(from: sourceURL, to: destinationDirectory)
-        } else {
-            let destinationURL = destinationDirectory.appendingPathComponent(
-                sourceURL.lastPathComponent,
-                isDirectory: false,
-            )
-            try fm.copyItem(at: sourceURL, to: destinationURL)
-        }
-
-        let manifestURL = destinationDirectory.appendingPathComponent(
-            "manifest.json",
-            isDirectory: false,
-        )
-        if !fm.fileExists(atPath: manifestURL.path) {
-            try await writeAudiobookManifest(in: destinationDirectory, title: title)
-        }
-
-        return manifestURL
-    }
-
-    private func copyDirectoryContents(from sourceDirectory: URL, to destinationDirectory: URL)
-        throws
-    {
-        let fm = FileManager.default
-        let contents = try fm.contentsOfDirectory(
-            at: sourceDirectory,
-            includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles],
-        )
-        for item in contents {
-            let destinationURL = destinationDirectory.appendingPathComponent(
-                item.lastPathComponent,
-                isDirectory: item.hasDirectoryPath,
-            )
-            if fm.fileExists(atPath: destinationURL.path) {
-                try fm.removeItem(at: destinationURL)
-            }
-            try fm.copyItem(at: item, to: destinationURL)
-        }
-    }
-
-    private func writeAudiobookManifest(
-        in audioDirectory: URL,
-        title: String,
-        audioFiles orderedAudioFiles: [URL]? = nil,
-    ) async throws {
-        let audioFiles: [URL]
-        if let orderedAudioFiles {
-            audioFiles = orderedAudioFiles
-        } else {
-            audioFiles = try audiobookMediaFiles(in: audioDirectory)
-        }
-        guard !audioFiles.isEmpty else {
-            throw LocalMediaError.missingAudiobookManifest
-        }
-
-        let data = try await audiobookManifestData(title: title, audioFiles: audioFiles)
-        try data.write(
-            to: audioDirectory.appendingPathComponent("manifest.json", isDirectory: false),
-            options: .atomic,
         )
     }
 
@@ -1441,10 +1221,10 @@ public actor FolderSourceActor: BookSourceActor {
         usedFilenames: inout Set<String>,
     ) async throws -> URL {
         try await filesystem.ensureDirectoryExists(at: destinationDirectory)
-        let filename = uniqueFilename(preferredFilename(for: asset), usedFilenames: &usedFilenames)
-        let destinationURL = destinationDirectory.appendingPathComponent(
-            filename,
-            isDirectory: false,
+        let destinationURL = uniqueAvailableFileURL(
+            named: preferredFilename(for: asset),
+            in: destinationDirectory,
+            usedFilenames: &usedFilenames,
         )
         try asset.data.write(to: destinationURL, options: .atomic)
         return destinationURL
@@ -1465,27 +1245,29 @@ public actor FolderSourceActor: BookSourceActor {
         return lastPathComponent.isEmpty ? fallback : lastPathComponent
     }
 
-    private func uniqueFilename(_ filename: String, usedFilenames: inout Set<String>) -> String {
-        guard usedFilenames.contains(filename) else {
-            usedFilenames.insert(filename)
-            return filename
-        }
-
+    private func uniqueAvailableFileURL(
+        named filename: String,
+        in directory: URL,
+        usedFilenames: inout Set<String>,
+    ) -> URL {
         let url = URL(fileURLWithPath: filename)
         let basename = url.deletingPathExtension().lastPathComponent
         let pathExtension = url.pathExtension
+        var candidate = filename
         var index = 2
-        while true {
-            let candidate =
+        while usedFilenames.contains(candidate)
+            || FileManager.default.fileExists(
+                atPath: directory.appendingPathComponent(candidate, isDirectory: false).path
+            )
+        {
+            candidate =
                 pathExtension.isEmpty
                 ? "\(basename) \(index)"
                 : "\(basename) \(index).\(pathExtension)"
-            if !usedFilenames.contains(candidate) {
-                usedFilenames.insert(candidate)
-                return candidate
-            }
             index += 1
         }
+        usedFilenames.insert(candidate)
+        return directory.appendingPathComponent(candidate, isDirectory: false)
     }
 
     private func localMediaCategory(for format: StorytellerBookFormat) -> LocalMediaCategory {
@@ -1506,28 +1288,6 @@ public actor FolderSourceActor: BookSourceActor {
             case .audiobook:
                 return asset.contentType == "audio/mp4" ? "m4b" : "mp3"
         }
-    }
-
-    private func audiobookMediaFiles(in audioDirectory: URL) throws -> [URL] {
-        let contents = try FileManager.default.contentsOfDirectory(
-            at: audioDirectory,
-            includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles],
-        )
-        return
-            contents
-            .filter { url in
-                guard url.lastPathComponent != "manifest.json",
-                    (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) != true
-                else {
-                    return false
-                }
-                return audiobookMediaExtensions.contains(url.pathExtension.lowercased())
-            }
-            .sorted {
-                $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent)
-                    == .orderedAscending
-            }
     }
 
     private var audiobookMediaExtensions: Set<String> {
@@ -1740,29 +1500,6 @@ public actor FolderSourceActor: BookSourceActor {
         if resolved.didStartAccessing {
             resolved.url.stopAccessingSecurityScopedResource()
         }
-    }
-
-    private func folderName(title: String, uuid: String) -> String {
-        let sanitizedTitle = sanitizedPathComponent(title)
-        let sanitizedUUID = sanitizedPathComponent(uuid)
-        guard !sanitizedTitle.isEmpty else { return sanitizedUUID.isEmpty ? "Book" : sanitizedUUID }
-        guard !sanitizedUUID.isEmpty else { return sanitizedTitle }
-        if sanitizedTitle.caseInsensitiveCompare(sanitizedUUID) == .orderedSame {
-            return sanitizedTitle
-        }
-        return "\(sanitizedTitle) - \(sanitizedUUID)"
-    }
-
-    private func sanitizedPathComponent(_ input: String) -> String {
-        let invalid = CharacterSet(charactersIn: "/\\?%*|\"<>:")
-            .union(.newlines)
-            .union(.controlCharacters)
-        let sanitized =
-            input
-            .components(separatedBy: invalid)
-            .joined(separator: " ")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        return sanitized.isEmpty ? "Book" : sanitized
     }
 
     private func metadata(

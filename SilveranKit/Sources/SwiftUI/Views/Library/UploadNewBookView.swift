@@ -31,8 +31,6 @@ public struct UploadNewBookView: View {
     #if os(iOS)
     @State private var activeImporter: ImporterTarget?
     @State private var pendingImporterTarget: ImporterTarget?
-    @State private var localFiles: [BookMetadata] = []
-    @State private var bookToDelete: BookMetadata?
 
     private enum ImporterTarget: Identifiable {
         case ebook
@@ -90,7 +88,7 @@ public struct UploadNewBookView: View {
                     Text("Select Files")
                 } footer: {
                     Text(
-                        "Select up to three formats. Storyteller destinations upload to the server; folder destinations copy files into that folder source."
+                        "Select up to three formats to upload to the Storyteller server. To add books to a local folder source, copy the files into that folder."
                     )
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -116,9 +114,6 @@ public struct UploadNewBookView: View {
                     }
                 }
 
-                #if os(iOS)
-                localFilesSection
-                #endif
             }
             .formStyle(.grouped)
 
@@ -169,16 +164,8 @@ public struct UploadNewBookView: View {
         #endif
         .task {
             await loadSources()
-            #if os(iOS)
-            await refreshLocalFiles()
-            #endif
         }
         #if os(iOS)
-        .onChange(of: mediaViewModel.library.bookMetaData.count) {
-            Task {
-                await refreshLocalFiles()
-            }
-        }
         .fileImporter(
             isPresented: importerPresentedBinding,
             allowedContentTypes: importerContentTypes,
@@ -269,14 +256,7 @@ public struct UploadNewBookView: View {
         selectedEbookURL != nil || !selectedAudiobookURLs.isEmpty || selectedReadaloudURL != nil
     }
 
-    private var selectedSource: BookSourceRecord? {
-        guard let selectedSourceID else { return nil }
-        return bookSources.first { $0.id == selectedSourceID }
-    }
-
-    private var primaryActionTitle: String {
-        return selectedSource?.kind == .localFolder ? "Add" : "Upload"
-    }
+    private let primaryActionTitle = "Upload"
 
     private func resetForNewUpload() {
         selectedEbookURL = nil
@@ -289,6 +269,7 @@ public struct UploadNewBookView: View {
 
     private func loadSources() async {
         let sources = await BookServiceActor.shared.bookSources
+            .filter { $0.kind == .storyteller }
         await MainActor.run {
             bookSources = sources
             if let selectedSourceID,
@@ -397,123 +378,6 @@ public struct UploadNewBookView: View {
                 selectedReadaloudURL = urls.first
             case nil:
                 break
-        }
-    }
-
-    @ViewBuilder
-    private var localFilesSection: some View {
-        if !localFiles.isEmpty {
-            Section("Local Files") {
-                ForEach(localFiles) { book in
-                    localFileRow(book)
-                }
-            }
-            .confirmationDialog(
-                "Delete \(bookToDelete?.title ?? "this book")?",
-                isPresented: Binding(
-                    get: { bookToDelete != nil },
-                    set: { if !$0 { bookToDelete = nil } },
-                ),
-                titleVisibility: .visible,
-            ) {
-                Button("Delete", role: .destructive) {
-                    if let book = bookToDelete {
-                        deleteLocalFile(book)
-                    }
-                    bookToDelete = nil
-                }
-                Button("Cancel", role: .cancel) {
-                    bookToDelete = nil
-                }
-            } message: {
-                Text("This will permanently remove the files from your device.")
-            }
-        }
-    }
-
-    private func localFileRow(_ book: BookMetadata) -> some View {
-        HStack(spacing: 12) {
-            localFileCover(for: book)
-                .frame(width: 40, height: 60)
-                .clipShape(RoundedRectangle(cornerRadius: 4))
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(book.title)
-                    .font(.body)
-                    .lineLimit(2)
-                if let author = book.authors?.first?.name {
-                    Text(author)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                HStack(spacing: 4) {
-                    if book.hasAvailableEbook {
-                        Label("eBook", systemImage: "book.closed")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                    if book.hasAvailableAudiobook {
-                        Label("Audio", systemImage: "headphones")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
-
-            Spacer()
-
-            Button(role: .destructive) {
-                bookToDelete = book
-            } label: {
-                Image(systemName: "trash")
-                    .foregroundStyle(.red)
-            }
-            .buttonStyle(.plain)
-        }
-    }
-
-    @ViewBuilder
-    private func localFileCover(for book: BookMetadata) -> some View {
-        let image = mediaViewModel.coverImage(for: book, variant: .standard)
-        ZStack {
-            Color.secondary.opacity(0.2)
-            if let image {
-                image
-                    .resizable()
-                    .scaledToFill()
-            } else {
-                Image(systemName: "book.closed.fill")
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .task {
-            mediaViewModel.ensureCoverLoaded(for: book, variant: .standard)
-        }
-    }
-
-    private func refreshLocalFiles() async {
-        let metadata = await BookServiceActor.shared.localFolderBooks()
-        await MainActor.run {
-            localFiles = metadata.sorted {
-                $0.title.articleStrippedCompare($1.title) == .orderedAscending
-            }
-        }
-    }
-
-    private func deleteLocalFile(_ book: BookMetadata) {
-        Task {
-            let success = await BookServiceActor.shared.deleteBook(
-                book.id,
-                sourceID: book.sourceID,
-            )
-            if success {
-                await refreshLocalFiles()
-            } else {
-                debugLog(
-                    "[UploadNewBookView] Failed to delete book: \(book.title)"
-                )
-            }
         }
     }
     #endif

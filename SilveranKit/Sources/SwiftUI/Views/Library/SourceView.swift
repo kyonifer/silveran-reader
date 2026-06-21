@@ -412,7 +412,7 @@ extension SourceView {
             sourceFilterKind: source?.kind,
             emptyStateMessage:
                 source?.kind == .localFolder
-                ? "Copy files into this folder source, or use Add Book to place media here."
+                ? "Copy files into this folder source to add books."
                 : "Use Add Book to add files to this source.",
         ).navigationTitle(sourceName)
         #else
@@ -434,7 +434,7 @@ extension SourceView {
             sourceFilterKind: source?.kind,
             emptyStateMessage:
                 source?.kind == .localFolder
-                ? "Copy files into this folder source, or use Add Book to place media here."
+                ? "Copy files into this folder source to add books."
                 : "Use Add Book to add files to this source.",
         ).navigationTitle(sourceName)
         #endif

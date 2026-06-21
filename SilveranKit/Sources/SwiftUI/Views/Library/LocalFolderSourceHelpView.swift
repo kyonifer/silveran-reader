@@ -32,32 +32,69 @@ struct LocalFolderSourceHelpView: View {
             Divider()
             TabView(selection: $selection) {
                 ForEach(LocalFolderLayoutHelp.allCases) { layout in
-                    layoutTab(layout)
-                        .tag(layout)
-                        .tabItem { Label(layout.title, systemImage: layout.systemImage) }
+                    ScrollView {
+                        layoutTab(layout)
+                    }
+                    .tag(layout)
+                    .tabItem { Label(layout.title, systemImage: layout.systemImage) }
                 }
             }
-            .frame(minWidth: 760, minHeight: 500)
         }
+        #if os(macOS)
+        .frame(width: 820, height: 700)
+        #endif
+        .textSelection(.enabled)
     }
 
     private var header: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Silveran Scans From the Source Folder")
-                    .font(.title2.bold())
-                Text(
-                    "Starting at the top level, Silveran scans the folder source and assumes media is organized in one of these layouts."
-                )
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("How Silveran Finds Your Books")
+                        .font(.title2.bold())
+                    Text("Simply copy files into this folder and they will appear. Silveran automatically groups different media into books according to a set of rules, described below.")
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+                Button("Done") {
+                    dismiss()
+                }
+                .keyboardShortcut(.defaultAction)
+            }
+
+            GroupBox {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("How files are combined into one book")
+                        .font(.headline)
+                    matchingRule(
+                        "Two files in the same folder combine only when one filename is the start of the other, like \"Jade City.epub\" and \"Jade City - Fonda Lee.m4b\". Names that share a common prefix but then differ are kept separate."
+                    )
+                    matchingRule(
+                        "When names are compared, capitalization, punctuation, a trailing number, and format words like readaloud, unabridged, ebook, and audiobook are ignored."
+                    )
+                    matchingRule(
+                        "A book's title and cover come from the file's own embedded details when available, otherwise from the shared name."
+                    )
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            Text("Three common folder layouts are supported, shown in the tabs below.")
                 .foregroundStyle(.secondary)
-            }
-            Spacer()
-            Button("Done") {
-                dismiss()
-            }
-            .keyboardShortcut(.defaultAction)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(20)
+    }
+
+    private func matchingRule(_ text: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text("\u{2022}")
+            Text(text)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .font(.callout)
     }
 
     private func layoutTab(_ layout: LocalFolderLayoutHelp) -> some View {
@@ -83,7 +120,6 @@ struct LocalFolderSourceHelpView: View {
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                Spacer()
             }
             .frame(maxWidth: .infinity, alignment: .topLeading)
 
@@ -199,11 +235,11 @@ private enum LocalFolderLayoutHelp: String, CaseIterable, Identifiable {
     var summary: String {
         switch self {
             case .singleFolder:
-                "Put the ebook, readaloud EPUB, and audiobook files for one work in the same folder. Silveran groups files in that folder when their names share a common prefix."
+                "Put all the files for one book (the ebook, a readaloud EPUB, and the audio tracks) in their own folder. Silveran combines files in that folder when one filename is the start of another."
             case .mediaTypeSubfolders:
-                "Put each work in its own folder, then use audio, ebook, and synced subfolders. This is useful when filenames differ or when you want the media types visually separated."
+                "Give each book its own folder, then sort its files into audio, ebook, and synced subfolders. Here the subfolders do the grouping, so the filenames don't need to match."
             case .collectionFolders:
-                "Put many books in the source folder or in nested collection folders. Silveran uses filename prefixes to group matching media, and files without a match become individual books."
+                "Drop many books straight into the source folder, or sort them into nested folders for collections, series, or authors. Within each folder, files combine when one filename is the start of another; anything without a match becomes its own book."
         }
     }
 
@@ -211,22 +247,24 @@ private enum LocalFolderLayoutHelp: String, CaseIterable, Identifiable {
         switch self {
             case .singleFolder:
                 [
-                    "Audio files must share a meaningful filename prefix.",
-                    "At most one ebook EPUB and one readaloud EPUB are grouped.",
-                    "Subfolders are scanned, but each folder is grouped independently.",
+                    "Names are matched after ignoring case, punctuation, a trailing number, and format words.",
+                    "The shortest name anchors the book; a longer name that starts with it (a title plus an author, say) joins it.",
+                    "One ebook EPUB and one readaloud EPUB per book; the remaining audio files are kept together as the audiobook.",
+                    "Each folder is grouped on its own, so you can keep one book per folder.",
                 ]
             case .mediaTypeSubfolders:
                 [
-                    "Use audio for MP3, M4B, and other audiobook files.",
-                    "Use ebook for a regular EPUB.",
-                    "Use synced for a readaloud EPUB with media overlays.",
+                    "Put the regular EPUB in ebook.",
+                    "Put a readaloud EPUB (with media overlays) in synced.",
+                    "Put the audiobook files (MP3, M4B, and similar) in audio.",
+                    "Everything inside one book folder is treated as a single book, whatever the files are named.",
                 ]
             case .collectionFolders:
                 [
-                    "Books can be flat at the top level of the source.",
-                    "Nested folders can hold collections, series, authors, or any grouping you prefer.",
-                    "Media in the same folder is grouped by filename prefix.",
-                    "Copying new files into the source is enough; no import step is required.",
+                    "Books can sit loose at the top level or inside nested folders.",
+                    "Files are only combined with others in the same folder, never across folders.",
+                    "Within a folder, two files combine when one name is the start of the other, ignoring case, punctuation, trailing numbers, and format words.",
+                    "Just copy files in. There's no import step.",
                 ]
         }
     }
@@ -234,11 +272,11 @@ private enum LocalFolderLayoutHelp: String, CaseIterable, Identifiable {
     var warning: String? {
         switch self {
             case .singleFolder:
-                "If two EPUBs of the same type are in the same group, Silveran keeps them as separate works."
+                "Two files only combine when one name starts with the other. Different spellings of the same title, or a typo, are treated as separate books."
             case .mediaTypeSubfolders:
-                "The folder names audio, ebook, and synced are special only when they are direct children of a work folder."
+                "The names audio, ebook, and synced only have this meaning directly inside a book's folder."
             case .collectionFolders:
-                "Silveran does not group media across different folders. Move files into the same folder when you want them treated as one book."
+                "To combine files into one book, put them in the same folder. Files in different folders are never merged."
         }
     }
 
@@ -250,14 +288,12 @@ private enum LocalFolderLayoutHelp: String, CaseIterable, Identifiable {
                         "My Library/",
                         children: [
                             FileTreeNode(
-                                "This Is How You Lose the Time War/",
+                                "Jade City/",
                                 children: [
-                                    FileTreeNode("This Is How You Lose the Time War.epub"),
-                                    FileTreeNode(
-                                        "This Is How You Lose the Time War readaloud.epub"
-                                    ),
-                                    FileTreeNode("This Is How You Lose the Time War 01.mp3"),
-                                    FileTreeNode("This Is How You Lose the Time War 02.mp3"),
+                                    FileTreeNode("Jade City - Fonda Lee.epub"),
+                                    FileTreeNode("Jade City readaloud.epub"),
+                                    FileTreeNode("Jade City 01.mp3"),
+                                    FileTreeNode("Jade City 02.mp3"),
                                 ],
                             )
                         ],
@@ -269,7 +305,7 @@ private enum LocalFolderLayoutHelp: String, CaseIterable, Identifiable {
                         "My Library/",
                         children: [
                             FileTreeNode(
-                                "This Is How You Lose the Time War/",
+                                "Jade City/",
                                 children: [
                                     FileTreeNode(
                                         "ebook/",

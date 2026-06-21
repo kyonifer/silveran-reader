@@ -1003,7 +1003,7 @@ struct MediaGridView: View {
 
     private var addBookAction: (() -> Void)? {
         #if os(macOS)
-        guard showAddBookButton else {
+        guard showAddBookButton, sourceFilterKind != .localFolder else {
             return nil
         }
         return {

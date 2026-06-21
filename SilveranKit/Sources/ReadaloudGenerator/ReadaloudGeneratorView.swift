@@ -75,16 +75,15 @@ public struct ReadaloudGeneratorView: View {
                 request.onSelect(urls)
             }
         }
-        .alert("Download Media First", isPresented: $isShowingDownloadRequiredAlert) {
+        .alert(sourceMediaRequiredTitle, isPresented: $isShowingDownloadRequiredAlert) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text(
-                "Local alignment needs both the ebook and audiobook to be available locally. Use the download buttons in the Input Media section on the left, then try again."
-            )
+            Text(sourceMediaRequiredMessage)
         }
         .task {
             await viewModel.loadUploadSources()
             await viewModel.configure(with: initialData)
+            await viewModel.refreshSourceInputs()
             ensureDefaultOutputURL()
         }
     }
@@ -492,6 +491,19 @@ public struct ReadaloudGeneratorView: View {
         return viewModel.uploadSources.first { $0.id == viewModel.selectedUploadSourceID }?.kind
     }
 
+    private var sourceMediaRequiredTitle: String {
+        selectedSourceKind == .localFolder ? "Media Files Not Found" : "Download Media First"
+    }
+
+    private var sourceMediaRequiredMessage: String {
+        if selectedSourceKind == .localFolder {
+            return
+                "Local alignment needs both an EPUB and audiobook in the folder source. Check that the files are still present and grouped by one of the supported folder layouts."
+        }
+        return
+            "Local alignment needs both the ebook and audiobook to be available locally. Use the download buttons in the Input Media section on the left, then try again."
+    }
+
     private var customFolderOverrideBinding: Binding<Bool> {
         Binding(
             get: { !viewModel.uploadAllToServer },
@@ -555,10 +567,14 @@ public struct ReadaloudGeneratorView: View {
         iconName: String,
     ) -> some View {
         let item = sourceWorkflowBook
+        let resolvedURL = sourceMediaURL(for: category)
+        let cachedDownloadAvailable =
+            selectedSourceKind == .localFolder
+            ? false
+            : (item.map { mediaViewModel.isCategoryDownloaded(category, for: $0) } ?? false)
         let isDownloaded =
-            item.map {
-                mediaViewModel.isCategoryDownloaded(category, for: $0)
-            } ?? (sourceMediaURL(for: category) != nil)
+            resolvedURL != nil
+            || cachedDownloadAvailable
         let isDownloading =
             item.map {
                 mediaViewModel.isCategoryDownloadInProgress(for: $0, category: category)
@@ -566,6 +582,10 @@ public struct ReadaloudGeneratorView: View {
         let progress = item.flatMap {
             mediaViewModel.downloadProgressFraction(for: $0, category: category)
         }
+        let missingDetail =
+            selectedSourceKind == .localFolder
+            ? "File not found in folder source"
+            : "Download required before alignment"
 
         return HStack(spacing: 10) {
             Image(systemName: iconName)
@@ -580,7 +600,7 @@ public struct ReadaloudGeneratorView: View {
                         ? "Downloaded"
                         : isDownloading
                             ? "Downloading..."
-                            : "Download required before alignment"
+                            : missingDetail
                 )
                 .font(.caption)
                 .foregroundStyle(
@@ -609,6 +629,11 @@ public struct ReadaloudGeneratorView: View {
                 }
                 .frame(width: 18, height: 18)
                 .help("Downloading \(title)")
+            } else if selectedSourceKind == .localFolder {
+                Image(systemName: "exclamationmark.triangle")
+                    .foregroundStyle(.orange)
+                    .font(.title3)
+                    .help("Missing \(title)")
             } else {
                 Button {
                     if let item {
@@ -867,12 +892,16 @@ public struct ReadaloudGeneratorView: View {
                     Spacer()
 
                     Button {
-                        ensureDefaultOutputURL()
-                        refreshSourceMediaInputs()
-                        if isSourceWorkflowMediaMissing || viewModel.isMissingSourceWorkflowMedia {
-                            showDownloadRequiredAlert()
-                        } else {
-                            viewModel.startAlignment()
+                        Task {
+                            ensureDefaultOutputURL()
+                            await viewModel.refreshSourceInputs()
+                            if isSourceWorkflowMediaMissing
+                                || viewModel.isMissingSourceWorkflowMedia
+                            {
+                                showDownloadRequiredAlert()
+                            } else {
+                                viewModel.startAlignment()
+                            }
                         }
                     } label: {
                         Text("Create Readaloud")
@@ -915,51 +944,7 @@ public struct ReadaloudGeneratorView: View {
 
     private var isSourceWorkflowMediaMissing: Bool {
         guard isSourceWorkflow else { return false }
-        guard let item = sourceWorkflowBook else {
-            return viewModel.epubURL == nil || viewModel.audioURLs.isEmpty
-        }
-        return !mediaViewModel.isCategoryDownloaded(.ebook, for: item)
-            || !mediaViewModel.isCategoryDownloaded(.audio, for: item)
-    }
-
-    private func refreshSourceMediaInputs() {
-        guard let bookID = viewModel.sourceOutputBookID else { return }
-
-        let newEpubURL = mediaViewModel.localMediaPath(for: bookID, category: .ebook)
-        let newAudioURLs =
-            mediaViewModel.localMediaPath(for: bookID, category: .audio)
-            .map(resolveSourceAudioURLs) ?? []
-
-        let shouldReloadChapters = viewModel.epubURL == nil && newEpubURL != nil
-        viewModel.epubURL = newEpubURL
-        viewModel.audioURLs = newAudioURLs
-        if shouldReloadChapters {
-            viewModel.loadChapters()
-        }
-    }
-
-    private func resolveSourceAudioURLs(_ url: URL) -> [URL] {
-        guard url.lastPathComponent == "manifest.json" else { return [url] }
-
-        struct Manifest: Decodable {
-            let readingOrder: [ReadingOrderItem]
-        }
-
-        struct ReadingOrderItem: Decodable {
-            let href: String
-        }
-
-        do {
-            let data = try Data(contentsOf: url)
-            let manifest = try JSONDecoder().decode(Manifest.self, from: data)
-            return manifest.readingOrder.compactMap { item in
-                let audioURL = url.deletingLastPathComponent().appendingPathComponent(item.href)
-                return FileManager.default.fileExists(atPath: audioURL.path) ? audioURL : nil
-            }
-        } catch {
-            debugLog("[ReadaloudGenerator] Failed to resolve source audiobook manifest: \(error)")
-            return []
-        }
+        return viewModel.isMissingSourceWorkflowMedia
     }
 
     private var disabledReason: String {
@@ -967,6 +952,9 @@ public struct ReadaloudGeneratorView: View {
             return "Loading source media..."
         }
         if isSourceWorkflowMediaMissing {
+            if selectedSourceKind == .localFolder {
+                return "Missing EPUB or audiobook in folder source"
+            }
             return "Download missing media from the Input Media section"
         }
         if viewModel.uploadAllToServer {
