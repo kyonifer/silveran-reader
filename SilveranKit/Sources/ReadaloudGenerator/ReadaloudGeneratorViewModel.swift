@@ -438,7 +438,14 @@ public final class ReadaloudGeneratorViewModel {
             if uploadAllToServer {
                 await MainActor.run {
                     self.currentStage = .export
-                    self.currentMessage = "Writing to source..."
+                    self.currentMessage = "Uploading to source..."
+                    self.overallProgress = 0.0
+                }
+
+                let onUploadProgress: @Sendable (Double) -> Void = { [weak self] fraction in
+                    Task { @MainActor in
+                        self?.overallProgress = min(max(fraction, 0), 1)
+                    }
                 }
 
                 let success: Bool
@@ -448,6 +455,7 @@ public final class ReadaloudGeneratorViewModel {
                         bookID: sourceOutputBookID,
                         sourceID: selectedUploadSourceID,
                         filename: readaloudFilename(for: epubURL),
+                        onProgress: onUploadProgress,
                     )
                 } else {
                     success = try await uploadGeneratedBook(
@@ -455,6 +463,7 @@ public final class ReadaloudGeneratorViewModel {
                         audioURLs: audioURLs,
                         readaloudURL: result.alignedEpubURL,
                         sourceID: selectedUploadSourceID,
+                        onProgress: onUploadProgress,
                     )
                 }
                 guard success else {
@@ -507,6 +516,7 @@ public final class ReadaloudGeneratorViewModel {
         audioURLs: [URL],
         readaloudURL: URL,
         sourceID: BookSourceID?,
+        onProgress: (@Sendable (Double) -> Void)? = nil,
     ) async throws -> Bool {
         let ebookData = try Data(contentsOf: epubURL)
         let readaloudData = try Data(contentsOf: readaloudURL)
@@ -538,6 +548,7 @@ public final class ReadaloudGeneratorViewModel {
                 contentType: "application/epub+zip",
                 relativePath: nil,
             ),
+            onProgress: onProgress,
         )
     }
 
@@ -565,6 +576,7 @@ public final class ReadaloudGeneratorViewModel {
         bookID: String,
         sourceID: BookSourceID?,
         filename: String,
+        onProgress: (@Sendable (Double) -> Void)? = nil,
     ) async throws -> Bool {
         guard let sourceID else { return false }
         let status = await BookServiceActor.shared.connectionStatus(sourceID: sourceID)
@@ -581,6 +593,7 @@ public final class ReadaloudGeneratorViewModel {
             bookUUID: bookID,
             sourceID: sourceID,
             replaceMetadata: false,
+            onProgress: onProgress,
         )
         if case .success = result {
             return true

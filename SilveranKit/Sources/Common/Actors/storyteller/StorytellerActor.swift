@@ -1682,6 +1682,7 @@ public actor StorytellerActor {
         _ asset: StorytellerUploadAsset,
         bookUUID: String,
         replaceMetadata: Bool = false,
+        onSendProgress: (@Sendable (Int64, Int64) -> Void)? = nil,
     ) async -> ReplaceAssetResult {
         guard let (baseURL, token) = await ensureAuthentication() else { return .failed }
 
@@ -1802,6 +1803,7 @@ public actor StorytellerActor {
                 body: asset.data,
                 session: urlSession,
                 allowedStatusCodes: patchAllowedStatuses,
+                onSendProgress: onSendProgress,
             )
 
             guard

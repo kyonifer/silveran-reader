@@ -5,52 +5,118 @@ struct iOSReadaloudContextMenuContent: View {
     let item: BookMetadata
     @Environment(MediaViewModel.self) private var mediaViewModel
 
-    private var canCreateOnServer: Bool {
+    private var isServerBook: Bool {
         mediaViewModel.isServerBook(item.id)
     }
 
-    private var canCreateLocally: Bool {
-        mediaViewModel.isServerBook(item.id) || mediaViewModel.isLocalFolderBook(item.id)
+    private var canAlignLocally: Bool {
+        item.hasAvailableEbook && item.hasAvailableAudiobook
+            && (isServerBook || mediaViewModel.isLocalFolderBook(item.id))
     }
 
-    private var readaloudStatus: String? {
-        item.readaloud?.status?.uppercased()
+    private var localAlignTitle: String {
+        item.hasAvailableReadaloud ? "Recreate Readaloud" : "Create Readaloud"
     }
 
-    private var isErrorOrStopped: Bool {
-        readaloudStatus == "ERROR" || readaloudStatus == "STOPPED"
+    private var readaloudStatus: String {
+        item.readaloud?.status?.uppercased() ?? ""
+    }
+
+    private var hasServerActions: Bool {
+        guard isServerBook else { return false }
+        switch readaloudStatus {
+            case "PROCESSING", "QUEUED", "ALIGNED", "ERROR", "STOPPED":
+                return true
+            default:
+                return item.hasAvailableEbook && item.hasAvailableAudiobook
+        }
     }
 
     var body: some View {
-        if item.canShowCreateReadaloud && (canCreateOnServer || canCreateLocally) {
+        if canAlignLocally || hasServerActions {
             Menu {
-                if canCreateOnServer {
-                    Button {
-                        startServerAlignment()
-                    } label: {
-                        Label("Create on Server", systemImage: "server.rack")
+                if canAlignLocally {
+                    Section("This Device") {
+                        Button {
+                            openLocalGenerator()
+                        } label: {
+                            Label(localAlignTitle, systemImage: "iphone")
+                        }
                     }
                 }
 
-                if canCreateLocally {
-                    Button {
-                        openLocalGenerator()
-                    } label: {
-                        Label("Create Locally", systemImage: "iphone")
+                if hasServerActions {
+                    Section("Server") {
+                        serverActions
                     }
                 }
             } label: {
-                Label("Create Readaloud", systemImage: "waveform")
+                Label("Readaloud", systemImage: "waveform")
             }
         }
     }
 
-    private func startServerAlignment() {
+    @ViewBuilder
+    private var serverActions: some View {
+        switch readaloudStatus {
+            case "PROCESSING", "QUEUED":
+                Button {
+                    cancelAlignment()
+                } label: {
+                    Label("Cancel Readaloud Processing", systemImage: "xmark.circle")
+                }
+            case "ALIGNED":
+                Button {
+                    startServerAlignment(.sync)
+                } label: {
+                    Label("Re-align Readaloud (Fast)", systemImage: "arrow.triangle.2.circlepath")
+                }
+                Button {
+                    startServerAlignment(.transcription)
+                } label: {
+                    Label("Re-transcribe & Align Readaloud", systemImage: "waveform")
+                }
+                Button {
+                    startServerAlignment(.full)
+                } label: {
+                    Label("Fully Reprocess Readaloud", systemImage: "arrow.counterclockwise")
+                }
+            case "ERROR", "STOPPED":
+                Button {
+                    startServerAlignment(.full)
+                } label: {
+                    Label("Retry Readaloud Processing", systemImage: "arrow.counterclockwise")
+                }
+                Button {
+                    startServerAlignment(.sync)
+                } label: {
+                    Label("Re-align Readaloud Only", systemImage: "arrow.triangle.2.circlepath")
+                }
+            default:
+                Button {
+                    startServerAlignment(.none)
+                } label: {
+                    Label("Create on Server", systemImage: "server.rack")
+                }
+        }
+    }
+
+    private func startServerAlignment(_ restart: AlignmentRestartMode) {
         Task {
             _ = await BookServiceActor.shared.startAlignment(
                 for: item.uuid,
                 sourceID: item.sourceID,
-                restart: isErrorOrStopped ? .full : .none,
+                restart: restart,
+            )
+            await BookServiceActor.shared.fetchLibraryInformation()
+        }
+    }
+
+    private func cancelAlignment() {
+        Task {
+            _ = await BookServiceActor.shared.cancelAlignment(
+                for: item.uuid,
+                sourceID: item.sourceID,
             )
             await BookServiceActor.shared.fetchLibraryInformation()
         }

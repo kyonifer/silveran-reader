@@ -1360,6 +1360,7 @@ public actor BookServiceActor {
         bookUUID: String,
         sourceID: BookSourceID? = nil,
         replaceMetadata: Bool = false,
+        onProgress: (@Sendable (Double) -> Void)? = nil,
     ) async -> StorytellerActor.ReplaceAssetResult {
         await ensureSourceRegistryLoaded()
         guard let resolvedSourceID = resolveExplicitSourceID(sourceID),
@@ -1371,10 +1372,18 @@ public actor BookServiceActor {
         switch sourceRecords.first(where: { $0.id == resolvedSourceID })?.kind {
             case .storyteller:
                 guard let storyteller = source as? StorytellerActor else { return .failed }
+                var onSendProgress: (@Sendable (Int64, Int64) -> Void)?
+                if let onProgress {
+                    onSendProgress = { sent, total in
+                        guard total > 0 else { return }
+                        onProgress(Double(sent) / Double(total))
+                    }
+                }
                 let result = await storyteller.replaceBookAsset(
                     asset,
                     bookUUID: bookUUID,
                     replaceMetadata: replaceMetadata,
+                    onSendProgress: onSendProgress,
                 )
                 if case .success = result {
                     try? await LocalMediaActor.shared.deleteMedia(
@@ -1392,6 +1401,7 @@ public actor BookServiceActor {
                         bookName: asset.filename,
                         bookUUID: bookUUID,
                     )
+                    onProgress?(1.0)
                     await notifyLibraryObservers()
                     return .success
                 } catch {
