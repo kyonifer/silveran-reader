@@ -498,6 +498,15 @@ public actor StorytellerActor {
         let task = Task {
             authenticationTask = nil
             defer { authenticationTask = nil }
+            let authStart = CFAbsoluteTimeGetCurrent()
+            let authHost = apiBaseURL.host ?? "?"
+            debugLog("[ConnDiag] authenticate start host=\(authHost)")
+            defer {
+                let authElapsed = (CFAbsoluteTimeGetCurrent() - authStart) * 1000
+                debugLog(
+                    "[ConnDiag] authenticate finished host=\(authHost) elapsed=\(String(format: "%.0f", authElapsed))ms"
+                )
+            }
             do {
                 let tokenURL = apiBaseURL.appendingPathComponent("token")
 

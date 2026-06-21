@@ -192,20 +192,22 @@ struct MediaItemCardTopTabsButtonOverlay: View {
     }
 
     private var hasConnectionError: Bool {
-        if mediaViewModel.lastNetworkOpSucceeded == false { return true }
-        if case .error = mediaViewModel.connectionStatus { return true }
-        return false
+        mediaViewModel.hasConnectionError(forSourceID: item.sourceID)
+    }
+
+    private var sourceStatus: ConnectionStatus {
+        mediaViewModel.connectionStatus(forSourceID: item.sourceID)
     }
 
     private var connectionAlertTitle: String {
-        if case .error = mediaViewModel.connectionStatus {
+        if case .error = sourceStatus {
             return "Connection Error"
         }
         return "Server Not Connected"
     }
 
     private var connectionAlertMessage: String {
-        if case .error(let message) = mediaViewModel.connectionStatus {
+        if case .error(let message) = sourceStatus {
             return
                 "Unable to download: \(message). Please check your server credentials in Settings."
         }

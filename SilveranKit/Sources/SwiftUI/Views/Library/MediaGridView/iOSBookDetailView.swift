@@ -526,9 +526,7 @@ private struct iOSMediaButton: View {
     }
 
     private var hasConnectionError: Bool {
-        if mediaViewModel.lastNetworkOpSucceeded == false { return true }
-        if case .error = mediaViewModel.connectionStatus { return true }
-        return false
+        mediaViewModel.hasConnectionError(forSourceID: item.sourceID)
     }
 
     private var buttonLabel: String {

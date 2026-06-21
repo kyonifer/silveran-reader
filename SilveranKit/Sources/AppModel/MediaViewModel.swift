@@ -126,6 +126,32 @@ public final class MediaViewModel {
         }
         return anyServerError ? "exclamationmark.triangle" : "wifi.slash"
     }
+
+    /// Connectivity for a single source, read from the cached `sourceConnectionInfos` so
+    /// per-book download buttons don't each hit the actor. Falls back to the global status
+    /// when the source isn't in the cache yet.
+    public func connectionStatus(forSourceID sourceID: BookSourceID?) -> ConnectionStatus {
+        guard let info = sourceConnectionInfos.first(where: { $0.id == sourceID }) else {
+            return connectionStatus
+        }
+        return info.status
+    }
+
+    /// True only when the book's own source can't currently download. A failure on a
+    /// different source must not disable this book's buttons. Folder sources are local and
+    /// never count as an error.
+    public func hasConnectionError(forSourceID sourceID: BookSourceID?) -> Bool {
+        guard let info = sourceConnectionInfos.first(where: { $0.id == sourceID }) else {
+            if lastNetworkOpSucceeded == false { return true }
+            if case .error = connectionStatus { return true }
+            return false
+        }
+        guard info.kind == .storyteller else { return false }
+        if info.lastNetworkOpSucceeded == false { return true }
+        if case .error = info.status { return true }
+        return false
+    }
+
     public var cachedConfig: SilveranGlobalConfig = SilveranGlobalConfig()
     public var pendingSyncsByBook: [String: PendingProgressSync] = [:]
     public var syncNotification: SyncNotification?
@@ -2078,7 +2104,7 @@ public final class MediaViewModel {
             return
         }
 
-        let isConnected = connectionStatus == .connected
+        let isConnected = connectionStatus(forSourceID: item.sourceID) == .connected
         let limiter = coverLoadLimiter
         recordCoverTrace("start", source: debugSource)
         debugCoverLog(
@@ -2271,6 +2297,7 @@ public final class MediaViewModel {
         isConnected: Bool,
     ) async -> CoverLoadResult {
         let params = variant.requestParameters
+        let coverStart = CFAbsoluteTimeGetCurrent()
         let response = await BookServiceActor.shared.loadCover(
             for: item.id,
             sourceID: item.sourceID,
@@ -2280,6 +2307,10 @@ public final class MediaViewModel {
             version: item.updatedAt,
             allowNetwork: isConnected,
             policy: .cachedThenFetch,
+        )
+        let coverElapsed = (CFAbsoluteTimeGetCurrent() - coverStart) * 1000
+        debugLog(
+            "[CoverDiag] book=\(item.id) source=\(item.sourceID ?? "nil") allowNetwork=\(isConnected) result=\(response.diagLabel) elapsed=\(String(format: "%.0f", coverElapsed))ms"
         )
         switch response {
             case .cached(let data):
@@ -2315,7 +2346,7 @@ public final class MediaViewModel {
         let hadExistingImage = coverStates[key]?.image != nil
         missingCoverKeys.remove(key)
 
-        guard connectionStatus == .connected else {
+        guard connectionStatus(forSourceID: item.sourceID) == .connected else {
             debugLog(
                 "[MetadataCoverRefresh] MediaVM refreshCover skipped disconnected bookID=\(item.id) variant=\(variant) hadExistingImage=\(hadExistingImage)"
             )

@@ -258,13 +258,15 @@ struct MediaDownloadOptionRow: View {
     @State private var isDownloadAreaHovered = false
 
     private var hasConnectionError: Bool {
-        if mediaViewModel.lastNetworkOpSucceeded == false { return true }
-        if case .error = mediaViewModel.connectionStatus { return true }
-        return false
+        mediaViewModel.hasConnectionError(forSourceID: item.sourceID)
+    }
+
+    private var sourceStatus: ConnectionStatus {
+        mediaViewModel.connectionStatus(forSourceID: item.sourceID)
     }
 
     private var isAuthError: Bool {
-        if case .error = mediaViewModel.connectionStatus { return true }
+        if case .error = sourceStatus { return true }
         return false
     }
 
@@ -273,7 +275,7 @@ struct MediaDownloadOptionRow: View {
     }
 
     private var connectionAlertMessage: String {
-        if case .error(let message) = mediaViewModel.connectionStatus {
+        if case .error(let message) = sourceStatus {
             return
                 "Unable to download: \(message). Please check your server credentials in Settings."
         }

@@ -169,12 +169,17 @@ public actor BookServiceActor {
         for record in sourceRecords {
             guard let source = sourcesByID[record.id] else { continue }
             let status = await source.connectionStatus
+            var netOpSucceeded: Bool? = nil
+            if let storyteller = source as? StorytellerActor {
+                netOpSucceeded = await storyteller.lastNetworkOpSucceeded
+            }
             result.append(
                 SourceConnectionInfo(
                     id: record.id,
                     name: record.name,
                     kind: record.kind,
                     status: status,
+                    lastNetworkOpSucceeded: netOpSucceeded,
                 )
             )
         }
@@ -487,11 +492,21 @@ public actor BookServiceActor {
         var metadata: [BookMetadata] = []
         var sawSource = false
 
+        let loopStart = CFAbsoluteTimeGetCurrent()
+        debugLog(
+            "[ConnDiag] fetchLibraryInformation: serial loop over \(sourceRecords.count) sources start"
+        )
         for record in sourceRecords {
             guard let source = sourcesByID[record.id] else { continue }
             sawSource = true
 
-            guard let sourceMetadata = await source.fetchLibraryInformation() else {
+            let sourceStart = CFAbsoluteTimeGetCurrent()
+            let sourceMetadataOptional = await source.fetchLibraryInformation()
+            let sourceElapsed = (CFAbsoluteTimeGetCurrent() - sourceStart) * 1000
+            debugLog(
+                "[ConnDiag] fetchLibraryInformation: source='\(record.name)' kind=\(record.kind) elapsed=\(String(format: "%.0f", sourceElapsed))ms books=\(sourceMetadataOptional?.count ?? -1)"
+            )
+            guard let sourceMetadata = sourceMetadataOptional else {
                 continue
             }
 
@@ -509,6 +524,11 @@ public actor BookServiceActor {
                 )
             }
         }
+
+        let loopElapsed = (CFAbsoluteTimeGetCurrent() - loopStart) * 1000
+        debugLog(
+            "[ConnDiag] fetchLibraryInformation: serial loop done total=\(String(format: "%.0f", loopElapsed))ms books=\(metadata.count)"
+        )
 
         guard sawSource else { return nil }
         return metadata

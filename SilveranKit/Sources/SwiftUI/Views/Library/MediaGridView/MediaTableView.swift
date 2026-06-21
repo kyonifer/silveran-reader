@@ -2845,9 +2845,7 @@ private struct MediaIndicatorCellContent: View {
     private let buttonSize: CGFloat = 28
 
     private var hasConnectionError: Bool {
-        if mediaViewModel.lastNetworkOpSucceeded == false { return true }
-        if case .error = mediaViewModel.connectionStatus { return true }
-        return false
+        mediaViewModel.hasConnectionError(forSourceID: item.sourceID)
     }
 
     var body: some View {

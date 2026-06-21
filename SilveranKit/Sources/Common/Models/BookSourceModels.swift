@@ -12,12 +12,20 @@ public struct SourceConnectionInfo: Sendable, Identifiable, Equatable {
     public let name: String
     public let kind: BookSourceKind
     public let status: ConnectionStatus
+    public let lastNetworkOpSucceeded: Bool?
 
-    public init(id: BookSourceID, name: String, kind: BookSourceKind, status: ConnectionStatus) {
+    public init(
+        id: BookSourceID,
+        name: String,
+        kind: BookSourceKind,
+        status: ConnectionStatus,
+        lastNetworkOpSucceeded: Bool? = nil,
+    ) {
         self.id = id
         self.name = name
         self.kind = kind
         self.status = status
+        self.lastNetworkOpSucceeded = lastNetworkOpSucceeded
     }
 }
 
@@ -192,6 +200,15 @@ public enum CoverLoadResponse: Sendable {
     case fetched(BookCover)
     case missing
     case skippedOffline
+
+    public var diagLabel: String {
+        switch self {
+            case .cached(let data): return "cached(\(data.count)b)"
+            case .fetched(let cover): return "fetched(\(cover.data.count)b)"
+            case .missing: return "missing"
+            case .skippedOffline: return "skippedOffline"
+        }
+    }
 }
 
 public struct BookRefreshResult: Sendable, Hashable {

@@ -637,6 +637,13 @@ struct SidebarView: View {
             Label(item.name, systemImage: item.systemImage)
                 .tag(item.id)
 
+            if case .bookSource(let sourceID) = item.content,
+                let info = mediaViewModel.sourceConnectionInfos.first(where: { $0.id == sourceID }),
+                info.kind == .storyteller
+            {
+                sourceConnectionDot(for: info.status)
+            }
+
             Spacer()
 
             #if os(macOS)
@@ -855,6 +862,20 @@ struct SidebarView: View {
             }
         }
         return resolvePin(id: id)
+    }
+
+    @ViewBuilder
+    private func sourceConnectionDot(for status: ConnectionStatus) -> some View {
+        let color: Color =
+            switch status {
+                case .connected: .green
+                case .connecting: .yellow
+                case .error: .red
+                case .disconnected: .gray
+            }
+        Circle()
+            .fill(color)
+            .frame(width: 8, height: 8)
     }
 
     @ViewBuilder
