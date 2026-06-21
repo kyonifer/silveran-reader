@@ -830,7 +830,6 @@ public struct ServerMediaManagementView: View {
                 errorMessage = "Failed to delete \(format.rawValue)"
         }
 
-        await refreshBookMetadata()
         deletingAssetFormat = nil
     }
 

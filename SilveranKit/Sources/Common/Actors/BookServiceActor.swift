@@ -1258,10 +1258,17 @@ public actor BookServiceActor {
             case .storyteller:
                 guard let storyteller = source as? StorytellerActor else { return .failed }
                 let result = await storyteller.deleteBookAsset(bookId, type: type)
-                if case .success = result {
+                if case .success(let updatedBook) = result {
                     try? await LocalMediaActor.shared.deleteMedia(
                         for: bookId,
                         category: localMediaCategory(for: type),
+                        sourceID: resolvedSourceID,
+                    )
+                    // The DELETE response is authoritative for this book; write it
+                    // straight to the cache (which notifies observers) so the UI
+                    // updates without a full multi-source library refetch.
+                    try? await LocalMediaActor.shared.updateSourceCacheBookMetadata(
+                        updatedBook,
                         sourceID: resolvedSourceID,
                     )
                 }
