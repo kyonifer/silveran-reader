@@ -139,7 +139,6 @@ private struct iOSRootView: View {
     @State private var restoreStartupFinished = !LastOpenBookStore.hasSavedRoute
     @State private var restoredPlayer: PlayerBookData?
     @State private var readaloudGeneratorData: ReadaloudGeneratorData?
-    @State private var isShowingReadaloudGenerator = false
 
     var body: some View {
         Group {
@@ -157,16 +156,15 @@ private struct iOSRootView: View {
         .onReceive(NotificationCenter.default.publisher(for: .silveranCreateReadaloud)) {
             notification in
             readaloudGeneratorData = notification.object as? ReadaloudGeneratorData
-            isShowingReadaloudGenerator = true
         }
-        .sheet(isPresented: $isShowingReadaloudGenerator) {
+        .sheet(item: $readaloudGeneratorData) { data in
             NavigationStack {
-                ReadaloudGeneratorView(initialData: readaloudGeneratorData)
+                ReadaloudGeneratorView(initialData: data)
                     .environment(mediaViewModel)
                     .toolbar {
                         ToolbarItem(placement: .topBarTrailing) {
                             Button("Done") {
-                                isShowingReadaloudGenerator = false
+                                readaloudGeneratorData = nil
                             }
                         }
                     }

@@ -10,7 +10,8 @@ public enum ReadaloudGeneratorDestination: String, Codable, Hashable, Sendable {
     case source
 }
 
-public struct ReadaloudGeneratorData: Codable, Hashable, Sendable {
+public struct ReadaloudGeneratorData: Codable, Hashable, Sendable, Identifiable {
+    public var id: String { bookID }
     public let bookID: String
     public let bookTitle: String
     public let sourceID: BookSourceID?

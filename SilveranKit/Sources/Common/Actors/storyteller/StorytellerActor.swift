@@ -507,6 +507,9 @@ public actor StorytellerActor {
                     "[ConnDiag] authenticate finished host=\(authHost) elapsed=\(String(format: "%.0f", authElapsed))ms"
                 )
             }
+            if connectionStatus != .connecting {
+                await updateConnectionStatus(.connecting)
+            }
             do {
                 let tokenURL = apiBaseURL.appendingPathComponent("token")
 

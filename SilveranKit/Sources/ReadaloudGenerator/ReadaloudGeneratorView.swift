@@ -35,6 +35,10 @@ public struct ReadaloudGeneratorView: View {
                 viewModel.loadChapters()
                 ensureDefaultOutputURL()
             }
+            .onChange(of: sourceMediaDownloadInProgress) { _, inProgress in
+                guard !inProgress else { return }
+                Task { await viewModel.refreshSourceInputs() }
+            }
             if case .processing = viewModel.state {
                 Divider()
                 progressSection
@@ -519,6 +523,12 @@ public struct ReadaloudGeneratorView: View {
     private var sourceWorkflowBook: BookMetadata? {
         guard let bookID = viewModel.sourceOutputBookID else { return nil }
         return mediaViewModel.library.bookMetaData.first { $0.id == bookID }
+    }
+
+    private var sourceMediaDownloadInProgress: Bool {
+        guard let item = sourceWorkflowBook else { return false }
+        return mediaViewModel.isCategoryDownloadInProgress(for: item, category: .ebook)
+            || mediaViewModel.isCategoryDownloadInProgress(for: item, category: .audio)
     }
 
     private func lockedSelectionRow(
