@@ -114,7 +114,13 @@ public actor StorytellerActor {
     }
 
     private func logStorytellerError(_ message: String, error: Error) {
-        debugLog("[StorytellerActor] \(message): \(error)")
+        if let urlError = error as? URLError {
+            debugLog(
+                "[StorytellerActor] \(message): \(urlError.code.rawValue) \(urlError.localizedDescription) host=\(apiBaseURL?.host ?? "?")"
+            )
+        } else {
+            debugLog("[StorytellerActor] \(message): \(error)")
+        }
         Task {
             await self.recordNetworkError(error)
         }
@@ -263,12 +269,7 @@ public actor StorytellerActor {
 
     private func canAttemptReconnect() -> Bool {
         guard let cooldownUntil = reconnectCooldownUntil else { return true }
-        if cooldownUntil > Date() {
-            let remaining = Int(cooldownUntil.timeIntervalSinceNow)
-            debugLog("[StorytellerActor] attemptReconnect: cooling down (\(remaining)s)")
-            return false
-        }
-        return true
+        return cooldownUntil <= Date()
     }
 
     private func scheduleReconnectBackoff() {
@@ -299,7 +300,6 @@ public actor StorytellerActor {
             return true
         } else {
             debugLog("[StorytellerActor] attemptReconnect: failed")
-            scheduleReconnectBackoff()
             return false
         }
     }
@@ -501,8 +501,13 @@ public actor StorytellerActor {
             return await task.value
         }
 
+        /// A source that just failed is in backoff; short-circuit so lazy callers
+        /// (cover loads, refresh, progress sync) don't re-probe a dead server every tick.
+        guard canAttemptReconnect() else {
+            return false
+        }
+
         let task = Task {
-            authenticationTask = nil
             defer { authenticationTask = nil }
             let authStart = CFAbsoluteTimeGetCurrent()
             let authHost = apiBaseURL.host ?? "?"
@@ -532,6 +537,7 @@ public actor StorytellerActor {
                 )
 
                 self.accessToken = try decoder.decode(AccessToken.self, from: response.data)
+                resetReconnectBackoff()
                 return true
             } catch let error as HTTPRequestError {
                 logStorytellerError("authenticate", error: error)
@@ -541,14 +547,17 @@ public actor StorytellerActor {
                     default:
                         await updateConnectionStatus(.error("Connection failed"))
                 }
+                scheduleReconnectBackoff()
                 return false
             } catch let error as URLError {
                 logStorytellerError("authenticate", error: error)
                 await updateConnectionStatus(.error("Connection failed"))
+                scheduleReconnectBackoff()
                 return false
             } catch {
                 logStorytellerError("authenticate", error: error)
                 await updateConnectionStatus(.error("Connection failed"))
+                scheduleReconnectBackoff()
                 return false
             }
         }
@@ -576,7 +585,6 @@ public actor StorytellerActor {
             return (apiBaseURL, accessToken)
         }
 
-        debugLog("[StorytellerActor] ensureAuthentication: authentication failed")
         return nil
     }
 
