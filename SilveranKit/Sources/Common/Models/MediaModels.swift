@@ -759,7 +759,6 @@ public struct SeriesSortKey: Comparable, Hashable, Sendable {
     }
 }
 
-@PublicInit
 public struct BookMetadata: Codable, Sendable, Identifiable, Hashable {
     public let uuid: String
     public let title: String
@@ -789,6 +788,64 @@ public struct BookMetadata: Codable, Sendable, Identifiable, Hashable {
     public var sourceID: BookSourceID? = nil
     public var source: String? = nil
     public var id: String { uuid }
+
+    public init(
+        uuid: String,
+        title: String,
+        subtitle: String?,
+        description: String?,
+        language: String?,
+        createdAt: String?,
+        updatedAt: String?,
+        publicationDate: String?,
+        authors: [BookCreator]?,
+        narrators: [BookCreator]?,
+        creators: [BookCreator]?,
+        series: [BookSeries]?,
+        tags: [BookTag]?,
+        collections: [BookCollectionSummary]?,
+        ebook: BookAsset?,
+        audiobook: BookAsset?,
+        readaloud: BookReadaloud?,
+        status: BookStatus?,
+        position: BookReadingPosition?,
+        rating: Double?,
+        pageCount: Int? = nil,
+        duration: Double? = nil,
+        alignedAt: String? = nil,
+        alignedByStorytellerVersion: String? = nil,
+        alignedWith: String? = nil,
+        sourceID: BookSourceID? = nil,
+        source: String? = nil,
+    ) {
+        self.uuid = uuid
+        self.title = title
+        self.subtitle = subtitle
+        self.description = description
+        self.language = language
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+        self.publicationDate = publicationDate
+        self.authors = authors
+        self.narrators = narrators
+        self.creators = creators
+        self.series = series
+        self.tags = tags
+        self.collections = collections
+        self.ebook = ebook
+        self.audiobook = audiobook
+        self.readaloud = readaloud
+        self.status = status
+        self.position = position
+        self.rating = rating
+        self.pageCount = pageCount
+        self.duration = duration
+        self.alignedAt = alignedAt
+        self.alignedByStorytellerVersion = alignedByStorytellerVersion
+        self.alignedWith = alignedWith
+        self.sourceID = sourceID
+        self.source = source
+    }
 
     public var hasAudioNarration: Bool {
         hasAvailableAudiobook || hasAvailableReadaloud
@@ -988,7 +1045,6 @@ public struct BookMetadata: Codable, Sendable, Identifiable, Hashable {
     }
 }
 
-@PublicInit
 public struct BookCover: Sendable {
     public let data: Data
     public let contentType: String?
@@ -999,6 +1055,22 @@ public struct BookCover: Sendable {
     public var filepath: String? {
         parseFilename(fromContentDisposition: contentDisposition)
     }
+
+    public init(
+        data: Data,
+        contentType: String?,
+        etag: String?,
+        lastModified: String?,
+        cacheControl: String?,
+        contentDisposition: String?,
+    ) {
+        self.data = data
+        self.contentType = contentType
+        self.etag = etag
+        self.lastModified = lastModified
+        self.cacheControl = cacheControl
+        self.contentDisposition = contentDisposition
+    }
 }
 
 public struct Book: Sendable, Identifiable {
@@ -1008,9 +1080,18 @@ public struct Book: Sendable, Identifiable {
     public var id: String { metadata.id }
 }
 
-@PublicInit
 public struct BookLibrary: Sendable {
     public var bookMetaData: [BookMetadata]
     public var ebookCoverCache: [String: BookCover?]
     public var audiobookCoverCache: [String: BookCover?]
+
+    public init(
+        bookMetaData: [BookMetadata],
+        ebookCoverCache: [String: BookCover?],
+        audiobookCoverCache: [String: BookCover?],
+    ) {
+        self.bookMetaData = bookMetaData
+        self.ebookCoverCache = ebookCoverCache
+        self.audiobookCoverCache = audiobookCoverCache
+    }
 }

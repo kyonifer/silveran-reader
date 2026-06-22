@@ -1,5 +1,4 @@
 // swift-tools-version: 6.2
-import CompilerPluginSupport
 import PackageDescription
 
 let package = Package(
@@ -30,7 +29,6 @@ let package = Package(
             url: "https://github.com/stackotter/swift-cross-ui.git",
             branch: "main",
         ),
-        .package(url: "https://github.com/swiftlang/swift-syntax.git", from: "600.0.0"),
         .package(url: "https://github.com/weichsel/ZIPFoundation.git", from: "0.9.0"),
         .package(url: "https://github.com/scinfu/SwiftSoup.git", from: "2.7.0"),
         .package(url: "https://github.com/kyonifer/StoryAlign.git", from: "1.2.4"),
@@ -40,21 +38,10 @@ let package = Package(
         .target(
             name: "SilveranKitCommon",
             dependencies: [
-                "SilveranKitMacros",
                 .product(name: "ZIPFoundation", package: "ZIPFoundation"),
                 .product(name: "SwiftSoup", package: "SwiftSoup"),
             ],
             path: "Sources/Common",
-            exclude: ["Macros"],
-        ),
-        .macro(
-            name: "SilveranKitMacros",
-            dependencies: [
-                .product(name: "SwiftSyntaxMacros", package: "swift-syntax"),
-                .product(name: "SwiftCompilerPlugin", package: "swift-syntax"),
-                .product(name: "SwiftSyntaxBuilder", package: "swift-syntax"),
-            ],
-            path: "Sources/Common/Macros",
         ),
         .target(
             name: "SilveranKitSwiftUI",
