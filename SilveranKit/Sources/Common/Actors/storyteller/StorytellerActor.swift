@@ -145,6 +145,15 @@ public actor StorytellerActor {
         }
     }
 
+    /// Shows the yellow "connecting" state only for a fresh attempt with no known outcome.
+    /// Once a source has failed (.error), background retries keep showing red instead of
+    /// flickering back to yellow on every retry tick.
+    private func beginConnectingIfFresh() async {
+        if connectionStatus == .disconnected {
+            await updateConnectionStatus(.connecting)
+        }
+    }
+
     private func updateConnectionStatus(_ status: ConnectionStatus) async {
         let wasNotConnected = connectionStatus != .connected
         debugLog(
@@ -282,9 +291,6 @@ public actor StorytellerActor {
         guard canAttemptReconnect() else { return false }
 
         debugLog("[StorytellerActor] attemptReconnect: trying to reconnect...")
-        if connectionStatus != .connecting {
-            await updateConnectionStatus(.connecting)
-        }
 
         if await authenticate() {
             debugLog("[StorytellerActor] attemptReconnect: success")
@@ -507,9 +513,7 @@ public actor StorytellerActor {
                     "[ConnDiag] authenticate finished host=\(authHost) elapsed=\(String(format: "%.0f", authElapsed))ms"
                 )
             }
-            if connectionStatus != .connecting {
-                await updateConnectionStatus(.connecting)
-            }
+            await beginConnectingIfFresh()
             do {
                 let tokenURL = apiBaseURL.appendingPathComponent("token")
 
@@ -524,6 +528,7 @@ public actor StorytellerActor {
                         "password": password,
                     ],
                     session: urlSession,
+                    requestTimeout: 10,
                 )
 
                 self.accessToken = try decoder.decode(AccessToken.self, from: response.data)

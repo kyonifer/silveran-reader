@@ -64,6 +64,7 @@ func httpPost(
     session: URLSession = .shared,
     debug: Bool = false,
     allowedStatusCodes: Set<Int>? = nil,
+    requestTimeout: TimeInterval? = nil,
 ) async throws -> HTTPResponse {
     if body != nil && !formParameters.isEmpty {
         assertionFailure("Provide either body or formParameters when calling httpPost.")
@@ -86,6 +87,7 @@ func httpPost(
         session: session,
         debug: debug,
         allowedStatusCodes: resolvedAllowedStatusCodes(allowedStatusCodes),
+        requestTimeout: requestTimeout,
     )
 }
 
@@ -197,6 +199,7 @@ private func httpRequest(
     debug: Bool,
     allowedStatusCodes: Set<Int>,
     onSendProgress: (@Sendable (Int64, Int64) -> Void)? = nil,
+    requestTimeout: TimeInterval? = nil,
 ) async throws -> HTTPResponse {
     let resolvedURLString = try resolveURLString(urlString, adding: queryParameters)
     guard let url = URL(string: resolvedURLString) else {
@@ -205,6 +208,9 @@ private func httpRequest(
 
     var request = URLRequest(url: url)
     request.httpMethod = method
+    if let requestTimeout {
+        request.timeoutInterval = requestTimeout
+    }
     headers.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
 
     let data: Data
