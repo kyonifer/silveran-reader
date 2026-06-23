@@ -12,71 +12,6 @@ extension Scene {
     }
 }
 
-@MainActor
-private enum WindowMenuShortcutInstaller {
-    private static var didInstall = false
-    private static var observer: NSObjectProtocol?
-
-    static func install() {
-        guard !didInstall else { return }
-        didInstall = true
-
-        Task { @MainActor in
-            apply()
-        }
-
-        observer = NotificationCenter.default.addObserver(
-            forName: NSApplication.didUpdateNotification,
-            object: NSApp,
-            queue: .main,
-        ) { _ in
-            Task { @MainActor in
-                apply()
-            }
-        }
-    }
-
-    private static func apply() {
-        guard let windowMenu = NSApp.mainMenu?.item(withTitle: "Window")?.submenu else { return }
-
-        setShortcut(
-            in: windowMenu,
-            title: "Library",
-            key: "l",
-            modifiers: [.command],
-        )
-        setShortcut(
-            in: windowMenu,
-            title: "Debug Log",
-            key: "d",
-            modifiers: [.command, .option],
-        )
-        setShortcut(
-            in: windowMenu,
-            title: "Content Server",
-            key: "c",
-            modifiers: [.command, .shift],
-        )
-        setShortcut(
-            in: windowMenu,
-            title: "MP3 to M4B Converter",
-            key: "m",
-            modifiers: [.command, .shift],
-        )
-    }
-
-    private static func setShortcut(
-        in menu: NSMenu,
-        title: String,
-        key: String,
-        modifiers: NSEvent.ModifierFlags,
-    ) {
-        guard let item = menu.items.first(where: { $0.title == title }) else { return }
-        item.keyEquivalent = key
-        item.keyEquivalentModifierMask = modifiers
-    }
-}
-
 // TODO: Remove most of this when proper book opening is implemented.
 // This is debug code
 struct SilveranReaderApp: App {
@@ -88,7 +23,6 @@ struct SilveranReaderApp: App {
     init() {
         StorytellerFontRegistration.registerBundledFonts()
         SidebarSelectionColor.install()
-        WindowMenuShortcutInstaller.install()
         Task {
             await SilveranMigrations.runMigrations()
             await BookServiceActor.shared.reloadSourceRegistry()
@@ -219,10 +153,32 @@ struct SilveranReaderApp: App {
         .disableWindowRestoration()
         .commands {
             CommandMenu("Utilities") {
+                Button("Library") {
+                    openWindow(id: "MyLibrary")
+                }
+                .keyboardShortcut("l", modifiers: [.command])
+
+                Button("Content Server") {
+                    openWindow(id: "ContentServer")
+                }
+                .keyboardShortcut("c", modifiers: [.command, .shift])
+
+                Button("MP3 to M4B Converter") {
+                    openWindow(id: "MP3ToM4BConverter")
+                }
+                .keyboardShortcut("m", modifiers: [.command, .shift])
+
                 Button("Create Readaloud...") {
                     openWindow(id: "ReadaloudGenerator")
                 }
                 .keyboardShortcut("R", modifiers: [.command, .shift])
+
+                Divider()
+
+                Button("Debug Log") {
+                    openWindow(id: "DebugLog")
+                }
+                .keyboardShortcut("d", modifiers: [.command, .option])
             }
         }
     }
