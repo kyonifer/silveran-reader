@@ -62,10 +62,10 @@ struct MediaCompactCardView: View {
         let displayImage = coverState.image ?? fallbackState.image
         let shownVariant: MediaViewModel.CoverVariant =
             coverState.image == nil && fallbackState.image != nil ? fallbackVariant : coverVariant
-        let standardCoverState = mediaViewModel.coverState(for: item, variant: .standard)
-        let audioCoverState = mediaViewModel.coverState(for: item, variant: .audioSquare)
         let shouldRenderDoubleCover =
-            isDoubleCover && standardCoverState.image != nil && audioCoverState.image != nil
+            isDoubleCover
+            && ((item.hasAvailableEbook && item.hasAvailableAudiobook)
+                || item.hasAvailableReadaloud)
         let placeholderColor = Color(white: 0.2)
         let progress = mediaViewModel.progress(for: item.id)
 

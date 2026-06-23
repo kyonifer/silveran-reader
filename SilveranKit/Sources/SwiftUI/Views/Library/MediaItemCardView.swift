@@ -358,10 +358,10 @@ struct MediaItemCardView: View {
         let placeholderColor = Color(white: 0.2)
         let coverVariant = resolveCoverVariant(for: item)
         let containerAspectRatio: CGFloat = coverPreference.preferredContainerAspectRatio
-        let standardCoverState = mediaViewModel.coverState(for: item, variant: .standard)
-        let audioCoverState = mediaViewModel.coverState(for: item, variant: .audioSquare)
         let shouldRenderDoubleCover =
-            isDoubleCover && standardCoverState.image != nil && audioCoverState.image != nil
+            isDoubleCover
+            && ((item.hasAvailableEbook && item.hasAvailableAudiobook)
+                || item.hasAvailableReadaloud)
 
         return VStack(alignment: .leading, spacing: 0) {
             ZStack(alignment: .center) {
