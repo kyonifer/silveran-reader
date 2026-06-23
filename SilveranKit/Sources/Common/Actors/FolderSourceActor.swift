@@ -441,7 +441,7 @@ public actor FolderSourceActor: BookSourceActor {
         return try await scanLibrary(in: resolved.url)
     }
 
-    private func scanLibrary(in folderURL: URL) async throws -> LocalLibraryManager.ScanResult {
+    func scanLibrary(in folderURL: URL) async throws -> LocalLibraryManager.ScanResult {
         try await filesystem.ensureDirectoryExists(at: folderURL)
         try await filesystem.ensureSourceIDMarker(in: folderURL, sourceID: sourceRecordValue.id)
 
@@ -531,7 +531,8 @@ public actor FolderSourceActor: BookSourceActor {
         // An empty scan likely means the folder was briefly unreadable, not that every book was
         // deleted; retain prior state rather than wiping the library.
         if candidates.isEmpty {
-            for previous in previousState.media where !seenPreviousMediaIDs.contains(previous.uuid) {
+            for previous in previousState.media where !seenPreviousMediaIDs.contains(previous.uuid)
+            {
                 var missing = previous
                 missing.missing = true
                 media.append(missing)
@@ -979,7 +980,6 @@ public actor FolderSourceActor: BookSourceActor {
         let normalized = path.replacingOccurrences(of: "\\", with: "/")
         return normalized.split(separator: "/").last.map(String.init) ?? path
     }
-
 
     private func normalizedGroupingText(_ text: String) -> String {
         let roleWords = [

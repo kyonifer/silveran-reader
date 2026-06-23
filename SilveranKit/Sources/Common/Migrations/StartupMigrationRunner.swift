@@ -36,6 +36,7 @@ public enum SilveranMigrations {
         await runCredentialMigrations(using: filesystem, sources: sources)
         await runPendingProgressQueueMigrations(using: filesystem)
         await runStorageMigrations(using: filesystem, sources: sources)
+        await filesystem.runLegacyLocalProgressMigrationIfNeeded(sources: sources)
     }
 
     private static func runBookSourceRegistryMigration(

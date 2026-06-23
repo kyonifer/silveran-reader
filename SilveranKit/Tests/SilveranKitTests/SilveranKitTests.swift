@@ -198,6 +198,45 @@ import Testing
     #expect(loaded.media.first?.relativePaths.count == 2)
 }
 
+@Test func legacyLocalProgressMergesByMediaFilename() {
+    let scanned = makeScannedState(title: "Totally Different Title", ebookPath: "Legacy Book.epub")
+    let legacy = makeLegacyLocalBook(
+        title: "Totally Different Title",
+        ebookFilename: "Legacy Book.epub",
+        timestamp: 4242,
+    )
+
+    let merged = LegacyLocalProgressMerge.merge(into: scanned, legacy: [legacy])
+    #expect(merged.works.first?.position?.timestamp == 4242)
+    #expect(merged.works.first?.uuid == legacy.uuid)
+}
+
+@Test func legacyLocalProgressMergesByTitleWhenFilenameDiffers() {
+    let scanned = makeScannedState(title: "Renamed On Disk", ebookPath: "Renamed On Disk.epub")
+    let legacy = makeLegacyLocalBook(
+        title: "Renamed On Disk",
+        ebookFilename: "Old Filename.epub",
+        timestamp: 99,
+    )
+
+    let merged = LegacyLocalProgressMerge.merge(into: scanned, legacy: [legacy])
+    #expect(merged.works.first?.position?.timestamp == 99)
+    #expect(merged.works.first?.uuid == legacy.uuid)
+}
+
+@Test func legacyLocalProgressLeavesUnmatchedBooksUntouched() {
+    let scanned = makeScannedState(title: "On Disk", ebookPath: "On Disk.epub")
+    let legacy = makeLegacyLocalBook(
+        title: "Nowhere",
+        ebookFilename: "Nowhere.epub",
+        timestamp: 7,
+    )
+
+    let merged = LegacyLocalProgressMerge.merge(into: scanned, legacy: [legacy])
+    #expect(merged.works.first?.position == nil)
+    #expect(merged.works.first?.uuid == "work-id")
+}
+
 @Test func audiobookActorLoadsManifestWithAbsoluteFileHrefs() async throws {
     let root = try makeTemporaryFolderSource()
     defer { try? FileManager.default.removeItem(at: root) }
@@ -554,6 +593,69 @@ private func makeBook(publicationDate: String?) -> BookMetadata {
         status: nil,
         position: nil,
         rating: nil,
+    )
+}
+
+private func makeLegacyLocalBook(
+    title: String,
+    ebookFilename: String,
+    timestamp: Double,
+) -> BookMetadata {
+    BookMetadata(
+        uuid: "old-\(UUID().uuidString)",
+        title: title,
+        subtitle: nil,
+        description: nil,
+        language: nil,
+        createdAt: nil,
+        updatedAt: nil,
+        publicationDate: nil,
+        authors: nil,
+        narrators: nil,
+        creators: nil,
+        series: nil,
+        tags: nil,
+        collections: nil,
+        ebook: BookAsset(
+            uuid: "old-uuid",
+            filepath: ebookFilename,
+            missing: 0,
+            createdAt: nil,
+            updatedAt: nil,
+        ),
+        audiobook: nil,
+        readaloud: nil,
+        status: nil,
+        position: BookReadingPosition(
+            uuid: "legacy-position",
+            locator: nil,
+            timestamp: timestamp,
+            createdAt: nil,
+            updatedAt: nil,
+        ),
+        rating: nil,
+    )
+}
+
+private func makeScannedState(title: String, ebookPath: String) -> FolderSourceLibraryState {
+    FolderSourceLibraryState(
+        sourceID: "source-id",
+        works: [
+            FolderSourceWork(
+                uuid: "work-id",
+                title: title,
+                mediaIDs: [.ebook: "media-id"],
+                groupingKey: "\(title)/\(title.lowercased())",
+            )
+        ],
+        media: [
+            FolderSourceMedia(
+                uuid: "media-id",
+                role: .ebook,
+                relativePaths: [ebookPath],
+                signature: FolderSourceMediaSignature(fileCount: 1, totalSize: 1, modifiedAt: [:]),
+            )
+        ],
     )
 }
 
