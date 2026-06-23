@@ -234,6 +234,33 @@ public actor FilesystemActor {
         try loadLibraryMetadata(in: sourceCacheDirectory(sourceID: sourceID))
     }
 
+    public func saveDownloadedMediaLedger(
+        _ ledger: [String: DownloadedMediaRecord],
+        sourceID: BookSourceID,
+    ) throws {
+        let cacheDir = sourceCacheDirectory(sourceID: sourceID)
+        try ensureDirectoryExists(at: cacheDir)
+        let ledgerURL = cacheDir.appendingPathComponent(
+            "downloaded_media.json",
+            isDirectory: false,
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let data = try encoder.encode(ledger)
+        try write(data: data, to: ledgerURL)
+    }
+
+    public func loadDownloadedMediaLedger(
+        sourceID: BookSourceID
+    ) throws -> [String: DownloadedMediaRecord]? {
+        let ledgerURL = sourceCacheDirectory(sourceID: sourceID)
+            .appendingPathComponent("downloaded_media.json", isDirectory: false)
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: ledgerURL.path) else { return nil }
+        let data = try Data(contentsOf: ledgerURL)
+        return try JSONDecoder().decode([String: DownloadedMediaRecord].self, from: data)
+    }
+
     private func loadLibraryMetadata(in directory: URL) throws -> [BookMetadata]? {
         let metadataURL = directory.appendingPathComponent(
             "library_metadata.json",

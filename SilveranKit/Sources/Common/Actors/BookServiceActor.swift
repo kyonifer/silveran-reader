@@ -701,7 +701,7 @@ public actor BookServiceActor {
     }
 
     public func scanLibraryCache() async throws {
-        try await LocalMediaActor.shared.scanForMedia()
+        await LocalMediaActor.shared.reconcileDownloadedMedia()
     }
 
     public func updateLibraryCacheMetadata(
@@ -976,11 +976,13 @@ public actor BookServiceActor {
         await ensureSourceRegistryLoaded()
         let resolvedSourceID = resolveExplicitSourceID(sourceID)
 
-        if let cachedURL = await LocalMediaActor.shared.mediaFilePath(
-            for: bookID,
-            category: category,
-            sourceID: resolvedSourceID,
-        ), let resolvedSourceID {
+        if let resolvedSourceID,
+            let cachedURL = await LocalMediaActor.shared.resolveAndRecordBookPath(
+                for: bookID,
+                category: category,
+                sourceID: resolvedSourceID,
+            )
+        {
             return ResolvedLocalMedia(
                 bookID: bookID,
                 sourceID: resolvedSourceID,
@@ -1074,28 +1076,29 @@ public actor BookServiceActor {
     public func resolvedLocalMediaPaths(for metadata: [BookMetadata]) async -> [String: MediaPaths]
     {
         await ensureSourceRegistryLoaded()
-        var pathsByBookID: [String: MediaPaths] = [:]
+        let folderSourceIDs = Set(sourceRecords.filter { $0.kind == .localFolder }.map(\.id))
+
+        var pathsByBookID = await LocalMediaActor.shared.cachedMediaPaths(for: metadata)
+
         for book in metadata {
-            var paths = MediaPaths()
-            if let ebook = await resolveLocalMedia(
-                for: book.uuid,
-                sourceID: book.sourceID,
-                category: .ebook,
-            ) {
+            guard let sourceID = book.sourceID, folderSourceIDs.contains(sourceID) else { continue }
+            var paths = pathsByBookID[book.uuid] ?? MediaPaths()
+            if paths.ebookPath == nil,
+                let ebook = await resolveLocalMedia(
+                    for: book.uuid, sourceID: sourceID, category: .ebook)
+            {
                 paths.ebookPath = ebook.url
             }
-            if let audio = await resolveLocalMedia(
-                for: book.uuid,
-                sourceID: book.sourceID,
-                category: .audio,
-            ) {
+            if paths.audioPath == nil,
+                let audio = await resolveLocalMedia(
+                    for: book.uuid, sourceID: sourceID, category: .audio)
+            {
                 paths.audioPath = audio.url
             }
-            if let synced = await resolveLocalMedia(
-                for: book.uuid,
-                sourceID: book.sourceID,
-                category: .synced,
-            ) {
+            if paths.syncedPath == nil,
+                let synced = await resolveLocalMedia(
+                    for: book.uuid, sourceID: sourceID, category: .synced)
+            {
                 paths.syncedPath = synced.url
             }
             if paths.ebookPath != nil || paths.audioPath != nil || paths.syncedPath != nil {
