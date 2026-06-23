@@ -118,13 +118,7 @@ public final class MediaViewModel {
     }
 
     public var connectionIssueIcon: String {
-        if case .error = connectionStatus { return "exclamationmark.triangle" }
-        let anyServerError = sourceConnectionInfos.contains { info in
-            guard info.kind == .storyteller else { return false }
-            if case .error = info.status { return true }
-            return false
-        }
-        return anyServerError ? "exclamationmark.triangle" : "wifi.slash"
+        "exclamationmark.triangle"
     }
 
     /// Connectivity for a single source, read from the cached `sourceConnectionInfos` so

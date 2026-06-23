@@ -1227,10 +1227,7 @@ struct OfflineStatusSheet: View {
     }
 
     private var icon: String {
-        switch errorType {
-            case .networkOffline: return "wifi.slash"
-            case .authError: return "exclamationmark.triangle"
-        }
+        "exclamationmark.triangle"
     }
 
     private var title: String {

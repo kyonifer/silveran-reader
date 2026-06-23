@@ -51,7 +51,7 @@ struct iOSReadaloudContextMenuContent: View {
                     }
                 }
             } label: {
-                Label("Readaloud", systemImage: "waveform")
+                Label("Processing", systemImage: "wand.and.stars")
             }
         }
     }

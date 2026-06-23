@@ -45,8 +45,7 @@ struct TranslatorView: View {
         return false
     }
     private var connectionErrorIcon: String {
-        if case .error = mediaViewModel.connectionStatus { return "exclamationmark.triangle" }
-        return "wifi.slash"
+        mediaViewModel.connectionIssueIcon
     }
     #endif
 
