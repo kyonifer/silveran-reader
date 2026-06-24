@@ -2,6 +2,13 @@
 
 ## [0.1-109]
 
+### Bug Fixes
+- Fixed folder sources stored inside the app container failing to resolve after iOS relocates the app's data container, which could make a local library appear empty.
+
+---
+
+## [0.1-109]
+
 ### Major Features
 - Ebook scrolling mode on macOS and iOS
 - Full metadata editing, including Hardcover/iTunes import

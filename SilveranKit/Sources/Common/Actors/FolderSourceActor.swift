@@ -264,11 +264,7 @@ public actor FolderSourceActor: BookSourceActor {
 
         closeFolderAccess()
 
-        guard let resolved = sourceFolderURL(sourceRecordValue) else {
-            throw LocalMediaError.importFailed("Folder source has no storage location")
-        }
-
-        try await filesystem.ensureDirectoryExists(at: resolved.url)
+        let resolved = try await resolvedFolderURL()
         activeFolderAccessURL = resolved.url
         activeFolderAccessDidStart = resolved.didStartAccessing
     }
@@ -1450,20 +1446,32 @@ public actor FolderSourceActor: BookSourceActor {
         didStartAccessing: Bool
     ) {
         await SilveranMigrations.ensureMigrationsRan()
-        if let resolved = sourceFolderURL(sourceRecordValue) {
+        if let resolved = bookmarkedFolderURL() {
             try await filesystem.ensureDirectoryExists(at: resolved.url)
             return resolved
+        }
+
+        if let storagePath = sourceRecordValue.storagePath, !storagePath.isEmpty {
+            // A folder source whose location lives inside our app-support container is
+            // stored as an absolute path, but the container moves when iOS changes the
+            // app's data UUID between builds. Rebase such paths onto the current container
+            // so the library still resolves; genuinely external folders pass through
+            // unchanged.
+            let stored = URL(fileURLWithPath: storagePath, isDirectory: true)
+            let url = await filesystem.rebasedContainerFolderURL(for: stored)
+            try await filesystem.ensureDirectoryExists(at: url)
+            return (url, false)
         }
 
         throw LocalMediaError.importFailed("Folder source has no storage location")
     }
 
-    private func sourceFolderURL(_ sourceRecord: BookSourceRecord) -> (
+    private func bookmarkedFolderURL() -> (
         url: URL,
         didStartAccessing: Bool
     )? {
         #if os(macOS)
-        if let bookmarkData = sourceRecord.storageBookmarkData {
+        if let bookmarkData = sourceRecordValue.storageBookmarkData {
             var stale = false
             if let url = try? URL(
                 resolvingBookmarkData: bookmarkData,
@@ -1476,7 +1484,7 @@ public actor FolderSourceActor: BookSourceActor {
             }
         }
         #elseif os(iOS)
-        if let bookmarkData = sourceRecord.storageBookmarkData {
+        if let bookmarkData = sourceRecordValue.storageBookmarkData {
             var stale = false
             if let url = try? URL(
                 resolvingBookmarkData: bookmarkData,
@@ -1490,10 +1498,7 @@ public actor FolderSourceActor: BookSourceActor {
         }
         #endif
 
-        guard let storagePath = sourceRecord.storagePath, !storagePath.isEmpty else {
-            return nil
-        }
-        return (URL(fileURLWithPath: storagePath, isDirectory: true), false)
+        return nil
     }
 
     private func stopAccessing(_ resolved: (url: URL, didStartAccessing: Bool)) {

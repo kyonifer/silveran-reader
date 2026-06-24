@@ -1248,6 +1248,50 @@ public actor FilesystemActor {
         return applicationSupportURL(relativePath: relativePath)
     }
 
+    /// Rebases a persisted folder-source path that belongs to this app's Application
+    /// Support container onto the *current* container. iOS changes the app's data UUID
+    /// between builds, so an absolute path stored earlier can reference a container that
+    /// no longer exists. A path that is not part of our own container layout — including a
+    /// user-chosen external folder that merely happens to sit under some
+    /// `Library/Application Support` directory — is returned unchanged.
+    public func rebasedContainerFolderURL(for url: URL) -> URL {
+        let base = applicationSupportBaseDirectory().standardizedFileURL.path
+        let path = url.standardizedFileURL.path
+
+        if path == base || path.hasPrefix(base + "/") {
+            return url
+        }
+
+        let marker = "/Library/Application Support"
+        guard
+            let baseMarker = base.range(of: marker, options: .backwards),
+            let pathMarker = path.range(of: marker, options: .backwards)
+        else {
+            return url
+        }
+
+        let separators = CharacterSet(charactersIn: "/")
+        let baseTail = String(base[baseMarker.upperBound...]).trimmingCharacters(in: separators)
+        let pathTail = String(path[pathMarker.upperBound...]).trimmingCharacters(in: separators)
+
+        let relativeTail: String
+        if baseTail.isEmpty {
+            relativeTail = pathTail
+        } else if pathTail == baseTail {
+            relativeTail = ""
+        } else if pathTail.hasPrefix(baseTail + "/") {
+            relativeTail = String(pathTail.dropFirst(baseTail.count + 1))
+        } else {
+            return url
+        }
+
+        guard !relativeTail.isEmpty else {
+            return applicationSupportBaseDirectory()
+        }
+        return applicationSupportBaseDirectory()
+            .appendingPathComponent(relativeTail, isDirectory: true)
+    }
+
     private nonisolated func applicationSupportBaseDirectory() -> URL {
         let fm = FileManager.default
         let bundleID = Bundle.main.bundleIdentifier ?? "SilveranReader"
