@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.1-dev]
+## [0.1-109]
 
 ### Major Features
 - Ebook scrolling mode on macOS and iOS
