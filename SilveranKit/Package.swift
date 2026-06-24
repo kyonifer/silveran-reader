@@ -1,5 +1,19 @@
 // swift-tools-version: 6.2
 import PackageDescription
+import Foundation
+
+// Set SILVERAN_STORYTELLER_LOCKUP=1 (or true/yes) before `scripts/genxproj` to
+// build the Storyteller logo/wordmark lockup into the macOS sidebar header.
+// Off by default while it's held back for the current release.
+let storytellerLockupEnabled: Bool = {
+    guard let value = ProcessInfo.processInfo.environment["SILVERAN_STORYTELLER_LOCKUP"]?
+        .lowercased()
+    else { return false }
+    return ["1", "true", "yes"].contains(value)
+}()
+
+let swiftUISettings: [SwiftSetting] =
+    storytellerLockupEnabled ? [.define("SHOW_STORYTELLER_LOCKUP")] : []
 
 let package = Package(
     name: "SilveranKit",
@@ -50,6 +64,7 @@ let package = Package(
                 "SilveranKitAppModel",
             ],
             path: "Sources/SwiftUI",
+            swiftSettings: swiftUISettings,
         ),
         .target(
             name: "SilveranKitAppModel",

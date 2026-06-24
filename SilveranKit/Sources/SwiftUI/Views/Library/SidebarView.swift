@@ -338,6 +338,7 @@ struct SidebarView: View {
         let config = sidebarConfig
         #if os(macOS)
         VStack(spacing: 0) {
+            #if SHOW_STORYTELLER_LOCKUP
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 8) {
                     Image("StorytellerLogo")
@@ -360,6 +361,7 @@ struct SidebarView: View {
             .padding(.horizontal, 16)
             .padding(.top, -8)
             .padding(.bottom, 6)
+            #endif
 
             DebouncedSearchField(searchText: $searchText)
                 .padding(.horizontal, 16)
