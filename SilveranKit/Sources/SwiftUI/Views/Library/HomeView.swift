@@ -1,5 +1,9 @@
 import SwiftUI
 
+#if os(iOS)
+import UIKit
+#endif
+
 struct HomeView: View {
     #if os(iOS)
     @Binding var searchText: String
@@ -139,10 +143,6 @@ struct HomeView: View {
                         }
                     }
                 }
-            }
-            .sheet(isPresented: $showViewOptions) {
-                viewOptionsSheet
-                    .presentationDetents([.medium])
             }
             .searchable(
                 text: $searchText,
@@ -982,15 +982,33 @@ struct HomeView: View {
     }
     #endif
 
+    #if os(iOS)
+    private var isPad: Bool {
+        UIDevice.current.userInterfaceIdiom == .pad
+    }
+    #endif
+
+    @ViewBuilder
     private var viewOptionsButton: some View {
-        Button {
+        let button = Button {
             showViewOptions.toggle()
         } label: {
             Label("View Options", systemImage: "ellipsis.circle")
         }
         #if os(macOS)
-        .popover(isPresented: $showViewOptions) {
+        button.popover(isPresented: $showViewOptions) {
             viewOptionsPopoverContent
+        }
+        #else
+        if isPad {
+            button.popover(isPresented: $showViewOptions) {
+                viewOptionsPopoverContent
+            }
+        } else {
+            button.sheet(isPresented: $showViewOptions) {
+                viewOptionsSheet
+                    .presentationDetents([.medium])
+            }
         }
         #endif
     }
@@ -999,14 +1017,16 @@ struct HomeView: View {
     @ViewBuilder
     private var viewOptionsSheet: some View {
         NavigationStack {
-            viewOptionsPopoverContent
-                .navigationTitle("View Options")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Done") { showViewOptions = false }
-                    }
+            ScrollView {
+                viewOptionsPopoverContent
+            }
+            .navigationTitle("View Options")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { showViewOptions = false }
                 }
+            }
         }
     }
     #endif
