@@ -1112,7 +1112,6 @@ public actor BookServiceActor {
         bookID: String,
         sourceID: BookSourceID?,
         category: LocalMediaCategory,
-        forceExtract: Bool = false,
     ) async throws -> PreparedEbookMedia {
         guard
             let resolved = await resolveLocalMedia(
@@ -1124,12 +1123,11 @@ public actor BookServiceActor {
             throw LocalMediaError.importFailed("Local EPUB media is unavailable.")
         }
 
-        let prepared = try await FilesystemActor.shared.prepareEpubForReading(
+        let readerURL = try await FilesystemActor.shared.prepareEpubForReading(
             epubPath: resolved.url,
             sourceID: resolved.sourceID,
             bookID: resolved.bookID,
             category: resolved.category,
-            forceExtract: forceExtract,
         )
 
         return PreparedEbookMedia(
@@ -1137,9 +1135,8 @@ public actor BookServiceActor {
             sourceID: resolved.sourceID,
             category: resolved.category,
             originalURL: resolved.url,
-            readerURL: prepared.url,
+            readerURL: readerURL,
             locationKind: resolved.kind,
-            isExtracted: prepared.isExtracted,
         )
     }
 

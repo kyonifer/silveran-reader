@@ -891,52 +891,26 @@ public actor FilesystemActor {
         sourceID: BookSourceID,
         bookID: String,
         category: LocalMediaCategory,
-        sizeThresholdMB: Int = 200,
-        forceExtract: Bool = false,
-    ) async throws -> (url: URL, isExtracted: Bool) {
-        let fm = FileManager.default
-        let fileSize = try fm.attributesOfItem(atPath: epubPath.path)[.size] as? Int ?? 0
-        let fileSizeMB = fileSize / (1024 * 1024)
-        let shouldExtract = forceExtract || fileSizeMB > sizeThresholdMB
-
-        guard shouldExtract else {
-            return (epubPath, false)
-        }
-
+    ) async throws -> URL {
         let extractionDir = derivedEpubExtractionDirectory(
             epubPath: epubPath,
             sourceID: sourceID,
             bookID: bookID,
             category: category,
         )
-        let url = try await extractEpubIfNeeded(
+        return try await extractEpubIfNeeded(
             epubPath: epubPath,
             extractedDir: extractionDir,
-            sizeThresholdMB: sizeThresholdMB,
-            forceExtract: forceExtract,
         )
-        return (url, true)
     }
 
     private func extractEpubIfNeeded(
         epubPath: URL,
         extractedDir: URL,
-        sizeThresholdMB: Int,
-        forceExtract: Bool,
     ) async throws -> URL {
         let fm = FileManager.default
 
-        let fileSize = try fm.attributesOfItem(atPath: epubPath.path)[.size] as? Int ?? 0
-        let fileSizeMB = fileSize / (1024 * 1024)
-
-        let shouldExtract = forceExtract || fileSizeMB > sizeThresholdMB
-
-        if !shouldExtract {
-            return epubPath
-        }
-
-        let reason = forceExtract ? "native audio playback" : "large file (\(fileSizeMB)MB)"
-        debugLog("[FilesystemActor] Extracting EPUB for \(reason)...")
+        debugLog("[FilesystemActor] Extracting EPUB for reader access...")
 
         let sizesFile = extractedDir.appendingPathComponent("_sizes.json")
         if fm.fileExists(atPath: extractedDir.path) {

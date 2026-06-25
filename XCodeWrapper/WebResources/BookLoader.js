@@ -1,7 +1,7 @@
 import { debugLog } from "./DebugConfig.js";
 
 /**
- * BookLoader - Handles loading books from files or directories
+ * BookLoader - Loads an extracted EPUB from a directory
  *
  * When a book is loaded, automatically passes it to FoliateManager
  */
@@ -14,17 +14,6 @@ export default class BookLoader {
   }
 
   /**
-   * Load and open a book from a file path
-   * Non-async wrapper for Swift to call - kicks off loading and returns immediately
-   */
-  openBook(filePath) {
-    debugLog("BookLoader", "openBook() called with path:", filePath);
-    this.#loadBookFromFile(filePath)
-      .then(file => this.#foliateManager.open(file))
-      .catch(err => console.error("[BookLoader] Failed to load book:", err));
-  }
-
-  /**
    * Load and open a book from a directory
    * Non-async wrapper for Swift to call - kicks off loading and returns immediately
    */
@@ -34,63 +23,6 @@ export default class BookLoader {
       .then(book => this.#foliateManager.open(book))
       .catch(err => console.error("[BookLoader] Failed to load book from directory:", err));
   }
-
-  /**
-   * Load a book from a file path (internal async method)
-   */
-  async #loadBookFromFile(filePath) {
-  debugLog("trace", "loadBookFromFile trace");
-  try {
-    debugLog("BookLoader", "Starting to load file:", filePath);
-
-    const fetchUrl = new URL(filePath, import.meta.url);
-    debugLog("BookLoader", "Fetch URL:", fetchUrl.href);
-
-    const fetchPromise = fetch(fetchUrl).catch(err => {
-      console.error("[BookLoader] Fetch threw error:", err);
-      console.error("[BookLoader] Error type:", err.name);
-      console.error("[BookLoader] Error message:", err.message);
-      throw new Error(`Fetch error: ${err.message}`);
-    });
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error("Fetch timeout after 30s")), 30000)
-    );
-
-    debugLog("BookLoader", "Starting fetch...");
-    const response = await Promise.race([fetchPromise, timeoutPromise]);
-    debugLog("BookLoader", "Fetch completed, status:", response.status, "ok:", response.ok);
-
-    if (!response.ok && response.status !== 0) {
-      throw new Error(`Fetch failed with status ${response.status}`);
-    }
-
-    const contentLength = response.headers.get('content-length');
-    debugLog("BookLoader", "Content-Length:", contentLength, "bytes",
-                contentLength ? `(${(contentLength / 1024 / 1024).toFixed(2)} MB)` : "");
-
-    debugLog("BookLoader", "Converting response to blob...");
-    const blobPromise = response.blob();
-    const blobTimeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error("Blob conversion timeout after 60s")), 60000)
-    );
-
-    const blob = await Promise.race([blobPromise, blobTimeoutPromise]);
-    debugLog("BookLoader", "Blob created, size:", blob.size, "bytes",
-                `(${(blob.size / 1024 / 1024).toFixed(2)} MB)`);
-
-    debugLog("trace", `Blob size: ${blob.size}`);
-
-    debugLog("BookLoader", "Creating File object...");
-    const file = new File([blob], "book.epub", { type: "application/epub+zip" });
-    debugLog("BookLoader", "File object created successfully");
-
-    return file;
-  } catch (err) {
-    console.error("[BookLoader] Error loading book from file:", err);
-    console.error("[BookLoader] Error stack:", err.stack);
-    throw err;
-  }
-}
 
   /**
    * Create a custom loader for a directory (extracted EPUB)

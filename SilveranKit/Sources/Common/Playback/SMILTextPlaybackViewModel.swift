@@ -225,7 +225,6 @@ public final class SMILTextPlaybackViewModel: NSObject {
             bookID: book.uuid,
             sourceID: book.sourceID,
             category: .synced,
-            forceExtract: true,
         )
         epubURL = preparedMedia?.originalURL
 

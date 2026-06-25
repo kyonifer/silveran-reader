@@ -146,7 +146,6 @@ public struct PreparedEbookMedia: Sendable, Hashable {
     public let originalURL: URL
     public let readerURL: URL
     public let locationKind: LocalMediaLocationKind
-    public let isExtracted: Bool
 
     public init(
         bookID: String,
@@ -155,7 +154,6 @@ public struct PreparedEbookMedia: Sendable, Hashable {
         originalURL: URL,
         readerURL: URL,
         locationKind: LocalMediaLocationKind,
-        isExtracted: Bool,
     ) {
         self.bookID = bookID
         self.sourceID = sourceID
@@ -163,7 +161,6 @@ public struct PreparedEbookMedia: Sendable, Hashable {
         self.originalURL = originalURL
         self.readerURL = readerURL
         self.locationKind = locationKind
-        self.isExtracted = isExtracted
     }
 }
 

@@ -404,7 +404,6 @@ class EbookPlayerViewModel {
                         bookID: data.metadata.uuid,
                         sourceID: data.metadata.sourceID,
                         category: data.category,
-                        forceExtract: needsNativeAudio,
                     )
                     self.extractedEbookPath = prepared.readerURL
                     debugLog(

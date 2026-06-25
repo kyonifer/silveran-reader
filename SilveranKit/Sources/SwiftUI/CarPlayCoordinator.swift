@@ -379,7 +379,6 @@ public final class CarPlayCoordinator {
             bookID: metadata.uuid,
             sourceID: metadata.sourceID,
             category: .synced,
-            forceExtract: true,
         )
 
         try await SMILPlayerActor.shared.loadBook(

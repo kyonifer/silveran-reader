@@ -76,13 +76,11 @@ private func javaScriptStringLiteral(_ string: String) -> String {
 @MainActor
 private func makeBookOpenScript(ebookPath: URL?) -> WKUserScript {
     let pathLiteral = ebookPath.map { javaScriptStringLiteral($0.path) } ?? "null"
-    let isDirectory = ebookPath?.hasDirectoryPath == true ? "true" : "false"
 
     return WKUserScript(
         source: """
             (function() {
                 window.silveranBookPath = \(pathLiteral);
-                window.silveranBookIsDirectory = \(isDirectory);
                 window.nativeReady = window.silveranBookPath !== null;
                 window.jsReady = window.jsReady || false;
                 window.silveranOpenedBookPath = window.silveranOpenedBookPath || null;
@@ -107,9 +105,7 @@ private func makeBookOpenScript(ebookPath: URL?) -> WKUserScript {
                     window.silveranOpeningBookPath = window.silveranBookPath;
                     console.log('[SilveranBookOpen] opening book', reason, window.silveranBookPath);
 
-                    const openPromise = window.silveranBookIsDirectory
-                        ? loader.openBookFromDirectory(window.silveranBookPath)
-                        : loader.openBook(window.silveranBookPath);
+                    const openPromise = loader.openBookFromDirectory(window.silveranBookPath);
 
                     Promise.resolve(openPromise).then(function() {
                         window.silveranOpenedBookPath = window.silveranBookPath;
