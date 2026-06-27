@@ -6,6 +6,12 @@ import AVFoundation
 #endif
 
 public actor FolderSourceActor: BookSourceActor {
+    public static let availableStatuses: [BookStatus] = [
+        BookStatus(uuid: "folder-status-to-read", name: "To read", isDefault: true),
+        BookStatus(uuid: "folder-status-reading", name: "Reading"),
+        BookStatus(uuid: "folder-status-read", name: "Read"),
+    ]
+
     private let sourceRecordValue: BookSourceRecord
     private let filesystem: FilesystemActor
     private let localLibrary: LocalLibraryManager
@@ -139,10 +145,13 @@ public actor FolderSourceActor: BookSourceActor {
         return metadata.first(where: { $0.uuid == bookId })?.position
     }
 
-    public func localMediaReference(
+    public func resolveLocalMedia(
         for bookID: String,
         category: LocalMediaCategory,
     ) async -> ResolvedLocalMedia? {
+        // A folder source reads files in place; it never populates the LMA download cache (the
+        // download path resolves folder media without copying it), so resolution is always the
+        // in-folder file.
         if pathCache[bookID] == nil {
             _ = await fetchLibraryInformation()
         }
@@ -173,6 +182,115 @@ public actor FolderSourceActor: BookSourceActor {
             url: url,
             kind: .source,
         )
+    }
+
+    /// Real audio file URLs backing a book, in track order. Unlike `resolveLocalMedia`, which for
+    /// audio returns a derived manifest, this returns the source files themselves.
+    public func localAudioFiles(for bookID: String) async -> [URL] {
+        if pathCache[bookID] == nil {
+            _ = await fetchLibraryInformation()
+        }
+        do {
+            try await retainFolderAccessForResolvedMedia()
+        } catch {
+            debugLog(
+                "[FolderSourceActor] Failed to retain folder access for audio export: \(error)"
+            )
+            return []
+        }
+        guard let folderURL = activeFolderAccessURL,
+            let media = mediaForWork(bookID: bookID)[.audio]
+        else {
+            return []
+        }
+        return media.relativePaths
+            .map { folderURL.appendingPathComponent($0) }
+            .filter { FileManager.default.fileExists(atPath: $0.path) }
+    }
+
+    public func acceptBook(
+        bookUUID: String,
+        title: String,
+        ebook: StorytellerUploadAsset?,
+        audiobooks: [StorytellerUploadAsset],
+        readaloud: StorytellerUploadAsset?,
+        collectionUUID _: String?,
+        onProgress: (@Sendable (Double) -> Void)?,
+    ) async -> Bool {
+        do {
+            try await importBookAssets(
+                bookUUID: bookUUID,
+                bookName: title,
+                ebook: ebook,
+                audiobooks: audiobooks,
+                readaloud: readaloud,
+            )
+            onProgress?(1.0)
+            return true
+        } catch {
+            debugLog("[FolderSourceActor] acceptBook failed: \(error)")
+            return false
+        }
+    }
+
+    public func deleteBook(_ bookID: String) async -> Bool {
+        do {
+            try await removeBookFiles(bookID)
+            return true
+        } catch {
+            debugLog("[FolderSourceActor] deleteBook failed for \(bookID): \(error)")
+            return false
+        }
+    }
+
+    public func deleteAsset(
+        _ bookID: String,
+        category: LocalMediaCategory,
+    ) async -> DeleteAssetResult {
+        do {
+            let previous = await fetchLibraryInformation()?.first(where: { $0.uuid == bookID })
+            try await deleteMedia(bookID, category: category)
+            if let updated = await fetchLibraryInformation()?.first(where: { $0.uuid == bookID }) {
+                return .success(updated)
+            }
+            if let previous {
+                return .success(previous)
+            }
+            return .failed
+        } catch {
+            debugLog("[FolderSourceActor] deleteAsset failed for \(bookID): \(error)")
+            return .failed
+        }
+    }
+
+    public func replaceAsset(
+        _ asset: StorytellerUploadAsset,
+        bookID: String,
+        replaceMetadata _: Bool,
+        onProgress: (@Sendable (Double) -> Void)?,
+    ) async -> ReplaceAssetResult {
+        do {
+            try await replaceAsset(asset, bookName: asset.filename, bookUUID: bookID)
+            onProgress?(1.0)
+            return .success
+        } catch {
+            debugLog("[FolderSourceActor] replaceAsset failed for \(bookID): \(error)")
+            return .failed
+        }
+    }
+
+    public func updateStatus(
+        forBooks bookIDs: [String],
+        toStatusNamed statusName: String,
+    ) async -> Bool {
+        guard
+            let status = Self.availableStatuses.first(where: {
+                $0.name.caseInsensitiveCompare(statusName) == .orderedSame
+            })
+        else {
+            return false
+        }
+        return await updateStatus(forBooks: bookIDs, to: status)
     }
 
     public func closeFolderAccess() {
@@ -304,7 +422,7 @@ public actor FolderSourceActor: BookSourceActor {
 
     public func importBookAssets(
         bookUUID: String,
-        bookName _: String,
+        bookName: String,
         ebook: StorytellerUploadAsset? = nil,
         audiobooks: [StorytellerUploadAsset] = [],
         readaloud: StorytellerUploadAsset? = nil,
@@ -316,11 +434,15 @@ public actor FolderSourceActor: BookSourceActor {
         let resolved = try await resolvedFolderURL()
         defer { stopAccessing(resolved) }
 
-        guard let placement = writePlacement(for: bookUUID, root: resolved.url) else {
-            throw LocalMediaError.importFailed(
-                "Cannot place media: book \(bookUUID) has no files in the folder source"
-            )
+        if stateCache == nil {
+            _ = try await scanLibrary(in: resolved.url)
         }
+
+        // An existing book reuses its on-disk placement; a new book gets a fresh directory using the
+        // folder's prevailing layout.
+        let placement =
+            writePlacement(for: bookUUID, root: resolved.url)
+            ?? defaultWritePlacement(forNewBookTitled: bookName, root: resolved.url)
 
         if let ebook {
             _ = try await writeAsset(
@@ -393,7 +515,7 @@ public actor FolderSourceActor: BookSourceActor {
         }
     }
 
-    public func deleteBook(_ bookID: String) async throws {
+    private func removeBookFiles(_ bookID: String) async throws {
         if pathCache[bookID] == nil {
             _ = await fetchLibraryInformation()
         }
@@ -1032,6 +1154,52 @@ public actor FolderSourceActor: BookSourceActor {
         return (.sameFolder, root.appendingPathComponent(directories[0], isDirectory: true))
     }
 
+    private func defaultWritePlacement(
+        forNewBookTitled title: String,
+        root: URL,
+    ) -> (layout: FolderSourceWriteLayout, baseDirectory: URL) {
+        let dirName = uniqueTopLevelDirectoryName(from: title, root: root)
+        return (prevailingWriteLayout(), root.appendingPathComponent(dirName, isDirectory: true))
+    }
+
+    private func prevailingWriteLayout() -> FolderSourceWriteLayout {
+        let directories = (stateCache?.media ?? [])
+            .flatMap(\.relativePaths)
+            .compactMap { relativeDirectory(inRelativePath: $0) }
+        if directories.isEmpty {
+            return .mediaTypeSubfolders
+        }
+        if directories.contains(where: { mediaTypeSubfolderRole(for: $0) != nil }) {
+            return .mediaTypeSubfolders
+        }
+        return .sameFolder
+    }
+
+    private func uniqueTopLevelDirectoryName(from title: String, root: URL) -> String {
+        let base = sanitizedDirectoryName(from: title)
+        let fm = FileManager.default
+        var candidate = base
+        var index = 2
+        while fm.fileExists(
+            atPath: root.appendingPathComponent(candidate, isDirectory: true).path
+        ) {
+            candidate = "\(base) \(index)"
+            index += 1
+        }
+        return candidate
+    }
+
+    private func sanitizedDirectoryName(from title: String) -> String {
+        let illegal = CharacterSet(charactersIn: "/\\:*?\"<>|").union(.controlCharacters)
+        let cleaned =
+            title
+            .components(separatedBy: illegal)
+            .joined(separator: " ")
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return cleaned.isEmpty ? "Untitled Book" : cleaned
+    }
+
     private func destinationDirectory(
         for category: LocalMediaCategory,
         placement: (layout: FolderSourceWriteLayout, baseDirectory: URL),
@@ -1287,7 +1455,7 @@ public actor FolderSourceActor: BookSourceActor {
     }
 
     private var audiobookMediaExtensions: Set<String> {
-        ["aac", "flac", "m4a", "m4b", "mp3", "ogg", "opus", "wav"]
+        AudioMediaTypes.fileExtensions
     }
 
     private func mediaType(for url: URL) -> String {

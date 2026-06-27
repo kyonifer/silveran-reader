@@ -76,9 +76,11 @@ struct LocalFolderSourceHelpView: View {
 
     private var intro: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Simply copy files into this folder and they will appear. Silveran groups files into books in one of two ways, depending on how the folder is organized. A book's title and cover come from the file's embedded details when available, otherwise from the filename.")
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            Text(
+                "Simply copy files into this folder and they will appear. Silveran groups files into books in one of two ways, depending on how the folder is organized. A book's title and cover come from the file's embedded details when available, otherwise from the filename."
+            )
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
 
             Text("Two folder layouts are supported, described below.")
                 .foregroundStyle(.secondary)
@@ -110,7 +112,8 @@ struct LocalFolderSourceHelpView: View {
         .font(.system(size: 15))
     }
 
-    private func layoutDetail(_ layout: LocalFolderLayoutHelp, showTitle: Bool = false) -> some View {
+    private func layoutDetail(_ layout: LocalFolderLayoutHelp, showTitle: Bool = false) -> some View
+    {
         let prose = VStack(alignment: .leading, spacing: 14) {
             if showTitle {
                 Label(layout.title, systemImage: layout.systemImage)
@@ -136,9 +139,19 @@ struct LocalFolderSourceHelpView: View {
         .frame(maxWidth: .infinity, alignment: .topLeading)
 
         #if os(macOS)
-        return AnyView(HStack(alignment: .top, spacing: 24) { prose; example })
+        return AnyView(
+            HStack(alignment: .top, spacing: 24) {
+                prose
+                example
+            }
+        )
         #else
-        return AnyView(VStack(alignment: .leading, spacing: 16) { prose; example })
+        return AnyView(
+            VStack(alignment: .leading, spacing: 16) {
+                prose
+                example
+            }
+        )
         #endif
     }
 }

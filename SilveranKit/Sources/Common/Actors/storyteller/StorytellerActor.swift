@@ -1,4 +1,5 @@
 import Foundation
+import ZIPFoundation
 
 #if canImport(FoundationNetworking)
 import FoundationNetworking
@@ -1152,22 +1153,15 @@ public actor StorytellerActor {
         }
     }
 
-    /// Deletes a book using `/api/v2/books/{bookId}`.
+    /// Deletes a book using `/api/v2/books/{bookId}` (the server also deletes its files), then drops
+    /// the device's downloaded copy so nothing is stranded.
     /// Server implementation: `storyteller/web/src/app/api/v2/books/[bookId]/route.ts` (DELETE handler).
-    public func deleteBook(
-        _ bookId: String,
-        includeAssets option: StorytellerIncludeAssetsOption? = nil,
-    ) async -> Bool {
+    public func deleteBook(_ bookId: String) async -> Bool {
         guard let (baseURL, token) = await ensureAuthentication() else { return false }
         let deleteURL =
             baseURL
             .appendingPathComponent("books")
             .appendingPathComponent(bookId)
-
-        var queryParameters: [String: String] = [:]
-        if let option {
-            queryParameters["includeAssets"] = option.rawValue
-        }
 
         var allowedStatuses = Set(200..<300)
         allowedStatuses.insert(401)
@@ -1180,27 +1174,27 @@ public actor StorytellerActor {
                 headers: [
                     "Authorization": authorizationHeaderValue(for: token)
                 ],
-                queryParameters: queryParameters,
                 session: urlSession,
                 allowedStatusCodes: allowedStatuses,
             )
 
-            return evaluateResponse(
-                response,
-                methodName: "deleteBook",
-                context: "book \(bookId)",
-            ) == .success
+            let succeeded =
+                evaluateResponse(
+                    response,
+                    methodName: "deleteBook",
+                    context: "book \(bookId)",
+                ) == .success
+            if succeeded {
+                await LocalMediaActor.shared.removeAllMedia(
+                    for: bookId,
+                    sourceID: sourceRecordValue.id,
+                )
+            }
+            return succeeded
         } catch {
             logStorytellerError("deleteBook", error: error)
             return false
         }
-    }
-
-    /// Result of a deleteBookAsset operation.
-    public enum DeleteAssetResult: Sendable {
-        case success(BookMetadata)
-        case notSupported
-        case failed
     }
 
     /// Deletes a specific asset type from a book using `/api/v2/books/{bookId}/replace-asset`.
@@ -1678,12 +1672,6 @@ public actor StorytellerActor {
     }
 
     /// Result of a replaceBookAsset operation.
-    public enum ReplaceAssetResult: Sendable {
-        case success
-        case notSupported
-        case failed
-    }
-
     /// Replaces a specific asset type on an existing book using `/api/v2/books/{bookId}/replace-asset/upload`.
     /// Server implementation: `storyteller/web/src/app/api/v2/books/[bookId]/replace-asset/upload/[[...path]]/route.ts`.
     /// Returns `.notSupported` if the server doesn't have this endpoint.
@@ -1967,11 +1955,18 @@ public actor StorytellerActor {
                 allowedStatusCodes: allowedStatuses,
             )
 
-            return evaluateResponse(
-                response,
-                methodName: "updateStatus",
-                context: "status update",
-            ) == .success
+            let succeeded =
+                evaluateResponse(
+                    response,
+                    methodName: "updateStatus",
+                    context: "status update",
+                ) == .success
+            if succeeded {
+                // Refresh this source's own cache so observers reflect the new status without the
+                // caller forcing a cross-source refetch.
+                _ = await fetchLibraryInformation()
+            }
+            return succeeded
         } catch {
             logStorytellerError("updateStatus", error: error)
             return false
@@ -2738,6 +2733,289 @@ extension StorytellerActor: BookSourceActor {
     public var sourceRecord: BookSourceRecord {
         sourceRecordValue
     }
+
+    public func resolveLocalMedia(
+        for bookID: String,
+        category: LocalMediaCategory,
+    ) async -> ResolvedLocalMedia? {
+        guard
+            let url = await LocalMediaActor.shared.resolveAndRecordBookPath(
+                for: bookID,
+                category: category,
+                sourceID: sourceRecordValue.id,
+            )
+        else {
+            return nil
+        }
+        return ResolvedLocalMedia(
+            bookID: bookID,
+            sourceID: sourceRecordValue.id,
+            category: category,
+            url: url,
+            kind: .cached,
+        )
+    }
+
+    public func localAudioFiles(for bookID: String) async -> [URL] {
+        guard let manifest = await resolveLocalMedia(for: bookID, category: .audio) else {
+            return []
+        }
+        return packagedAudioFiles(inPackageAt: manifest.url.deletingLastPathComponent())
+    }
+
+    /// Audio tracks of a downloaded `.audiobook` package, in the manifest's reading order. A
+    /// Storyteller package may nest tracks under subdirectories (per-disc folders, nested archives),
+    /// so the manifest's `readingOrder` hrefs — resolved relative to the manifest directory — are the
+    /// authoritative list and order. Falls back to a recursive scan if the manifest is unreadable.
+    private func packagedAudioFiles(inPackageAt directory: URL) -> [URL] {
+        let fm = FileManager.default
+        let manifestURL = directory.appendingPathComponent("manifest.json", isDirectory: false)
+        if let data = try? Data(contentsOf: manifestURL),
+            let manifest = try? decoder.decode(PackagedAudiobookManifest.self, from: data)
+        {
+            let urls =
+                manifest.readingOrder
+                .compactMap { resolvePackagedHref($0.href, inPackageAt: directory) }
+                .filter { fm.fileExists(atPath: $0.path) }
+            if !urls.isEmpty {
+                return urls
+            }
+        }
+
+        let all =
+            (fm.enumerator(
+                at: directory,
+                includingPropertiesForKeys: nil,
+                options: [.skipsHiddenFiles],
+            )?.allObjects as? [URL]) ?? []
+        return
+            all
+            .filter { AudioMediaTypes.isAudioFile($0) }
+            .sorted {
+                $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent)
+                    == .orderedAscending
+            }
+    }
+
+    private func resolvePackagedHref(_ href: String, inPackageAt rootURL: URL) -> URL? {
+        let path = href.split(separator: "#", maxSplits: 1).first.map(String.init) ?? href
+        if let url = URL(string: path), url.isFileURL {
+            return url
+        }
+        let decoded = path.removingPercentEncoding ?? path
+        guard !decoded.isEmpty else { return nil }
+        if decoded.hasPrefix("/") {
+            return URL(fileURLWithPath: decoded)
+        }
+        return rootURL.appendingPathComponent(decoded, isDirectory: false)
+    }
+
+    public func acceptBook(
+        bookUUID: String,
+        title _: String,
+        ebook: StorytellerUploadAsset?,
+        audiobooks: [StorytellerUploadAsset],
+        readaloud: StorytellerUploadAsset?,
+        collectionUUID: String?,
+        onProgress: (@Sendable (Double) -> Void)?,
+    ) async -> Bool {
+        // The new-book upload endpoint classifies every epub as the ebook, so a pre-aligned readaloud
+        // (also an epub) can't go through it — it would overwrite the ebook. Upload ebook + audiobook
+        // there, then attach the readaloud through the format-aware replace-asset endpoint.
+        let ebookBytes = Int64(ebook?.data.count ?? 0)
+        let audioBytes = audiobooks.reduce(Int64(0)) { $0 + Int64($1.data.count) }
+        let readaloudBytes = Int64(readaloud?.data.count ?? 0)
+        let totalBytes = max(ebookBytes + audioBytes + readaloudBytes, 1)
+        let baseBytes = ebookBytes + audioBytes
+
+        var phase1Progress: (@Sendable (Double) -> Void)?
+        if let onProgress {
+            phase1Progress = { fraction in
+                onProgress(Double(baseBytes) * fraction / Double(totalBytes))
+            }
+        }
+
+        let uploaded = await uploadBookAssets(
+            bookUUID: bookUUID,
+            ebook: ebook,
+            audiobooks: audiobooks,
+            readaloud: nil,
+            collectionUUID: collectionUUID,
+            onProgress: phase1Progress,
+        )
+        guard uploaded else { return false }
+
+        guard let readaloud else {
+            onProgress?(1.0)
+            return true
+        }
+
+        var phase2Progress: (@Sendable (Int64, Int64) -> Void)?
+        if let onProgress {
+            phase2Progress = { sent, total in
+                guard total > 0 else { return }
+                let phaseBytes = Double(sent) / Double(total) * Double(readaloudBytes)
+                onProgress((Double(baseBytes) + phaseBytes) / Double(totalBytes))
+            }
+        }
+
+        let result = await replaceBookAsset(
+            readaloud,
+            bookUUID: bookUUID,
+            replaceMetadata: false,
+            onSendProgress: phase2Progress,
+        )
+        switch result {
+            case .success:
+                onProgress?(1.0)
+                return true
+            case .notSupported:
+                debugLog(
+                    "[StorytellerActor] acceptBook: server cannot attach a readaloud (replace-asset unsupported); ebook + audiobook uploaded for \(bookUUID)"
+                )
+                return false
+            case .failed:
+                debugLog("[StorytellerActor] acceptBook: readaloud attach failed for \(bookUUID)")
+                return false
+        }
+    }
+
+    public func deleteAsset(
+        _ bookID: String,
+        category: LocalMediaCategory,
+    ) async -> DeleteAssetResult {
+        let result = await deleteBookAsset(bookID, type: storytellerFormat(for: category))
+        if case .success(let updatedBook) = result {
+            try? await LocalMediaActor.shared.deleteMedia(
+                for: bookID,
+                category: category,
+                sourceID: sourceRecordValue.id,
+            )
+            // The DELETE response is authoritative for this book; write it straight to the cache so
+            // the UI updates without a full multi-source library refetch.
+            try? await LocalMediaActor.shared.updateSourceCacheBookMetadata(
+                updatedBook,
+                sourceID: sourceRecordValue.id,
+            )
+        }
+        return result
+    }
+
+    public func replaceAsset(
+        _ asset: StorytellerUploadAsset,
+        bookID: String,
+        replaceMetadata: Bool,
+        onProgress: (@Sendable (Double) -> Void)?,
+    ) async -> ReplaceAssetResult {
+        var onSendProgress: (@Sendable (Int64, Int64) -> Void)?
+        if let onProgress {
+            onSendProgress = { sent, total in
+                guard total > 0 else { return }
+                onProgress(Double(sent) / Double(total))
+            }
+        }
+        let result = await replaceBookAsset(
+            asset,
+            bookUUID: bookID,
+            replaceMetadata: replaceMetadata,
+            onSendProgress: onSendProgress,
+        )
+        if case .success = result {
+            try? await LocalMediaActor.shared.deleteMedia(
+                for: bookID,
+                category: localMediaCategory(for: asset.format),
+                sourceID: sourceRecordValue.id,
+            )
+        }
+        return result
+    }
+
+    public func packageAudiobook(for bookID: String) async -> URL? {
+        guard let media = await resolveLocalMedia(for: bookID, category: .audio) else {
+            return nil
+        }
+        let audioDirectory = media.url.deletingLastPathComponent()
+        let fm = FileManager.default
+        let stagingDir = fm.temporaryDirectory.appendingPathComponent(
+            "silveran-content-server",
+            isDirectory: true,
+        )
+        let zipURL = stagingDir.appendingPathComponent(
+            "\(bookID)-\(UUID().uuidString).audiobook"
+        )
+
+        do {
+            try fm.createDirectory(at: stagingDir, withIntermediateDirectories: true)
+            if fm.fileExists(atPath: zipURL.path) {
+                try fm.removeItem(at: zipURL)
+            }
+            let archive = try Archive(url: zipURL, accessMode: .create)
+
+            // Recurse: a package can nest tracks under subdirectories, and the manifest's hrefs are
+            // relative to its directory, so entries must keep their relative paths.
+            let base = audioDirectory.standardizedFileURL.path
+            let files =
+                ((fm.enumerator(
+                    at: audioDirectory,
+                    includingPropertiesForKeys: [.isRegularFileKey],
+                    options: [.skipsHiddenFiles],
+                )?.allObjects as? [URL]) ?? []).filter { !$0.hasDirectoryPath }
+
+            for file in files {
+                let relativePath = String(
+                    file.standardizedFileURL.path.dropFirst(base.count).drop(while: { $0 == "/" })
+                )
+                // Audio is already compressed; store everything without re-deflating.
+                try archive.addEntry(
+                    with: relativePath,
+                    fileURL: file,
+                    compressionMethod: .none,
+                )
+            }
+
+            // Silveran reads `manifest.json`; the official Storyteller client reads
+            // `manifest.audiobook-manifest`. Duplicate it so both can open the result.
+            if let manifest = files.first(where: { $0.lastPathComponent == "manifest.json" }) {
+                let alias = stagingDir.appendingPathComponent("\(UUID().uuidString).manifest")
+                try fm.copyItem(at: manifest, to: alias)
+                defer { try? fm.removeItem(at: alias) }
+                try archive.addEntry(
+                    with: "manifest.audiobook-manifest",
+                    fileURL: alias,
+                    compressionMethod: .none,
+                )
+            }
+
+            return zipURL
+        } catch {
+            debugLog("[StorytellerActor] packageAudiobook failed for \(bookID): \(error)")
+            try? fm.removeItem(at: zipURL)
+            return nil
+        }
+    }
+
+    private func storytellerFormat(for category: LocalMediaCategory) -> StorytellerBookFormat {
+        switch category {
+            case .ebook: return .ebook
+            case .audio: return .audiobook
+            case .synced: return .readaloud
+        }
+    }
+
+    private func localMediaCategory(for format: StorytellerBookFormat) -> LocalMediaCategory {
+        switch format {
+            case .ebook: return .ebook
+            case .audiobook: return .audio
+            case .readaloud: return .synced
+        }
+    }
+}
+
+private struct PackagedAudiobookManifest: Decodable {
+    struct Link: Decodable {
+        let href: String
+    }
+    let readingOrder: [Link]
 }
 
 private enum StorytellerDownloadError: Error, Sendable {

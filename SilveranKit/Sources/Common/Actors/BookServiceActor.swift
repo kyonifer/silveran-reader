@@ -1,5 +1,4 @@
 import Foundation
-import ZIPFoundation
 
 #if canImport(FoundationNetworking)
 import FoundationNetworking
@@ -8,11 +7,6 @@ import FoundationNetworking
 @globalActor
 public actor BookServiceActor {
     public static let shared = BookServiceActor()
-    private static let folderSourceStatuses: [BookStatus] = [
-        BookStatus(uuid: "folder-status-to-read", name: "To read", isDefault: true),
-        BookStatus(uuid: "folder-status-reading", name: "Reading"),
-        BookStatus(uuid: "folder-status-read", name: "Read"),
-    ]
 
     private var sourceRecords: [BookSourceRecord]
     private var sourcesByID: [BookSourceID: any BookSourceActor]
@@ -974,103 +968,24 @@ public actor BookServiceActor {
         category: LocalMediaCategory,
     ) async -> ResolvedLocalMedia? {
         await ensureSourceRegistryLoaded()
-        let resolvedSourceID = resolveExplicitSourceID(sourceID)
-
-        if let resolvedSourceID,
-            let cachedURL = await LocalMediaActor.shared.resolveAndRecordBookPath(
-                for: bookID,
-                category: category,
-                sourceID: resolvedSourceID,
-            )
-        {
-            return ResolvedLocalMedia(
-                bookID: bookID,
-                sourceID: resolvedSourceID,
-                category: category,
-                url: cachedURL,
-                kind: .cached,
-            )
-        }
-
-        guard let resolvedSourceID,
-            let folder = sourceActor(for: resolvedSourceID) as? FolderSourceActor
+        guard let resolvedSourceID = resolveExplicitSourceID(sourceID),
+            let source = sourceActor(for: resolvedSourceID)
         else {
             return nil
         }
-        return await folder.localMediaReference(for: bookID, category: category)
+        return await source.resolveLocalMedia(for: bookID, category: category)
     }
 
-    /// Packages a book's local audiobook directory into a Readium-packaged `.audiobook` zip for the
-    /// content server's audiobook download. The directory already holds `manifest.json` plus the
-    /// audio files (and any cover); we zip those as-is and add a duplicate
-    /// `manifest.audiobook-manifest` so both Silveran (which reads `manifest.json`) and the official
-    /// Storyteller mobile client (which reads `manifest.audiobook-manifest`) can open the result.
-    /// Returns a temp file URL the caller is responsible for deleting after sending it.
+    /// Packages a book's local audiobook into a Readium `.audiobook` zip for the content server's
+    /// download. Returns a temp file URL the caller is responsible for deleting after sending it.
     public func packageAudiobook(for bookID: String, sourceID: BookSourceID?) async -> URL? {
         await ensureSourceRegistryLoaded()
-        if let resolvedSourceID = resolveExplicitSourceID(sourceID),
-            let folder = sourceActor(for: resolvedSourceID) as? FolderSourceActor,
-            let package = await folder.packageAudiobook(for: bookID)
-        {
-            return package
-        }
-
-        guard
-            let media = await resolveLocalMedia(for: bookID, sourceID: sourceID, category: .audio)
+        guard let resolvedSourceID = resolveExplicitSourceID(sourceID),
+            let source = sourceActor(for: resolvedSourceID)
         else {
             return nil
         }
-        let audioDirectory = media.url.deletingLastPathComponent()
-        let fm = FileManager.default
-        let stagingDir = fm.temporaryDirectory.appendingPathComponent(
-            "silveran-content-server",
-            isDirectory: true,
-        )
-        let zipURL = stagingDir.appendingPathComponent(
-            "\(bookID)-\(UUID().uuidString).audiobook"
-        )
-
-        do {
-            try fm.createDirectory(at: stagingDir, withIntermediateDirectories: true)
-            if fm.fileExists(atPath: zipURL.path) {
-                try fm.removeItem(at: zipURL)
-            }
-            let archive = try Archive(url: zipURL, accessMode: .create)
-
-            let files = try fm.contentsOfDirectory(
-                at: audioDirectory,
-                includingPropertiesForKeys: [.isRegularFileKey],
-                options: [.skipsHiddenFiles],
-            ).filter { !$0.hasDirectoryPath }
-
-            for file in files {
-                // Audio is already compressed; store everything without re-deflating.
-                try archive.addEntry(
-                    with: file.lastPathComponent,
-                    fileURL: file,
-                    compressionMethod: .none,
-                )
-            }
-
-            if let manifest = files.first(where: { $0.lastPathComponent == "manifest.json" }) {
-                let alias = stagingDir.appendingPathComponent(
-                    "\(UUID().uuidString).manifest"
-                )
-                try fm.copyItem(at: manifest, to: alias)
-                defer { try? fm.removeItem(at: alias) }
-                try archive.addEntry(
-                    with: "manifest.audiobook-manifest",
-                    fileURL: alias,
-                    compressionMethod: .none,
-                )
-            }
-
-            return zipURL
-        } catch {
-            debugLog("[BookServiceActor] packageAudiobook failed for \(bookID): \(error)")
-            try? fm.removeItem(at: zipURL)
-            return nil
-        }
+        return await source.packageAudiobook(for: bookID)
     }
 
     public func resolvedLocalMediaPaths(for metadata: [BookMetadata]) async -> [String: MediaPaths]
@@ -1085,19 +1000,28 @@ public actor BookServiceActor {
             var paths = pathsByBookID[book.uuid] ?? MediaPaths()
             if paths.ebookPath == nil,
                 let ebook = await resolveLocalMedia(
-                    for: book.uuid, sourceID: sourceID, category: .ebook)
+                    for: book.uuid,
+                    sourceID: sourceID,
+                    category: .ebook,
+                )
             {
                 paths.ebookPath = ebook.url
             }
             if paths.audioPath == nil,
                 let audio = await resolveLocalMedia(
-                    for: book.uuid, sourceID: sourceID, category: .audio)
+                    for: book.uuid,
+                    sourceID: sourceID,
+                    category: .audio,
+                )
             {
                 paths.audioPath = audio.url
             }
             if paths.syncedPath == nil,
                 let synced = await resolveLocalMedia(
-                    for: book.uuid, sourceID: sourceID, category: .synced)
+                    for: book.uuid,
+                    sourceID: sourceID,
+                    category: .synced,
+                )
             {
                 paths.syncedPath = synced.url
             }
@@ -1215,7 +1139,6 @@ public actor BookServiceActor {
     public func deleteBook(
         _ bookId: String,
         sourceID: BookSourceID? = nil,
-        includeAssets option: StorytellerIncludeAssetsOption? = nil,
     ) async -> Bool {
         await ensureSourceRegistryLoaded()
         guard let resolvedSourceID = resolveExplicitSourceID(sourceID),
@@ -1224,29 +1147,18 @@ public actor BookServiceActor {
             return false
         }
 
-        switch sourceRecords.first(where: { $0.id == resolvedSourceID })?.kind {
-            case .storyteller:
-                guard let storyteller = source as? StorytellerActor else { return false }
-                return await storyteller.deleteBook(bookId, includeAssets: option)
-            case .localFolder:
-                guard let folder = source as? FolderSourceActor else { return false }
-                do {
-                    try await folder.deleteBook(bookId)
-                    await notifyLibraryObservers()
-                    return true
-                } catch {
-                    return false
-                }
-            case nil:
-                return false
+        let success = await source.deleteBook(bookId)
+        if success {
+            await notifyLibraryObservers()
         }
+        return success
     }
 
     public func deleteBookAsset(
         _ bookId: String,
         sourceID: BookSourceID? = nil,
         type: StorytellerBookFormat,
-    ) async -> StorytellerActor.DeleteAssetResult {
+    ) async -> DeleteAssetResult {
         await ensureSourceRegistryLoaded()
         guard let resolvedSourceID = resolveExplicitSourceID(sourceID),
             let source = sourceActor(for: resolvedSourceID)
@@ -1254,48 +1166,11 @@ public actor BookServiceActor {
             return .failed
         }
 
-        switch sourceRecords.first(where: { $0.id == resolvedSourceID })?.kind {
-            case .storyteller:
-                guard let storyteller = source as? StorytellerActor else { return .failed }
-                let result = await storyteller.deleteBookAsset(bookId, type: type)
-                if case .success(let updatedBook) = result {
-                    try? await LocalMediaActor.shared.deleteMedia(
-                        for: bookId,
-                        category: localMediaCategory(for: type),
-                        sourceID: resolvedSourceID,
-                    )
-                    // The DELETE response is authoritative for this book; write it
-                    // straight to the cache (which notifies observers) so the UI
-                    // updates without a full multi-source library refetch.
-                    try? await LocalMediaActor.shared.updateSourceCacheBookMetadata(
-                        updatedBook,
-                        sourceID: resolvedSourceID,
-                    )
-                }
-                return result
-            case .localFolder:
-                guard let folder = source as? FolderSourceActor else { return .failed }
-                do {
-                    let previousMetadata = await folder.fetchLibraryInformation()?
-                        .first(where: { $0.uuid == bookId })
-                    try await folder.deleteMedia(bookId, category: localMediaCategory(for: type))
-                    await notifyLibraryObservers()
-                    if let updated = await folder.fetchLibraryInformation()?
-                        .first(where: { $0.uuid == bookId })
-                    {
-                        return .success(updated)
-                    }
-                    if let previousMetadata {
-                        return .success(previousMetadata)
-                    }
-                    return .failed
-                } catch {
-                    debugLog("[BookServiceActor] Failed to delete folder source asset: \(error)")
-                    return .failed
-                }
-            case nil:
-                return .failed
+        let result = await source.deleteAsset(bookId, category: localMediaCategory(for: type))
+        if case .success = result {
+            await notifyLibraryObservers()
         }
+        return result
     }
 
     public func startAlignment(
@@ -1334,32 +1209,25 @@ public actor BookServiceActor {
             return false
         }
 
-        switch sourceRecords.first(where: { $0.id == resolvedSourceID })?.kind {
-            case .storyteller:
-                guard let storyteller = source as? StorytellerActor else { return false }
-                return await storyteller.uploadBookAssets(
-                    bookUUID: bookUUID,
-                    ebook: ebook,
-                    audiobook: audiobook,
-                    audiobooks: audiobooks,
-                    readaloud: readaloud,
-                    collectionUUID: collectionUUID,
-                    onProgress: onProgress,
-                )
-            case .localFolder:
-                guard let folder = source as? FolderSourceActor else { return false }
-                return await importAssetsToFolderSource(
-                    folder,
-                    bookUUID: bookUUID,
-                    ebook: ebook,
-                    audiobook: audiobook,
-                    audiobooks: audiobooks,
-                    readaloud: readaloud,
-                    sourceID: resolvedSourceID,
-                )
-            case nil:
-                return false
+        let audiobookAssets = audiobooks + [audiobook].compactMap(\.self)
+        let title =
+            ebook?.filename
+            ?? readaloud?.filename
+            ?? audiobookAssets.first?.filename
+            ?? "Book"
+        let success = await source.acceptBook(
+            bookUUID: bookUUID,
+            title: title,
+            ebook: ebook,
+            audiobooks: audiobookAssets,
+            readaloud: readaloud,
+            collectionUUID: collectionUUID,
+            onProgress: onProgress,
+        )
+        if success {
+            await notifyLibraryObservers()
         }
+        return success
     }
 
     public func replaceBookAsset(
@@ -1368,7 +1236,7 @@ public actor BookServiceActor {
         sourceID: BookSourceID? = nil,
         replaceMetadata: Bool = false,
         onProgress: (@Sendable (Double) -> Void)? = nil,
-    ) async -> StorytellerActor.ReplaceAssetResult {
+    ) async -> ReplaceAssetResult {
         await ensureSourceRegistryLoaded()
         guard let resolvedSourceID = resolveExplicitSourceID(sourceID),
             let source = sourceActor(for: resolvedSourceID)
@@ -1376,79 +1244,16 @@ public actor BookServiceActor {
             return .failed
         }
 
-        switch sourceRecords.first(where: { $0.id == resolvedSourceID })?.kind {
-            case .storyteller:
-                guard let storyteller = source as? StorytellerActor else { return .failed }
-                var onSendProgress: (@Sendable (Int64, Int64) -> Void)?
-                if let onProgress {
-                    onSendProgress = { sent, total in
-                        guard total > 0 else { return }
-                        onProgress(Double(sent) / Double(total))
-                    }
-                }
-                let result = await storyteller.replaceBookAsset(
-                    asset,
-                    bookUUID: bookUUID,
-                    replaceMetadata: replaceMetadata,
-                    onSendProgress: onSendProgress,
-                )
-                if case .success = result {
-                    try? await LocalMediaActor.shared.deleteMedia(
-                        for: bookUUID,
-                        category: localMediaCategory(for: asset.format),
-                        sourceID: resolvedSourceID,
-                    )
-                }
-                return result
-            case .localFolder:
-                guard let folder = source as? FolderSourceActor else { return .failed }
-                do {
-                    try await folder.replaceAsset(
-                        asset,
-                        bookName: asset.filename,
-                        bookUUID: bookUUID,
-                    )
-                    onProgress?(1.0)
-                    await notifyLibraryObservers()
-                    return .success
-                } catch {
-                    debugLog("[BookServiceActor] Failed to replace folder source asset: \(error)")
-                    return .failed
-                }
-            case nil:
-                return .failed
-        }
-    }
-
-    private func importAssetsToFolderSource(
-        _ folder: FolderSourceActor,
-        bookUUID: String,
-        ebook: StorytellerUploadAsset?,
-        audiobook: StorytellerUploadAsset?,
-        audiobooks: [StorytellerUploadAsset],
-        readaloud: StorytellerUploadAsset?,
-        sourceID: BookSourceID,
-    ) async -> Bool {
-        let audiobookAssets = audiobooks + [audiobook].compactMap(\.self)
-        guard ebook != nil || !audiobookAssets.isEmpty || readaloud != nil else { return false }
-
-        do {
-            try await folder.importBookAssets(
-                bookUUID: bookUUID,
-                bookName: ebook?.filename
-                    ?? readaloud?.filename
-                    ?? audiobookAssets.first?.filename
-                    ?? "Book",
-                ebook: ebook,
-                audiobooks: audiobookAssets,
-                readaloud: readaloud,
-            )
+        let result = await source.replaceAsset(
+            asset,
+            bookID: bookUUID,
+            replaceMetadata: replaceMetadata,
+            onProgress: onProgress,
+        )
+        if case .success = result {
             await notifyLibraryObservers()
-            return true
-        } catch {
-            debugLog("[BookServiceActor] Failed to import assets to folder source: \(error)")
-            return false
         }
+        return result
     }
 
     private func localMediaCategory(for format: StorytellerBookFormat) -> LocalMediaCategory {
@@ -1462,10 +1267,76 @@ public actor BookServiceActor {
         }
     }
 
+    public func locallyAvailableMedia(
+        for bookID: String,
+        sourceID: BookSourceID?,
+    ) async -> Set<LocalMediaCategory> {
+        await ensureSourceRegistryLoaded()
+        guard let resolvedSourceID = resolveExplicitSourceID(sourceID),
+            let source = sourceActor(for: resolvedSourceID)
+        else {
+            return []
+        }
+        return await source.locallyAvailableMedia(for: bookID)
+    }
+
+    /// Copies a book between sources. The source actor exports its locally-available media and the
+    /// destination accepts it; neither end's storage layout is visible here. The caller should ensure
+    /// every existing category is downloaded first (see `locallyAvailableMedia`).
+    public func copyBook(
+        _ book: BookMetadata,
+        to destinationSourceID: BookSourceID,
+        onProgress: (@Sendable (Double) -> Void)? = nil,
+    ) async -> Bool {
+        await ensureSourceRegistryLoaded()
+        guard let destination = sourceActor(for: destinationSourceID) else {
+            debugLog("[BookServiceActor] copyBook: unknown destination \(destinationSourceID)")
+            return false
+        }
+        guard let source = sourceActor(for: book.sourceID) else {
+            debugLog("[BookServiceActor] copyBook: unknown source for \(book.id)")
+            return false
+        }
+
+        let available = await source.locallyAvailableMedia(for: book.id)
+        guard requiredCategories(for: book).isSubset(of: available) else {
+            debugLog("[BookServiceActor] copyBook: \(book.id) not fully downloaded at source")
+            return false
+        }
+
+        guard let assets = await source.exportAssets(for: book.id) else {
+            debugLog("[BookServiceActor] copyBook: source could not export \(book.id)")
+            return false
+        }
+
+        let success = await destination.acceptBook(
+            bookUUID: UUID().uuidString,
+            title: book.title,
+            ebook: assets.ebook,
+            audiobooks: assets.audiobooks,
+            readaloud: assets.readaloud,
+            collectionUUID: nil,
+            onProgress: onProgress,
+        )
+        if success {
+            await fetchLibraryInformation()
+            await notifyLibraryObservers()
+        }
+        return success
+    }
+
+    private func requiredCategories(for book: BookMetadata) -> Set<LocalMediaCategory> {
+        var categories: Set<LocalMediaCategory> = []
+        if book.hasAvailableEbook { categories.insert(.ebook) }
+        if book.hasAvailableAudiobook { categories.insert(.audio) }
+        if book.hasAvailableReadaloud { categories.insert(.synced) }
+        return categories
+    }
+
     public func getAvailableStatuses() async -> [BookStatus] {
         await ensureSourceRegistryLoaded()
         var statusesByKey: [String: BookStatus] = [:]
-        for status in Self.folderSourceStatuses {
+        for status in FolderSourceActor.availableStatuses {
             statusesByKey[status.uuid ?? status.name.lowercased()] = status
         }
         for storyteller in storytellerActors() {
@@ -1484,7 +1355,7 @@ public actor BookServiceActor {
             return await storyteller.getAvailableStatuses()
         }
         if sourceActor(for: sourceID) is FolderSourceActor {
-            return Self.folderSourceStatuses
+            return FolderSourceActor.availableStatuses
         }
         return []
     }
@@ -1500,27 +1371,11 @@ public actor BookServiceActor {
         else {
             return false
         }
-        if let folder = source as? FolderSourceActor {
-            guard
-                let status = Self.folderSourceStatuses.first(where: {
-                    $0.name.caseInsensitiveCompare(statusName) == .orderedSame
-                })
-            else {
-                return false
-            }
-            let success = await folder.updateStatus(
-                forBooks: bookIds,
-                to: status,
-            )
-            if success {
-                await notifyLibraryObservers()
-            }
-            return success
-        }
-        guard let storyteller = source as? StorytellerActor else { return false }
-        let success = await storyteller.updateStatus(forBooks: bookIds, toStatusNamed: statusName)
+        // Each source keeps its own cache consistent inside updateStatus, so a single observer
+        // notification suffices; we never force a folder rescan here.
+        let success = await source.updateStatus(forBooks: bookIds, toStatusNamed: statusName)
         if success {
-            _ = await fetchLibraryInformation(sourceID: resolvedSourceID)
+            await notifyLibraryObservers()
         }
         return success
     }

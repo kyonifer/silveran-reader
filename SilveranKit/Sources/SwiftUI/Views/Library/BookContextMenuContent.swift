@@ -32,7 +32,44 @@ struct BookContextMenuContent: View {
 
         processingMenu
 
+        copyToSection
+
         serverMediaSection
+    }
+
+    @ViewBuilder
+    private var copyToSection: some View {
+        let destinations = mediaViewModel.bookSources.filter {
+            $0.id != currentSourceID && $0.capabilities.canUploadBooks
+        }
+        if !destinations.isEmpty {
+            Divider()
+
+            Menu {
+                ForEach(destinations) { destination in
+                    Button {
+                        openWindow(
+                            id: "CopyBook",
+                            value: CopyBookData(
+                                bookID: item.id,
+                                destinationSourceID: destination.id,
+                            ),
+                        )
+                    } label: {
+                        Label(destination.name, systemImage: sourceIconName(destination.kind))
+                    }
+                }
+            } label: {
+                Label("Copy To...", systemImage: "square.and.arrow.up.on.square")
+            }
+        }
+    }
+
+    private func sourceIconName(_ kind: BookSourceKind) -> String {
+        switch kind {
+            case .storyteller: return "server.rack"
+            case .localFolder: return "folder"
+        }
     }
 
     private var currentItem: BookMetadata {
@@ -392,7 +429,7 @@ struct BookContextMenuContent: View {
             )
             await mediaViewModel.refreshMetadata(source: "BookContextMenuContent.deleteSourceAsset")
             let didDelete = {
-                if case StorytellerActor.DeleteAssetResult.success = result {
+                if case DeleteAssetResult.success = result {
                     return true
                 }
                 return false

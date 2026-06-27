@@ -259,6 +259,38 @@ extension BookSourceKind {
     }
 }
 
+public struct ExportedBookAssets: Sendable {
+    public var ebook: StorytellerUploadAsset?
+    public var audiobooks: [StorytellerUploadAsset]
+    public var readaloud: StorytellerUploadAsset?
+
+    public init(
+        ebook: StorytellerUploadAsset? = nil,
+        audiobooks: [StorytellerUploadAsset] = [],
+        readaloud: StorytellerUploadAsset? = nil,
+    ) {
+        self.ebook = ebook
+        self.audiobooks = audiobooks
+        self.readaloud = readaloud
+    }
+
+    public var isEmpty: Bool {
+        ebook == nil && audiobooks.isEmpty && readaloud == nil
+    }
+}
+
+public enum DeleteAssetResult: Sendable {
+    case success(BookMetadata)
+    case notSupported
+    case failed
+}
+
+public enum ReplaceAssetResult: Sendable {
+    case success
+    case notSupported
+    case failed
+}
+
 public protocol BookSourceActor: Actor {
     var sourceRecord: BookSourceRecord { get async }
     var connectionStatus: ConnectionStatus { get async }
@@ -282,6 +314,107 @@ public protocol BookSourceActor: Actor {
     ) async -> HTTPResult
 
     func fetchBookPosition(bookId: String) async -> BookReadingPosition?
+
+    /// Resolves one category to an on-disk URL this source can read right now, hiding the storage
+    /// layout (folder: in-folder file; storyteller: per-device download cache). Nil if not local.
+    func resolveLocalMedia(
+        for bookID: String,
+        category: LocalMediaCategory,
+    ) async -> ResolvedLocalMedia?
+
+    /// Individual audio files backing a book, in playback order, for export. Empty if none are local.
+    func localAudioFiles(for bookID: String) async -> [URL]
+
+    /// Create or merge a book from prepared assets, organizing destination storage as appropriate
+    /// (storyteller uploads over HTTP; folder sources write files, guessing the folder layout).
+    /// `collectionUUID` adds the new book to a storyteller collection; folder sources ignore it.
+    func acceptBook(
+        bookUUID: String,
+        title: String,
+        ebook: StorytellerUploadAsset?,
+        audiobooks: [StorytellerUploadAsset],
+        readaloud: StorytellerUploadAsset?,
+        collectionUUID: String?,
+        onProgress: (@Sendable (Double) -> Void)?,
+    ) async -> Bool
+
+    /// Deletes the book from everything this source owns. Storyteller issues a server DELETE (which
+    /// removes the server's files) and then drops the device's downloaded copy from the local media
+    /// cache. A folder removes its on-disk files; it has no device cache to clear.
+    func deleteBook(_ bookID: String) async -> Bool
+
+    /// Deletes one media category server/folder-side. On success the result carries the book's
+    /// refreshed metadata so callers can update without a full refetch; `.notSupported` means an older
+    /// storyteller server lacks the per-asset delete endpoint.
+    func deleteAsset(_ bookID: String, category: LocalMediaCategory) async -> DeleteAssetResult
+
+    /// Overwrites the book's existing file(s) for `asset`'s category with `asset`. `replaceMetadata`
+    /// (storyteller only) lets the new file's metadata overwrite the book record; folder ignores it.
+    func replaceAsset(
+        _ asset: StorytellerUploadAsset,
+        bookID: String,
+        replaceMetadata: Bool,
+        onProgress: (@Sendable (Double) -> Void)?,
+    ) async -> ReplaceAssetResult
+
+    /// Sets the named reading status on the books. Implementations must leave their own cache
+    /// consistent so the caller only needs to notify observers, never force a refetch/rescan.
+    func updateStatus(forBooks bookIDs: [String], toStatusNamed statusName: String) async -> Bool
+
+    /// Zips a book's local audiobook directory into a Readium `.audiobook` at a temp URL the caller
+    /// must delete. Nil when no audiobook is available locally to package.
+    func packageAudiobook(for bookID: String) async -> URL?
+}
+
+extension BookSourceActor {
+    /// Categories whose media is resolvable locally without a network round-trip.
+    public func locallyAvailableMedia(for bookID: String) async -> Set<LocalMediaCategory> {
+        var result: Set<LocalMediaCategory> = []
+        for category in LocalMediaCategory.allCases
+        where await resolveLocalMedia(for: bookID, category: category) != nil {
+            result.insert(category)
+        }
+        return result
+    }
+
+    /// Reads a book's locally-available media into transferable assets. Returns nil if nothing can be
+    /// read. The caller should first confirm availability via `locallyAvailableMedia`.
+    public func exportAssets(for bookID: String) async -> ExportedBookAssets? {
+        var assets = ExportedBookAssets()
+
+        if let media = await resolveLocalMedia(for: bookID, category: .ebook),
+            let data = try? Data(contentsOf: media.url)
+        {
+            assets.ebook = StorytellerUploadAsset(
+                format: .ebook,
+                filename: media.url.lastPathComponent,
+                data: data,
+            )
+        }
+
+        if let media = await resolveLocalMedia(for: bookID, category: .synced),
+            let data = try? Data(contentsOf: media.url)
+        {
+            assets.readaloud = StorytellerUploadAsset(
+                format: .readaloud,
+                filename: media.url.lastPathComponent,
+                data: data,
+            )
+        }
+
+        for url in await localAudioFiles(for: bookID) {
+            guard let data = try? Data(contentsOf: url) else { return nil }
+            assets.audiobooks.append(
+                StorytellerUploadAsset(
+                    format: .audiobook,
+                    filename: url.lastPathComponent,
+                    data: data,
+                )
+            )
+        }
+
+        return assets.isEmpty ? nil : assets
+    }
 }
 
 extension BookSourceCapabilities {

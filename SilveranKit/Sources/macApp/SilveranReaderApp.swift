@@ -55,6 +55,7 @@ struct SilveranReaderApp: App {
         mp3ToM4BConverterScene
         serverMediaManagementScene
         uploadNewBookScene
+        copyBookScene
         metadataEditorScene
         #endif
     }
@@ -218,6 +219,20 @@ struct SilveranReaderApp: App {
         WindowGroup("Upload New Book", id: "UploadNewBook", for: UploadNewBookData.self) { data in
             UploadNewBookView(initialSourceID: data.wrappedValue?.sourceID)
                 .environment(mediaViewModel)
+        }
+        .windowResizability(.contentSize)
+        .disableWindowRestoration()
+    }
+
+    private var copyBookScene: some Scene {
+        WindowGroup("Copy Book", id: "CopyBook", for: CopyBookData.self) { data in
+            if let data = data.wrappedValue {
+                CopyBookView(
+                    bookID: data.bookID,
+                    destinationSourceID: data.destinationSourceID,
+                )
+                .environment(mediaViewModel)
+            }
         }
         .windowResizability(.contentSize)
         .disableWindowRestoration()

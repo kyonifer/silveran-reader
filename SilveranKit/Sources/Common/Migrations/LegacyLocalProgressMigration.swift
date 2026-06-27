@@ -21,7 +21,9 @@ extension FilesystemActor {
         do {
             _ = try await FolderSourceActor(sourceRecord: source).scanLibrary(in: folderURL)
             guard let scanned = try loadFolderSourceLibraryState(in: folderURL) else {
-                debugLog("[SilveranMigrations] Legacy local progress migration found no scanned state")
+                debugLog(
+                    "[SilveranMigrations] Legacy local progress migration found no scanned state"
+                )
                 return
             }
             let merged = LegacyLocalProgressMerge.merge(into: scanned, legacy: legacy)

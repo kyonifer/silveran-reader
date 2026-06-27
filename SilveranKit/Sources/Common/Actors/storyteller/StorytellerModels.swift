@@ -177,11 +177,6 @@ struct StorytellerCollectionUpdatePayload: Codable, Sendable {
     }
 }
 
-public enum StorytellerIncludeAssetsOption: String, Sendable {
-    case internalOnly = "internal"
-    case all
-}
-
 enum StorytellerDownloadEvent: Sendable {
     case response(
         filename: String,

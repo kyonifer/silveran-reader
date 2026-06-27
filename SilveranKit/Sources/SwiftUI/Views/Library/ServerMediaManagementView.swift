@@ -837,16 +837,9 @@ public struct ServerMediaManagementView: View {
         isDeleting = true
         errorMessage = nil
 
-        for category in [LocalMediaCategory.ebook, .audio, .synced] {
-            if mediaViewModel.hasCachedMedia(category, for: item) {
-                mediaViewModel.deleteDownload(for: item, category: category)
-            }
-        }
-
         let success = await BookServiceActor.shared.deleteBook(
             item.uuid,
             sourceID: item.sourceID,
-            includeAssets: .all,
         )
         await refreshBookMetadata()
 

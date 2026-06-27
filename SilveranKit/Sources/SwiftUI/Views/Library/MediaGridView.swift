@@ -698,6 +698,9 @@ struct MediaGridView: View {
                     onCreateLocalReadaloud: { data in
                         openWindow(id: "ReadaloudGenerator", value: data)
                     },
+                    onCopyBook: { data in
+                        openWindow(id: "CopyBook", value: data)
+                    },
                 )
                 .padding(.top, 8)
             }

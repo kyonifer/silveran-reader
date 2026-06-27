@@ -132,21 +132,34 @@ public actor LocalMediaActor: GlobalActor {
         return String(full.dropFirst(prefix.count))
     }
 
-    private func downloadRecord(from paths: MediaPaths, sourceID: BookSourceID) async -> DownloadedMediaRecord {
+    private func downloadRecord(from paths: MediaPaths, sourceID: BookSourceID) async
+        -> DownloadedMediaRecord
+    {
         var record = DownloadedMediaRecord()
         if let ebookPath = paths.ebookPath {
-            record.ebookRelativePath = await relativePathInSourceCache(ebookPath, sourceID: sourceID)
+            record.ebookRelativePath = await relativePathInSourceCache(
+                ebookPath,
+                sourceID: sourceID,
+            )
         }
         if let audioPath = paths.audioPath {
-            record.audioRelativePath = await relativePathInSourceCache(audioPath, sourceID: sourceID)
+            record.audioRelativePath = await relativePathInSourceCache(
+                audioPath,
+                sourceID: sourceID,
+            )
         }
         if let syncedPath = paths.syncedPath {
-            record.syncedRelativePath = await relativePathInSourceCache(syncedPath, sourceID: sourceID)
+            record.syncedRelativePath = await relativePathInSourceCache(
+                syncedPath,
+                sourceID: sourceID,
+            )
         }
         return record
     }
 
-    private func mediaPaths(from record: DownloadedMediaRecord, sourceID: BookSourceID) async -> MediaPaths {
+    private func mediaPaths(from record: DownloadedMediaRecord, sourceID: BookSourceID) async
+        -> MediaPaths
+    {
         let base = await filesystem.sourceCacheDirectory(sourceID: sourceID)
         func resolve(_ relativePath: String?) -> URL? {
             relativePath.map { base.appendingPathComponent($0) }
@@ -472,7 +485,8 @@ public actor LocalMediaActor: GlobalActor {
 
         var sourcesToPersist = Set(rebuilt.keys).union(downloadedMediaBySource.keys)
         if persistAllSources {
-            let nonFolderSourceIDs = (try? await filesystem.loadOrCreateBookSources())?
+            let nonFolderSourceIDs =
+                (try? await filesystem.loadOrCreateBookSources())?
                 .filter { $0.kind != .localFolder }
                 .map(\.id) ?? []
             sourcesToPersist.formUnion(nonFolderSourceIDs)
@@ -616,6 +630,23 @@ public actor LocalMediaActor: GlobalActor {
         )
 
         await setLedgerPath(bookID: uuid, sourceID: sourceID, category: category, url: nil)
+        await notifyObservers()
+    }
+
+    /// Removes every downloaded category for a book in one mutation. Tolerates categories that were
+    /// never downloaded. Used when a book is deleted from its source so no stranded files remain.
+    public func removeAllMedia(
+        for uuid: String,
+        sourceID explicitSourceID: BookSourceID? = nil,
+    ) async {
+        beginMutation()
+        defer { endMutation() }
+        guard let sourceID = await cacheSourceID(for: uuid, explicitSourceID: explicitSourceID)
+        else { return }
+        for category in LocalMediaCategory.allCases {
+            try? await filesystem.deleteMedia(for: uuid, category: category, sourceID: sourceID)
+            await setLedgerPath(bookID: uuid, sourceID: sourceID, category: category, url: nil)
+        }
         await notifyObservers()
     }
 

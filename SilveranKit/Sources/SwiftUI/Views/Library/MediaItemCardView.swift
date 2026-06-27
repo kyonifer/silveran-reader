@@ -92,6 +92,7 @@ struct MediaItemCardView: View {
     @Environment(\.editMetadataAction) private var editMetadataAction
     @State private var pendingDetailsNavigation = false
     @State private var pendingPlayerCategory: LocalMediaCategory?
+    @State private var copyBookData: CopyBookData?
     #endif
 
     var body: some View {
@@ -103,6 +104,7 @@ struct MediaItemCardView: View {
             .buttonStyle(.plain)
             .background(deferredNavigationLinks)
             .contextMenu { iOSCardContextMenu }
+            .sheet(item: $copyBookData) { copyBookSheet($0) }
         } else {
             NavigationLink(value: item) {
                 cardContent
@@ -110,6 +112,7 @@ struct MediaItemCardView: View {
             .buttonStyle(.plain)
             .background(deferredNavigationLinks)
             .contextMenu { iOSCardContextMenu }
+            .sheet(item: $copyBookData) { copyBookSheet($0) }
         }
         #else
         cardContent
@@ -141,6 +144,58 @@ struct MediaItemCardView: View {
         iOSContextMenuMediaOption(for: .ebook, label: "Ebook")
         iOSContextMenuMediaOption(for: .audio, label: "Audiobook")
         iOSContextMenuMediaOption(for: .synced, label: "Readaloud")
+
+        iOSCopyToMenu
+    }
+
+    @ViewBuilder
+    private var iOSCopyToMenu: some View {
+        let destinations = mediaViewModel.bookSources.filter {
+            $0.id != iOSCurrentItem.sourceID && $0.capabilities.canUploadBooks
+        }
+        if !destinations.isEmpty {
+            Divider()
+
+            Menu {
+                ForEach(destinations) { destination in
+                    Button {
+                        copyBookData = CopyBookData(
+                            bookID: item.id,
+                            destinationSourceID: destination.id,
+                        )
+                    } label: {
+                        Label(destination.name, systemImage: iOSSourceIconName(destination.kind))
+                    }
+                }
+            } label: {
+                Label("Copy To...", systemImage: "square.and.arrow.up.on.square")
+            }
+        }
+    }
+
+    private func iOSSourceIconName(_ kind: BookSourceKind) -> String {
+        switch kind {
+            case .storyteller: return "server.rack"
+            case .localFolder: return "folder"
+        }
+    }
+
+    @ViewBuilder
+    private func copyBookSheet(_ data: CopyBookData) -> some View {
+        NavigationStack {
+            CopyBookView(
+                bookID: data.bookID,
+                destinationSourceID: data.destinationSourceID,
+            )
+            .environment(mediaViewModel)
+            .navigationTitle("Copy Book")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") { copyBookData = nil }
+                }
+            }
+        }
     }
 
     private var iOSCurrentItem: BookMetadata {

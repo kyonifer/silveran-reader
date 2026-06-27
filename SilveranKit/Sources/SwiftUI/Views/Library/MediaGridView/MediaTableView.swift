@@ -166,6 +166,7 @@ struct MediaTableView: NSViewRepresentable {
     var onEditMetadata: (([String]) -> Void)?
     var onManageServerMedia: ((String) -> Void)?
     var onCreateLocalReadaloud: ((ReadaloudGeneratorData) -> Void)?
+    var onCopyBook: ((CopyBookData) -> Void)?
 
     init(
         items: [BookMetadata],
@@ -185,6 +186,7 @@ struct MediaTableView: NSViewRepresentable {
         onEditMetadata: (([String]) -> Void)? = nil,
         onManageServerMedia: ((String) -> Void)? = nil,
         onCreateLocalReadaloud: ((ReadaloudGeneratorData) -> Void)? = nil,
+        onCopyBook: ((CopyBookData) -> Void)? = nil,
     ) {
         self.items = items
         self.coverPreference = coverPreference
@@ -203,6 +205,7 @@ struct MediaTableView: NSViewRepresentable {
         self.onEditMetadata = onEditMetadata
         self.onManageServerMedia = onManageServerMedia
         self.onCreateLocalReadaloud = onCreateLocalReadaloud
+        self.onCopyBook = onCopyBook
     }
 
     func makeCoordinator() -> Coordinator {
@@ -1213,6 +1216,30 @@ struct MediaTableView: NSViewRepresentable {
                 menu.addItem(local)
             }
 
+            let copyDestinations = mediaViewModel.bookSources.filter {
+                $0.id != item.sourceID && $0.capabilities.canUploadBooks
+            }
+            if !copyDestinations.isEmpty {
+                menu.addItem(.separator())
+                let copyMenu = NSMenu()
+                for destination in copyDestinations {
+                    let copyItem = NSMenuItem(
+                        title: destination.name,
+                        action: #selector(copyBookTo(_:)),
+                        keyEquivalent: "",
+                    )
+                    copyItem.target = self
+                    copyItem.representedObject = CopyBookData(
+                        bookID: item.id,
+                        destinationSourceID: destination.id,
+                    )
+                    copyMenu.addItem(copyItem)
+                }
+                let copyMenuItem = NSMenuItem(title: "Copy To...", action: nil, keyEquivalent: "")
+                copyMenuItem.submenu = copyMenu
+                menu.addItem(copyMenuItem)
+            }
+
             let serverActions = NSMenu()
             if addServerActionItems(to: serverActions, for: item) > 0 {
                 menu.addItem(.separator())
@@ -1376,6 +1403,11 @@ struct MediaTableView: NSViewRepresentable {
                 )
             else { return }
             parent.onCreateLocalReadaloud?(data)
+        }
+
+        @objc private func copyBookTo(_ sender: NSMenuItem) {
+            guard let data = sender.representedObject as? CopyBookData else { return }
+            parent.onCopyBook?(data)
         }
 
         @objc private func reprocessSync(_ sender: NSMenuItem) {
@@ -1591,7 +1623,7 @@ struct MediaTableView: NSViewRepresentable {
                 )
                 await mediaViewModel.refreshMetadata(source: "MediaTableView.deleteSourceAsset")
                 let didDelete = {
-                    if case StorytellerActor.DeleteAssetResult.success = result {
+                    if case DeleteAssetResult.success = result {
                         return true
                     }
                     return false
