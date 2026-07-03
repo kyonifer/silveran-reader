@@ -82,6 +82,13 @@ struct TVReaderDisplayView: View {
                             selection: tvAppearanceBinding(\.textAlignment),
                             saveSelection: saveAppearance,
                         )
+                    case .scrollMode:
+                        TVReaderStringOptionList(
+                            title: "Scroll Mode",
+                            options: TVReaderDisplayOption.scrollModes,
+                            selection: tvAppearanceBinding(\.scrollMode),
+                            saveSelection: saveAppearance,
+                        )
                 }
             }
             .navigationTitle("Reader Display")
@@ -103,6 +110,7 @@ private enum TVReaderDisplayDestination: Hashable {
     case textWidth
     case lineSpacing
     case textAlignment
+    case scrollMode
 }
 
 private enum TVReaderDisplayOption {
@@ -169,6 +177,11 @@ private enum TVReaderDisplayOption {
         ("Left", "leading"),
         ("Centered", "center"),
         ("Justified", "justified"),
+    ]
+
+    static let scrollModes: [(label: String, value: String)] = [
+        ("By Paragraph", "paragraph"),
+        ("By Sentence", "sentence"),
     ]
 }
 
@@ -266,6 +279,15 @@ private struct TVReaderDisplayMenu: View {
                     )
                 }
                 .buttonStyle(TVReaderDisplayRowButtonStyle(height: 106))
+
+                NavigationLink(value: TVReaderDisplayDestination.scrollMode) {
+                    TVReaderDisplayRowContent(
+                        title: "Scroll Mode",
+                        value: scrollModeLabel,
+                        systemName: "arrow.up.arrow.down",
+                    )
+                }
+                .buttonStyle(TVReaderDisplayRowButtonStyle(height: 106))
             }
 
             TVReaderDisplaySection(title: "Reset") {
@@ -330,6 +352,11 @@ private struct TVReaderDisplayMenu: View {
     private var textAlignmentLabel: String {
         TVReaderDisplayOption.textAlignments
             .first { $0.value == tvReaderAppearance.textAlignment }?.label ?? "Left"
+    }
+
+    private var scrollModeLabel: String {
+        TVReaderDisplayOption.scrollModes
+            .first { $0.value == tvReaderAppearance.scrollMode }?.label ?? "By Paragraph"
     }
 }
 

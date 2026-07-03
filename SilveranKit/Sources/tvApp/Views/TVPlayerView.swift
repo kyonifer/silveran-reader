@@ -27,6 +27,10 @@ struct TVPlayerView: View {
     @State private var tvReaderAppearance = SilveranGlobalConfig.Reading.TVReaderAppearance()
     @State private var forceInstantScroll = false
     @State private var scrollDebounceTask: Task<Void, Never>?
+    @State private var paragraphHeights: [Int: CGFloat] = [:]
+    @State private var viewportHeight: CGFloat = 0
+    @State private var oversizedParagraphIndex = -1
+    @State private var oversizedAnchorY: CGFloat = 0
 
     @Environment(\.dismiss) private var dismiss
 
@@ -312,12 +316,22 @@ struct TVPlayerView: View {
                 LazyVStack(alignment: .leading, spacing: paragraphSpacing) {
                     ForEach(viewModel.chapterParagraphs) { paragraph in
                         paragraphView(paragraph)
+                            .onGeometryChange(for: CGFloat.self) { geometryProxy in
+                                geometryProxy.size.height
+                            } action: { height in
+                                paragraphHeights[paragraph.index] = height
+                            }
                             .id(paragraph.index)
                     }
                 }
-                .padding(.vertical, 300)
+                .padding(.vertical, 600)
             }
             .scrollDisabled(true)
+            .onGeometryChange(for: CGFloat.self) { geometryProxy in
+                geometryProxy.size.height
+            } action: { height in
+                viewportHeight = height
+            }
             .onChange(of: viewModel.currentEntryIndex) { _, _ in
                 scrollToCurrent(proxy, animated: true)
                 scrollDebounceTask?.cancel()
@@ -328,10 +342,18 @@ struct TVPlayerView: View {
                 }
             }
             .onChange(of: viewModel.chapterParagraphs.count) { _, _ in
+                oversizedParagraphIndex = -1
                 forceInstantScroll = true
                 DispatchQueue.main.async {
                     scrollToCurrent(proxy, animated: false, consumeForce: false)
                 }
+            }
+            .onChange(of: tvReaderAppearance.scrollMode) { _, _ in
+                oversizedParagraphIndex = -1
+                scrollToCurrent(proxy, animated: true)
+            }
+            .onChange(of: viewModel.chapterTitle) { _, _ in
+                oversizedParagraphIndex = -1
             }
         }
         .frame(maxWidth: textMaxWidth)
@@ -983,8 +1005,11 @@ struct TVPlayerView: View {
         else {
             return
         }
+        guard let anchor = resolvedScrollAnchor(for: targetIndex) else {
+            return
+        }
         let shouldAnimate = animated && !forceInstantScroll
-        let action = { proxy.scrollTo(targetIndex, anchor: .center) }
+        let action = { proxy.scrollTo(targetIndex, anchor: anchor) }
         if shouldAnimate {
             withAnimation(.smooth(duration: 0.5)) {
                 action()
@@ -999,6 +1024,106 @@ struct TVPlayerView: View {
         if forceInstantScroll && consumeForce {
             forceInstantScroll = false
         }
+    }
+
+    // scrollTo(id, anchor: UnitPoint(0.5, a)) aligns the point a*paragraphHeight inside the
+    // paragraph with the point a*viewportHeight in the viewport, so the content offset lands at
+    // paragraphTop + a*(paragraphHeight - viewportHeight). Solving for a places the estimated
+    // sentence position at a chosen fraction of the viewport. Returns nil when the sentence is
+    // still comfortably visible and no scroll should happen.
+    private func resolvedScrollAnchor(for paragraphIndex: Int) -> UnitPoint? {
+        guard
+            paragraphIndex >= 0,
+            paragraphIndex < viewModel.chapterParagraphs.count,
+            let paragraphHeight = paragraphHeights[paragraphIndex],
+            viewportHeight > 0
+        else {
+            oversizedParagraphIndex = -1
+            return .center
+        }
+        let paragraph = viewModel.chapterParagraphs[paragraphIndex]
+
+        if tvReaderAppearance.scrollMode == "sentence" {
+            oversizedParagraphIndex = -1
+            guard let fraction = activeSentenceFraction(in: paragraph) else { return .center }
+            let anchor = centeredSentenceAnchor(
+                sentenceCenter: fraction * paragraphHeight,
+                paragraphHeight: paragraphHeight,
+            )
+            print(
+                "[TVDBG] scroll sentence idx=\(paragraphIndex) H=\(Int(paragraphHeight)) V=\(Int(viewportHeight)) frac=\(String(format: "%.2f", fraction)) anchorY=\(String(format: "%.2f", anchor.y))"
+            )
+            return anchor
+        }
+
+        guard
+            paragraphHeight > viewportHeight,
+            let fraction = activeSentenceFraction(in: paragraph)
+        else {
+            oversizedParagraphIndex = -1
+            return .center
+        }
+        let sentenceCenter = fraction * paragraphHeight
+        if oversizedParagraphIndex == paragraphIndex {
+            let screenY = sentenceCenter - oversizedAnchorY * (paragraphHeight - viewportHeight)
+            if screenY >= viewportHeight * 0.36 && screenY <= viewportHeight * 0.70 {
+                return nil
+            }
+            print(
+                "[TVDBG] scroll jump idx=\(paragraphIndex) H=\(Int(paragraphHeight)) V=\(Int(viewportHeight)) screenY=\(Int(screenY)) out of band"
+            )
+        } else {
+            print(
+                "[TVDBG] scroll enter idx=\(paragraphIndex) H=\(Int(paragraphHeight)) V=\(Int(viewportHeight)) frac=\(String(format: "%.2f", fraction))"
+            )
+        }
+        oversizedParagraphIndex = paragraphIndex
+        oversizedAnchorY = jumpAnchorY(
+            sentenceCenter: sentenceCenter,
+            paragraphHeight: paragraphHeight,
+        )
+        return UnitPoint(x: 0.5, y: oversizedAnchorY)
+    }
+
+    // Estimates where the active sentence sits vertically in its paragraph by character
+    // position, since segments are inline Text runs with no frames of their own.
+    private func activeSentenceFraction(
+        in paragraph: SMILTextPlaybackViewModel.ChapterParagraph
+    ) -> CGFloat? {
+        var totalLength = 0
+        var activeStart: Int?
+        var activeLength = 0
+        for segment in paragraph.segments {
+            let length = segment.text.count + segment.separator.count
+            if segment.entryIndex == viewModel.currentEntryIndex {
+                activeStart = totalLength
+                activeLength = length
+            }
+            totalLength += length
+        }
+        guard totalLength > 0, let activeStart else { return nil }
+        return (CGFloat(activeStart) + CGFloat(activeLength) / 2) / CGFloat(totalLength)
+    }
+
+    // Anchor values outside 0...1 are intentional: they are the solutions that put the sentence
+    // at the desired viewport fraction when the sentence sits near a paragraph edge, showing
+    // neighboring paragraphs above or below. The scroll view clamps at real content bounds.
+    private func centeredSentenceAnchor(
+        sentenceCenter: CGFloat,
+        paragraphHeight: CGFloat,
+    ) -> UnitPoint {
+        let denominator = paragraphHeight - viewportHeight
+        guard abs(denominator) > 10 else { return .center }
+        return UnitPoint(x: 0.5, y: (sentenceCenter - viewportHeight / 2) / denominator)
+    }
+
+    private func jumpAnchorY(
+        sentenceCenter: CGFloat,
+        paragraphHeight: CGFloat,
+    ) -> CGFloat {
+        let denominator = paragraphHeight - viewportHeight
+        guard abs(denominator) > 10 else { return 0.5 }
+        return (sentenceCenter - viewportHeight * 0.42) / denominator
     }
 
     private func controlButton(

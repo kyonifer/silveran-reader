@@ -150,8 +150,9 @@ private struct PlatformComicPageView: UIViewRepresentable {
         private var isTopChromeVisible = false
 
         func updateLayoutMode(isBottomScrubberVisible: Bool, isTopChromeVisible: Bool) {
-            guard self.isBottomScrubberVisible != isBottomScrubberVisible
-                || self.isTopChromeVisible != isTopChromeVisible
+            guard
+                self.isBottomScrubberVisible != isBottomScrubberVisible
+                    || self.isTopChromeVisible != isTopChromeVisible
             else {
                 return
             }
@@ -184,7 +185,10 @@ private struct PlatformComicPageView: UIViewRepresentable {
             centerImage(in: scrollView)
         }
 
-        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+        func gestureRecognizer(
+            _ gestureRecognizer: UIGestureRecognizer,
+            shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer,
+        ) -> Bool {
             true
         }
 
@@ -220,7 +224,10 @@ private struct PlatformComicPageView: UIViewRepresentable {
 
             guard let imageView else { return }
             let point = recognizer.location(in: imageView)
-            let targetScale = min(max(scrollView.minimumZoomScale * 2.5, 2.5), scrollView.maximumZoomScale)
+            let targetScale = min(
+                max(scrollView.minimumZoomScale * 2.5, 2.5),
+                scrollView.maximumZoomScale,
+            )
             let zoomSize = CGSize(
                 width: scrollView.bounds.width / targetScale,
                 height: scrollView.bounds.height / targetScale,
@@ -266,7 +273,10 @@ private struct PlatformComicPageView: UIViewRepresentable {
                 1,
             )
             let scale = min(bounds.width / image.size.width, availableHeight / image.size.height)
-            let fittedSize = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+            let fittedSize = CGSize(
+                width: image.size.width * scale,
+                height: image.size.height * scale,
+            )
             let originY =
                 isBottomScrubberVisible
                 ? topReservedHeight + verticalMargin
@@ -359,7 +369,10 @@ private struct PlatformComicPageView: NSViewRepresentable {
         context.coordinator.primaryImageView = primaryImageView
         context.coordinator.secondaryImageView = secondaryImageView
 
-        let click = NSClickGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleClick(_:)))
+        let click = NSClickGestureRecognizer(
+            target: context.coordinator,
+            action: #selector(Coordinator.handleClick(_:)),
+        )
         pageView.addGestureRecognizer(click)
 
         return scrollView
@@ -412,7 +425,9 @@ private struct PlatformComicPageView: NSViewRepresentable {
             }
             loadedPageIndex = pageIndex
             primaryImageView?.image = pageURLs[safe: pageIndex].flatMap(NSImage.init(contentsOf:))
-            secondaryImageView?.image = pageURLs[safe: pageIndex + 1].flatMap(NSImage.init(contentsOf:))
+            secondaryImageView?.image = pageURLs[safe: pageIndex + 1].flatMap(
+                NSImage.init(contentsOf:)
+            )
             scrollView.magnification = 1
             layoutPages(in: scrollView)
         }
@@ -480,7 +495,8 @@ private struct PlatformComicPageView: NSViewRepresentable {
             let primarySize = primaryImage.size
             let secondarySize = shouldShowSpread ? (secondaryImage?.size ?? .zero) : .zero
             let naturalWidth =
-                shouldShowSpread ? primarySize.width + spreadGap + secondarySize.width : primarySize.width
+                shouldShowSpread
+                ? primarySize.width + spreadGap + secondarySize.width : primarySize.width
             let naturalHeight = max(primarySize.height, secondarySize.height)
             guard naturalWidth > 0, naturalHeight > 0 else { return }
 
@@ -514,7 +530,10 @@ private struct PlatformComicPageView: NSViewRepresentable {
             )
 
             if shouldShowSpread {
-                let secondaryOriginY = max((documentSize.height - fittedSecondarySize.height) / 2, 0)
+                let secondaryOriginY = max(
+                    (documentSize.height - fittedSecondarySize.height) / 2,
+                    0,
+                )
                 secondaryImageView.frame = NSRect(
                     origin: CGPoint(
                         x: originX + fittedPrimarySize.width + fittedGap,

@@ -299,6 +299,7 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
             public var textWidth: String
             public var lineSpacing: String
             public var textAlignment: String
+            public var scrollMode: String
 
             public init(
                 fontFamily: String = kDefaultTVFontFamily,
@@ -309,6 +310,7 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
                 textWidth: String = kDefaultTVTextWidth,
                 lineSpacing: String = kDefaultTVLineSpacing,
                 textAlignment: String = kDefaultTVTextAlignment,
+                scrollMode: String = kDefaultTVScrollMode,
             ) {
                 self.fontFamily = fontFamily
                 self.backgroundStyle = Self.normalizedBackgroundStyle(backgroundStyle)
@@ -318,6 +320,7 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
                 self.textWidth = textWidth
                 self.lineSpacing = lineSpacing
                 self.textAlignment = textAlignment
+                self.scrollMode = scrollMode
             }
 
             public init(from decoder: Decoder) throws {
@@ -350,11 +353,15 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
                 textAlignment =
                     (try? container?.decode(String.self, forKey: .textAlignment))
                     ?? kDefaultTVTextAlignment
+                scrollMode =
+                    (try? container?.decode(String.self, forKey: .scrollMode))
+                    ?? kDefaultTVScrollMode
             }
 
             private enum CodingKeys: String, CodingKey {
                 case fontFamily, backgroundStyle, activeSentenceStyle, highlightColor
                 case inactiveTextIntensity, textWidth, lineSpacing, textAlignment
+                case scrollMode
             }
 
             private static func normalizedBackgroundStyle(_ value: String) -> String {
