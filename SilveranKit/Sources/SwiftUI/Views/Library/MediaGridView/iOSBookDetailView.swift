@@ -22,6 +22,24 @@ struct iOSBookDetailView: View {
         MediaGridViewUtilities.mediaDownloadOptions(for: currentItem)
     }
 
+    private var primaryMediaOptions: [MediaDownloadOption] {
+        if shouldShowSeparateComicButton {
+            return mediaOptions.filter { $0.category != .ebook }
+        }
+        return mediaOptions
+    }
+
+    private var isComicBook: Bool {
+        guard let filepath = currentItem.ebook?.filepath else { return false }
+        return URL(fileURLWithPath: filepath).pathExtension.lowercased() == "cbz"
+    }
+
+    private var shouldShowSeparateComicButton: Bool {
+        isComicBook
+            && mediaOptions.contains { $0.category == .ebook }
+            && mediaOptions.contains { $0.category != .ebook }
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
@@ -158,12 +176,24 @@ struct iOSBookDetailView: View {
     }
 
     private var mediaButtonsRow: some View {
-        HStack(alignment: .top, spacing: 12) {
-            ForEach(mediaOptions) { option in
-                iOSMediaButton(item: currentItem, option: option)
+        VStack(spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                ForEach(primaryMediaOptions) { option in
+                    iOSMediaButton(
+                        item: currentItem,
+                        option: option,
+                        labelOverride: isComicBook && option.category == .ebook ? "Comic" : nil,
+                    )
+                }
+                if currentItem.canShowCreateReadaloud {
+                    iOSCreateReadaloudButton(item: currentItem)
+                }
             }
-            if currentItem.canShowCreateReadaloud {
-                iOSCreateReadaloudButton(item: currentItem)
+            if shouldShowSeparateComicButton,
+                let ebookOption = mediaOptions.first(where: { $0.category == .ebook })
+            {
+                iOSMediaButton(item: currentItem, option: ebookOption, labelOverride: "Comic")
+                    .frame(maxWidth: 180)
             }
         }
     }
@@ -504,6 +534,7 @@ struct iOSBookDetailView: View {
 private struct iOSMediaButton: View {
     let item: BookMetadata
     let option: MediaDownloadOption
+    var labelOverride: String? = nil
     @Environment(MediaViewModel.self) private var mediaViewModel
 
     @State private var showConnectionAlert = false
@@ -530,6 +561,7 @@ private struct iOSMediaButton: View {
     }
 
     private var buttonLabel: String {
+        if let labelOverride { return labelOverride }
         switch option.category {
             case .ebook: return "Ebook"
             case .audio: return "Audiobook"

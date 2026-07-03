@@ -23,6 +23,7 @@ struct DraggableAudioCard<FullContent: View>: View {
     let sleepTimerRemaining: TimeInterval?
     let sleepTimerType: SleepTimerType?
     let showMiniPlayerStats: Bool
+    let supportsComicScrubber: Bool
 
     let onPlayPause: () -> Void
     let onSkipBackward: () -> Void
@@ -35,10 +36,12 @@ struct DraggableAudioCard<FullContent: View>: View {
     let onSleepTimerStart: (TimeInterval?, SleepTimerType) -> Void
     let onSleepTimerCancel: () -> Void
     let onDismiss: () -> Void
+    let onComicScrubberVisibilityChange: (Bool) -> Void
     @ViewBuilder let fullContent: () -> FullContent
 
     enum CardState {
         case compact
+        case scrubber
         case expanded
     }
 
@@ -51,6 +54,7 @@ struct DraggableAudioCard<FullContent: View>: View {
 
     private var compactHeight: CGFloat { showMiniPlayerStats ? 54 : 50 }
     private let expandedFraction: CGFloat = 1.0
+    private let scrubberFraction: CGFloat = 0.28
     private let dragThreshold: CGFloat = 40
 
     var body: some View {
@@ -58,10 +62,12 @@ struct DraggableAudioCard<FullContent: View>: View {
             let screenHeight = geometry.size.height
             let safeAreaBottom = geometry.safeAreaInsets.bottom
             let expandedHeight = screenHeight * expandedFraction
+            let scrubberHeight = max(screenHeight * scrubberFraction, 170)
 
             let targetHeight: CGFloat =
                 switch cardState {
                     case .compact: compactHeight + safeAreaBottom
+                    case .scrubber: scrubberHeight
                     case .expanded: expandedHeight
                 }
 
@@ -69,24 +75,32 @@ struct DraggableAudioCard<FullContent: View>: View {
                 isDragging
                 ? max(0, min(expandedHeight, targetHeight - dragOffset))
                 : targetHeight
+            let cardContentAlignment: Alignment = cardState == .scrubber ? .top : .center
 
             ZStack(alignment: .bottom) {
                 if isPresented {
                     VStack(spacing: 0) {
                         if cardState != .compact {
-                            dragHandleView(compact: false)
+                            dragHandleView(compact: false, tight: cardState == .scrubber)
                         }
 
-                        if cardState == .expanded {
-                            fullContent()
-                                .transition(.opacity)
-                        } else {
-                            compactPlayerContent
-                                .transition(.opacity)
+                        switch cardState {
+                            case .compact:
+                                compactPlayerContent
+                                    .transition(.opacity)
+                            case .scrubber:
+                                comicScrubberContent
+                                    .transition(.opacity)
+                            case .expanded:
+                                fullContent()
+                                    .transition(.opacity)
                         }
 
                         if cardState == .compact && hasAudioNarration && showMiniPlayerStats {
                             compactStatsRow
+                                .frame(height: safeAreaBottom)
+                        } else if cardState == .scrubber {
+                            Color.clear
                                 .frame(height: safeAreaBottom)
                         } else {
                             Spacer(minLength: safeAreaBottom)
@@ -101,7 +115,7 @@ struct DraggableAudioCard<FullContent: View>: View {
                         }
                     }
                     .overlay(alignment: .topTrailing) {
-                        if cardState == .expanded {
+                        if cardState != .compact {
                             Button(action: {
                                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                                     cardState = .compact
@@ -116,7 +130,7 @@ struct DraggableAudioCard<FullContent: View>: View {
                             .padding(.trailing, 16)
                         }
                     }
-                    .frame(height: currentHeight)
+                    .frame(height: currentHeight, alignment: cardContentAlignment)
                     .frame(maxWidth: .infinity)
                     .contentShape(Rectangle())
                     .modifier(GlassEffectModifier())
@@ -163,17 +177,33 @@ struct DraggableAudioCard<FullContent: View>: View {
                 cardState = .compact
             }
         }
+        .onChange(of: cardState) { _, newValue in
+            onComicScrubberVisibilityChange(
+                isPresented && supportsComicScrubber && newValue == .scrubber
+            )
+        }
+        .onChange(of: isPresented) { _, newValue in
+            onComicScrubberVisibilityChange(
+                newValue && supportsComicScrubber && cardState == .scrubber
+            )
+        }
         .onAppear {
             sliderValue = chapterProgress
+            onComicScrubberVisibilityChange(
+                isPresented && supportsComicScrubber && cardState == .scrubber
+            )
+        }
+        .onDisappear {
+            onComicScrubberVisibilityChange(false)
         }
     }
 
-    private func dragHandleView(compact: Bool) -> some View {
+    private func dragHandleView(compact: Bool, tight: Bool = false) -> some View {
         RoundedRectangle(cornerRadius: 2.5)
             .fill(Color.secondary.opacity(0.5))
             .frame(width: 36, height: 5)
-            .padding(.top, compact ? 10 : 12)
-            .padding(.bottom, compact ? 6 : 8)
+            .padding(.top, tight ? 12 : (compact ? 10 : 12))
+            .padding(.bottom, tight ? 8 : (compact ? 6 : 8))
             .frame(maxWidth: .infinity)
             .contentShape(Rectangle())
     }
@@ -227,7 +257,7 @@ struct DraggableAudioCard<FullContent: View>: View {
             .contentShape(Rectangle())
             .onTapGesture {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                    cardState = .expanded
+                    cardState = supportsComicScrubber ? .scrubber : .expanded
                 }
             }
 
@@ -263,6 +293,85 @@ struct DraggableAudioCard<FullContent: View>: View {
         }
         .padding(.horizontal, 16)
         .padding(.top, showMiniPlayerStats ? 20 : 28)
+    }
+
+    private var comicScrubberContent: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 12) {
+                if let cover = displayedCover {
+                    cover
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: 36, height: 36)
+                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                }
+
+                VStack(alignment: .leading, spacing: 3) {
+                    if let title = bookTitle {
+                        Text(title)
+                            .font(.subheadline.weight(.semibold))
+                            .lineLimit(1)
+                    }
+                    if let chapterTitle {
+                        Text(chapterTitle)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+
+                Spacer(minLength: 0)
+            }
+
+            Slider(
+                value: Binding(
+                    get: { sliderValue },
+                    set: { newValue in
+                        sliderValue = min(max(newValue, 0), 1)
+                        onProgressSeek?(sliderValue)
+                    },
+                ),
+                in: 0...1,
+            )
+
+            HStack(spacing: 20) {
+                Button(action: onPrevChapter) {
+                    Image(systemName: "chevron.left")
+                        .font(.title3.weight(.semibold))
+                        .frame(width: 40, height: 34)
+                }
+                .buttonStyle(.plain)
+
+                Text(comicProgressLabel)
+                    .font(.footnote.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
+
+                Button(action: onNextChapter) {
+                    Image(systemName: "chevron.right")
+                        .font(.title3.weight(.semibold))
+                        .frame(width: 40, height: 34)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 22)
+        .padding(.top, 2)
+    }
+
+    private var comicProgressLabel: String {
+        guard !chapters.isEmpty else { return "" }
+        let selectedPage = selectedChapterHref.flatMap(Int.init)
+        let page =
+            if let selectedPage {
+                min(max(selectedPage + 1, 1), chapters.count)
+            } else {
+                min(
+                    max(Int((sliderValue * Double(chapters.count)).rounded(.down)) + 1, 1),
+                    chapters.count,
+                )
+            }
+        return "Page \(page) of \(chapters.count)"
     }
 
     private var compactStatsRow: some View {
@@ -311,9 +420,15 @@ struct DraggableAudioCard<FullContent: View>: View {
                     let isSwipeUp = translation < -dragThreshold || velocity < -velocityThreshold
                     let isSwipeDown = translation > dragThreshold || velocity > velocityThreshold
                     if isSwipeUp {
-                        cardState = .expanded
+                        cardState = supportsComicScrubber ? .scrubber : .expanded
                     } else if isSwipeDown && !alwaysShow {
                         isPresented = false
+                    }
+
+                case .scrubber:
+                    let isSwipeDown = translation > dragThreshold || velocity > velocityThreshold
+                    if isSwipeDown {
+                        cardState = .compact
                     }
 
                 case .expanded:

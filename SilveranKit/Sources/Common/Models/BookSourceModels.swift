@@ -139,6 +139,15 @@ public struct ResolvedLocalMedia: Sendable, Hashable {
     }
 }
 
+public enum EbookFileFormat: String, Sendable, Hashable {
+    case epub
+    case cbz
+
+    public init(fileURL: URL) {
+        self = fileURL.pathExtension.lowercased() == "cbz" ? .cbz : .epub
+    }
+}
+
 public struct PreparedEbookMedia: Sendable, Hashable {
     public let bookID: String
     public let sourceID: BookSourceID

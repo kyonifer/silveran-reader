@@ -28,6 +28,9 @@ public final class LocalLibraryManager: Sendable {
     {
         switch category {
             case .ebook, .synced:
+                if fileURL.pathExtension.lowercased() == "cbz" {
+                    return try extractComicMetadata(from: fileURL)
+                }
                 return try await extractEpubMetadata(from: fileURL)
             case .audio:
                 return try await extractAudioMetadata(from: fileURL)
@@ -435,6 +438,82 @@ public final class LocalLibraryManager: Sendable {
             position: nil,
             rating: nil,
         )
+    }
+
+    // Matches the image formats foliate-js's comic-book renderer accepts.
+    private static let comicImageExtensions: Set<String> = [
+        "jpg", "jpeg", "png", "gif", "bmp", "webp", "svg", "jxl", "avif",
+    ]
+
+    private func comicImagePaths(in archive: Archive) -> [String] {
+        var paths: [String] = []
+        for entry in archive {
+            let ext = (entry.path as NSString).pathExtension.lowercased()
+            if Self.comicImageExtensions.contains(ext) {
+                paths.append(entry.path)
+            }
+        }
+        return paths.sorted()
+    }
+
+    private func extractComicMetadata(from comicURL: URL) throws -> BookMetadata {
+        let archive: Archive
+        do {
+            archive = try Archive(url: comicURL, accessMode: .read)
+        } catch {
+            throw LocalLibraryError.failedToOpenArchive(comicURL.path)
+        }
+
+        let pageCount = comicImagePaths(in: archive).count
+        let bookUUID = UUID().uuidString
+
+        return BookMetadata(
+            uuid: bookUUID,
+            title: comicURL.deletingPathExtension().lastPathComponent,
+            subtitle: nil,
+            description: nil,
+            language: nil,
+            createdAt: nil,
+            updatedAt: nil,
+            publicationDate: nil,
+            authors: nil,
+            narrators: nil,
+            creators: nil,
+            series: nil,
+            tags: nil,
+            collections: nil,
+            ebook: BookAsset(
+                uuid: bookUUID,
+                filepath: comicURL.lastPathComponent,
+                missing: 0,
+                pageCount: pageCount > 0 ? pageCount : nil,
+                createdAt: nil,
+                updatedAt: nil,
+            ),
+            audiobook: nil,
+            readaloud: nil,
+            status: nil,
+            position: nil,
+            rating: nil,
+        )
+    }
+
+    public func extractCoverFromComicArchive(at comicURL: URL) -> Data? {
+        let archive: Archive
+        do {
+            archive = try Archive(url: comicURL, accessMode: .read)
+        } catch {
+            debugLog(
+                "[LocalLibraryManager] extractCoverFromComicArchive: failed to open archive at \(comicURL.lastPathComponent): \(error)"
+            )
+            return nil
+        }
+
+        guard let firstPage = comicImagePaths(in: archive).first else {
+            debugLog("[LocalLibraryManager] extractCoverFromComicArchive: no images in archive")
+            return nil
+        }
+        return try? extractFile(archive: archive, path: firstPage)
     }
 
     private func extractAudioMetadata(from audioURL: URL) async throws -> BookMetadata {

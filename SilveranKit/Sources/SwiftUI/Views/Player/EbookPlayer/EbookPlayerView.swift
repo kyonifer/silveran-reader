@@ -49,6 +49,7 @@ public struct EbookPlayerView: View {
     @Environment(\.dismiss) private var dismiss
     #endif
     @State private var viewModel: EbookPlayerViewModel
+    @State private var isComicScrubberVisible = false
     private let onClose: (() -> Void)?
 
     public init(bookData: PlayerBookData?, onClose: (() -> Void)? = nil) {
@@ -419,6 +420,14 @@ public struct EbookPlayerView: View {
         #endif
     }
 
+    private var isReaderTopChromeVisible: Bool {
+        #if os(macOS)
+        true
+        #else
+        viewModel.isTopBarVisible
+        #endif
+    }
+
     private var readerContent: some View {
         ZStack(alignment: .bottom) {
             #if os(iOS)
@@ -427,7 +436,28 @@ public struct EbookPlayerView: View {
             #endif
 
             ZStack {
-                if let ebookPath = viewModel.extractedEbookPath {
+                if viewModel.isComicBook {
+                    ComicPlayerView(
+                        pageURLs: viewModel.comicPageURLs,
+                        selectedPageIndex: viewModel.progressManager?.selectedChapterId ?? 0,
+                        backgroundColor: readerBackgroundColor,
+                        isBottomScrubberVisible: isComicScrubberVisible,
+                        isTopChromeVisible: isReaderTopChromeVisible,
+                        onPageSelected: viewModel.handleComicPageSelected,
+                        onNavigateLeft: {
+                            viewModel.progressManager?.handleNativeNavLeft()
+                        },
+                        onNavigateRight: {
+                            viewModel.progressManager?.handleNativeNavRight()
+                        },
+                        onToggleOverlay: {
+                            viewModel.handleToggleOverlay()
+                        },
+                    )
+                    #if os(iOS)
+                    .ignoresSafeArea(.all)
+                    #endif
+                } else if let ebookPath = viewModel.extractedEbookPath {
                     #if os(iOS)
                     AnyView(
                         EbookPlayerWebView(
@@ -653,6 +683,7 @@ public struct EbookPlayerView: View {
             sleepTimerRemaining: mom?.sleepTimerRemaining,
             sleepTimerType: mom?.sleepTimerType,
             showMiniPlayerStats: viewModel.settingsVM.showMiniPlayerStats,
+            supportsComicScrubber: viewModel.isComicBook,
             onPlayPause: {
                 Task { await pm?.togglePlaying() }
             },
@@ -675,6 +706,9 @@ public struct EbookPlayerView: View {
             onSleepTimerCancel: viewModel.handleSleepTimerCancel,
             onDismiss: {
                 viewModel.isReadingBarVisible = false
+            },
+            onComicScrubberVisibilityChange: { visible in
+                isComicScrubberVisible = visible
             },
             fullContent: {
                 audiobookSidebar

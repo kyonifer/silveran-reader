@@ -21,6 +21,8 @@ class EbookPlayerViewModel {
     var styleManager: ReaderStyleManager? = nil
     var searchManager: EbookSearchManager? = nil
     var extractedEbookPath: URL? = nil
+    var ebookFileFormat: EbookFileFormat = .epub
+    var comicPageURLs: [URL] = []
     private var nativeLoadingTask: Task<Void, Never>? = nil
     #if os(iOS)
     private(set) var recoveryManager: WebViewRecoveryManager?
@@ -48,6 +50,10 @@ class EbookPlayerViewModel {
     }
 
     var hasAudioNarration: Bool = false
+
+    var isComicBook: Bool {
+        ebookFileFormat == .cbz
+    }
 
     private var _sidebarInitialized = false
     #if os(macOS)
@@ -97,9 +103,18 @@ class EbookPlayerViewModel {
 
     var chapterProgressBinding: Binding<Double> {
         Binding(
-            get: { self.progressManager?.chapterSeekBarValue ?? 0.0 },
+            get: {
+                if self.isComicBook {
+                    return self.progressManager?.bookFraction ?? 0.0
+                }
+                return self.progressManager?.chapterSeekBarValue ?? 0.0
+            },
             set: { newValue in
-                self.progressManager?.handleUserProgressSeek(newValue)
+                if self.isComicBook {
+                    self.progressManager?.handleNativeProgressSeek(newValue)
+                } else {
+                    self.progressManager?.handleUserProgressSeek(newValue)
+                }
             },
         )
     }
@@ -207,6 +222,10 @@ class EbookPlayerViewModel {
             "[TOC-DEBUG] handleChapterSelection: id=\(chapter.id) label=\"\(chapter.label)\" href=\"\(chapter.href)\" level=\(chapter.level)"
         )
         userSelectedTocId = chapter.id
+        if isComicBook, let index = Int(chapter.href) ?? Int(chapter.id) {
+            progressManager?.handleNativePageSelected(index)
+            return
+        }
         if !tocEntries.isEmpty, chapter.id.hasPrefix("toc-"),
             let idx = Int(chapter.id.dropFirst(4)), idx < tocEntries.count
         {
@@ -246,6 +265,10 @@ class EbookPlayerViewModel {
 
     func handlePrevChapter() {
         userSelectedTocId = nil
+        if isComicBook {
+            progressManager?.handleNativeNavLeft()
+            return
+        }
         guard let currentIndex = progressManager?.selectedChapterId else {
             debugLog("[EbookPlayerViewModel] Cannot navigate - no chapter selected")
             return
@@ -284,6 +307,10 @@ class EbookPlayerViewModel {
 
     func handleNextChapter() {
         userSelectedTocId = nil
+        if isComicBook {
+            progressManager?.handleNativeNavRight()
+            return
+        }
         guard let currentIndex = progressManager?.selectedChapterId,
             currentIndex < bookStructure.count - 1
         else {
@@ -365,7 +392,11 @@ class EbookPlayerViewModel {
     }
 
     func handleProgressSeek(_ fraction: Double) {
-        progressManager?.handleUserProgressSeek(fraction)
+        if isComicBook {
+            progressManager?.handleNativeProgressSeek(fraction)
+        } else {
+            progressManager?.handleUserProgressSeek(fraction)
+        }
     }
 
     func handleColorSchemeChange(_ colorScheme: ColorScheme) {
@@ -410,12 +441,15 @@ class EbookPlayerViewModel {
                     debugLog(
                         "[RestoreTrace][BookOpen] prepareEbookForReading deltaMs=\(String(format: "%.1f", (afterPrepare - prepStarted) * 1000))"
                     )
+                    self.ebookFileFormat = EbookFileFormat(fileURL: prepared.originalURL)
                     self.extractedEbookPath = prepared.readerURL
                     debugLog(
                         "[EbookPlayerViewModel] EPUB prepared for loading: \(prepared.readerURL.path)"
                     )
 
-                    if needsNativeAudio {
+                    if self.ebookFileFormat == .cbz {
+                        self.prepareComicPages(from: prepared.readerURL)
+                    } else if needsNativeAudio {
                         await loadBookIntoActor(epubPath: prepared.originalURL)
                     } else {
                         await parseNativeTocEntries(epubPath: prepared.originalURL)
@@ -430,6 +464,69 @@ class EbookPlayerViewModel {
 
             registerIncomingPositionObserver(bookId: data.metadata.uuid)
         }
+    }
+
+    private func prepareComicPages(from extractedDirectory: URL) {
+        let urls = Self.comicImageURLs(in: extractedDirectory)
+        comicPageURLs = urls
+        bookStructure = urls.enumerated().map { index, url in
+            SectionInfo(
+                index: index,
+                id: "\(index)",
+                label: "Page \(index + 1)",
+                level: 0,
+                mediaOverlay: [],
+            )
+        }
+        tocEntries = []
+        hasAudioNarration = false
+        mediaOverlayManager = nil
+        searchManager = nil
+        styleManager = nil
+        progressManager = EbookProgressManager(
+            bridge: nil,
+            settingsVM: settingsVM,
+            bookId: bookData?.metadata.uuid,
+            sourceID: bookData?.metadata.sourceID,
+            initialLocator: bookData?.metadata.position?.locator,
+        )
+        progressManager?.bookStructure = bookStructure
+        progressManager?.bookTitle = bookData?.metadata.title
+        progressManager?.bookAuthor = bookData?.metadata.authors?.first?.name
+        progressManager?.handleNativeBookStructureReady(pageCount: urls.count)
+
+        Task { @MainActor in
+            let syncInterval = await SettingsActor.shared.config.sync.progressSyncIntervalSeconds
+            self.progressManager?.startPeriodicSync(syncInterval: syncInterval)
+        }
+    }
+
+    private static func comicImageURLs(in directory: URL) -> [URL] {
+        let allowedExtensions: Set<String> = [
+            "jpg", "jpeg", "png", "gif", "bmp", "webp", "svg", "jxl", "avif",
+        ]
+        guard
+            let enumerator = FileManager.default.enumerator(
+                at: directory,
+                includingPropertiesForKeys: [.isRegularFileKey],
+            )
+        else {
+            return []
+        }
+
+        return enumerator.compactMap { item -> URL? in
+            guard let url = item as? URL else { return nil }
+            let ext = url.pathExtension.lowercased()
+            guard allowedExtensions.contains(ext) else { return nil }
+            let values = try? url.resourceValues(forKeys: [.isRegularFileKey])
+            return values?.isRegularFile == false ? nil : url
+        }
+        .sorted { $0.path.localizedStandardCompare($1.path) == .orderedAscending }
+    }
+
+    func handleComicPageSelected(_ index: Int) {
+        userSelectedTocId = nil
+        progressManager?.handleNativePageSelected(index)
     }
 
     private func registerIncomingPositionObserver(bookId: String) {

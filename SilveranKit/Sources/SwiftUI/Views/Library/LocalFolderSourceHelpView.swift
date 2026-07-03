@@ -223,6 +223,8 @@ private struct FileTreeNode: Identifiable {
         switch name.split(separator: ".").last?.lowercased() {
             case "epub":
                 return "book.closed"
+            case "cbz":
+                return "photo.on.rectangle"
             case "mp3", "m4b", "m4a", "aac", "flac", "wav":
                 return "headphones"
             default:
@@ -274,6 +276,7 @@ private enum LocalFolderLayoutHelp: String, CaseIterable, Identifiable {
                     "Put the ebook epub in an ebook subfolder.",
                     "Put a readaloud epub in a synced subfolder.",
                     "Put the audio files in an audio subfolder.",
+                    "Put a comic cbz in a comic subfolder.",
                     "These subfolder names only have this meaning directly inside a book's own folder.",
                 ]
         }
@@ -329,7 +332,16 @@ private enum LocalFolderLayoutHelp: String, CaseIterable, Identifiable {
                                         children: [FileTreeNode("audiobook.m4b")],
                                     ),
                                 ],
-                            )
+                            ),
+                            FileTreeNode(
+                                "Saga Vol 1/",
+                                children: [
+                                    FileTreeNode(
+                                        "comic/",
+                                        children: [FileTreeNode("issue.cbz")],
+                                    )
+                                ],
+                            ),
                         ],
                     )
                 ]

@@ -570,8 +570,14 @@ public final class MediaViewModel {
         sourceGroupsCache.removeAll()
         scheduleLibraryDerivation(reason: "refreshMetadata(\(source))")
         setIfChanged(\.connectionStatus, status)
-        setIfChanged(\.lastNetworkOpSucceeded, await BookServiceActor.shared.lastNetworkOpSucceeded)
-        setIfChanged(\.sourceConnectionInfos, await BookServiceActor.shared.sourceConnectionInfos())
+        setIfChanged(
+            \.lastNetworkOpSucceeded,
+            await BookServiceActor.shared.lastNetworkOpSucceeded,
+        )
+        setIfChanged(
+            \.sourceConnectionInfos,
+            await BookServiceActor.shared.sourceConnectionInfos(),
+        )
         setIfChanged(\.isReady, true)
         logPerfCheckpoint(
             "refreshMetadata publish remaining state",

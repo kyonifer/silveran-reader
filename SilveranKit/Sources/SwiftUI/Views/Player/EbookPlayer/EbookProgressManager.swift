@@ -124,7 +124,7 @@ class EbookProgressManager {
     // MARK: - Initialization
 
     init(
-        bridge: WebViewCommsBridge,
+        bridge: WebViewCommsBridge?,
         settingsVM: SettingsViewModel,
         bookId: String? = nil,
         sourceID: BookSourceID? = nil,
@@ -139,11 +139,74 @@ class EbookProgressManager {
             "[EPM] EbookProgressManager initialized with bookId: \(bookId ?? "none"), locator: \(initialLocator?.href ?? "none")"
         )
 
-        bridge.onRelocated = { [weak self] message in
+        bridge?.onRelocated = { [weak self] message in
             Task { @MainActor in
                 self?.handleRelocated(message)
             }
         }
+    }
+
+    func handleNativeBookStructureReady(pageCount: Int) {
+        guard !hasPerformedInitialSeek else { return }
+        hasPerformedInitialSeek = true
+
+        let restoredIndex = nativeInitialSectionIndex(pageCount: pageCount) ?? 0
+        applyNativePageSelection(restoredIndex, syncReason: nil)
+    }
+
+    func handleNativePageSelected(_ index: Int) {
+        applyNativePageSelection(index, syncReason: .userSelectedChapter)
+    }
+
+    func handleNativeNavLeft() {
+        guard let current = selectedChapterId, current > 0 else { return }
+        applyNativePageSelection(current - 1, syncReason: .userFlippedPage)
+    }
+
+    func handleNativeNavRight() {
+        guard let current = selectedChapterId, current < bookStructure.count - 1 else { return }
+        applyNativePageSelection(current + 1, syncReason: .userFlippedPage)
+    }
+
+    func handleNativeProgressSeek(_ progress: Double) {
+        guard !bookStructure.isEmpty else { return }
+        let clamped = max(0.0, min(1.0, progress))
+        let index = min(
+            max(Int((clamped * Double(bookStructure.count)).rounded(.down)), 0),
+            bookStructure.count - 1,
+        )
+        applyNativePageSelection(index, syncReason: .userDraggedSeekBar)
+    }
+
+    private func nativeInitialSectionIndex(pageCount: Int) -> Int? {
+        guard pageCount > 0 else { return nil }
+        if let locator = initialLocator,
+            let sectionIndex = findSectionIndex(for: locator.href, in: bookStructure)
+        {
+            return sectionIndex
+        }
+
+        if let totalProgression = initialLocator?.locations?.totalProgression {
+            let clamped = max(0.0, min(1.0, totalProgression))
+            return min(max(Int((clamped * Double(pageCount)).rounded(.down)), 0), pageCount - 1)
+        }
+
+        return nil
+    }
+
+    private func applyNativePageSelection(_ index: Int, syncReason: SyncReason?) {
+        guard index >= 0 && index < bookStructure.count else { return }
+
+        selectedChapterId = index
+        chapterCurrentPage = index + 1
+        chapterTotalPages = bookStructure.count
+        chapterSeekBarValue = 0
+        let denominator = max(bookStructure.count - 1, 1)
+        bookFraction = Double(index) / Double(denominator)
+
+        guard let syncReason else { return }
+        recordActivity()
+        scheduleDebouncedSync(reason: syncReason, useFragment: false)
     }
 
     // MARK: - Progress Updates

@@ -179,6 +179,22 @@ struct MediaItemCardTopTabsButtonOverlay: View {
         [.ebook, .synced, .audio].filter { tabStatus(for: $0) != .unavailable }
     }
 
+    private var visiblePrimaryTabs: [MediaItemCardTopTabs.TabCategory] {
+        if shouldShowSeparateComicButton {
+            return availableTabs.filter { $0 != .ebook }
+        }
+        return availableTabs
+    }
+
+    private var isComicBook: Bool {
+        guard let filepath = item.ebook?.filepath else { return false }
+        return URL(fileURLWithPath: filepath).pathExtension.lowercased() == "cbz"
+    }
+
+    private var shouldShowSeparateComicButton: Bool {
+        isComicBook && availableTabs.contains(.ebook) && availableTabs.contains { $0 != .ebook }
+    }
+
     private func buttonSize(
         for tab: MediaItemCardTopTabs.TabCategory,
         in tabs: [MediaItemCardTopTabs.TabCategory],
@@ -218,19 +234,24 @@ struct MediaItemCardTopTabsButtonOverlay: View {
     var body: some View {
         Group {
             if isHoveringCard {
-                let tabs = availableTabs
+                let tabs = visiblePrimaryTabs
                 if !tabs.isEmpty {
                     let slots: [MediaItemCardTopTabs.TabCategory] =
                         tabs.contains(.synced) ? [.ebook, .synced, .audio] : tabs
-                    HStack(spacing: 8) {
-                        ForEach(slots, id: \.self) { tab in
-                            let size = buttonSize(for: tab, in: tabs)
-                            if tabs.contains(tab) {
-                                tabButton(for: tab, size: size)
-                            } else {
-                                Color.clear
-                                    .frame(width: size.frame, height: size.frame)
+                    VStack(spacing: 8) {
+                        HStack(spacing: 8) {
+                            ForEach(slots, id: \.self) { tab in
+                                let size = buttonSize(for: tab, in: tabs)
+                                if tabs.contains(tab) {
+                                    tabButton(for: tab, size: size)
+                                } else {
+                                    Color.clear
+                                        .frame(width: size.frame, height: size.frame)
+                                }
                             }
+                        }
+                        if shouldShowSeparateComicButton {
+                            comicButton(size: .medium)
                         }
                     }
                 }
@@ -241,6 +262,39 @@ struct MediaItemCardTopTabsButtonOverlay: View {
         } message: {
             Text(connectionAlertMessage)
         }
+    }
+
+    private func comicButton(size: ButtonSize) -> some View {
+        let status = tabStatus(for: .ebook)
+        let isHovered = hoveredTab == .ebook
+
+        return Button {
+            handleTabTap(for: .ebook)
+        } label: {
+            ZStack {
+                Circle()
+                    .fill(Color.black.opacity(0.82))
+                    .frame(width: size.frame, height: size.frame)
+                if isHovered && status == .downloaded {
+                    Image(systemName: "play.circle.fill")
+                        .font(.system(size: size.playIcon))
+                        .foregroundStyle(.white)
+                } else {
+                    Image(systemName: "rectangle.stack.fill")
+                        .font(.system(size: size.icon))
+                        .foregroundStyle(status == .downloaded ? .white : availableMediaColor)
+                }
+            }
+            .frame(width: size.frame, height: size.frame)
+            .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Comic: \(accessibilityLabel(for: status))")
+        #if os(macOS)
+        .onHover { hovering in
+            hoveredTab = hovering ? .ebook : nil
+        }
+        #endif
     }
 
     @ViewBuilder
@@ -264,7 +318,7 @@ struct MediaItemCardTopTabsButtonOverlay: View {
             .contentShape(Circle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(tab.title): \(accessibilityLabel(for: status))")
+        .accessibilityLabel("\(displayTitle(for: tab)): \(accessibilityLabel(for: status))")
         #if os(macOS)
         .onHover { hovering in
             hoveredTab = hovering ? tab : nil
@@ -318,12 +372,22 @@ struct MediaItemCardTopTabsButtonOverlay: View {
                 .font(.system(size: size.playIcon))
                 .foregroundStyle(.white)
         } else {
-            tab.iconView(size: size.icon)
-                .foregroundStyle(
-                    status == .downloaded
-                        ? AnyShapeStyle(Color.white) : AnyShapeStyle(availableMediaColor)
-                )
+            if isComicBook && tab == .ebook {
+                Image(systemName: "rectangle.stack.fill")
+                    .font(.system(size: size.icon))
+                    .foregroundStyle(status == .downloaded ? .white : availableMediaColor)
+            } else {
+                tab.iconView(size: size.icon)
+                    .foregroundStyle(
+                        status == .downloaded
+                            ? AnyShapeStyle(Color.white) : AnyShapeStyle(availableMediaColor)
+                    )
+            }
         }
+    }
+
+    private func displayTitle(for tab: MediaItemCardTopTabs.TabCategory) -> String {
+        isComicBook && tab == .ebook ? "Comic" : tab.title
     }
 
     private func tabStatus(

@@ -683,6 +683,8 @@ public actor FolderSourceActor: BookSourceActor {
                 role =
                     mediaTypeSubfolderRole(for: relativeDirectory(for: url, root: root))
                     ?? (localLibrary.isReadaloudEpub(at: url) ? .readaloud : .ebook)
+            } else if ext == "cbz" {
+                role = .ebook
             } else if audiobookMediaExtensions.contains(ext) {
                 role = .audio
             } else {
@@ -1065,7 +1067,7 @@ public actor FolderSourceActor: BookSourceActor {
             String.init
         )
         guard let last = parts.last?.lowercased(),
-            ["audio", "ebook", "synced"].contains(last)
+            ["audio", "ebook", "synced", "comic"].contains(last)
         else {
             return nil
         }
@@ -1078,7 +1080,7 @@ public actor FolderSourceActor: BookSourceActor {
         let last = normalized.split(separator: "/", omittingEmptySubsequences: false).last?
             .lowercased()
         switch last {
-            case "ebook":
+            case "ebook", "comic":
                 return .ebook
             case "synced":
                 return .readaloud
@@ -1588,10 +1590,14 @@ public actor FolderSourceActor: BookSourceActor {
         }
         guard let paths = pathCache[bookID] else { return nil }
 
-        if let ebookPath = paths.ebookPath,
-            let data = localLibrary.extractCoverFromEpub(at: ebookPath)
-        {
-            return data
+        if let ebookPath = paths.ebookPath {
+            let data =
+                ebookPath.pathExtension.lowercased() == "cbz"
+                ? localLibrary.extractCoverFromComicArchive(at: ebookPath)
+                : localLibrary.extractCoverFromEpub(at: ebookPath)
+            if let data {
+                return data
+            }
         }
 
         if let syncedPath = paths.syncedPath,
