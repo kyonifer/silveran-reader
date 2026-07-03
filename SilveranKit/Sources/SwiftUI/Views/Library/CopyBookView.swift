@@ -56,11 +56,6 @@ public struct CopyBookView: View {
                             .foregroundStyle(.secondary)
                     }
 
-                    if let result = copyResult {
-                        Section {
-                            resultRow(result)
-                        }
-                    }
                 } else {
                     Section {
                         Text("Book is no longer available.")
@@ -73,13 +68,8 @@ public struct CopyBookView: View {
             Divider()
 
             HStack {
-                Spacer()
-
-                if isCopying {
-                    progressCircle(progress: copyProgressFraction ?? 0)
-                    Text("Copying...")
-                        .foregroundStyle(.secondary)
-                }
+                bottomStatus
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
                 #if os(macOS)
                 Button(copyResult == nil ? "Cancel" : "Close") {
@@ -188,6 +178,19 @@ public struct CopyBookView: View {
                 .buttonStyle(.bordered)
                 .controlSize(.small)
             }
+        }
+    }
+
+    @ViewBuilder
+    private var bottomStatus: some View {
+        if isCopying {
+            HStack(spacing: 8) {
+                progressCircle(progress: copyProgressFraction ?? 0)
+                Text("Copying \(Int((copyProgressFraction ?? 0) * 100))%")
+                    .foregroundStyle(.secondary)
+            }
+        } else if let result = copyResult {
+            resultRow(result)
         }
     }
 
