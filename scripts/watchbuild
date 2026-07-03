@@ -8,5 +8,5 @@ cd "${SCRIPT_DIR}/.."
 xcodebuild -project Silveran.xcodeproj \
     -scheme "Silveran Reader (watchOS)" \
     -configuration Debug \
-    -destination 'platform=watchOS Simulator,name=Apple Watch Series 11 (46mm)' \
+    -destination 'platform=watchOS Simulator,id=08EC1854-5E75-4159-B897-0C37B6FAC2CD' \
     -derivedDataPath .buildWatch build | xcbeautify

@@ -195,6 +195,10 @@ public actor SMILPlayerActor {
     private var routeChangeObserver: NSObjectProtocol?
     #endif
 
+    #if os(watchOS)
+    private var watchLongFormUnavailable = false
+    #endif
+
     #if os(iOS)
     private var coverImage: UIImage?
     #endif
@@ -300,7 +304,9 @@ public actor SMILPlayerActor {
             throw SMILPlayerError.audioLoadFailed("Player not initialized")
         }
 
-        #if os(iOS) || os(watchOS) || os(tvOS)
+        #if os(watchOS)
+        await ensureAudioSessionActive()
+        #elseif os(iOS) || os(tvOS)
         ensureAudioSessionActive()
         #endif
 
@@ -1016,8 +1022,20 @@ public actor SMILPlayerActor {
         }
         do {
             let session = AVAudioSession.sharedInstance()
+            #if os(watchOS)
+            // longFormAudio is required for watchOS background playback. Activation is
+            // deferred to ensureAudioSessionActive because long-form activation is
+            // asynchronous and may present a route picker.
+            try session.setCategory(
+                .playback,
+                mode: .spokenAudio,
+                policy: .longFormAudio,
+                options: [],
+            )
+            #else
             try session.setCategory(.playback, mode: .spokenAudio, options: [])
             try session.setActive(true)
+            #endif
             audioSessionInitialized = true
             debugLog("[SMILPlayerActor] Audio session configured")
         } catch {
@@ -1025,6 +1043,49 @@ public actor SMILPlayerActor {
         }
     }
 
+    #if os(watchOS)
+    private func ensureAudioSessionActive() async {
+        let session = AVAudioSession.sharedInstance()
+
+        if !watchLongFormUnavailable {
+            do {
+                try await withCheckedThrowingContinuation {
+                    (continuation: CheckedContinuation<Void, Error>) in
+                    session.activate(options: []) { success, error in
+                        if let error {
+                            continuation.resume(throwing: error)
+                        } else if success {
+                            continuation.resume()
+                        } else {
+                            continuation.resume(
+                                throwing: SMILPlayerError.audioLoadFailed(
+                                    "Audio session activation returned false"
+                                )
+                            )
+                        }
+                    }
+                }
+                debugLog("[SMILPlayerActor] Long-form audio session activated")
+                return
+            } catch {
+                // No eligible long-form route (older watch hardware with no Bluetooth
+                // device paired). Fall back to the default policy so speaker playback
+                // still works, accepting that audio stops when the app backgrounds.
+                debugLog(
+                    "[SMILPlayerActor] Long-form activation failed, using default policy: \(error)"
+                )
+                watchLongFormUnavailable = true
+            }
+        }
+
+        do {
+            try session.setCategory(.playback, mode: .spokenAudio, options: [])
+            try session.setActive(true)
+        } catch {
+            debugLog("[SMILPlayerActor] Failed to activate audio session: \(error)")
+        }
+    }
+    #else
     private func ensureAudioSessionActive() {
         do {
             try AVAudioSession.sharedInstance().setActive(true)
@@ -1032,6 +1093,7 @@ public actor SMILPlayerActor {
             debugLog("[SMILPlayerActor] Failed to re-activate audio session: \(error)")
         }
     }
+    #endif
 
     private func configureAudioSessionObservers() {
         guard !audioSessionObserversConfigured else { return }
