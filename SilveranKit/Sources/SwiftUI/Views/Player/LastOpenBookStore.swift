@@ -93,12 +93,22 @@ public enum LastOpenBookStore {
             let metadata = route.metadata
         else { return nil }
 
+        var checkpoint = CFAbsoluteTimeGetCurrent()
+        func mark(_ name: String) {
+            let now = CFAbsoluteTimeGetCurrent()
+            debugLog(
+                "[RestoreTrace][Restore] loadPlayerBookData.\(name) deltaMs=\(String(format: "%.1f", (now - checkpoint) * 1000))"
+            )
+            checkpoint = now
+        }
+
         guard
             let localMediaPath = await FilesystemActor.shared.resolvePersistedApplicationSupportURL(
                 relativePath: route.localMediaRelativePath,
                 legacyAbsoluteURL: route.localMediaPath,
             )
         else { return nil }
+        mark("resolvePath")
 
         // coverArt is not Codable, so it is lost when the route is persisted. Reload it from
         // the on-disk cover cache, mirroring MediaItemCardView.makePlayerBookData: the primary
@@ -106,6 +116,7 @@ public enum LastOpenBookStore {
         let hasAudio = metadata.hasAvailableAudiobook
         let audioCover = await loadCachedCover(bookID: metadata.uuid, audio: true)
         let standardCover = await loadCachedCover(bookID: metadata.uuid, audio: false)
+        mark("loadCovers")
         // Primary art is the audio square when an audiobook exists, falling back to the
         // standard cover (and vice versa) so the player shows something when only one variant
         // was cached.

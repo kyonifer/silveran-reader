@@ -400,10 +400,15 @@ class EbookPlayerViewModel {
             let needsNativeAudio = data.category == .synced
             nativeLoadingTask = Task { @MainActor in
                 do {
+                    let prepStarted = CFAbsoluteTimeGetCurrent()
                     let prepared = try await BookServiceActor.shared.prepareEbookForReading(
                         bookID: data.metadata.uuid,
                         sourceID: data.metadata.sourceID,
                         category: data.category,
+                    )
+                    let afterPrepare = CFAbsoluteTimeGetCurrent()
+                    debugLog(
+                        "[RestoreTrace][BookOpen] prepareEbookForReading deltaMs=\(String(format: "%.1f", (afterPrepare - prepStarted) * 1000))"
                     )
                     self.extractedEbookPath = prepared.readerURL
                     debugLog(
@@ -415,6 +420,9 @@ class EbookPlayerViewModel {
                     } else {
                         await parseNativeTocEntries(epubPath: prepared.originalURL)
                     }
+                    debugLog(
+                        "[RestoreTrace][BookOpen] \(needsNativeAudio ? "loadBookIntoActor" : "parseNativeTocEntries") deltaMs=\(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - afterPrepare) * 1000))"
+                    )
                 } catch {
                     debugLog("[EbookPlayerViewModel] Failed to prepare EPUB: \(error)")
                 }

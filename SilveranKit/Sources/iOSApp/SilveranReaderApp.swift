@@ -47,16 +47,19 @@ struct SilveranReaderApp: App {
     @UIApplicationDelegateAdaptor(SilveranAppDelegate.self) var appDelegate
     @State private var mediaViewModel: MediaViewModel
     private let startupTask: Task<Void, Never>
+    private let restorePrerequisitesTask: Task<Void, Never>
 
     init() {
         StorytellerFontRegistration.registerBundledFonts()
         let vm = MediaViewModel()
         _mediaViewModel = State(initialValue: vm)
 
-        startupTask = Task {
+        // The fast, local-only work a restored book actually depends on: migrations and the web
+        // resources the reader webview loads. Restoring blocks on this, not on the full startup, so
+        // the slow network library refresh never sits on the restore critical path.
+        let prerequisites = Task {
+            let started = CFAbsoluteTimeGetCurrent()
             await SilveranMigrations.runMigrations()
-            await BookServiceActor.shared.reloadSourceRegistry()
-
             do {
                 try await FilesystemActor.shared.copyWebResourcesFromBundle()
             } catch {
@@ -64,6 +67,19 @@ struct SilveranReaderApp: App {
                     "[SilveranReaderApp] Failed to copy web resources: \(error.localizedDescription)"
                 )
             }
+            debugLog(
+                "[RestoreTrace][Startup] prerequisites deltaMs=\(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - started) * 1000))"
+            )
+        }
+        restorePrerequisitesTask = prerequisites
+
+        startupTask = Task {
+            await prerequisites.value
+            let started = CFAbsoluteTimeGetCurrent()
+            await BookServiceActor.shared.refreshLibraryFromSources()
+            debugLog(
+                "[RestoreTrace][Startup] refreshLibraryFromSources deltaMs=\(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - started) * 1000))"
+            )
 
             if LastOpenBookStore.hasSavedRoute {
                 debugLog(
@@ -79,7 +95,7 @@ struct SilveranReaderApp: App {
 
     var body: some Scene {
         WindowGroup("Library", id: "MyLibrary") {
-            iOSRootView(startupTask: startupTask)
+            iOSRootView(restorePrerequisitesTask: restorePrerequisitesTask)
                 .environment(mediaViewModel)
                 .onReceive(
                     NotificationCenter.default.publisher(
@@ -134,7 +150,7 @@ struct SilveranReaderApp: App {
 }
 
 private struct iOSRootView: View {
-    let startupTask: Task<Void, Never>
+    let restorePrerequisitesTask: Task<Void, Never>
     @Environment(MediaViewModel.self) private var mediaViewModel
     @State private var restoreStartupFinished = !LastOpenBookStore.hasSavedRoute
     @State private var restoredPlayer: PlayerBookData?
@@ -172,8 +188,16 @@ private struct iOSRootView: View {
         }
         .task {
             guard !restoreStartupFinished else { return }
-            await startupTask.value
+            let restoreStarted = CFAbsoluteTimeGetCurrent()
+            await restorePrerequisitesTask.value
+            let afterStartup = CFAbsoluteTimeGetCurrent()
+            debugLog(
+                "[RestoreTrace][Restore] awaitPrerequisites deltaMs=\(String(format: "%.1f", (afterStartup - restoreStarted) * 1000))"
+            )
             restoredPlayer = await LastOpenBookStore.loadPlayerBookData()
+            debugLog(
+                "[RestoreTrace][Restore] loadPlayerBookData deltaMs=\(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - afterStartup) * 1000))"
+            )
             restoreStartupFinished = true
         }
     }

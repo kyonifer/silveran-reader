@@ -479,6 +479,17 @@ public actor BookServiceActor {
         await notifyLibraryObservers()
     }
 
+    /// Cold-start library refresh. Unlike `reloadSourceRegistry`, this loads the registry in place
+    /// rather than tearing it down and rebuilding, so a concurrent book restore resolving its local
+    /// media is never momentarily left with an empty source table. The slow network listing
+    /// (`fetchLibraryInformation`, a serial per-source fetch) lives here so it stays off the restore
+    /// critical path.
+    public func refreshLibraryFromSources() async {
+        await ensureSourceRegistryLoaded()
+        _ = await fetchLibraryInformation()
+        await notifyLibraryObservers()
+    }
+
     @discardableResult
     public func fetchLibraryInformation() async -> [BookMetadata]? {
         await ensureSourceRegistryLoaded()
