@@ -84,7 +84,6 @@ struct MediaItemCardView: View {
     var debugContext: String? = nil
     @Environment(MediaViewModel.self) private var mediaViewModel
     #if os(macOS)
-    @State private var isHovered = false
     @State private var doubleCoverSwapping = false
     #endif
     #if os(iOS)
@@ -409,7 +408,8 @@ struct MediaItemCardView: View {
         coverPreference == .storytellerDouble
     }
 
-    private var cardContent: some View {
+    @ViewBuilder
+    private func cardVisual(isHovered: Bool) -> some View {
         let placeholderColor = Color(white: 0.2)
         let coverVariant = resolveCoverVariant(for: item)
         let containerAspectRatio: CGFloat = coverPreference.preferredContainerAspectRatio
@@ -418,7 +418,7 @@ struct MediaItemCardView: View {
             && ((item.hasAvailableEbook && item.hasAvailableAudiobook)
                 || item.hasAvailableReadaloud)
 
-        return VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: 0) {
             ZStack(alignment: .center) {
                 VStack(spacing: 0) {
                     Spacer(minLength: 0)
@@ -566,21 +566,25 @@ struct MediaItemCardView: View {
             )
         )
         .frame(width: metrics.tileWidth, height: metrics.maxCardHeight, alignment: .top)
-        .contentShape(Rectangle())
+    }
+
+    private var cardContent: some View {
         #if os(macOS)
-        .onTapGesture {
-            onSelect(item)
-        }
-        .simultaneousGesture(
-            TapGesture(count: 2)
-                .onEnded { _ in
-                    onInfo(item)
+        // The hover scale lives in its own child view so that toggling it (which happens whenever
+        // the pointer crosses into an open context menu) does not recompute this view and tear down
+        // the live NSMenu, which would collapse any open submenu.
+        return MacCardHoverScale { isHovered in
+            cardVisual(isHovered: isHovered)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    onSelect(item)
                 }
-        )
-        .scaleEffect(isHovered ? 1.05 : 1.0)
-        .animation(.easeOut(duration: 0.2), value: isHovered)
-        .onHover { hovering in
-            isHovered = hovering
+                .simultaneousGesture(
+                    TapGesture(count: 2)
+                        .onEnded { _ in
+                            onInfo(item)
+                        }
+                )
         }
         .contextMenu {
             BookContextMenuContent(
@@ -590,6 +594,9 @@ struct MediaItemCardView: View {
             )
         }
         .zIndex(doubleCoverSwapping ? 1000 : 0)
+        #else
+        return cardVisual(isHovered: false)
+            .contentShape(Rectangle())
         #endif
     }
 
@@ -729,6 +736,23 @@ private struct MediaProgressBar: View {
         }
     }
 }
+
+#if os(macOS)
+/// Owns the card's hover state in isolation. Because `isHovered` lives here rather than on the
+/// parent, hovering only recomputes this view's body, not the parent that hosts `.contextMenu` -
+/// so an open context menu (and its submenus) survives the pointer crossing onto the menu.
+private struct MacCardHoverScale<Content: View>: View {
+    @ViewBuilder let content: (Bool) -> Content
+    @State private var isHovered = false
+
+    var body: some View {
+        content(isHovered)
+            .scaleEffect(isHovered ? 1.05 : 1.0)
+            .animation(.easeOut(duration: 0.2), value: isHovered)
+            .onHover { isHovered = $0 }
+    }
+}
+#endif
 
 private struct MediaItemCoverImage: View {
     @Environment(MediaViewModel.self) private var mediaViewModel

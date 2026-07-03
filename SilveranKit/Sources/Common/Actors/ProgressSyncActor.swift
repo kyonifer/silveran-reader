@@ -10,12 +10,12 @@ public struct IncomingServerPosition: Sendable {
     }
 }
 
-public struct BookProgress: Sendable {
+public struct BookProgress: Sendable, Equatable {
     public let locator: BookLocator?
     public let timestamp: Double?
     public let source: ProgressSource
 
-    public enum ProgressSource: Sendable {
+    public enum ProgressSource: Sendable, Equatable {
         case server
         case pendingSync
     }

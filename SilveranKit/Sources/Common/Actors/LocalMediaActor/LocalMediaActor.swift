@@ -1,7 +1,7 @@
 import Foundation
 import ZIPFoundation
 
-public struct MediaPaths: Sendable {
+public struct MediaPaths: Sendable, Equatable {
     public var ebookPath: URL?
     public var audioPath: URL?
     public var syncedPath: URL?

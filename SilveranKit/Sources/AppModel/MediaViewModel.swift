@@ -472,6 +472,19 @@ public final class MediaViewModel {
         }
     }
 
+    /// Assigns only when the value actually differs. `@Observable` notifies observers on every
+    /// setter call regardless of equality, so unguarded reassignment of unchanged state (as happens
+    /// on the frequent no-op background refreshes) churns the whole library UI and tears down any
+    /// open context menu mid-interaction.
+    private func setIfChanged<Value: Equatable>(
+        _ keyPath: ReferenceWritableKeyPath<MediaViewModel, Value>,
+        _ newValue: Value,
+    ) {
+        if self[keyPath: keyPath] != newValue {
+            self[keyPath: keyPath] = newValue
+        }
+    }
+
     public func refreshMetadata(source: String = "unknown") async {
         let started = CFAbsoluteTimeGetCurrent()
         var checkpoint = started
@@ -499,7 +512,7 @@ public final class MediaViewModel {
             debugLog("[PerfTrace][MediaViewModel] refreshMetadata pendingBookIds=[\(bookIds)]")
         }
 
-        bookSources = snapshot.sources
+        setIfChanged(\.bookSources, snapshot.sources)
         logPerfCheckpoint(
             "refreshMetadata load source metadata",
             source: source,
@@ -509,12 +522,15 @@ public final class MediaViewModel {
             "[PerfTrace][MediaViewModel] refreshMetadata metadataCount=\(libraryMetadata.count)"
         )
 
-        pendingSyncsByBook = Dictionary(uniqueKeysWithValues: pendingSyncs.map { ($0.bookId, $0) })
+        setIfChanged(
+            \.pendingSyncsByBook,
+            Dictionary(uniqueKeysWithValues: pendingSyncs.map { ($0.bookId, $0) }),
+        )
         debugLog(
             "[PerfTrace][MediaViewModel] refreshMetadata pendingSyncsByBook=\(pendingSyncsByBook.count)"
         )
 
-        bookProgressCache = await ProgressSyncActor.shared.getAllBookProgress()
+        setIfChanged(\.bookProgressCache, await ProgressSyncActor.shared.getAllBookProgress())
         logPerfCheckpoint(
             "refreshMetadata progress cache",
             source: source,
@@ -530,27 +546,33 @@ public final class MediaViewModel {
             source: source,
             checkpoint: &checkpoint,
         )
-        cachedBookPaths = paths
-        removableCachedBookPaths = snapshot.cachedMediaPaths
+        setIfChanged(\.cachedBookPaths, paths)
+        setIfChanged(\.removableCachedBookPaths, snapshot.cachedMediaPaths)
         let sourceKindsByID = Dictionary(
             uniqueKeysWithValues: bookSources.map { ($0.id, $0.kind) }
         )
-        folderSourceBookIds = Set(
-            libraryMetadata.filter { book in
-                sourceKindsByID[book.sourceID ?? ""] == .localFolder
-            }.map(\.uuid)
+        setIfChanged(
+            \.folderSourceBookIds,
+            Set(
+                libraryMetadata.filter { book in
+                    sourceKindsByID[book.sourceID ?? ""] == .localFolder
+                }.map(\.uuid)
+            ),
         )
-        storytellerBookIds = Set(
-            libraryMetadata.filter { book in
-                sourceKindsByID[book.sourceID ?? ""] == .storyteller
-            }.map(\.uuid)
+        setIfChanged(
+            \.storytellerBookIds,
+            Set(
+                libraryMetadata.filter { book in
+                    sourceKindsByID[book.sourceID ?? ""] == .storyteller
+                }.map(\.uuid)
+            ),
         )
         sourceGroupsCache.removeAll()
         scheduleLibraryDerivation(reason: "refreshMetadata(\(source))")
-        connectionStatus = status
-        lastNetworkOpSucceeded = await BookServiceActor.shared.lastNetworkOpSucceeded
-        sourceConnectionInfos = await BookServiceActor.shared.sourceConnectionInfos()
-        isReady = true
+        setIfChanged(\.connectionStatus, status)
+        setIfChanged(\.lastNetworkOpSucceeded, await BookServiceActor.shared.lastNetworkOpSucceeded)
+        setIfChanged(\.sourceConnectionInfos, await BookServiceActor.shared.sourceConnectionInfos())
+        setIfChanged(\.isReady, true)
         logPerfCheckpoint(
             "refreshMetadata publish remaining state",
             source: source,
@@ -771,6 +793,12 @@ public final class MediaViewModel {
     }
 
     private func applyLibraryMetadata(_ metadata: [BookMetadata]) {
+        guard metadata != library.bookMetaData else {
+            debugLog(
+                "[PerfTrace][MediaViewModel] applyLibraryMetadata unchanged skip count=\(metadata.count)"
+            )
+            return
+        }
         let started = CFAbsoluteTimeGetCurrent()
         debugLog(
             "[PerfTrace][MediaViewModel] applyLibraryMetadata start incoming=\(metadata.count) previous=\(library.bookMetaData.count) libraryVersion=\(libraryVersion)"
@@ -857,9 +885,10 @@ public final class MediaViewModel {
         retryEmpty: Bool = false,
     ) {
         let sourceIDs = Set(metadata.compactMap(\.sourceID))
-        availableStatusesBySourceID = availableStatusesBySourceID.filter {
-            sourceIDs.contains($0.key)
-        }
+        setIfChanged(
+            \.availableStatusesBySourceID,
+            availableStatusesBySourceID.filter { sourceIDs.contains($0.key) },
+        )
         availableStatusLoadTasks = availableStatusLoadTasks.filter {
             sourceIDs.contains($0.key)
         }
@@ -880,7 +909,10 @@ public final class MediaViewModel {
                 )
                 guard let self else { return }
                 self.availableStatusLoadTasks[sourceID] = nil
-                self.availableStatusesBySourceID[sourceID] = self.sortedUniqueStatuses(statuses)
+                let sorted = self.sortedUniqueStatuses(statuses)
+                if self.availableStatusesBySourceID[sourceID] != sorted {
+                    self.availableStatusesBySourceID[sourceID] = sorted
+                }
             }
         }
     }
