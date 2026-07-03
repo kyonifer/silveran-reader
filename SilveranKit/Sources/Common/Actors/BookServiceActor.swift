@@ -1309,8 +1309,9 @@ public actor BookServiceActor {
             return false
         }
 
+        let destinationBookID = UUID().uuidString
         let success = await destination.acceptBook(
-            bookUUID: UUID().uuidString,
+            bookUUID: destinationBookID,
             title: book.title,
             ebook: assets.ebook,
             audiobooks: assets.audiobooks,
@@ -1318,11 +1319,29 @@ public actor BookServiceActor {
             collectionUUID: nil,
             onProgress: onProgress,
         )
-        if success {
-            await fetchLibraryInformation()
-            await notifyLibraryObservers()
+        guard success else { return false }
+
+        // Carry reading progress across: read the source's locator and push it onto the new book id.
+        // Best-effort: a progress-mirror failure does not undo the media copy.
+        if let position = await source.fetchBookPosition(bookId: book.id),
+            let locator = position.locator
+        {
+            let result = await destination.sendProgressToServer(
+                bookId: destinationBookID,
+                locator: locator,
+                timestamp: position.timestamp ?? floor(Date().timeIntervalSince1970 * 1000),
+            )
+            if case .success = result {
+            } else {
+                debugLog(
+                    "[BookServiceActor] copyBook: progress mirror failed for \(destinationBookID)"
+                )
+            }
         }
-        return success
+
+        await fetchLibraryInformation()
+        await notifyLibraryObservers()
+        return true
     }
 
     private func requiredCategories(for book: BookMetadata) -> Set<LocalMediaCategory> {
