@@ -3,9 +3,7 @@
 SCRIPT_DIR="$(cd -- "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")" && pwd)"
 cd "${SCRIPT_DIR}/.."
 
-pushd SilveranKit
-swift build --target SilveranKitMacApp
-swift build --target SilveranKitiOSApp \
+swift build --target SilveranAppleKit
+swift build --target SilveranAppleKit \
       --sdk $(xcrun --sdk iphonesimulator --show-sdk-path) \
-      --triple arm64-apple-ios17.0-simulator
-popd
+      --triple arm64-apple-ios18.0-simulator

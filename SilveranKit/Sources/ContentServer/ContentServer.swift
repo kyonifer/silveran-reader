@@ -1,7 +1,7 @@
 import Foundation
 import Hummingbird
 import Logging
-import SilveranKitCommon
+import SilveranKit
 
 /// Embedded Storyteller-compatible content server.
 ///
@@ -15,12 +15,7 @@ import SilveranKitCommon
 /// reuses the app's own `BookMetadata`/`BookReadingPosition` models because the client decodes
 /// library responses with `convertFromSnakeCase` — so encoding those models with
 /// `convertToSnakeCase` reproduces exactly what the real server emits.
-public actor ContentServer {
-    public struct StartInfo: Sendable {
-        public let port: Int
-        public let sourceID: BookSourceID
-    }
-
+public actor ContentServer: ContentServerControlling {
     private var serverTask: Task<Void, Never>?
     private var running = false
 
@@ -29,8 +24,8 @@ public actor ContentServer {
     public var isRunning: Bool { running }
 
     public func start(
-        configuration: ContentServerConfiguration
-    ) async throws -> StartInfo {
+        _ configuration: ContentServerConfiguration
+    ) async throws -> ContentServerStartInfo {
         guard !running else {
             throw ContentServerError.alreadyRunning
         }
@@ -71,7 +66,7 @@ public actor ContentServer {
         debugLog(
             "[ContentServer] started on port \(configuration.port) for source \(sourceID)"
         )
-        return StartInfo(port: configuration.port, sourceID: sourceID)
+        return ContentServerStartInfo(port: configuration.port, sourceID: sourceID)
     }
 
     public func stop() async {
@@ -146,10 +141,4 @@ public actor ContentServer {
 
         return router
     }
-}
-
-public enum ContentServerError: Error, Sendable {
-    case alreadyRunning
-    case noFolderSource
-    case sourceNotFound
 }

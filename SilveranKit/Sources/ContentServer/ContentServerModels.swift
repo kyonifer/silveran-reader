@@ -1,26 +1,5 @@
 import Foundation
-import SilveranKitCommon
-
-/// Runtime configuration for the embedded content server.
-public struct ContentServerConfiguration: Sendable {
-    public var port: Int
-    public var username: String
-    public var password: String
-    /// The folder source whose books are served. When nil, the first local folder source is used.
-    public var sourceID: BookSourceID?
-
-    public init(
-        port: Int = 8088,
-        username: String,
-        password: String,
-        sourceID: BookSourceID? = nil,
-    ) {
-        self.port = port
-        self.username = username
-        self.password = password
-        self.sourceID = sourceID
-    }
-}
+import SilveranKit
 
 /// Token payload matching the client's `AccessToken` decode (snake_case keys).
 struct TokenResponse: Encodable {

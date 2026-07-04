@@ -1,11 +1,10 @@
+import SilveranAppleKit
+
 #if os(macOS)
-import SilveranKitMacApp
-#elseif os(iOS)
-import SilveranKitiOSApp
-#elseif os(watchOS)
-import SilveranKitWatchApp
-#elseif os(tvOS)
-import SilveranKitTVApp
+import SilveranContentServer
+#endif
+#if os(iOS) || os(macOS)
+import SilveranReadaloud
 #endif
 
 /// Keep code out of the Xcode project, because LSP can't complete here.
@@ -13,9 +12,16 @@ import SilveranKitTVApp
 class EntryPointStub {
     static func main() {
         #if os(macOS)
-        macAppEntryPoint()
+        macAppEntryPoint(
+            environment: SilveranEnvironment(
+                contentServer: ContentServer(),
+                readaloudAligner: ReadaloudEngine(),
+            )
+        )
         #elseif os(iOS)
-        iosAppEntryPoint()
+        iosAppEntryPoint(
+            environment: SilveranEnvironment(readaloudAligner: ReadaloudEngine())
+        )
         #elseif os(watchOS)
         watchAppEntryPoint()
         #elseif os(tvOS)

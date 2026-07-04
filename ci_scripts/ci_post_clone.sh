@@ -13,6 +13,6 @@ echo "Generating Xcode project..."
 
 echo "Copying Package.resolved to Xcode project..."
 mkdir -p Silveran.xcodeproj/project.xcworkspace/xcshareddata/swiftpm
-cp SilveranKit/Package.resolved Silveran.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
+cp Package.resolved Silveran.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
 
 echo "Xcode project generated successfully"

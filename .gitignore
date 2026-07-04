@@ -15,7 +15,7 @@ XCodeWrapper/Configs/Local.xcconfig
 *.xcodeproj/
 .build/
 Package.resolved
-!SilveranKit/Package.resolved
+!/Package.resolved
 .cache
 icon*.png
 XCodeWrapper/Assets.xcassets/AppIcon.appiconset/*.png

@@ -2,7 +2,7 @@ import Foundation
 import HTTPTypes
 import Hummingbird
 import NIOCore
-import SilveranKitCommon
+import SilveranKit
 
 /// Stateless request handlers for the content server. Holds only immutable, `Sendable`
 /// configuration so the router closures can call across the NIO boundary freely.

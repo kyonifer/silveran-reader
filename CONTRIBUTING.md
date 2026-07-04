@@ -2,12 +2,14 @@
 
 ## Project Structure & Module Organization
 
-The repository is broken up as follows:
+The repository is one SPM package (manifest at the repo root, sources nested under `SilveranKit/`) plus thin app shells:
 
-- `XCodeWrapper/` contains the entry point stub and assets for the iOS/macOS app (SwiftUI). This stub immediately calls into `SilveranKit/`, which is where everything is implemented.
-- `SilveranKit/` contains the implementation of all apps.
+- `Package.swift` defines the products: `SilveranKit` (portable core, no Apple frameworks), `SilveranAppleKit` (all iOS/macOS/tvOS/watchOS code, one target with platform-guarded folders), and the `SilveranContentServer` / `SilveranReadaloud` satellites (injected via `SilveranEnvironment`).
+- `SilveranKit/Sources/{Kit,AppleKit,ContentServer,Readaloud}` hold the target sources; `SilveranKit/Tests/` the tests.
+- `XCodeWrapper/` contains the entry point stub, assets, and `project.yml` for the Apple apps. The stub builds a `SilveranEnvironment` (injecting the satellites its platform links) and calls the per-platform entry point in `SilveranAppleKit`.
+- `LinuxApp/` is the Linux app shell: its own package with a path dependency on the root package.
 
-In theory, `XCodeWrapper/` and `SilveranKit/` could be merged into one package for the iOS/macOS app, but technical limitations prevent it for now. SourceKit-LSP only supports SPM packages, and Xcode wants a .xcodeproj for iOS apps. This limitation doesn't affect the other apps.
+The manifest must live at the repo root because SwiftPM resolves URL dependencies against the repository root; external consumers depend on this repo and import `SilveranAppleKit` (and optionally the satellites).
 
 ## Building on macOS
 
@@ -36,7 +38,7 @@ Not supported yet, but coming soon. You can try playing around with the `scripts
 
 ## SourceKit-LSP Completion
 
-If you are using SourceKit-LSP for code completion, it will require the `Package.resolved` to exist in the package you are editing. This file is not checked in, so you will need to create it in the package you want completion in. For convenience, a script is included to do this. Running `scripts/initcompletion` should enable your LSP to complete code in `SilveranKit`.
+If you are using SourceKit-LSP for code completion, run `scripts/initcompletion` once from the repo root; it builds `SilveranAppleKit` for macOS and the iOS simulator so the LSP has indexes for both.
 
 ## Coding Style & Naming Conventions
 

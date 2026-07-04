@@ -7,4 +7,4 @@ cd "${SCRIPT_DIR}/.."
 
 #export SCUI_DEFAULT_BACKEND=GtkBackend
 
-swift build --package-path SilveranKit --product SilveranKitLinuxApp "$@"
+swift build --package-path LinuxApp --product SilveranLinuxApp "$@"

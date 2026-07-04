@@ -10,8 +10,8 @@ configs:
   Debug: debug
   Release: release
 packages:
-  SilveranKit:
-    path: SilveranKit
+  Silveran:
+    path: .
 targetTemplates:
   appBase:
     type: application
@@ -88,8 +88,12 @@ targets:
         type: folder
         buildPhase: resources
     dependencies:
-      - package: SilveranKit
-        product: SilveranKitMacApp
+      - package: Silveran
+        product: SilveranAppleKit
+      - package: Silveran
+        product: SilveranContentServer
+      - package: Silveran
+        product: SilveranReadaloud
 
   Silveran Reader (iOS):
     templates:
@@ -141,7 +145,7 @@ targets:
           UISceneConfigurations:
             CPTemplateApplicationSceneSessionRoleApplication:
               - UISceneConfigurationName: CarPlay
-                UISceneDelegateClassName: SilveranKitiOSApp.CarPlaySceneDelegate
+                UISceneDelegateClassName: SilveranAppleKit.CarPlaySceneDelegate
     sources:
       - path: XCodeWrapper
         includes:
@@ -167,8 +171,10 @@ targets:
           - "rollup.config.js"
           - ".git*"
     dependencies:
-      - package: SilveranKit
-        product: SilveranKitiOSApp
+      - package: Silveran
+        product: SilveranAppleKit
+      - package: Silveran
+        product: SilveranReadaloud
       - target: "Silveran Reader (watchOS)"
         embed: true
   Silveran Reader (watchOS):
@@ -204,8 +210,8 @@ targets:
       - path: XCodeWrapper/WatchAssets.xcassets
         type: assetcatalog
     dependencies:
-      - package: SilveranKit
-        product: SilveranKitWatchApp
+      - package: Silveran
+        product: SilveranAppleKit
   Silveran Reader (tvOS):
     templates:
       - appBase
@@ -241,8 +247,8 @@ targets:
       - path: XCodeWrapper/TVAssets.xcassets
         type: assetcatalog
     dependencies:
-      - package: SilveranKit
-        product: SilveranKitTVApp
+      - package: Silveran
+        product: SilveranAppleKit
 schemes:
   "Silveran Reader (macOS)":
     shared: true
