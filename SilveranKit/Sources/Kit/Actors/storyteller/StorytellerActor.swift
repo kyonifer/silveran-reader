@@ -2798,7 +2798,7 @@ extension StorytellerActor: BookSourceActor {
 
     /// Audio tracks of a downloaded `.audiobook` package, in the manifest's reading order. A
     /// Storyteller package may nest tracks under subdirectories (per-disc folders, nested archives),
-    /// so the manifest's `readingOrder` hrefs — resolved relative to the manifest directory — are the
+    /// so the manifest's `readingOrder` hrefs, resolved relative to the manifest directory, are the
     /// authoritative list and order. Falls back to a recursive scan if the manifest is unreadable.
     private func packagedAudioFiles(inPackageAt directory: URL) -> [URL] {
         let fm = FileManager.default
@@ -2853,7 +2853,7 @@ extension StorytellerActor: BookSourceActor {
         onProgress: (@Sendable (Double) -> Void)?,
     ) async -> Bool {
         // The new-book upload endpoint classifies every epub as the ebook, so a pre-aligned readaloud
-        // (also an epub) can't go through it — it would overwrite the ebook. Upload ebook + audiobook
+        // (also an epub) can't go through it because it would overwrite the ebook. Upload ebook + audiobook
         // there, then attach the readaloud through the format-aware replace-asset endpoint.
         let ebookBytes = Int64(ebook?.data.count ?? 0)
         let audioBytes = audiobooks.reduce(Int64(0)) { $0 + Int64($1.data.count) }

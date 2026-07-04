@@ -170,7 +170,7 @@ struct ContentServerHandlers: Sendable {
     /// Audiobooks are stored as a directory (manifest.json + audio files). Package that into a
     /// Readium `.audiobook` zip so both clients can consume it; the official client downloads with
     /// `Accept: application/audiobook+zip` and reads `manifest.audiobook-manifest`, Silveran
-    /// requests `format=audiobook-rpf` and reads `manifest.json` — the package carries both.
+    /// requests `format=audiobook-rpf` and reads `manifest.json`; the package carries both.
     private func audiobookResponse(
         for bookID: String,
         requestedFormat: String?,

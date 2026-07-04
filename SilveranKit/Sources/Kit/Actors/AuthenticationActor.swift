@@ -1,9 +1,5 @@
 import Foundation
 
-#if canImport(Security)
-import Security
-#endif
-
 @globalActor
 public actor AuthenticationActor {
     public static let shared = AuthenticationActor()
@@ -22,6 +18,15 @@ public actor AuthenticationActor {
         accessGroup = Self.requiredInfoValue(for: Self.accessGroupInfoKey)
     }
 
+    private var keychain: any KeychainStoring {
+        get throws {
+            guard let keychain = SilveranPlatform.keychain else {
+                throw KeychainError.unsupportedPlatform
+            }
+            return keychain
+        }
+    }
+
     public func saveCredentials(
         url: String,
         username: String,
@@ -30,16 +35,16 @@ public actor AuthenticationActor {
     ) async throws {
         try await deleteCredentials(sourceID: sourceID)
 
-        try saveString(url, for: accountKey(serverURLKey, sourceID: sourceID))
-        try saveString(username, for: accountKey(usernameKey, sourceID: sourceID))
-        try saveString(password, for: accountKey(passwordKey, sourceID: sourceID))
+        try await saveString(url, for: accountKey(serverURLKey, sourceID: sourceID))
+        try await saveString(username, for: accountKey(usernameKey, sourceID: sourceID))
+        try await saveString(password, for: accountKey(passwordKey, sourceID: sourceID))
     }
 
     public func loadCredentials() async throws -> (url: String, username: String, password: String)?
     {
-        guard let url = try loadString(for: serverURLKey),
-            let username = try loadString(for: usernameKey),
-            let password = try loadString(for: passwordKey)
+        guard let url = try await loadString(for: serverURLKey),
+            let username = try await loadString(for: usernameKey),
+            let password = try await loadString(for: passwordKey)
         else {
             return nil
         }
@@ -50,9 +55,9 @@ public actor AuthenticationActor {
     public func loadCredentials(sourceID: BookSourceID) async throws
         -> (url: String, username: String, password: String)?
     {
-        guard let url = try loadString(for: accountKey(serverURLKey, sourceID: sourceID)),
-            let username = try loadString(for: accountKey(usernameKey, sourceID: sourceID)),
-            let password = try loadString(for: accountKey(passwordKey, sourceID: sourceID))
+        guard let url = try await loadString(for: accountKey(serverURLKey, sourceID: sourceID)),
+            let username = try await loadString(for: accountKey(usernameKey, sourceID: sourceID)),
+            let password = try await loadString(for: accountKey(passwordKey, sourceID: sourceID))
         else {
             return nil
         }
@@ -61,45 +66,19 @@ public actor AuthenticationActor {
     }
 
     public func deleteCredentials() async throws {
-        #if canImport(Security)
         for key in [serverURLKey, usernameKey, passwordKey] {
-            let query: [String: Any] = [
-                kSecClass as String: kSecClassGenericPassword,
-                kSecAttrService as String: service,
-                kSecAttrAccount as String: key,
-                kSecAttrAccessGroup as String: accessGroup,
-                kSecUseDataProtectionKeychain as String: true,
-            ]
-
-            let status = SecItemDelete(query as CFDictionary)
-            if status != errSecSuccess && status != errSecItemNotFound {
-                throw KeychainError.unableToDelete(status: status)
-            }
+            try await keychain.removeItem(service: service, account: key, accessGroup: accessGroup)
         }
-        #else
-        throw KeychainError.unsupportedPlatform
-        #endif
     }
 
     public func deleteCredentials(sourceID: BookSourceID) async throws {
-        #if canImport(Security)
         for key in [serverURLKey, usernameKey, passwordKey] {
-            let query: [String: Any] = [
-                kSecClass as String: kSecClassGenericPassword,
-                kSecAttrService as String: service,
-                kSecAttrAccount as String: accountKey(key, sourceID: sourceID),
-                kSecAttrAccessGroup as String: accessGroup,
-                kSecUseDataProtectionKeychain as String: true,
-            ]
-
-            let status = SecItemDelete(query as CFDictionary)
-            if status != errSecSuccess && status != errSecItemNotFound {
-                throw KeychainError.unableToDelete(status: status)
-            }
+            try await keychain.removeItem(
+                service: service,
+                account: accountKey(key, sourceID: sourceID),
+                accessGroup: accessGroup,
+            )
         }
-        #else
-        throw KeychainError.unsupportedPlatform
-        #endif
     }
 
     public func hasCredentials(sourceID: BookSourceID) async -> Bool {
@@ -111,106 +90,51 @@ public actor AuthenticationActor {
         }
     }
 
-    // MARK: - Hardcover Token
-
-    public func saveHardcoverToken(_ token: String) throws {
-        #if canImport(Security)
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: hardcoverTokenKey,
-            kSecAttrAccessGroup as String: accessGroup,
-            kSecUseDataProtectionKeychain as String: true,
-        ]
-        SecItemDelete(query as CFDictionary)
-        try saveString(token, for: hardcoverTokenKey)
-        #else
-        throw KeychainError.unsupportedPlatform
-        #endif
+    public func saveHardcoverToken(_ token: String) async throws {
+        try await saveString(token, for: hardcoverTokenKey)
     }
 
-    public func loadHardcoverToken() throws -> String? {
-        try loadString(for: hardcoverTokenKey)
+    public func loadHardcoverToken() async throws -> String? {
+        try await loadString(for: hardcoverTokenKey)
     }
 
-    public func deleteHardcoverToken() throws {
-        #if canImport(Security)
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: hardcoverTokenKey,
-            kSecAttrAccessGroup as String: accessGroup,
-            kSecUseDataProtectionKeychain as String: true,
-        ]
-        let status = SecItemDelete(query as CFDictionary)
-        if status != errSecSuccess && status != errSecItemNotFound {
-            throw KeychainError.unableToDelete(status: status)
-        }
-        #else
-        throw KeychainError.unsupportedPlatform
-        #endif
+    public func deleteHardcoverToken() async throws {
+        try await keychain.removeItem(
+            service: service,
+            account: hardcoverTokenKey,
+            accessGroup: accessGroup,
+        )
     }
 
-    private func saveString(_ value: String, for account: String) throws {
-        #if canImport(Security)
+    private func saveString(_ value: String, for account: String) async throws {
         guard let data = value.data(using: .utf8) else {
             throw KeychainError.invalidData
         }
 
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecAttrAccessGroup as String: accessGroup,
-            kSecValueData as String: data,
-            // AfterFirstUnlock so background launches (WCSession delivery, background
-            // URLSession events) can authenticate while the phone is locked
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
-            kSecUseDataProtectionKeychain as String: true,
-        ]
-
-        let status = SecItemAdd(query as CFDictionary, nil)
-        guard status == errSecSuccess else {
-            throw KeychainError.unableToSave(status: status)
-        }
-        #else
-        throw KeychainError.unsupportedPlatform
-        #endif
+        try await keychain.setItem(
+            data,
+            service: service,
+            account: account,
+            accessGroup: accessGroup,
+        )
     }
 
-    private func loadString(for account: String) throws -> String? {
-        #if canImport(Security)
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecAttrAccessGroup as String: accessGroup,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-            kSecUseDataProtectionKeychain as String: true,
-        ]
-
-        var result: AnyObject?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-
-        if status == errSecItemNotFound {
+    private func loadString(for account: String) async throws -> String? {
+        guard
+            let data = try await keychain.item(
+                service: service,
+                account: account,
+                accessGroup: accessGroup,
+            )
+        else {
             return nil
         }
 
-        guard status == errSecSuccess else {
-            throw KeychainError.unableToLoad(status: status)
-        }
-
-        guard let data = result as? Data,
-            let string = String(data: data, encoding: .utf8)
-        else {
+        guard let string = String(data: data, encoding: .utf8) else {
             throw KeychainError.invalidData
         }
 
         return string
-        #else
-        throw KeychainError.unsupportedPlatform
-        #endif
     }
 
     private func accountKey(_ key: String, sourceID: BookSourceID) -> String {

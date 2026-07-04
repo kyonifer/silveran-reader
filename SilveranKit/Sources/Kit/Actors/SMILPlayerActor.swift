@@ -1,16 +1,4 @@
-#if canImport(AVFoundation)
-import AVFoundation
 import Foundation
-
-#if os(iOS) || os(watchOS) || os(tvOS)
-import MediaPlayer
-#endif
-
-#if os(iOS)
-import UIKit
-#endif
-
-// MARK: - Audio Position Sync
 
 public struct AudioPositionSyncData: Sendable {
     public let sectionIndex: Int
@@ -37,13 +25,12 @@ public struct AudioPositionSyncData: Sendable {
     }
 }
 
-// MARK: - Error Types
-
 public enum SMILPlayerError: Error, LocalizedError {
     case noMediaOverlay
     case bookNotLoaded
     case audioLoadFailed(String)
     case invalidPosition
+    case playbackUnavailable
 
     public var errorDescription: String? {
         switch self {
@@ -55,38 +42,11 @@ public enum SMILPlayerError: Error, LocalizedError {
                 return "Failed to load audio: \(reason)"
             case .invalidPosition:
                 return "Invalid playback position"
+            case .playbackUnavailable:
+                return "Audio playback is unavailable on this platform"
         }
     }
 }
-
-// MARK: - AVPlayer Observer
-
-private class AVPlayerEndObserver: NSObject, @unchecked Sendable {
-    private var observer: NSObjectProtocol?
-
-    func observe(_ playerItem: AVPlayerItem) {
-        cleanup()
-        observer = NotificationCenter.default.addObserver(
-            forName: .AVPlayerItemDidPlayToEndTime,
-            object: playerItem,
-            queue: nil,
-        ) { _ in
-            debugLog("[SMILPlayerActor] Audio finished playing")
-            Task { @SMILPlayerActor in
-                await SMILPlayerActor.shared.handleAudioFinished()
-            }
-        }
-    }
-
-    func cleanup() {
-        if let obs = observer {
-            NotificationCenter.default.removeObserver(obs)
-            observer = nil
-        }
-    }
-}
-
-// MARK: - State Snapshot
 
 public struct SMILPlaybackState: Sendable {
     public let isPlaying: Bool
@@ -131,15 +91,11 @@ public struct SMILPlaybackState: Sendable {
     }
 }
 
-// MARK: - Active Audio Player Tracking
-
 public enum ActiveAudioPlayer: Sendable {
     case none
     case smil
     case audiobook
 }
-
-// MARK: - Global Actor
 
 @globalActor
 public actor SMILPlayerActor {
@@ -152,10 +108,7 @@ public actor SMILPlayerActor {
         debugLog("[SMILPlayerActor] Active audio player set to: \(player)")
     }
 
-    // MARK: - Player State
-
-    private var player: AVPlayer?
-    private let endObserver = AVPlayerEndObserver()
+    private var player: (any AudioPlaying)?
     private var bookStructure: [SectionInfo] = []
     private var tocEntries: [TocEntry] = []
     private var cachedBookTotal: Double = 0
@@ -179,35 +132,14 @@ public actor SMILPlayerActor {
     private var lastPausedWhilePlayingTime: Date?
     private var isAdvancing: Bool = false
 
-    // MARK: - Observer Pattern
-
     private var stateObservers: [UUID: @Sendable @MainActor (SMILPlaybackState) -> Void] = [:]
     private var sessionID = UUID()
 
-    // MARK: - iOS/watchOS Audio
-
-    #if os(iOS) || os(watchOS) || os(tvOS)
-    private var audioManager: SMILAudioManager?
+    private var nowPlayingConfigured = false
     private var nowPlayingUpdateTimer: Timer?
-    private var audioSessionObserversConfigured = false
-    private var audioSessionInitialized = false
-    private var interruptionObserver: NSObjectProtocol?
-    private var routeChangeObserver: NSObjectProtocol?
-    #endif
-
-    #if os(watchOS)
-    private var watchLongFormUnavailable = false
-    #endif
-
-    #if os(iOS)
-    private var coverImage: UIImage?
-    #endif
-
-    // MARK: - Initialization
+    private var coverImageData: Data?
 
     private init() {}
-
-    // MARK: - Book Loading
 
     public func loadBook(
         epubPath: URL,
@@ -219,19 +151,20 @@ public actor SMILPlayerActor {
             "[SMILPlayerActor] Loading book: \(bookId) from \(epubPath.path) (existingBookId=\(self.bookId ?? "nil"), structureCount=\(bookStructure.count))"
         )
 
+        guard let provider = SilveranPlatform.audioPlayers else {
+            throw SMILPlayerError.playbackUnavailable
+        }
+
         if self.bookId == bookId && !bookStructure.isEmpty {
             debugLog("[SMILPlayerActor] Same book already loaded, skipping reload")
             sessionID = UUID()
-            #if os(iOS) || os(watchOS) || os(tvOS)
-            setupAudioSession()
-            configureAudioSessionObservers()
-            #endif
+            try? await provider.prepareSession(longForm: true)
             await notifyStateChange()
             return
         }
 
         sessionID = UUID()
-        clearBookState()
+        await clearBookState()
 
         let result = try SMILParser.parseEPUB(at: epubPath)
 
@@ -250,11 +183,8 @@ public actor SMILPlayerActor {
 
         computeCachedTotals()
 
-        #if os(iOS) || os(watchOS) || os(tvOS)
-        setupAudioSession()
-        configureAudioSessionObservers()
-        await setupAudioManager()
-        #endif
+        try? await provider.prepareSession(longForm: true)
+        await setupNowPlaying()
 
         debugLog("[SMILPlayerActor] Book loaded with \(result.sections.count) sections")
         await notifyStateChange()
@@ -276,20 +206,10 @@ public actor SMILPlayerActor {
         return bookTitle
     }
 
-    // MARK: - Cover Image (iOS)
-
-    #if os(iOS)
-    public func setCoverImage(_ image: UIImage?) async {
-        coverImage = image
-        let manager = audioManager
-        await MainActor.run {
-            manager?.coverImage = image
-        }
-        updateNowPlayingInfo()
+    public func setCoverImage(_ imageData: Data?) async {
+        coverImageData = imageData
+        await updateNowPlayingInfo()
     }
-    #endif
-
-    // MARK: - Playback Control
 
     public func play() async throws {
         guard !bookStructure.isEmpty else {
@@ -304,19 +224,15 @@ public actor SMILPlayerActor {
             throw SMILPlayerError.audioLoadFailed("Player not initialized")
         }
 
-        #if os(watchOS)
-        await ensureAudioSessionActive()
-        #elseif os(iOS) || os(tvOS)
-        ensureAudioSessionActive()
-        #endif
+        if let provider = SilveranPlatform.audioPlayers {
+            try? await provider.prepareSession(longForm: true)
+        }
 
-        player.rate = Float(playbackRate)
+        await player.setRate(playbackRate)
+        await player.play()
         isPlaying = true
         startUpdateTimer()
-
-        #if os(iOS) || os(watchOS) || os(tvOS)
         startNowPlayingUpdateTimer()
-        #endif
 
         debugLog("[SMILPlayerActor] Playing")
         await notifyStateChange()
@@ -329,14 +245,11 @@ public actor SMILPlayerActor {
             lastPausedWhilePlayingTime = Date()
         }
 
-        player.pause()
+        await player.pause()
         isPlaying = false
         stopUpdateTimer()
-
-        #if os(iOS) || os(watchOS) || os(tvOS)
         stopNowPlayingUpdateTimer()
-        updateNowPlayingInfo()
-        #endif
+        await updateNowPlayingInfo()
 
         debugLog("[SMILPlayerActor] Paused")
         await notifyStateChange()
@@ -349,8 +262,6 @@ public actor SMILPlayerActor {
             try await play()
         }
     }
-
-    // MARK: - Seeking
 
     public func seekToEntry(sectionIndex: Int, entryIndex: Int) async throws {
         guard sectionIndex >= 0 && sectionIndex < bookStructure.count else {
@@ -454,43 +365,39 @@ public actor SMILPlayerActor {
 
     public func skipForward(seconds: Double = 15) async {
         guard let player = player else { return }
-        let duration = player.currentItem?.duration.seconds ?? 0
-        let newTime = min(player.currentTime().seconds + seconds, duration)
-        await player.seek(to: CMTime(seconds: newTime, preferredTimescale: 1000))
+        let duration = await player.duration
+        let currentTime = await player.currentTime
+        let newTime = min(currentTime + seconds, duration)
+        await player.seek(to: newTime)
         reconcileEntryFromTime(newTime)
         await notifyStateChange()
     }
 
     public func skipBackward(seconds: Double = 15) async {
         guard let player = player else { return }
-        let newTime = max(player.currentTime().seconds - seconds, 0)
-        await player.seek(to: CMTime(seconds: newTime, preferredTimescale: 1000))
+        let currentTime = await player.currentTime
+        let newTime = max(currentTime - seconds, 0)
+        await player.seek(to: newTime)
         reconcileEntryFromTime(newTime)
         await notifyStateChange()
     }
 
-    // MARK: - Settings
-
     public func setPlaybackRate(_ rate: Double) async {
         playbackRate = rate
-        if isPlaying {
-            player?.rate = Float(rate)
-        }
+        await player?.setRate(rate)
         debugLog("[SMILPlayerActor] Playback rate set to \(rate)")
         await notifyStateChange()
     }
 
     public func setVolume(_ newVolume: Double) async {
         volume = newVolume
-        player?.volume = Float(newVolume)
+        await player?.setVolume(newVolume)
         debugLog("[SMILPlayerActor] Volume set to \(newVolume)")
     }
 
-    // MARK: - State Access
-
     public func getCurrentState() async -> SMILPlaybackState? {
         guard !bookStructure.isEmpty else { return nil }
-        return buildCurrentState()
+        return await buildCurrentState()
     }
 
     public func getCurrentEntry() -> SMILEntry? {
@@ -504,14 +411,12 @@ public actor SMILPlayerActor {
         return (currentSectionIndex, currentEntryIndex)
     }
 
-    // MARK: - Observer Pattern
-
     public func addStateObserver(
         id: UUID = UUID(),
         observer: @escaping @Sendable @MainActor (SMILPlaybackState) -> Void,
     ) async -> UUID {
         stateObservers[id] = observer
-        if let state = buildCurrentState() {
+        if let state = await buildCurrentState() {
             await observer(state)
         }
         return id
@@ -521,32 +426,30 @@ public actor SMILPlayerActor {
         stateObservers.removeValue(forKey: id)
     }
 
-    // MARK: - Background Sync
-
-    public func getBackgroundSyncData() -> AudioPositionSyncData? {
+    public func getBackgroundSyncData() async -> AudioPositionSyncData? {
         guard !bookStructure.isEmpty else { return nil }
         guard currentSectionIndex < bookStructure.count else { return nil }
         let section = bookStructure[currentSectionIndex]
         guard currentEntryIndex < section.mediaOverlay.count else { return nil }
 
         let entry = section.mediaOverlay[currentEntryIndex]
+        let currentTime = await player?.currentTime ?? 0
 
         return AudioPositionSyncData(
             sectionIndex: currentSectionIndex,
             entryIndex: currentEntryIndex,
-            currentTime: player?.currentTime().seconds ?? 0,
+            currentTime: currentTime,
             audioFile: currentAudioFile,
             href: entry.textHref,
             fragment: entry.textId,
         )
     }
 
-    public func reconcilePositionFromPlayer() {
+    public func reconcilePositionFromPlayer() async {
         guard let player = player else { return }
-        reconcileEntryFromTime(player.currentTime().seconds)
+        let currentTime = await player.currentTime
+        reconcileEntryFromTime(currentTime)
     }
-
-    // MARK: - Cleanup
 
     private func computeCachedTotals() {
         cachedBookTotal = 0
@@ -564,11 +467,10 @@ public actor SMILPlayerActor {
         cachedBookTotal = lastCumSum
     }
 
-    private func clearBookState() {
+    private func clearBookState() async {
         debugLog("[SMILPlayerActor] Clearing book state")
         stopUpdateTimer()
-        endObserver.cleanup()
-        player?.pause()
+        await player?.stop()
         player = nil
 
         if let tempFile = tempAudioFileURL {
@@ -589,9 +491,7 @@ public actor SMILPlayerActor {
         currentAudioFile = ""
         isPlaying = false
 
-        #if os(iOS) || os(watchOS) || os(tvOS)
         stopNowPlayingUpdateTimer()
-        #endif
     }
 
     public func cleanup(expectedSessionID: UUID? = nil) async {
@@ -601,28 +501,17 @@ public actor SMILPlayerActor {
         }
 
         debugLog("[SMILPlayerActor] Cleanup: activeAudioPlayer=\(activeAudioPlayer)")
-        clearBookState()
+        await clearBookState()
 
         #if os(iOS)
-        removeAudioSessionObservers()
-        await cleanupAudioManager()
+        await teardownNowPlaying()
         if activeAudioPlayer == .smil {
             activeAudioPlayer = .none
         }
-        audioSessionInitialized = false
-        do {
-            try AVAudioSession.sharedInstance().setActive(
-                false,
-                options: .notifyOthersOnDeactivation,
-            )
-        } catch {
-            debugLog("[SMILPlayerActor] Failed to deactivate audio session: \(error)")
-        }
-        coverImage = nil
+        await SilveranPlatform.audioPlayers?.deactivateSession()
+        coverImageData = nil
         #endif
     }
-
-    // MARK: - Private: Entry Management
 
     private func setCurrentEntry(
         sectionIndex: Int,
@@ -654,23 +543,24 @@ public actor SMILPlayerActor {
         }
 
         if let player = player {
-            let duration = player.currentItem?.duration.seconds ?? 0
+            let duration = await player.duration
+            let timeBefore = await player.currentTime
             debugLog(
-                "[SMILPlayerActor] setCurrentEntry: BEFORE seek - currentTime=\(player.currentTime().seconds), duration=\(duration), target=\(beginTime)"
+                "[SMILPlayerActor] setCurrentEntry: BEFORE seek - currentTime=\(timeBefore), duration=\(duration), target=\(beginTime)"
             )
-            await player.seek(to: CMTime(seconds: beginTime, preferredTimescale: 1000))
+            await player.seek(to: beginTime)
+            let timeAfter = await player.currentTime
             debugLog(
-                "[SMILPlayerActor] setCurrentEntry: AFTER seek - currentTime=\(player.currentTime().seconds)"
+                "[SMILPlayerActor] setCurrentEntry: AFTER seek - currentTime=\(timeAfter)"
             )
 
             if wasRecentlyPlaying {
                 lastPausedWhilePlayingTime = nil
-                player.rate = Float(playbackRate)
+                await player.setRate(playbackRate)
+                await player.play()
                 isPlaying = true
                 startUpdateTimer()
-                #if os(iOS) || os(watchOS) || os(tvOS)
                 startNowPlayingUpdateTimer()
-                #endif
             }
         }
 
@@ -712,7 +602,7 @@ public actor SMILPlayerActor {
 
         await loadAudioFile(currentAudioFile)
         if let player = player {
-            await player.seek(to: CMTime(seconds: currentEntryBeginTime, preferredTimescale: 1000))
+            await player.seek(to: currentEntryBeginTime)
         }
     }
 
@@ -745,21 +635,52 @@ public actor SMILPlayerActor {
 
             debugLog("[SMILPlayerActor] Extracted to temp file: \(tempFile.path)")
 
-            let playerItem = AVPlayerItem(url: tempFile)
-            let newPlayer = AVPlayer(playerItem: playerItem)
-            newPlayer.rate = 0  // Start paused
-            newPlayer.volume = Float(volume)
-            endObserver.observe(playerItem)
-            self.player = newPlayer
+            let engine: any AudioPlaying
+            if let existing = player {
+                engine = existing
+            } else {
+                guard let provider = SilveranPlatform.audioPlayers else {
+                    debugLog("[SMILPlayerActor] No audio player provider available")
+                    return
+                }
+                engine = provider.makePlayer(profile: .smilSegment)
+                await engine.setEventHandler { event in
+                    Task { @SMILPlayerActor in
+                        await SMILPlayerActor.shared.handleEngineEvent(event)
+                    }
+                }
+                player = engine
+            }
 
-            let duration = playerItem.duration.seconds
-            debugLog("[SMILPlayerActor] Audio loaded, duration: \(duration.isNaN ? 0 : duration)s")
+            await engine.setVolume(volume)
+            await engine.setRate(playbackRate)
+            let duration = try await engine.load(url: tempFile)
+            debugLog("[SMILPlayerActor] Audio loaded, duration: \(duration)s")
         } catch {
             debugLog("[SMILPlayerActor] Failed to load audio: \(error)")
         }
     }
 
-    // MARK: - Private: Timer
+    private func handleEngineEvent(_ event: AudioEngineEvent) async {
+        switch event {
+            case .didFinishPlaying:
+                debugLog("[SMILPlayerActor] Audio finished playing")
+                await handleAudioFinished()
+            case .interruptionBegan:
+                debugLog("[SMILPlayerActor] Audio session interrupted - pausing")
+                await pause()
+            case .interruptionEnded(let shouldResume):
+                if shouldResume {
+                    debugLog("[SMILPlayerActor] Audio interruption ended - resuming")
+                    try? await play()
+                }
+            case .routeChanged(let shouldPause):
+                if shouldPause {
+                    debugLog("[SMILPlayerActor] Audio route lost - pausing")
+                    await pause()
+                }
+        }
+    }
 
     private func startUpdateTimer() {
         stopUpdateTimer()
@@ -781,10 +702,9 @@ public actor SMILPlayerActor {
     private func timerFired() async {
         guard let player = player else { return }
 
-        let currentTime = player.currentTime().seconds
-        let duration = player.currentItem?.duration.seconds ?? 0
+        let currentTime = await player.currentTime
+        let duration = await player.duration
         let tolerance = 0.02
-        let playerIsPlaying = player.rate > 0
 
         let reachedEntryEnd = currentTime >= currentEntryEndTime - tolerance
         let reachedFileEnd = duration > 0 && currentTime >= duration - tolerance
@@ -793,7 +713,7 @@ public actor SMILPlayerActor {
 
         if isPlaying && (shouldAdvanceForEntryEnd || reachedFileEnd) {
             await advanceToNextEntry()
-        } else if !isPlaying && reachedFileEnd && !playerIsPlaying {
+        } else if !isPlaying && reachedFileEnd {
             debugLog("[SMILPlayerActor] Audio file ended naturally, advancing...")
             isPlaying = true
             await advanceToNextEntry()
@@ -802,7 +722,7 @@ public actor SMILPlayerActor {
         await notifyStateChange()
     }
 
-    func handleAudioFinished() async {
+    private func handleAudioFinished() async {
         guard isPlaying else {
             debugLog("[SMILPlayerActor] handleAudioFinished called but not playing, ignoring")
             return
@@ -811,8 +731,6 @@ public actor SMILPlayerActor {
         debugLog("[SMILPlayerActor] handleAudioFinished - advancing to next entry/chapter")
         await advanceToNextEntry()
     }
-
-    // MARK: - Private: Entry Navigation
 
     private func advanceToNextEntry() async {
         guard !isAdvancing else {
@@ -847,11 +765,10 @@ public actor SMILPlayerActor {
                 currentAudioFile = nextEntry.audioFile
                 await loadAudioFile(nextEntry.audioFile)
                 if let player = player {
-                    await player.seek(
-                        to: CMTime(seconds: nextEntry.begin, preferredTimescale: 1000)
-                    )
+                    await player.seek(to: nextEntry.begin)
                     if isPlaying {
-                        player.rate = Float(playbackRate)
+                        await player.setRate(playbackRate)
+                        await player.play()
                     }
                 }
             }
@@ -877,11 +794,10 @@ public actor SMILPlayerActor {
 
                 await loadAudioFile(nextEntry.audioFile)
                 if let player = player {
-                    await player.seek(
-                        to: CMTime(seconds: nextEntry.begin, preferredTimescale: 1000)
-                    )
+                    await player.seek(to: nextEntry.begin)
                     if isPlaying {
-                        player.rate = Float(playbackRate)
+                        await player.setRate(playbackRate)
+                        await player.play()
                     }
                 }
 
@@ -934,12 +850,10 @@ public actor SMILPlayerActor {
         return false
     }
 
-    // MARK: - Private: State Building
-
-    private func buildCurrentState() -> SMILPlaybackState? {
+    private func buildCurrentState() async -> SMILPlaybackState? {
         guard !bookStructure.isEmpty else { return nil }
 
-        let currentTime = player?.currentTime().seconds ?? 0
+        let currentTime = await player?.currentTime ?? 0
 
         var chapterLabel: String? = nil
         var chapterElapsed: Double = 0
@@ -1002,191 +916,63 @@ public actor SMILPlayerActor {
     }
 
     private func notifyStateChange() async {
-        guard let state = buildCurrentState() else { return }
+        guard let state = await buildCurrentState() else { return }
 
-        #if os(iOS) || os(watchOS) || os(tvOS)
-        updateNowPlayingInfo()
-        #endif
+        await updateNowPlayingInfo()
         for observer in stateObservers.values {
             await observer(state)
         }
     }
 
-    // MARK: - iOS/watchOS Audio Session
-
-    #if os(iOS) || os(watchOS) || os(tvOS)
-    private func setupAudioSession() {
-        if audioSessionInitialized {
-            debugLog("[SMILPlayerActor] Audio session already initialized, skipping setup")
+    private func setupNowPlaying() async {
+        guard let presenter = SilveranPlatform.nowPlaying else { return }
+        if nowPlayingConfigured {
+            debugLog("[SMILPlayerActor] Now-playing already configured, skipping setup")
             return
         }
-        do {
-            let session = AVAudioSession.sharedInstance()
-            #if os(watchOS)
-            // longFormAudio is required for watchOS background playback. Activation is
-            // deferred to ensureAudioSessionActive because long-form activation is
-            // asynchronous and may present a route picker.
-            try session.setCategory(
-                .playback,
-                mode: .spokenAudio,
-                policy: .longFormAudio,
-                options: [],
-            )
-            #else
-            try session.setCategory(.playback, mode: .spokenAudio, options: [])
-            try session.setActive(true)
-            #endif
-            audioSessionInitialized = true
-            debugLog("[SMILPlayerActor] Audio session configured")
-        } catch {
-            debugLog("[SMILPlayerActor] Failed to configure audio session: \(error)")
-        }
-    }
 
-    #if os(watchOS)
-    private func ensureAudioSessionActive() async {
-        let session = AVAudioSession.sharedInstance()
-
-        if !watchLongFormUnavailable {
-            do {
-                try await withCheckedThrowingContinuation {
-                    (continuation: CheckedContinuation<Void, Error>) in
-                    session.activate(options: []) { success, error in
-                        if let error {
-                            continuation.resume(throwing: error)
-                        } else if success {
-                            continuation.resume()
-                        } else {
-                            continuation.resume(
-                                throwing: SMILPlayerError.audioLoadFailed(
-                                    "Audio session activation returned false"
-                                )
-                            )
-                        }
-                    }
+        // Scrubbing SMIL from the lock screen is unsupported for now; disabling
+        // the command keeps the system scrubber inert instead of snapping back.
+        await presenter.configureCommands(
+            skipForwardInterval: 15,
+            skipBackwardInterval: 15,
+            supportsChangePlaybackPosition: false,
+            supportsChangePlaybackRate: false,
+        ) { command in
+            Task { @SMILPlayerActor in
+                switch command {
+                    case .play, .togglePlayPause:
+                        // Many Bluetooth headsets only send play for both play AND pause
+                        debugLog("[SMILPlayerActor] Remote play/toggle command")
+                        try? await SMILPlayerActor.shared.togglePlayPause()
+                    case .pause:
+                        debugLog("[SMILPlayerActor] Remote pause command")
+                        await SMILPlayerActor.shared.pause()
+                    case .skipForward(let interval):
+                        debugLog("[SMILPlayerActor] Remote skip forward command")
+                        await SMILPlayerActor.shared.skipForward(seconds: interval)
+                    case .skipBackward(let interval):
+                        debugLog("[SMILPlayerActor] Remote skip backward command")
+                        await SMILPlayerActor.shared.skipBackward(seconds: interval)
+                    case .changePlaybackPosition, .changePlaybackRate, .nextTrack,
+                        .previousTrack:
+                        break
                 }
-                debugLog("[SMILPlayerActor] Long-form audio session activated")
-                return
-            } catch {
-                // No eligible long-form route (older watch hardware with no Bluetooth
-                // device paired). Fall back to the default policy so speaker playback
-                // still works, accepting that audio stops when the app backgrounds.
-                debugLog(
-                    "[SMILPlayerActor] Long-form activation failed, using default policy: \(error)"
-                )
-                watchLongFormUnavailable = true
             }
         }
 
-        do {
-            try session.setCategory(.playback, mode: .spokenAudio, options: [])
-            try session.setActive(true)
-        } catch {
-            debugLog("[SMILPlayerActor] Failed to activate audio session: \(error)")
-        }
-    }
-    #else
-    private func ensureAudioSessionActive() {
-        do {
-            try AVAudioSession.sharedInstance().setActive(true)
-        } catch {
-            debugLog("[SMILPlayerActor] Failed to re-activate audio session: \(error)")
-        }
-    }
-    #endif
-
-    private func configureAudioSessionObservers() {
-        guard !audioSessionObserversConfigured else { return }
-
-        let session = AVAudioSession.sharedInstance()
-
-        interruptionObserver = NotificationCenter.default.addObserver(
-            forName: AVAudioSession.interruptionNotification,
-            object: session,
-            queue: nil,
-        ) { [weak self] notification in
-            guard let self = self else { return }
-            self.handleAudioSessionInterruption(notification)
-        }
-
-        routeChangeObserver = NotificationCenter.default.addObserver(
-            forName: AVAudioSession.routeChangeNotification,
-            object: session,
-            queue: nil,
-        ) { [weak self] notification in
-            guard let self = self else { return }
-            self.handleAudioRouteChange(notification)
-        }
-
-        audioSessionObserversConfigured = true
-        debugLog("[SMILPlayerActor] Audio session observers registered")
+        nowPlayingConfigured = true
+        setActiveAudioPlayer(.smil)
+        debugLog("[SMILPlayerActor] Now-playing remote commands configured")
     }
 
-    nonisolated private func handleAudioSessionInterruption(_ notification: Notification) {
-        guard let userInfo = notification.userInfo,
-            let typeValue = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,
-            let type = AVAudioSession.InterruptionType(rawValue: typeValue)
-        else {
-            return
-        }
-
-        let shouldResume: Bool
-        if type == .ended,
-            let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt
-        {
-            let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
-            shouldResume = options.contains(.shouldResume)
-        } else {
-            shouldResume = false
-        }
-
-        Task { @SMILPlayerActor in
-            switch type {
-                case .began:
-                    debugLog("[SMILPlayerActor] Audio session interrupted - pausing")
-                    await SMILPlayerActor.shared.pause()
-                case .ended:
-                    if shouldResume {
-                        debugLog("[SMILPlayerActor] Audio interruption ended - resuming")
-                        try? await SMILPlayerActor.shared.play()
-                    }
-                @unknown default:
-                    break
-            }
-        }
-    }
-
-    nonisolated private func handleAudioRouteChange(_ notification: Notification) {
-        guard let userInfo = notification.userInfo,
-            let reasonValue = userInfo[AVAudioSessionRouteChangeReasonKey] as? UInt,
-            let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue)
-        else {
-            return
-        }
-
-        Task { @SMILPlayerActor in
-            switch reason {
-                case .oldDeviceUnavailable:
-                    debugLog("[SMILPlayerActor] Audio route lost - pausing")
-                    await SMILPlayerActor.shared.pause()
-                case .newDeviceAvailable:
-                    debugLog("[SMILPlayerActor] New audio device available")
-                default:
-                    break
-            }
-        }
-    }
-
-    private func removeAudioSessionObservers() {
-        if let observer = interruptionObserver {
-            NotificationCenter.default.removeObserver(observer)
-            interruptionObserver = nil
-        }
-        if let observer = routeChangeObserver {
-            NotificationCenter.default.removeObserver(observer)
-            routeChangeObserver = nil
-        }
-        audioSessionObserversConfigured = false
+    private func teardownNowPlaying() async {
+        guard nowPlayingConfigured else { return }
+        nowPlayingConfigured = false
+        guard let presenter = SilveranPlatform.nowPlaying else { return }
+        debugLog("[SMILPlayerActor] Tearing down now-playing")
+        await presenter.clear()
+        await presenter.teardownCommands()
     }
 
     private func startNowPlayingUpdateTimer() {
@@ -1200,9 +986,9 @@ public actor SMILPlayerActor {
         nowPlayingUpdateTimer = timer
     }
 
-    private func updateNowPlayingIfPlaying() {
+    private func updateNowPlayingIfPlaying() async {
         if isPlaying {
-            updateNowPlayingInfo()
+            await updateNowPlayingInfo()
         }
     }
 
@@ -1210,231 +996,28 @@ public actor SMILPlayerActor {
         nowPlayingUpdateTimer?.invalidate()
         nowPlayingUpdateTimer = nil
     }
-    // MARK: - Audio Manager
 
-    private func setupAudioManager() async {
-        debugLog("[SMILPlayerActor] setupAudioManager: existing=\(audioManager != nil)")
-        let title = bookTitle
-        let author = bookAuthor
-        #if os(iOS)
-        let cover = coverImage
-        #endif
+    private func updateNowPlayingInfo() async {
+        guard nowPlayingConfigured, let presenter = SilveranPlatform.nowPlaying else { return }
 
-        if let existingManager = audioManager {
-            await MainActor.run {
-                existingManager.bookTitle = title
-                existingManager.bookAuthor = author
-                #if os(iOS)
-                existingManager.coverImage = cover
-                #endif
-            }
-            debugLog("[SMILPlayerActor] AudioManager updated with new book info")
-            return
-        }
-
-        let manager = await MainActor.run {
-            let m = SMILAudioManager()
-            m.bookTitle = title
-            m.bookAuthor = author
-            #if os(iOS)
-            m.coverImage = cover
-            #endif
-            return m
-        }
-        self.audioManager = manager
-        debugLog("[SMILPlayerActor] AudioManager created")
-    }
-
-    private func cleanupAudioManager() async {
-        debugLog("[SMILPlayerActor] cleanupAudioManager: existing=\(audioManager != nil)")
-        let manager = audioManager
-        await MainActor.run {
-            manager?.cleanup()
-        }
-        audioManager = nil
-    }
-
-    private func updateNowPlayingInfo() {
         guard !bookStructure.isEmpty else {
-            let manager = audioManager
-            Task { @MainActor in
-                manager?.clearNowPlayingInfo()
-            }
+            await presenter.clear()
             return
         }
 
-        let state = buildCurrentState()
-        let manager = audioManager
+        let state = await buildCurrentState()
 
-        Task { @MainActor in
-            manager?.updateNowPlayingInfo(
-                currentTime: state?.chapterElapsed ?? 0,
+        await presenter.update(
+            NowPlayingInfo(
+                title: bookTitle ?? "Silveran Reader",
+                artist: state?.chapterLabel ?? "Playing",
+                albumTitle: bookAuthor ?? "",
                 duration: state?.chapterTotal ?? 0,
-                chapterLabel: state?.chapterLabel ?? "Playing",
-                isPlaying: state?.isPlaying ?? false,
+                elapsedTime: state?.chapterElapsed ?? 0,
                 playbackRate: state?.playbackRate ?? 1.0,
+                isPlaying: state?.isPlaying ?? false,
+                artwork: coverImageData,
             )
-        }
-    }
-    #endif
-}
-
-// MARK: - Audio Manager Helper
-
-#if os(iOS) || os(watchOS) || os(tvOS)
-@MainActor
-class SMILAudioManager {
-    var bookTitle: String?
-    var bookAuthor: String?
-
-    #if os(iOS)
-    var coverImage: UIImage? {
-        didSet {
-            cachedArtwork = coverImage.map { createArtwork(from: $0) }
-        }
-    }
-    private var cachedArtwork: MPMediaItemArtwork?
-    #endif
-
-    init() {
-        debugLog("[SMILAudioManager] Initializing")
-        setupRemoteCommandCenter()
-    }
-
-    private func setupRemoteCommandCenter() {
-        debugLog("[SMILAudioManager] Configuring remote commands")
-        let commandCenter = MPRemoteCommandCenter.shared()
-
-        commandCenter.playCommand.removeTarget(nil)
-        commandCenter.pauseCommand.removeTarget(nil)
-        commandCenter.togglePlayPauseCommand.removeTarget(nil)
-        commandCenter.skipForwardCommand.removeTarget(nil)
-        commandCenter.skipBackwardCommand.removeTarget(nil)
-        commandCenter.changePlaybackPositionCommand.removeTarget(nil)
-        commandCenter.nextTrackCommand.removeTarget(nil)
-        commandCenter.previousTrackCommand.removeTarget(nil)
-
-        commandCenter.nextTrackCommand.isEnabled = false
-        commandCenter.previousTrackCommand.isEnabled = false
-        commandCenter.changePlaybackPositionCommand.isEnabled = false
-
-        // Many Bluetooth headsets only send playCommand for both play AND pause
-        commandCenter.playCommand.isEnabled = true
-        commandCenter.playCommand.addTarget { _ in
-            Task { @SMILPlayerActor in
-                debugLog("[SMILAudioManager] Remote play command (toggle)")
-                try? await SMILPlayerActor.shared.togglePlayPause()
-            }
-            return .success
-        }
-
-        commandCenter.pauseCommand.isEnabled = true
-        commandCenter.pauseCommand.addTarget { _ in
-            Task { @SMILPlayerActor in
-                debugLog("[SMILAudioManager] Remote pause command")
-                await SMILPlayerActor.shared.pause()
-            }
-            return .success
-        }
-
-        commandCenter.togglePlayPauseCommand.isEnabled = true
-        commandCenter.togglePlayPauseCommand.addTarget { _ in
-            Task { @SMILPlayerActor in
-                debugLog("[SMILAudioManager] Remote toggle play/pause command")
-                try? await SMILPlayerActor.shared.togglePlayPause()
-            }
-            return .success
-        }
-
-        commandCenter.skipForwardCommand.isEnabled = true
-        commandCenter.skipForwardCommand.preferredIntervals = [15]
-        commandCenter.skipForwardCommand.addTarget { _ in
-            Task { @SMILPlayerActor in
-                debugLog("[SMILAudioManager] Remote skip forward command")
-                await SMILPlayerActor.shared.skipForward()
-            }
-            return .success
-        }
-
-        commandCenter.skipBackwardCommand.isEnabled = true
-        commandCenter.skipBackwardCommand.preferredIntervals = [15]
-        commandCenter.skipBackwardCommand.addTarget { _ in
-            Task { @SMILPlayerActor in
-                debugLog("[SMILAudioManager] Remote skip backward command")
-                await SMILPlayerActor.shared.skipBackward()
-            }
-            return .success
-        }
-
-        debugLog(
-            "[SMILAudioManager] Remote commands enabled: play=\(commandCenter.playCommand.isEnabled), pause=\(commandCenter.pauseCommand.isEnabled), toggle=\(commandCenter.togglePlayPauseCommand.isEnabled), skipF=\(commandCenter.skipForwardCommand.isEnabled), skipB=\(commandCenter.skipBackwardCommand.isEnabled), changePos=\(commandCenter.changePlaybackPositionCommand.isEnabled)"
         )
-        Task { @SMILPlayerActor in
-            await SMILPlayerActor.shared.setActiveAudioPlayer(.smil)
-        }
-        debugLog("[SMILAudioManager] Remote commands configured")
     }
-
-    func updateNowPlayingInfo(
-        currentTime: Double,
-        duration: Double,
-        chapterLabel: String,
-        isPlaying: Bool,
-        playbackRate: Double,
-    ) {
-        let rate = isPlaying ? playbackRate : 0.0
-
-        var info = [String: Any]()
-
-        info[MPMediaItemPropertyTitle] = bookTitle ?? "Silveran Reader"
-        info[MPMediaItemPropertyArtist] = chapterLabel
-        info[MPMediaItemPropertyAlbumTitle] = bookAuthor ?? ""
-        info[MPMediaItemPropertyPlaybackDuration] = duration
-        info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = currentTime
-        info[MPNowPlayingInfoPropertyPlaybackRate] = rate
-
-        #if os(iOS)
-        if let artwork = cachedArtwork {
-            info[MPMediaItemPropertyArtwork] = artwork
-        }
-        #endif
-
-        let center = MPNowPlayingInfoCenter.default()
-        center.nowPlayingInfo = info
-        center.playbackState = isPlaying ? .playing : .paused
-    }
-
-    func clearNowPlayingInfo() {
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
-    }
-
-    func cleanup() {
-        debugLog("[SMILAudioManager] Cleanup")
-
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
-
-        let commandCenter = MPRemoteCommandCenter.shared()
-        debugLog(
-            "[SMILAudioManager] Clearing remote commands (before): play=\(commandCenter.playCommand.isEnabled), pause=\(commandCenter.pauseCommand.isEnabled), toggle=\(commandCenter.togglePlayPauseCommand.isEnabled), skipF=\(commandCenter.skipForwardCommand.isEnabled), skipB=\(commandCenter.skipBackwardCommand.isEnabled), changePos=\(commandCenter.changePlaybackPositionCommand.isEnabled)"
-        )
-        commandCenter.playCommand.removeTarget(nil)
-        commandCenter.pauseCommand.removeTarget(nil)
-        commandCenter.togglePlayPauseCommand.removeTarget(nil)
-        commandCenter.skipForwardCommand.removeTarget(nil)
-        commandCenter.skipBackwardCommand.removeTarget(nil)
-        commandCenter.changePlaybackPositionCommand.removeTarget(nil)
-        commandCenter.nextTrackCommand.removeTarget(nil)
-        commandCenter.previousTrackCommand.removeTarget(nil)
-
-        commandCenter.nextTrackCommand.isEnabled = true
-        commandCenter.previousTrackCommand.isEnabled = true
-    }
-
-    #if os(iOS)
-    nonisolated private func createArtwork(from image: UIImage) -> MPMediaItemArtwork {
-        MPMediaItemArtwork(boundsSize: image.size) { @Sendable _ in image }
-    }
-    #endif
 }
-#endif
-#endif

@@ -868,7 +868,7 @@ public struct BookMetadata: Codable, Sendable, Identifiable, Hashable {
     }
 
     // Numeric sort keys. Missing values coalesce to 0, so they sort as the smallest value (first
-    // when ascending, last when descending) — consistent with how the app sorts empty string
+    // when ascending, last when descending), consistent with how the app sorts empty string
     // fields.
     public var sortablePages: Int { pageCountValue ?? 0 }
     public var sortableDuration: Double { durationValue ?? 0 }

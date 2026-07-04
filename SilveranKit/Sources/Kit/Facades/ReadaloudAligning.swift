@@ -1,7 +1,7 @@
 import Foundation
 import Observation
 
-/// Seam for the readaloud (forced-alignment) engine. The StoryAlign-backed
+/// Protocol for the readaloud (forced-alignment) engine. The StoryAlign-backed
 /// implementation lives in the SilveranReadaloud satellite; the app shell injects
 /// it via SilveranEnvironment. UI hides the feature when nothing is injected.
 ///

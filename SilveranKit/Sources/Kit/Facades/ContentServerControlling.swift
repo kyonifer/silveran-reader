@@ -37,7 +37,7 @@ public enum ContentServerError: Error, Sendable {
     case sourceNotFound
 }
 
-/// Seam for the embedded LAN content server. The Hummingbird-backed implementation
+/// Protocol for the embedded LAN content server. The Hummingbird-backed implementation
 /// lives in the SilveranContentServer satellite; the app shell injects it via
 /// SilveranEnvironment. UI hides the feature when no implementation is injected.
 public protocol ContentServerControlling: Sendable {

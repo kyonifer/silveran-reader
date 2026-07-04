@@ -634,10 +634,8 @@ class EbookPlayerViewModel {
                     for: metadata.uuid,
                     audio: false,
                 ) {
-                    if let image = UIImage(data: coverData) {
-                        await SMILPlayerActor.shared.setCoverImage(image)
-                        debugLog("[EbookPlayerViewModel] Cover image set on SMILPlayerActor")
-                    }
+                    await SMILPlayerActor.shared.setCoverImage(coverData)
+                    debugLog("[EbookPlayerViewModel] Cover image set on SMILPlayerActor")
                 }
             }
             #endif

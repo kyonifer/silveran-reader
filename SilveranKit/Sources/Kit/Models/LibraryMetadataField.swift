@@ -4,7 +4,7 @@ import Foundation
 /// table column menu, the filter menu, and the smart-shelf builder all derive their field ordering,
 /// section grouping (dividers), labels, and submenu structure from this one list (via
 /// ``sortFields`` / ``columnFields`` / ``filterFields`` / ``shelfFields``) so the four surfaces
-/// stay consistent — changing the order here updates all of them.
+/// stay consistent; changing the order here updates all of them.
 ///
 /// Surface-specific entries that aren't shared book metadata (table cover/media columns, the
 /// translator filter, and the format / rating / boolean filters and shelf conditions) are added by

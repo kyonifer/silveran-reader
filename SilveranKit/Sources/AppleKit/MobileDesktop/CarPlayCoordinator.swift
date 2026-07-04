@@ -190,13 +190,18 @@ public final class CarPlayCoordinator {
     }
 
     public func getCoverImage(for bookId: String) async -> UIImage? {
+        guard let data = await getCoverImageData(for: bookId) else { return nil }
+        return UIImage(data: data)
+    }
+
+    private func getCoverImageData(for bookId: String) async -> Data? {
         // Try audioSquare first (preferred for CarPlay - square covers)
         if let data = await BookServiceActor.shared.cachedCoverData(for: bookId, audio: true) {
-            return UIImage(data: data)
+            return data
         }
         // Fall back to standard cover
         if let data = await BookServiceActor.shared.cachedCoverData(for: bookId, audio: false) {
-            return UIImage(data: data)
+            return data
         }
         // Last resort: extract from local file (for standalone imports)
         return nil
@@ -323,8 +328,8 @@ public final class CarPlayCoordinator {
 
         try await AudiobookActor.shared.preparePlayer()
 
-        if let image = await getCoverImage(for: metadata.id) {
-            await AudiobookActor.shared.setCoverImage(image)
+        if let coverData = await getCoverImageData(for: metadata.id) {
+            await AudiobookActor.shared.setCoverImage(coverData)
         }
 
         isPositionRestored = false
@@ -390,8 +395,8 @@ public final class CarPlayCoordinator {
 
         await refreshBookStructure()
 
-        if let image = await getCoverImage(for: metadata.id) {
-            await SMILPlayerActor.shared.setCoverImage(image)
+        if let coverData = await getCoverImageData(for: metadata.id) {
+            await SMILPlayerActor.shared.setCoverImage(coverData)
         }
 
         isPositionRestored = false

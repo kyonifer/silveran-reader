@@ -105,6 +105,11 @@ Optional integrations are injected with `SilveranEnvironment`. Link `SilveranCon
 on macOS and `SilveranReadaloud` on macOS or iOS when those capabilities should be present.
 Features backed by a missing provider are hidden by the UI.
 
+The entry points install the Apple platform services (audio playback, now-playing and
+remote commands, keychain, font metadata) automatically. To substitute your own
+implementations, call `SilveranPlatform.bootstrap(...)` before the entry point and it
+will be respected.
+
 Host apps must provide their own bundle identifiers, signing, entitlements, and Info.plist
 values. The local Xcode project is the reference configuration for keychain access groups,
 local-network usage text, iOS background fetch/audio modes, CarPlay scene configuration,

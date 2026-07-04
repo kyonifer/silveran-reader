@@ -13,7 +13,7 @@ import SilveranKit
 ///
 /// Every route maps onto `BookServiceActor.shared`, scoped to one folder source. The wire format
 /// reuses the app's own `BookMetadata`/`BookReadingPosition` models because the client decodes
-/// library responses with `convertFromSnakeCase` — so encoding those models with
+/// library responses with `convertFromSnakeCase`; encoding those models with
 /// `convertToSnakeCase` reproduces exactly what the real server emits.
 public actor ContentServer: ContentServerControlling {
     private var serverTask: Task<Void, Never>?

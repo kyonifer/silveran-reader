@@ -640,7 +640,7 @@ public enum ShelfConditionType: String, CaseIterable, Identifiable, Sendable {
     }
 
     /// Submenu fields (``LibraryFieldDescriptor/isSubmenu``) expand to several condition types
-    /// rather than one — mirroring how the sort/column menus render Alignment as a nested menu.
+    /// rather than one, matching how the sort/column menus render Alignment as a nested menu.
     public static func submenuTypes(for field: LibraryMetadataField) -> [ShelfConditionType]? {
         switch field {
             case .alignment: return [.alignedWith, .alignedVersion, .alignedAt]

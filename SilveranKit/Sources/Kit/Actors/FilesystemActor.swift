@@ -799,14 +799,18 @@ public actor FilesystemActor {
             throw NSError(
                 domain: "FilesystemActor",
                 code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "Failed to find foliate_wrap.html in web resources"],
+                userInfo: [
+                    NSLocalizedDescriptionKey: "Failed to find foliate_wrap.html in web resources"
+                ],
             )
         }
         guard fm.fileExists(atPath: foliateJSURL.path) else {
             throw NSError(
                 domain: "FilesystemActor",
                 code: 2,
-                userInfo: [NSLocalizedDescriptionKey: "Failed to find foliate-js folder in web resources"],
+                userInfo: [
+                    NSLocalizedDescriptionKey: "Failed to find foliate-js folder in web resources"
+                ],
             )
         }
 
@@ -1212,9 +1216,9 @@ public actor FilesystemActor {
     /// Rebases a persisted folder-source path that belongs to this app's Application
     /// Support container onto the *current* container. iOS changes the app's data UUID
     /// between builds, so an absolute path stored earlier can reference a container that
-    /// no longer exists. A path that is not part of our own container layout — including a
+    /// no longer exists. A path that is not part of our own container layout, including a
     /// user-chosen external folder that merely happens to sit under some
-    /// `Library/Application Support` directory — is returned unchanged.
+    /// `Library/Application Support` directory, is returned unchanged.
     public func rebasedContainerFolderURL(for url: URL) -> URL {
         let base = applicationSupportBaseDirectory().standardizedFileURL.path
         let path = url.standardizedFileURL.path

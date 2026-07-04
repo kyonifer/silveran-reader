@@ -8,7 +8,7 @@ import Foundation
 /// `alignedAt`) can arrive as ISO 8601 with or without fractional seconds, as a bare SQLite
 /// `yyyy-MM-dd HH:mm:ss` timestamp, as a year, or even as a raw JavaScript `Date.toString()`.
 /// Parse once here, work with `Date`, and never hand a raw date string to a sort comparator or a
-/// view. A string that cannot be parsed becomes `nil`, which sorts to the end and renders empty —
+/// view. A string that cannot be parsed becomes `nil`, which sorts to the end and renders empty;
 /// it can never reorder or blank the UI.
 public enum SilveranDate {
 
@@ -66,7 +66,7 @@ public enum SilveranDate {
     }
 
     // Parsing the same date string repeatedly is expensive (each miss runs several formatters
-    // before one matches), and the sort comparator re-derives a book's key on every comparison —
+    // before one matches), and the sort comparator re-derives a book's key on every comparison:
     // O(n log n) parses of the same handful of strings. Memoize by the trimmed string; the result
     // is independent of the field/context, which only feed the diagnostic.
     private nonisolated(unsafe) static var parseCache: [String: (Date?, Format)] = [:]
@@ -110,7 +110,7 @@ public enum SilveranDate {
     }
 
     private static func parseJS(_ raw: String) -> Date? {
-        // "Sat Apr 11 2026 15:36:28 GMT+0000 (Coordinated Universal Time)" — drop the trailing
+        // "Sat Apr 11 2026 15:36:28 GMT+0000 (Coordinated Universal Time)": drop the trailing
         // " (zone name)" before parsing the "...GMT+0000" prefix.
         let stripped: String
         if let paren = raw.range(of: " (") {

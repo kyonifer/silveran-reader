@@ -1,15 +1,11 @@
-import AVFoundation
 import Foundation
-
-#if os(iOS)
-import MediaPlayer
-#endif
 
 public enum AudiobookError: Error, LocalizedError {
     case invalidFileFormat(String)
     case fileNotFound
     case failedToLoadMetadata
     case playbackFailed(String)
+    case playbackUnavailable
 
     public var errorDescription: String? {
         switch self {
@@ -22,12 +18,14 @@ public enum AudiobookError: Error, LocalizedError {
                 return "Failed to load audiobook metadata or chapters."
             case .playbackFailed(let reason):
                 return "Playback failed: \(reason)"
+            case .playbackUnavailable:
+                return "Audio playback is not available on this platform."
         }
     }
 }
 
 extension Array {
-    subscript(safe index: Index) -> Element? {
+    public subscript(safe index: Index) -> Element? {
         indices.contains(index) ? self[index] : nil
     }
 }
@@ -136,20 +134,18 @@ public struct AudiobookPlaybackState: Sendable {
 public actor AudiobookActor {
     public static let shared = AudiobookActor()
 
-    private var player: AVAudioPlayer?
+    private var player: (any AudioPlaying)?
     private var metadata: AudiobookMetadata?
     private var currentPackageRootURL: URL?
     private var currentTrackIndex: Int = 0
     private var desiredPlaybackRate: Float = 1.0
     private var desiredVolume: Float = 1.0
-    private var playbackMonitorTask: Task<Void, Never>?
+    // The engine has no isPlaying accessor; the actor is the source of truth
+    // for play/pause intent (engines only emit events, never auto-pause).
+    private var isPlaying = false
     private var stateObservers: [UUID: @Sendable @MainActor (AudiobookPlaybackState) -> Void] = [:]
-
-    #if os(iOS)
-    private var artworkImage: UIImage?
-    private var nowPlayingUpdateTimer: Timer?
-    private var audioSessionObserversConfigured = false
-    #endif
+    private var artworkData: Data?
+    private var nowPlayingRefreshTask: Task<Void, Never>?
 
     private init() {}
 
@@ -158,7 +154,9 @@ public actor AudiobookActor {
         metadata = source
         currentPackageRootURL = try packageRootURL(for: url)
         currentTrackIndex = 0
+        await player?.stop()
         player = nil
+        isPlaying = false
         return source
     }
 
@@ -256,8 +254,10 @@ public actor AudiobookActor {
             let duration: TimeInterval
             if let manifestDuration = item.duration {
                 duration = manifestDuration
+            } else if let probe = SilveranPlatform.audioMetadata {
+                duration = (try? await probe.duration(of: resourceURL)) ?? 0
             } else {
-                duration = (try? await loadDuration(from: resourceURL)) ?? 0
+                duration = 0
             }
             tracks.append(
                 AudiobookTrack(
@@ -285,16 +285,6 @@ public actor AudiobookActor {
             title: manifest.metadata?.title,
             author: manifest.metadata?.author ?? manifest.metadata?.narrator,
         )
-    }
-
-    private func loadDuration(from url: URL) async throws -> TimeInterval {
-        let asset = AVURLAsset(url: url)
-        guard try await asset.load(.isPlayable) else {
-            throw AudiobookError.failedToLoadMetadata
-        }
-        let duration = try await asset.load(.duration)
-        let seconds = CMTimeGetSeconds(duration)
-        return seconds.isFinite && seconds > 0 ? seconds : 0
     }
 
     private func loadManifestChapters(
@@ -440,130 +430,69 @@ public actor AudiobookActor {
         return track.startTime + fragmentTime(from: href)
     }
 
-    nonisolated private func loadChapters(from asset: AVAsset, totalDuration: TimeInterval)
+    private func loadChapters(fromTrackAt url: URL, totalDuration: TimeInterval)
         async throws -> [AudiobookChapter]
     {
-        guard let urlAsset = asset as? AVURLAsset else {
-            return [
-                AudiobookChapter(
-                    title: "Full Book",
-                    startTime: 0,
-                    duration: totalDuration,
-                    href: "chapter-0",
-                )
-            ]
+        let fullBook = [
+            AudiobookChapter(
+                title: "Full Book",
+                startTime: 0,
+                duration: totalDuration,
+                href: "chapter-0",
+            )
+        ]
+
+        guard let probe = SilveranPlatform.audioMetadata else {
+            return fullBook
         }
 
-        let languages: [Locale]
-        do {
-            languages = try await asset.load(.availableChapterLocales)
-        } catch {
-            return [
-                AudiobookChapter(
-                    title: "Full Book",
-                    startTime: 0,
-                    duration: totalDuration,
-                    href: "chapter-0",
-                )
-            ]
+        let probed = try await probe.chapters(of: url)
+        guard !probed.isEmpty else {
+            return fullBook
         }
 
-        guard !languages.isEmpty else {
-            return [
-                AudiobookChapter(
-                    title: "Full Book",
-                    startTime: 0,
-                    duration: totalDuration,
-                    href: "chapter-0",
-                )
-            ]
-        }
-
-        let chapterMetadataGroups = try await urlAsset.loadChapterMetadataGroups(
-            withTitleLocale: languages[0],
-            containingItemsWithCommonKeys: [.commonKeyTitle],
-        )
-
-        var chapters: [AudiobookChapter] = []
-
-        for (index, group) in chapterMetadataGroups.enumerated() {
-            let startTime = CMTimeGetSeconds(group.timeRange.start)
-            let duration = CMTimeGetSeconds(group.timeRange.duration)
-
-            var chapterTitle = "Chapter \(index + 1)"
-
-            for item in group.items {
-                if let key = item.commonKey, key == .commonKeyTitle {
-                    if let value = try? await item.load(.value) {
-                        if let stringValue = value as? String {
-                            chapterTitle = stringValue
-                        } else if let dataValue = value as? Data,
-                            let stringValue = String(data: dataValue, encoding: .utf8)
-                        {
-                            chapterTitle = stringValue
-                        }
-                    }
-                }
-            }
-
-            chapters.append(
-                AudiobookChapter(
-                    title: chapterTitle,
-                    startTime: startTime,
-                    duration: duration,
-                    href: "chapter-\(index)",
-                )
+        return probed.enumerated().map { index, chapter in
+            AudiobookChapter(
+                title: chapter.title ?? "Chapter \(index + 1)",
+                startTime: chapter.start,
+                duration: chapter.duration,
+                href: "chapter-\(index)",
             )
         }
-
-        if chapters.isEmpty {
-            chapters.append(
-                AudiobookChapter(
-                    title: "Full Book",
-                    startTime: 0,
-                    duration: totalDuration,
-                    href: "chapter-0",
-                )
-            )
-        }
-
-        return chapters
     }
 
     public func preparePlayer() async throws {
         guard let metadata, metadata.tracks.indices.contains(currentTrackIndex) else {
             throw AudiobookError.failedToLoadMetadata
         }
+        guard let provider = SilveranPlatform.audioPlayers else {
+            throw AudiobookError.playbackUnavailable
+        }
 
+        try? await provider.prepareSession(longForm: true)
+
+        let track = metadata.tracks[currentTrackIndex]
+        let player = self.player ?? provider.makePlayer(profile: .audiobookTrack)
         do {
-            #if os(iOS)
-            setupAudioSession()
-            configureAudioSessionObservers()
-            #endif
-
-            let track = metadata.tracks[currentTrackIndex]
-            let player = try AVAudioPlayer(contentsOf: track.url)
-            player.prepareToPlay()
-            player.enableRate = true
-            player.rate = desiredPlaybackRate
-            player.volume = desiredVolume
-            self.player = player
-
-            #if os(iOS)
-            await configureRemoteCommands()
-            updateNowPlayingInfo()
-            startNowPlayingUpdateTimer()
-            #endif
+            _ = try await player.load(url: track.url)
         } catch {
             throw AudiobookError.playbackFailed(error.localizedDescription)
         }
+        await player.setRate(Double(desiredPlaybackRate))
+        await player.setVolume(Double(desiredVolume))
+        await player.setEventHandler { event in
+            Task { @AudiobookActor in
+                await AudiobookActor.shared.handleEngineEvent(event)
+            }
+        }
+        self.player = player
+
+        await configureNowPlaying()
     }
 
-    #if os(iOS)
-    public func setCoverImage(_ image: UIImage) {
-        artworkImage = image
+    public func setCoverImage(_ imageData: Data) {
+        artworkData = imageData
     }
-    #endif
 
     public func play() async throws {
         if player == nil {
@@ -573,23 +502,21 @@ public actor AudiobookActor {
             }
         }
 
-        #if os(iOS)
-        ensureAudioSessionActive()
-        #endif
-        player?.play()
-        startPlaybackMonitor()
+        try? await SilveranPlatform.audioPlayers?.prepareSession(longForm: true)
+        await player?.play()
+        isPlaying = true
         await notifyStateChange()
     }
 
     public func pause() async {
         debugLog("[AudiobookActor] pause() called")
-        player?.pause()
-        stopPlaybackMonitor()
+        await player?.pause()
+        isPlaying = false
         await notifyStateChange()
     }
 
     public func togglePlayPause() async throws {
-        if player?.isPlaying == true {
+        if isPlaying {
             await pause()
         } else {
             try await play()
@@ -600,16 +527,17 @@ public actor AudiobookActor {
         guard let metadata, !metadata.tracks.isEmpty else { return }
         let clampedTime = min(max(time, 0), metadata.totalDuration)
         let trackIndex = trackIndex(for: clampedTime, in: metadata.tracks)
-        let wasPlaying = player?.isPlaying == true
+        let wasPlaying = isPlaying
         currentTrackIndex = trackIndex
+        isPlaying = false
         do {
             try await preparePlayer()
             if let track = metadata.tracks[safe: trackIndex] {
-                player?.currentTime = max(0, clampedTime - track.startTime)
+                await player?.seek(to: max(0, clampedTime - track.startTime))
             }
             if wasPlaying {
-                player?.play()
-                startPlaybackMonitor()
+                await player?.play()
+                isPlaying = true
             }
         } catch {
             debugLog("[AudiobookActor] seek failed: \(error)")
@@ -637,13 +565,13 @@ public actor AudiobookActor {
 
     public func setPlaybackRate(_ rate: Double) async {
         desiredPlaybackRate = Float(rate)
-        player?.rate = Float(rate)
+        await player?.setRate(rate)
         await notifyStateChange()
     }
 
     public func setVolume(_ volume: Double) async {
         desiredVolume = Float(volume)
-        player?.volume = Float(volume)
+        await player?.setVolume(volume)
         await notifyStateChange()
     }
 
@@ -673,16 +601,21 @@ public actor AudiobookActor {
     public func getCurrentState() async -> AudiobookPlaybackState? {
         guard let metadata else { return nil }
 
+        var trackTime: TimeInterval = 0
+        if let player {
+            trackTime = await player.currentTime
+        }
+
         return AudiobookPlaybackState(
-            isPlaying: player?.isPlaying == true,
+            isPlaying: isPlaying,
             currentTime: await currentGlobalTime(),
             duration: metadata.totalDuration,
             currentChapterIndex: await getCurrentChapterIndex(),
-            playbackRate: player?.rate ?? desiredPlaybackRate,
-            volume: player?.volume ?? desiredVolume,
+            playbackRate: desiredPlaybackRate,
+            volume: desiredVolume,
             currentTrackHref: metadata.tracks[safe: currentTrackIndex]?.href,
             currentTrackType: metadata.tracks[safe: currentTrackIndex]?.type,
-            currentTrackTime: player?.currentTime ?? 0,
+            currentTrackTime: trackTime,
         )
     }
 
@@ -713,9 +646,7 @@ public actor AudiobookActor {
             "[AudiobookActor] notifyStateChange: isPlaying=\(state.isPlaying), observers=\(stateObservers.count)"
         )
 
-        #if os(iOS)
-        updateNowPlayingInfo()
-        #endif
+        await updateNowPlayingInfo()
 
         for observer in stateObservers.values {
             await observer(state)
@@ -723,13 +654,13 @@ public actor AudiobookActor {
     }
 
     private func currentGlobalTime() async -> TimeInterval {
-        currentGlobalTimeSync()
-    }
-
-    private func currentGlobalTimeSync() -> TimeInterval {
         guard let metadata else { return 0 }
         let trackStart = metadata.tracks[safe: currentTrackIndex]?.startTime ?? 0
-        return trackStart + (player?.currentTime ?? 0)
+        var trackTime: TimeInterval = 0
+        if let player {
+            trackTime = await player.currentTime
+        }
+        return trackStart + trackTime
     }
 
     private func trackIndex(for globalTime: TimeInterval, in tracks: [AudiobookTrack]) -> Int {
@@ -743,29 +674,38 @@ public actor AudiobookActor {
         return tracks.count - 1
     }
 
-    private func startPlaybackMonitor() {
-        playbackMonitorTask?.cancel()
-        playbackMonitorTask = Task { [weak self = self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .milliseconds(500))
-                guard let self else { break }
-                await self.advanceTrackIfNeeded()
-            }
+    private func handleEngineEvent(_ event: AudioEngineEvent) async {
+        switch event {
+            case .didFinishPlaying:
+                await advanceToNextTrack()
+            case .interruptionBegan:
+                debugLog("[AudiobookActor] Audio session interrupted - pausing")
+                await pause()
+            case .interruptionEnded(let shouldResume):
+                if shouldResume {
+                    debugLog("[AudiobookActor] Audio session interruption ended - resuming")
+                    do {
+                        try await play()
+                    } catch {
+                        debugLog("[AudiobookActor] Failed to resume after interruption: \(error)")
+                    }
+                } else {
+                    debugLog("[AudiobookActor] Audio session interruption ended - no resume")
+                }
+            case .routeChanged(let shouldPause):
+                if shouldPause {
+                    debugLog("[AudiobookActor] Audio route lost (device unavailable) - pausing")
+                    await pause()
+                }
         }
     }
 
-    private func stopPlaybackMonitor() {
-        playbackMonitorTask?.cancel()
-        playbackMonitorTask = nil
-    }
-
-    private func advanceTrackIfNeeded() async {
-        guard let player, player.isPlaying, let metadata else { return }
-        guard player.currentTime >= max(0, player.duration - 0.25) else { return }
+    private func advanceToNextTrack() async {
+        guard isPlaying, let metadata else { return }
 
         let nextIndex = currentTrackIndex + 1
         guard metadata.tracks.indices.contains(nextIndex) else {
-            stopPlaybackMonitor()
+            isPlaying = false
             await notifyStateChange()
             return
         }
@@ -773,11 +713,11 @@ public actor AudiobookActor {
         currentTrackIndex = nextIndex
         do {
             try await preparePlayer()
-            self.player?.play()
+            await player?.play()
             await notifyStateChange()
         } catch {
             debugLog("[AudiobookActor] Failed to advance track: \(error)")
-            stopPlaybackMonitor()
+            isPlaying = false
         }
     }
 
@@ -792,283 +732,93 @@ public actor AudiobookActor {
         await seek(to: targetTime)
     }
 
-    #if os(iOS)
-    @MainActor
-    private func configureRemoteCommands() {
-        debugLog("[AudiobookActor] Configuring remote commands")
-        let commandCenter = MPRemoteCommandCenter.shared()
+    private func configureNowPlaying() async {
+        if let presenter = SilveranPlatform.nowPlaying {
+            debugLog("[AudiobookActor] Configuring remote commands")
+            await presenter.configureCommands(
+                skipForwardInterval: 15,
+                skipBackwardInterval: 15,
+                supportsChangePlaybackPosition: true,
+                supportsChangePlaybackRate: false,
+            ) { command in
+                Task { @AudiobookActor in
+                    await AudiobookActor.shared.handleRemoteCommand(command)
+                }
+            }
+            await updateNowPlayingInfo()
+            startNowPlayingRefresh()
+            debugLog("[AudiobookActor] Remote commands configured")
+        }
+        await SMILPlayerActor.shared.setActiveAudioPlayer(.audiobook)
+    }
 
-        commandCenter.playCommand.removeTarget(nil)
-        commandCenter.pauseCommand.removeTarget(nil)
-        commandCenter.skipForwardCommand.removeTarget(nil)
-        commandCenter.skipBackwardCommand.removeTarget(nil)
-        commandCenter.changePlaybackPositionCommand.removeTarget(nil)
-
-        commandCenter.playCommand.isEnabled = true
-        commandCenter.playCommand.addTarget { _ in
-            Task { @AudiobookActor in
+    private func handleRemoteCommand(_ command: RemoteCommand) async {
+        switch command {
+            case .play:
+                debugLog("[AudiobookActor] Remote play command received")
                 do {
-                    debugLog("[AudiobookActor] Remote play command received")
-                    try await AudiobookActor.shared.play()
+                    try await play()
                 } catch {
                     debugLog("[AudiobookActor] Remote play failed: \(error)")
                 }
-            }
-            return .success
-        }
-
-        commandCenter.pauseCommand.isEnabled = true
-        commandCenter.pauseCommand.addTarget { _ in
-            Task { @AudiobookActor in
+            case .pause:
                 debugLog("[AudiobookActor] Remote pause command received")
-                await AudiobookActor.shared.pause()
-            }
-            return .success
-        }
-
-        commandCenter.skipForwardCommand.isEnabled = true
-        commandCenter.skipForwardCommand.preferredIntervals = [15]
-        commandCenter.skipForwardCommand.addTarget { _ in
-            Task { @AudiobookActor in
+                await pause()
+            case .togglePlayPause:
+                debugLog("[AudiobookActor] Remote toggle command received")
+                do {
+                    try await togglePlayPause()
+                } catch {
+                    debugLog("[AudiobookActor] Remote toggle failed: \(error)")
+                }
+            case .skipForward(let interval):
                 debugLog("[AudiobookActor] Remote skip forward command received")
-                await AudiobookActor.shared.skipForward()
-            }
-            return .success
-        }
-
-        commandCenter.skipBackwardCommand.isEnabled = true
-        commandCenter.skipBackwardCommand.preferredIntervals = [15]
-        commandCenter.skipBackwardCommand.addTarget { _ in
-            Task { @AudiobookActor in
+                await skipForward(interval)
+            case .skipBackward(let interval):
                 debugLog("[AudiobookActor] Remote skip backward command received")
-                await AudiobookActor.shared.skipBackward()
-            }
-            return .success
-        }
-
-        commandCenter.changePlaybackPositionCommand.isEnabled = true
-        commandCenter.changePlaybackPositionCommand.addTarget { event in
-            guard let positionEvent = event as? MPChangePlaybackPositionCommandEvent else {
-                return .commandFailed
-            }
-            let positionInChapter = positionEvent.positionTime
-            Task { @AudiobookActor in
+                await skipBackward(interval)
+            case .changePlaybackPosition(let positionInChapter):
                 debugLog("[AudiobookActor] Remote seek command received: \(positionInChapter)")
-                await AudiobookActor.shared.seekWithinCurrentChapter(to: positionInChapter)
-            }
-            return .success
-        }
-
-        debugLog(
-            "[AudiobookActor] Remote commands enabled: play=\(commandCenter.playCommand.isEnabled), pause=\(commandCenter.pauseCommand.isEnabled), skipF=\(commandCenter.skipForwardCommand.isEnabled), skipB=\(commandCenter.skipBackwardCommand.isEnabled), changePos=\(commandCenter.changePlaybackPositionCommand.isEnabled)"
-        )
-        Task { @SMILPlayerActor in
-            await SMILPlayerActor.shared.setActiveAudioPlayer(.audiobook)
-        }
-        debugLog("[AudiobookActor] Remote commands configured")
-    }
-
-    // MARK: - Audio Session Management
-
-    private func setupAudioSession() {
-        do {
-            let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .spokenAudio, options: [])
-            try session.setActive(true)
-            debugLog("[AudiobookActor] Audio session configured for playback")
-        } catch {
-            debugLog("[AudiobookActor] Failed to configure audio session: \(error)")
+                await seekWithinCurrentChapter(to: positionInChapter)
+            case .changePlaybackRate, .nextTrack, .previousTrack:
+                break
         }
     }
 
-    private func ensureAudioSessionActive() {
-        do {
-            try AVAudioSession.sharedInstance().setActive(true)
-            debugLog("[AudiobookActor] Audio session re-activated before play")
-        } catch {
-            debugLog("[AudiobookActor] Failed to re-activate audio session: \(error)")
-        }
-    }
-
-    private func configureAudioSessionObservers() {
-        guard !audioSessionObserversConfigured else { return }
-
-        let session = AVAudioSession.sharedInstance()
-
-        NotificationCenter.default.addObserver(
-            forName: AVAudioSession.interruptionNotification,
-            object: session,
-            queue: nil,
-        ) { [weak self] notification in
-            self?.handleAudioSessionInterruption(notification)
-        }
-
-        NotificationCenter.default.addObserver(
-            forName: AVAudioSession.routeChangeNotification,
-            object: session,
-            queue: nil,
-        ) { [weak self] notification in
-            self?.handleAudioRouteChange(notification)
-        }
-
-        audioSessionObserversConfigured = true
-        debugLog("[AudiobookActor] Audio session observers registered")
-    }
-
-    nonisolated private func handleAudioSessionInterruption(_ notification: Notification) {
-        guard let userInfo = notification.userInfo,
-            let typeValue = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,
-            let type = AVAudioSession.InterruptionType(rawValue: typeValue)
-        else {
+    private func updateNowPlayingInfo() async {
+        guard let presenter = SilveranPlatform.nowPlaying else { return }
+        guard player != nil else {
+            await presenter.clear()
             return
         }
 
-        let shouldResume: Bool
-        if type == .ended,
-            let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt
-        {
-            let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
-            shouldResume = options.contains(.shouldResume)
-        } else {
-            shouldResume = false
-        }
-
-        Task { @AudiobookActor in
-            switch type {
-                case .began:
-                    debugLog("[AudiobookActor] Audio session interrupted - pausing")
-                    await AudiobookActor.shared.pause()
-                case .ended:
-                    if shouldResume {
-                        debugLog("[AudiobookActor] Audio session interruption ended - resuming")
-                        do {
-                            try await AudiobookActor.shared.play()
-                        } catch {
-                            debugLog(
-                                "[AudiobookActor] Failed to resume after interruption: \(error)"
-                            )
-                        }
-                    } else {
-                        debugLog("[AudiobookActor] Audio session interruption ended - no resume")
-                    }
-                @unknown default:
-                    break
-            }
-        }
-    }
-
-    nonisolated private func handleAudioRouteChange(_ notification: Notification) {
-        guard let userInfo = notification.userInfo,
-            let reasonValue = userInfo[AVAudioSessionRouteChangeReasonKey] as? UInt,
-            let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue)
-        else {
-            return
-        }
-
-        Task { @AudiobookActor in
-            switch reason {
-                case .oldDeviceUnavailable:
-                    debugLog("[AudiobookActor] Audio route lost (device unavailable) - pausing")
-                    await AudiobookActor.shared.pause()
-
-                case .newDeviceAvailable:
-                    debugLog("[AudiobookActor] New audio device available")
-
-                case .routeConfigurationChange:
-                    debugLog("[AudiobookActor] Audio route configuration changed")
-
-                default:
-                    debugLog("[AudiobookActor] Audio route change reason: \(reason.rawValue)")
-            }
-        }
-    }
-
-    private func removeAudioSessionObservers() {
-        NotificationCenter.default.removeObserver(
-            self,
-            name: AVAudioSession.interruptionNotification,
-            object: nil,
+        var info = NowPlayingInfo(
+            title: metadata?.title ?? "Audiobook",
+            albumTitle: metadata?.author ?? "",
+            playbackRate: Double(desiredPlaybackRate),
+            isPlaying: isPlaying,
+            artwork: artworkData,
         )
-        NotificationCenter.default.removeObserver(
-            self,
-            name: AVAudioSession.routeChangeNotification,
-            object: nil,
-        )
-        audioSessionObserversConfigured = false
-        debugLog("[AudiobookActor] Audio session observers removed")
-    }
 
-    private func updateNowPlayingInfo() {
-        guard let player = player else {
-            MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
-            return
-        }
-
-        var nowPlayingInfo = [String: Any]()
-
-        nowPlayingInfo[MPMediaItemPropertyTitle] = metadata?.title ?? "Audiobook"
-        nowPlayingInfo[MPMediaItemPropertyAlbumTitle] = metadata?.author ?? ""
-
+        let currentTime = await currentGlobalTime()
         if let chapters = metadata?.chapters,
-            let currentIndex = getCurrentChapterIndexSync(),
+            let currentIndex = await getCurrentChapterIndex(),
             currentIndex < chapters.count
         {
             let chapter = chapters[currentIndex]
-            let timeInChapter = currentGlobalTimeSync() - chapter.startTime
-
-            nowPlayingInfo[MPMediaItemPropertyArtist] = chapter.title
-            nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = chapter.duration
-            nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = max(0, timeInChapter)
+            info.artist = chapter.title
+            info.duration = chapter.duration
+            info.elapsedTime = max(0, currentTime - chapter.startTime)
         } else {
-            nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] =
-                metadata?.totalDuration ?? player.duration
-            nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = currentGlobalTimeSync()
-        }
-
-        nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] =
-            player.isPlaying ? Double(player.rate) : 0.0
-
-        if let artwork = artworkImage {
-            nowPlayingInfo[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(
-                boundsSize: artwork.size
-            ) { _ in
-                artwork
+            if let totalDuration = metadata?.totalDuration {
+                info.duration = totalDuration
+            } else if let player {
+                info.duration = await player.duration
             }
+            info.elapsedTime = currentTime
         }
 
-        let center = MPNowPlayingInfoCenter.default()
-        center.nowPlayingInfo = nowPlayingInfo
-        center.playbackState = player.isPlaying ? .playing : .paused
-    }
-
-    private func getCurrentChapterIndexSync() -> Int? {
-        guard player != nil, let chapters = metadata?.chapters else { return nil }
-        let currentTime = currentGlobalTimeSync()
-
-        for (index, chapter) in chapters.enumerated() {
-            let chapterEnd = chapter.startTime + chapter.duration
-            if currentTime >= chapter.startTime && currentTime < chapterEnd {
-                return index
-            }
-        }
-
-        return chapters.isEmpty ? nil : chapters.count - 1
-    }
-
-    private func clearRemoteCommands() {
-        let commandCenter = MPRemoteCommandCenter.shared()
-
-        debugLog(
-            "[AudiobookActor] Clearing remote commands (before): play=\(commandCenter.playCommand.isEnabled), pause=\(commandCenter.pauseCommand.isEnabled), skipF=\(commandCenter.skipForwardCommand.isEnabled), skipB=\(commandCenter.skipBackwardCommand.isEnabled), changePos=\(commandCenter.changePlaybackPositionCommand.isEnabled)"
-        )
-        commandCenter.playCommand.removeTarget(nil)
-        commandCenter.pauseCommand.removeTarget(nil)
-        commandCenter.skipForwardCommand.removeTarget(nil)
-        commandCenter.skipBackwardCommand.removeTarget(nil)
-        commandCenter.changePlaybackPositionCommand.removeTarget(nil)
-
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
-        debugLog("[AudiobookActor] Remote commands cleared")
+        await presenter.update(info)
     }
 
     public func seekWithinCurrentChapter(to timeInChapter: TimeInterval) async {
@@ -1109,58 +859,49 @@ public actor AudiobookActor {
         await seekToChapter(href: chapters[currentIndex - 1].id)
     }
 
-    private func startNowPlayingUpdateTimer() {
-        stopNowPlayingUpdateTimer()
+    private func startNowPlayingRefresh() {
+        guard nowPlayingRefreshTask == nil else { return }
 
-        // Update Now Playing every second to keep the lock screen UI in sync,
+        // Refresh Now Playing every second to keep the lock screen UI in sync,
         // especially for chapter transitions during playback
-        let timer = Timer(timeInterval: 1.0, repeats: true) { _ in
-            Task { @AudiobookActor in
-                await AudiobookActor.shared.refreshNowPlayingInfo()
+        nowPlayingRefreshTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1))
+                guard let self else { break }
+                await self.refreshNowPlayingInfo()
             }
         }
-        RunLoop.main.add(timer, forMode: .common)
-        nowPlayingUpdateTimer = timer
     }
 
-    private func refreshNowPlayingInfo() {
-        guard player?.isPlaying == true else { return }
-        updateNowPlayingInfo()
+    private func refreshNowPlayingInfo() async {
+        guard isPlaying else { return }
+        await updateNowPlayingInfo()
     }
 
-    private func stopNowPlayingUpdateTimer() {
-        nowPlayingUpdateTimer?.invalidate()
-        nowPlayingUpdateTimer = nil
+    private func stopNowPlayingRefresh() {
+        nowPlayingRefreshTask?.cancel()
+        nowPlayingRefreshTask = nil
     }
-    #endif
 
     public func cleanup() async {
         debugLog("[AudiobookActor] Cleanup called")
-        stopPlaybackMonitor()
-        player?.stop()
+        stopNowPlayingRefresh()
+        await player?.stop()
         player = nil
         metadata = nil
         currentPackageRootURL = nil
         currentTrackIndex = 0
+        isPlaying = false
         stateObservers.removeAll()
+        artworkData = nil
 
-        #if os(iOS)
-        stopNowPlayingUpdateTimer()
-        clearRemoteCommands()
+        if let presenter = SilveranPlatform.nowPlaying {
+            await presenter.teardownCommands()
+            await presenter.clear()
+        }
         if await SMILPlayerActor.shared.activeAudioPlayer == .audiobook {
             await SMILPlayerActor.shared.setActiveAudioPlayer(.none)
         }
-        removeAudioSessionObservers()
-        artworkImage = nil
-
-        do {
-            try AVAudioSession.sharedInstance().setActive(
-                false,
-                options: .notifyOthersOnDeactivation,
-            )
-        } catch {
-            debugLog("[AudiobookActor] Failed to deactivate audio session: \(error)")
-        }
-        #endif
+        await SilveranPlatform.audioPlayers?.deactivateSession()
     }
 }
