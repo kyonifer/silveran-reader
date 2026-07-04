@@ -68,25 +68,6 @@ targets:
         type: assetcatalog
       - path: XCodeWrapper/PrivacyInfo.xcprivacy
         buildPhase: resources
-      - path: XCodeWrapper/WebResources
-        type: folder
-        buildPhase: resources
-      - path: extern/foliate-js
-        type: folder
-        buildPhase: resources
-        excludes:
-          - "tests/"
-          - ".github/"
-          - "rollup/"
-          - "*.md"
-          - "package.json"
-          - "package-lock.json"
-          - "eslint.config.js"
-          - "rollup.config.js"
-          - ".git*"
-      - path: extern/assets/fonts
-        type: folder
-        buildPhase: resources
     dependencies:
       - package: Silveran
         product: SilveranAppleKit
@@ -154,22 +135,6 @@ targets:
         type: assetcatalog
       - path: XCodeWrapper/PrivacyInfo.xcprivacy
         buildPhase: resources
-      - path: XCodeWrapper/WebResources
-        type: folder
-        buildPhase: resources
-      - path: extern/foliate-js
-        type: folder
-        buildPhase: resources
-        excludes:
-          - "tests/"
-          - ".github/"
-          - "rollup/"
-          - "*.md"
-          - "package.json"
-          - "package-lock.json"
-          - "eslint.config.js"
-          - "rollup.config.js"
-          - ".git*"
     dependencies:
       - package: Silveran
         product: SilveranAppleKit

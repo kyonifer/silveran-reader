@@ -8,8 +8,8 @@ cd "${SCRIPT_DIR}/.."
 ASSETS_DIR="XCodeWrapper/Assets.xcassets/AppIcon.appiconset"
 WATCH_ASSETS_DIR="XCodeWrapper/WatchAssets.xcassets/AppIcon.appiconset"
 TV_ASSETS_DIR="XCodeWrapper/TVAssets.xcassets/App Icon.brandassets"
-ORIG_ICON="extern/assets/icons/app_icon_orig.png"
-MAC_MASK="extern/assets/icons/macos_icon_mask.png"
+ORIG_ICON="SilveranKit/Sources/AppleKit/Resources/assets/icons/app_icon_orig.png"
+MAC_MASK="SilveranKit/Sources/AppleKit/Resources/assets/icons/macos_icon_mask.png"
 
 if [ ! -f $ORIG_ICON ]; then
     echo "Error: app_icon_orig.png not found in project"

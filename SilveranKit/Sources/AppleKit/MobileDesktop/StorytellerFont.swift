@@ -27,7 +27,7 @@ public enum StorytellerFontRegistration {
         guard !registered else { return }
         registered = true
 
-        guard let fontsURL = Bundle.main.url(forResource: "fonts", withExtension: nil) else {
+        guard let fontsURL = AppleKitResources.fontsDirectory() else {
             return
         }
 

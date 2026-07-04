@@ -70,6 +70,50 @@ Currently the macOS Reader app is the priority (with iOS a close second). Howeve
 
 See [the contributing documentation](CONTRIBUTING.md) for more information. This project is highly experimental currently, so no pre-built executables are available. This is expected to change once things are more complete.
 
+## Swift Package Consumers
+
+Silveran exposes its shared model and app shells as SwiftPM products:
+
+- `SilveranKit` contains the platform-neutral core library.
+- `SilveranAppleKit` contains the SwiftUI app shells for macOS, iOS, tvOS, and watchOS.
+- `SilveranContentServer` provides the optional macOS local content-server integration.
+- `SilveranReadaloud` provides the optional readaloud alignment engine.
+
+An Apple host app can import `SilveranAppleKit` and call the platform entry point from its
+own `@main` trampoline:
+
+```swift
+import SilveranAppleKit
+
+@main
+enum HostApp {
+    static func main() {
+        #if os(macOS)
+        macAppEntryPoint()
+        #elseif os(iOS)
+        iosAppEntryPoint()
+        #elseif os(tvOS)
+        tvAppEntryPoint()
+        #elseif os(watchOS)
+        watchAppEntryPoint()
+        #endif
+    }
+}
+```
+
+Optional integrations are injected with `SilveranEnvironment`. Link `SilveranContentServer`
+on macOS and `SilveranReadaloud` on macOS or iOS when those capabilities should be present.
+Features backed by a missing provider are hidden by the UI.
+
+Host apps must provide their own bundle identifiers, signing, entitlements, and Info.plist
+values. The local Xcode project is the reference configuration for keychain access groups,
+local-network usage text, iOS background fetch/audio modes, CarPlay scene configuration,
+watch app embedding, and the platform minimums declared in `Package.swift`.
+
+The bundled reader web assets and Storyteller title font are SwiftPM resources on
+`SilveranAppleKit`, so consumers do not need separate Xcode resource phases for
+`WebResources`, `foliate-js`, or fonts.
+
 # Privacy Policy
 
 Silveran Reader does not collect any data whatsoever. All your reading data stays on your device (or syncs to your own self-hosted Storyteller server if you choose to configure one).

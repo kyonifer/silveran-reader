@@ -783,7 +783,7 @@ public actor FilesystemActor {
             .appendingPathComponent("WebResources", isDirectory: true)
     }
 
-    public func copyWebResourcesFromBundle() throws {
+    public func copyWebResources(from sourceDirectory: URL) throws {
         let webResourcesDir = getWebResourcesDirectory()
 
         let fm = FileManager.default
@@ -791,71 +791,26 @@ public actor FilesystemActor {
             try fm.removeItem(at: webResourcesDir)
         }
 
-        try ensureDirectoryExists(at: webResourcesDir)
+        try ensureDirectoryExists(at: webResourcesDir.deletingLastPathComponent())
 
-        guard
-            let htmlURL = Bundle.main.url(
-                forResource: "foliate_wrap",
-                withExtension: "html",
-                subdirectory: "WebResources",
-            )
-        else {
+        let htmlURL = sourceDirectory.appendingPathComponent("foliate_wrap.html")
+        let foliateJSURL = sourceDirectory.appendingPathComponent("foliate-js", isDirectory: true)
+        guard fm.fileExists(atPath: htmlURL.path) else {
             throw NSError(
                 domain: "FilesystemActor",
                 code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "Failed to find foliate_wrap.html in bundle"],
+                userInfo: [NSLocalizedDescriptionKey: "Failed to find foliate_wrap.html in web resources"],
             )
         }
-
-        guard
-            let foliateJSURL = Bundle.main.url(
-                forResource: "foliate-js",
-                withExtension: nil,
-            )
-        else {
+        guard fm.fileExists(atPath: foliateJSURL.path) else {
             throw NSError(
                 domain: "FilesystemActor",
                 code: 2,
-                userInfo: [NSLocalizedDescriptionKey: "Failed to find foliate-js folder in bundle"],
+                userInfo: [NSLocalizedDescriptionKey: "Failed to find foliate-js folder in web resources"],
             )
         }
 
-        let htmlDestination = webResourcesDir.appendingPathComponent("foliate_wrap.html")
-        if fm.fileExists(atPath: htmlDestination.path) {
-            try fm.removeItem(at: htmlDestination)
-        }
-        try fm.copyItem(at: htmlURL, to: htmlDestination)
-
-        let foliateJSDestination = webResourcesDir.appendingPathComponent(
-            "foliate-js",
-            isDirectory: true,
-        )
-        if fm.fileExists(atPath: foliateJSDestination.path) {
-            try fm.removeItem(at: foliateJSDestination)
-        }
-        try fm.copyItem(at: foliateJSURL, to: foliateJSDestination)
-
-        guard
-            let jsFileURLs = Bundle.main.urls(
-                forResourcesWithExtension: "js",
-                subdirectory: "WebResources",
-            )
-        else {
-            throw NSError(
-                domain: "FilesystemActor",
-                code: 3,
-                userInfo: [NSLocalizedDescriptionKey: "Failed to find any .js files in bundle"],
-            )
-        }
-
-        for jsURL in jsFileURLs {
-            let fileName = jsURL.lastPathComponent
-            let destination = webResourcesDir.appendingPathComponent(fileName)
-            if fm.fileExists(atPath: destination.path) {
-                try fm.removeItem(at: destination)
-            }
-            try fm.copyItem(at: jsURL, to: destination)
-        }
+        try fm.copyItem(at: sourceDirectory, to: webResourcesDir)
     }
 
     private static let audioExtensions: Set<String> = [

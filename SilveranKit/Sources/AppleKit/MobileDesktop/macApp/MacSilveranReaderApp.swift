@@ -28,7 +28,8 @@ struct SilveranReaderApp: App {
             await BookServiceActor.shared.reloadSourceRegistry()
 
             do {
-                try await FilesystemActor.shared.copyWebResourcesFromBundle()
+                let webResourcesURL = try AppleKitResources.webResourcesDirectory()
+                try await FilesystemActor.shared.copyWebResources(from: webResourcesURL)
             } catch {
                 debugLog(
                     "[SilveranReaderApp] Failed to copy web resources: \(error.localizedDescription)"

@@ -15,7 +15,7 @@ The manifest must live at the repo root because SwiftPM resolves URL dependencie
 
 ### Preparation
 
-- Run `git submodule update --init` to checkout `extern/foliate-js`
+- Run `git submodule update --init` to checkout the bundled resources.
 - Install `xcodegen` and `xcbeautify` from Homebrew.
 - Install Xcode CLI Tools and accept the Xcode license
 - Copy `XCodeWrapper/Configs/Local.example.xcconfig` to `XCodeWrapper/Configs/Local.xcconfig`.

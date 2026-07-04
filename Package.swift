@@ -34,6 +34,23 @@ let package = Package(
             name: "SilveranAppleKit",
             dependencies: ["SilveranKit"],
             path: "SilveranKit/Sources/AppleKit",
+            exclude: [
+                "Resources/WebResources/foliate-js/.github",
+                "Resources/WebResources/foliate-js/.git",
+                "Resources/WebResources/foliate-js/rollup",
+                "Resources/WebResources/foliate-js/tests",
+                "Resources/WebResources/foliate-js/.gitattributes",
+                "Resources/WebResources/foliate-js/.gitignore",
+                "Resources/WebResources/foliate-js/eslint.config.js",
+                "Resources/WebResources/foliate-js/package-lock.json",
+                "Resources/WebResources/foliate-js/package.json",
+                "Resources/WebResources/foliate-js/rollup.config.js",
+                "Resources/WebResources/foliate-js/README.md",
+            ],
+            resources: [
+                .copy("Resources/WebResources"),
+                .copy("Resources/assets/fonts"),
+            ],
         ),
         .target(
             name: "SilveranContentServer",
