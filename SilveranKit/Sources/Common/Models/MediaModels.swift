@@ -586,6 +586,7 @@ public enum SyncReason: String, Sendable, Codable {
     // Connectivity/sync events
     case connectionRestored
     case watchReconnected
+    case relayedFromWatch
 
     // Position fetch triggers
     case initialLoad

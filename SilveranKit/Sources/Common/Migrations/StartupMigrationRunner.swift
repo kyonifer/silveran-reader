@@ -34,6 +34,7 @@ public enum SilveranMigrations {
         let filesystem = FilesystemActor.shared
         let sources = await runBookSourceRegistryMigration(using: filesystem)
         await runCredentialMigrations(using: filesystem, sources: sources)
+        await runKeychainAccessibilityMigrations(using: filesystem, sources: sources)
         await runPendingProgressQueueMigrations(using: filesystem)
         await runStorageMigrations(using: filesystem, sources: sources)
         await filesystem.runLegacyLocalProgressMigrationIfNeeded(sources: sources)
@@ -87,6 +88,17 @@ public enum SilveranMigrations {
             try await filesystem.runLegacyCredentialMigrations(for: sources)
         } catch {
             debugLog("[SilveranMigrations] Credential migration failed: \(error)")
+        }
+    }
+
+    private static func runKeychainAccessibilityMigrations(
+        using filesystem: FilesystemActor,
+        sources: [BookSourceRecord],
+    ) async {
+        do {
+            try await filesystem.runKeychainAccessibilityMigrations(for: sources)
+        } catch {
+            debugLog("[SilveranMigrations] Keychain accessibility migration failed: \(error)")
         }
     }
 }

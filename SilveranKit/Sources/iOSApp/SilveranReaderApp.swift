@@ -1,4 +1,5 @@
 #if os(iOS)
+import BackgroundTasks
 import SilveranKitCommon
 import SilveranKitReadaloudGenerator
 import SilveranKitSwiftUI
@@ -10,6 +11,56 @@ extension Notification.Name {
 }
 
 class SilveranAppDelegate: NSObject, UIApplicationDelegate {
+    static let progressSyncTaskIdentifier = "com.kyonifer.silveran.progresssync.refresh"
+
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil,
+    ) -> Bool {
+        BGTaskScheduler.shared.register(
+            forTaskWithIdentifier: Self.progressSyncTaskIdentifier,
+            using: nil,
+        ) { task in
+            guard let refreshTask = task as? BGAppRefreshTask else {
+                task.setTaskCompleted(success: false)
+                return
+            }
+            Self.handleProgressSyncRefresh(refreshTask)
+        }
+        return true
+    }
+
+    private static func handleProgressSyncRefresh(_ task: BGAppRefreshTask) {
+        debugLog("[SilveranAppDelegate] Progress sync background refresh fired")
+        let work = Task {
+            _ = await ProgressSyncActor.shared.syncPendingQueue()
+            await ProgressUploadManager.shared.enqueuePendingUploads()
+            await Self.scheduleProgressSyncRefreshIfNeeded()
+            task.setTaskCompleted(success: true)
+        }
+        task.expirationHandler = {
+            debugLog("[SilveranAppDelegate] Progress sync background refresh expired")
+            work.cancel()
+        }
+    }
+
+    static func scheduleProgressSyncRefreshIfNeeded() async {
+        let hasPending = await ProgressSyncActor.shared.getPendingProgressSyncs()
+            .contains { !$0.syncedToStoryteller }
+        guard hasPending else { return }
+
+        let request = BGAppRefreshTaskRequest(identifier: progressSyncTaskIdentifier)
+        request.earliestBeginDate = Date(timeIntervalSinceNow: 15 * 60)
+        do {
+            try BGTaskScheduler.shared.submit(request)
+            debugLog("[SilveranAppDelegate] Scheduled progress sync background refresh")
+        } catch {
+            debugLog(
+                "[SilveranAppDelegate] Failed to schedule progress sync refresh: \(error)"
+            )
+        }
+    }
+
     func application(
         _ application: UIApplication,
         handleEventsForBackgroundURLSession identifier: String,
@@ -19,6 +70,13 @@ class SilveranAppDelegate: NSObject, UIApplicationDelegate {
             nonisolated(unsafe) let handler = completionHandler
             Task {
                 await DownloadManager.shared.handleBackgroundSessionEvents {
+                    handler()
+                }
+            }
+        } else if identifier == ProgressUploadManager.sessionIdentifier {
+            nonisolated(unsafe) let handler = completionHandler
+            Task {
+                await ProgressUploadManager.shared.handleBackgroundSessionEvents {
                     handler()
                 }
             }
@@ -51,6 +109,18 @@ struct SilveranReaderApp: App {
 
     init() {
         StorytellerFontRegistration.registerBundledFonts()
+
+        // Activate WCSession immediately rather than at the end of startup: a queued
+        // watch transfer can background-launch the app with very little runtime, and
+        // the system holds delivery until a delegate is set and activated.
+        Task { await AppleWatchActor.shared.activate() }
+
+        Task {
+            await ProgressUploadManager.shared.setBackstopScheduler {
+                await SilveranAppDelegate.scheduleProgressSyncRefreshIfNeeded()
+            }
+        }
+
         let vm = MediaViewModel()
         _mediaViewModel = State(initialValue: vm)
 
@@ -88,8 +158,6 @@ struct SilveranReaderApp: App {
             } else {
                 await FilesystemActor.shared.cleanupExtractedEpubDirectories()
             }
-
-            await AppleWatchActor.shared.activate()
         }
     }
 
@@ -138,6 +206,26 @@ struct SilveranReaderApp: App {
         NotificationCenter.default.post(name: .appWillResignActive, object: nil)
         Task {
             await BookServiceActor.shared.setActive(false, source: .app)
+        }
+
+        var backgroundTask: UIBackgroundTaskIdentifier = .invalid
+        backgroundTask = UIApplication.shared.beginBackgroundTask {
+            if backgroundTask != .invalid {
+                UIApplication.shared.endBackgroundTask(backgroundTask)
+                backgroundTask = .invalid
+            }
+        }
+        Task {
+            // Give players reacting to appWillResignActive a moment to queue their
+            // final positions before spooling them into background upload tasks
+            try? await Task.sleep(for: .seconds(2))
+            await ProgressUploadManager.shared.enqueuePendingUploads()
+            await SilveranAppDelegate.scheduleProgressSyncRefreshIfNeeded()
+
+            if backgroundTask != .invalid {
+                UIApplication.shared.endBackgroundTask(backgroundTask)
+                backgroundTask = .invalid
+            }
         }
     }
 

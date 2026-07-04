@@ -376,6 +376,7 @@ struct SyncHistoryEntryRow: View {
             case .appTerminating: return "App closing"
             case .connectionRestored: return "Reconnected"
             case .watchReconnected: return "Watch reconnected"
+            case .relayedFromWatch: return "Relayed from watch"
             case .initialLoad: return "Initial load"
             case .appWokeFromSleep: return "Wake from sleep"
         }

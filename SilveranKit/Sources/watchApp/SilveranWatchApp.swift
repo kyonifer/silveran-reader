@@ -56,6 +56,7 @@ struct SilveranWatchApp: App {
                 debugLog("[WatchApp] App entering background")
                 Task {
                     await BookServiceActor.shared.setActive(false, source: .watch)
+                    await WatchSessionManager.shared.relayPendingProgress()
                 }
 
             case .active:
@@ -81,6 +82,7 @@ struct SilveranWatchApp: App {
     private func syncOnLaunch() async {
         let result = await ProgressSyncActor.shared.syncPendingQueue()
         debugLog("[WatchApp] Sync on launch: synced=\(result.synced), failed=\(result.failed)")
+        await WatchSessionManager.shared.relayPendingProgress()
 
         if let library = await BookServiceActor.shared.fetchLibraryInformation() {
             try? await BookServiceActor.shared.updateLibraryCacheMetadata(library)

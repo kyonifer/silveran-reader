@@ -4,6 +4,10 @@ import Foundation
 import WatchConnectivity
 #endif
 
+#if os(iOS)
+import UIKit
+#endif
+
 public enum WatchTransferState: Sendable, Codable {
     case queued
     case transferring(progress: Double)
@@ -810,9 +814,19 @@ extension AppleWatchActor: WCSessionDelegate {
         didReceiveUserInfo userInfo: [String: Any] = [:],
     ) {
         let messageType = userInfo["type"] as? String
+        debugLog("[AppleWatchActor] didReceiveUserInfo - type: \(messageType ?? "nil")")
+
+        if messageType == WatchProgressRelayMessage.type,
+            let payloadData = userInfo[WatchProgressRelayMessage.payloadKey] as? Data
+        {
+            Task {
+                await self.handleRelayedProgress(payloadData)
+            }
+            return
+        }
+
         let uuid = userInfo["uuid"] as? String
         let category = userInfo["category"] as? String
-        debugLog("[AppleWatchActor] didReceiveUserInfo - type: \(messageType ?? "nil")")
         Task {
             await self.handleMessage(type: messageType, uuid: uuid, category: category)
         }
@@ -873,6 +887,90 @@ extension AppleWatchActor: WCSessionDelegate {
             handleChunkSent(transferId: transferId)
         }
     }
+
+    private func handleRelayedProgress(_ payloadData: Data) async {
+        // The app may have been background-launched solely for this WC delivery;
+        // buy time for the decode + server POST before the system suspends us.
+        #if os(iOS)
+        let backgroundTask = await beginRelayBackgroundTask()
+        #endif
+
+        await processRelayedProgress(payloadData)
+
+        #if os(iOS)
+        await endRelayBackgroundTask(backgroundTask)
+        #endif
+    }
+
+    private func processRelayedProgress(_ payloadData: Data) async {
+        let payload: WatchProgressRelayPayload
+        do {
+            payload = try JSONDecoder().decode(WatchProgressRelayPayload.self, from: payloadData)
+        } catch {
+            debugLog("[AppleWatchActor] Failed to decode relayed progress: \(error)")
+            return
+        }
+
+        let sourceID = await resolveRelayedSourceID(
+            bookId: payload.bookId,
+            advisory: payload.sourceID,
+        )
+        debugLog(
+            "[AppleWatchActor] Relayed progress for \(payload.bookId) ts=\(payload.timestamp) source=\(sourceID ?? "unresolved")"
+        )
+
+        _ = await ProgressSyncActor.shared.syncProgress(
+            bookId: payload.bookId,
+            sourceID: sourceID,
+            locator: payload.locator,
+            timestamp: payload.timestamp,
+            reason: .relayedFromWatch,
+            sourceIdentifier: "Watch Relay",
+        )
+
+        // Kick the uploader regardless of this relay's outcome: a duplicate or
+        // older relay still signals that unsent queue entries may exist (e.g. a
+        // prior enqueue failed), and the manager dedupes against in-flight tasks
+        #if os(iOS)
+        await ProgressUploadManager.shared.enqueuePendingUploads()
+        #endif
+    }
+
+    private func resolveRelayedSourceID(
+        bookId: String,
+        advisory: BookSourceID?,
+    ) async -> BookSourceID? {
+        // Source ids are per-device random UUIDs, so the sender's sourceID may not
+        // exist here; prefer this device's own record of the book.
+        let books = await BookServiceActor.shared.librarySnapshot(policy: .cachedOnly).books
+        if let sourceID = books.first(where: { $0.uuid == bookId })?.sourceID {
+            return sourceID
+        }
+        return await storytellerSourceID(for: advisory)
+    }
+
+    #if os(iOS)
+    private func beginRelayBackgroundTask() async -> UIBackgroundTaskIdentifier {
+        await MainActor.run {
+            var taskId: UIBackgroundTaskIdentifier = .invalid
+            taskId = UIApplication.shared.beginBackgroundTask(withName: "WatchProgressRelay") {
+                if taskId != .invalid {
+                    UIApplication.shared.endBackgroundTask(taskId)
+                    taskId = .invalid
+                }
+            }
+            return taskId
+        }
+    }
+
+    private func endRelayBackgroundTask(_ taskId: UIBackgroundTaskIdentifier) async {
+        await MainActor.run {
+            if taskId != .invalid {
+                UIApplication.shared.endBackgroundTask(taskId)
+            }
+        }
+    }
+    #endif
 
     private func handleMessage(type: String?, uuid: String?, category: String?) {
         guard let type else { return }

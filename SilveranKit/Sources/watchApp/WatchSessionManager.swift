@@ -46,6 +46,11 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
         wcSession.activate()
         session = wcSession
         refreshCachedBooks()
+        Task {
+            _ = await ProgressSyncActor.shared.addObserver {
+                Task { await WatchSessionManager.shared.relayPendingProgress() }
+            }
+        }
     }
 
     public func session(
@@ -466,6 +471,71 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
         }
         resolved.sourceID = sourceID
         return resolved
+    }
+
+    public func relayPendingProgress() async {
+        guard let session, session.activationState == .activated else { return }
+
+        let pending = await ProgressSyncActor.shared.getPendingProgressSyncs()
+            .filter { !$0.syncedToStoryteller }
+        guard !pending.isEmpty else { return }
+
+        let outstanding = session.outstandingUserInfoTransfers
+
+        for item in pending {
+            var alreadyQueued = false
+            for transfer in outstanding {
+                guard
+                    transfer.userInfo[WatchProgressRelayMessage.typeKey] as? String
+                        == WatchProgressRelayMessage.type,
+                    transfer.userInfo[WatchProgressRelayMessage.bookIdKey] as? String
+                        == item.bookId
+                else { continue }
+                let queuedTimestamp =
+                    transfer.userInfo[WatchProgressRelayMessage.timestampKey] as? Double ?? 0
+                if queuedTimestamp >= item.timestamp {
+                    alreadyQueued = true
+                } else {
+                    transfer.cancel()
+                }
+            }
+            if alreadyQueued { continue }
+
+            let payload = WatchProgressRelayPayload(
+                bookId: item.bookId,
+                sourceID: item.sourceID,
+                locator: item.locator,
+                timestamp: item.timestamp,
+            )
+            guard let payloadData = try? JSONEncoder().encode(payload) else {
+                print("[WatchSessionManager] Failed to encode progress relay for \(item.bookId)")
+                continue
+            }
+
+            // transferUserInfo queues persistently and delivers in the background
+            // when the phone is in range, even if both apps are terminated
+            session.transferUserInfo([
+                WatchProgressRelayMessage.typeKey: WatchProgressRelayMessage.type,
+                WatchProgressRelayMessage.bookIdKey: item.bookId,
+                WatchProgressRelayMessage.timestampKey: item.timestamp,
+                WatchProgressRelayMessage.payloadKey: payloadData,
+            ])
+            print(
+                "[WatchSessionManager] Queued progress relay for \(item.bookId) ts=\(item.timestamp)"
+            )
+        }
+    }
+
+    public func session(
+        _ session: WCSession,
+        didFinish userInfoTransfer: WCSessionUserInfoTransfer,
+        error: Error?,
+    ) {
+        guard let error else { return }
+        let type = userInfoTransfer.userInfo[WatchProgressRelayMessage.typeKey] as? String
+        print(
+            "[WatchSessionManager] userInfo transfer failed (type: \(type ?? "unknown")): \(error)"
+        )
     }
 
     private func notifyPhone(bookUUID: String, category: String) {

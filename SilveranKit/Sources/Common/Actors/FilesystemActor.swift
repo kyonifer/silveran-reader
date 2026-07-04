@@ -421,6 +421,38 @@ public actor FilesystemActor {
         try await task.value
     }
 
+    public func progressUploadSpoolDirectory() -> URL {
+        applicationSupportBaseDirectory()
+            .appendingPathComponent("ProgressUploadSpool", isDirectory: true)
+    }
+
+    public func writeProgressUploadSpoolFile(
+        bookId: String,
+        token: String,
+        data: Data,
+    ) throws -> URL {
+        let directory = progressUploadSpoolDirectory()
+        try ensureDirectoryExists(at: directory)
+        let fileURL = directory.appendingPathComponent(
+            progressUploadSpoolFilename(bookId: bookId, token: token),
+            isDirectory: false,
+        )
+        try data.write(to: fileURL, options: .atomic)
+        return fileURL
+    }
+
+    public func removeProgressUploadSpoolFile(bookId: String, token: String) {
+        let fileURL = progressUploadSpoolDirectory().appendingPathComponent(
+            progressUploadSpoolFilename(bookId: bookId, token: token),
+            isDirectory: false,
+        )
+        try? FileManager.default.removeItem(at: fileURL)
+    }
+
+    private func progressUploadSpoolFilename(bookId: String, token: String) -> String {
+        "\(sanitizedPathComponent(from: bookId))-\(token).json"
+    }
+
     public func loadSyncHistory() async throws -> [String: [SyncHistoryEntry]] {
         await waitForPendingHistoryWrite()
         let configDir = getConfigDirectory()

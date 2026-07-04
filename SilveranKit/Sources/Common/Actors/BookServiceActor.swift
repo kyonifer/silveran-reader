@@ -1084,6 +1084,20 @@ public actor BookServiceActor {
         return await storyteller.createAuthenticatedDownloadRequest(for: bookId, format: format)
     }
 
+    public func createAuthenticatedPositionUploadRequest(
+        bookId: String,
+        sourceID: BookSourceID?,
+        locator: BookLocator,
+        timestamp: Double,
+    ) async -> ProgressUploadRequest? {
+        guard let storyteller = await storytellerActor(for: sourceID) else { return nil }
+        return await storyteller.createAuthenticatedPositionUploadRequest(
+            bookId: bookId,
+            locator: locator,
+            timestamp: timestamp,
+        )
+    }
+
     public func updateBook(
         _ payload: StorytellerBookUpdatePayload,
         sourceID: BookSourceID? = nil,

@@ -143,7 +143,9 @@ public actor AuthenticationActor {
             kSecAttrAccount as String: account,
             kSecAttrAccessGroup as String: accessGroup,
             kSecValueData as String: data,
-            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlocked,
+            // AfterFirstUnlock so background launches (WCSession delivery, background
+            // URLSession events) can authenticate while the phone is locked
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
             kSecUseDataProtectionKeychain as String: true,
         ]
 

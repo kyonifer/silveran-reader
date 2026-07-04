@@ -212,6 +212,7 @@ public actor ProgressSyncActor {
 
     public func syncPendingQueue() async -> (synced: Int, failed: Int) {
         await ensureQueueLoaded()
+        await resolveMissingSourceIDs()
         debugLog("[PSA] syncPendingQueue: starting with \(pendingProgressQueue.count) items")
 
         guard !pendingProgressQueue.isEmpty else {
@@ -285,6 +286,81 @@ public actor ProgressSyncActor {
             pendingProgressQueue[index] = item
             await saveQueueToDisk()
         }
+    }
+
+    /// Entries can be queued without a sourceID when the origin device could not
+    /// resolve one (e.g. a relayed watch position for a book this device had not
+    /// cataloged yet). Nil-sourceID entries are unsendable, so retry resolution
+    /// against the current library whenever a drain runs.
+    func resolveMissingSourceIDs() async {
+        await ensureQueueLoaded()
+        guard pendingProgressQueue.contains(where: { $0.sourceID == nil }) else { return }
+
+        let books = await BookServiceActor.shared.librarySnapshot(policy: .cachedOnly).books
+        let storytellerSources = await BookServiceActor.shared.bookSources
+            .filter { $0.kind == .storyteller }
+
+        var changed = false
+        for (index, item) in pendingProgressQueue.enumerated() where item.sourceID == nil {
+            var resolvedID = books.first(where: { $0.uuid == item.bookId })?.sourceID
+            if resolvedID == nil, storytellerSources.count == 1 {
+                resolvedID = storytellerSources.first?.id
+            }
+            guard let resolvedID else { continue }
+
+            pendingProgressQueue[index] = PendingProgressSync(
+                bookId: item.bookId,
+                sourceID: resolvedID,
+                locator: item.locator,
+                timestamp: item.timestamp,
+                syncedToStoryteller: item.syncedToStoryteller,
+            )
+            changed = true
+            debugLog(
+                "[PSA] resolveMissingSourceIDs: resolved \(item.bookId) to source \(resolvedID)"
+            )
+        }
+
+        if changed {
+            await saveQueueToDisk()
+        }
+    }
+
+    /// Called by ProgressUploadManager when a background upload task returns 204.
+    /// The upload may have raced a newer local position: only confirm the entry
+    /// if it still carries the timestamp that was uploaded.
+    public func confirmBackgroundUpload(bookId: String, timestamp: Double) async {
+        await ensureQueueLoaded()
+
+        guard let index = pendingProgressQueue.firstIndex(where: { $0.bookId == bookId }) else {
+            debugLog("[PSA] confirmBackgroundUpload: no queue entry for \(bookId)")
+            return
+        }
+
+        var pending = pendingProgressQueue[index]
+        guard abs(pending.timestamp - timestamp) < 1.0 else {
+            debugLog(
+                "[PSA] confirmBackgroundUpload: queue moved on for \(bookId) (queued=\(pending.timestamp), uploaded=\(timestamp))"
+            )
+            return
+        }
+        guard !pending.syncedToStoryteller else { return }
+
+        pending.syncedToStoryteller = true
+        pendingProgressQueue[index] = pending
+        updateServerPositionIfNewer(
+            bookId: bookId,
+            locator: pending.locator,
+            timestamp: pending.timestamp,
+        )
+        await saveQueueToDisk()
+        await updateHistoryResult(
+            bookId: bookId,
+            timestamp: pending.timestamp,
+            result: .sent,
+        )
+        await notifyObservers()
+        debugLog("[PSA] confirmBackgroundUpload: confirmed \(bookId) ts=\(pending.timestamp)")
     }
 
     public func getPendingProgressSyncs() async -> [PendingProgressSync] {

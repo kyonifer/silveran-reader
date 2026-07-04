@@ -888,6 +888,39 @@ public actor StorytellerActor {
         }
     }
 
+    /// Builds a ready-to-send positions POST for use with a background URLSession.
+    /// The body is returned separately because background upload tasks require
+    /// file-based bodies rather than request.httpBody.
+    public func createAuthenticatedPositionUploadRequest(
+        bookId: String,
+        locator: BookLocator,
+        timestamp: Double,
+    ) async -> ProgressUploadRequest? {
+        guard let (baseURL, token) = await ensureAuthentication() else { return nil }
+
+        let url = baseURL.appendingPathComponent("books/\(bookId)/positions")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue(
+            authorizationHeaderValue(for: token),
+            forHTTPHeaderField: "Authorization",
+        )
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: Any] = [
+            "locator": encodeLocatorToDict(locator),
+            "timestamp": Int64(timestamp),
+        ]
+
+        do {
+            let bodyData = try JSONSerialization.data(withJSONObject: body)
+            return ProgressUploadRequest(request: request, body: bodyData)
+        } catch {
+            logStorytellerError("createAuthenticatedPositionUploadRequest", error: error)
+            return nil
+        }
+    }
+
     /// Fetches detailed metadata for a single book via `/api/v2/books/{bookId}`.
     /// Server implementation: `storyteller/web/src/app/api/v2/books/[bookId]/route.ts` (GET handler).
     func fetchBookDetails(for bookId: String) async -> BookMetadata? {
