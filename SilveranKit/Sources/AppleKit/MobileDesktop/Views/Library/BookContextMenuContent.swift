@@ -39,9 +39,7 @@ struct BookContextMenuContent: View {
 
     @ViewBuilder
     private var copyToSection: some View {
-        let destinations = mediaViewModel.bookSources.filter {
-            $0.id != currentSourceID && $0.capabilities.canUploadBooks
-        }
+        let destinations = mediaViewModel.copyDestinations(for: currentItem)
         if !destinations.isEmpty {
             Divider()
 

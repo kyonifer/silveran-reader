@@ -337,6 +337,9 @@ public protocol BookSourceActor: Actor {
     /// Create or merge a book from prepared assets, organizing destination storage as appropriate
     /// (storyteller uploads over HTTP; folder sources write files, guessing the folder layout).
     /// `collectionUUID` adds the new book to a storyteller collection; folder sources ignore it.
+    /// Returns the id the book has in this source, nil on failure. That id is not always the
+    /// passed `bookUUID`: a folder source's scan can merge the assets into an existing work or
+    /// mint its own id for a new one.
     func acceptBook(
         bookUUID: String,
         title: String,
@@ -345,7 +348,7 @@ public protocol BookSourceActor: Actor {
         readaloud: StorytellerUploadAsset?,
         collectionUUID: String?,
         onProgress: (@Sendable (Double) -> Void)?,
-    ) async -> Bool
+    ) async -> String?
 
     /// Deletes the book from everything this source owns. Storyteller issues a server DELETE (which
     /// removes the server's files) and then drops the device's downloaded copy from the local media
@@ -423,6 +426,55 @@ extension BookSourceActor {
         }
 
         return assets.isEmpty ? nil : assets
+    }
+}
+
+extension BookSourceKind {
+    /// Ebook container formats this kind of source can store. Storyteller's processing pipeline
+    /// only understands epubs; a folder stores whatever file it is given.
+    public var acceptedEbookExtensions: Set<String> {
+        switch self {
+            case .storyteller:
+                ["epub"]
+            case .localFolder:
+                ["epub", "cbz"]
+        }
+    }
+}
+
+public enum CopyDestinations {
+    /// Sources that can receive a copy of `book`: not the book's own source, uploads allowed for
+    /// the source kind and permitted for the logged-in user, and the destination can store the
+    /// book's formats.
+    public static func destinations(
+        for book: BookMetadata,
+        sources: [BookSourceRecord],
+        uploadPermittedSourceIDs: Set<BookSourceID>,
+    ) -> [BookSourceRecord] {
+        sources.filter { record in
+            guard record.id != book.sourceID else { return false }
+            guard record.capabilities.canUploadBooks else { return false }
+            guard uploadPermittedSourceIDs.contains(record.id) else { return false }
+            if let ebookExtension = ebookExtension(of: book),
+                !record.kind.acceptedEbookExtensions.contains(ebookExtension)
+            {
+                return false
+            }
+            // Storyteller creates books only through its ebook/audiobook upload endpoint; a
+            // readaloud can be attached to a book afterwards but cannot found one by itself.
+            if record.kind == .storyteller,
+                book.ebook == nil, book.audiobook == nil, book.readaloud != nil
+            {
+                return false
+            }
+            return true
+        }
+    }
+
+    private static func ebookExtension(of book: BookMetadata) -> String? {
+        guard let filepath = book.ebook?.filepath else { return nil }
+        let ext = URL(fileURLWithPath: filepath).pathExtension.lowercased()
+        return ext.isEmpty ? nil : ext
     }
 }
 

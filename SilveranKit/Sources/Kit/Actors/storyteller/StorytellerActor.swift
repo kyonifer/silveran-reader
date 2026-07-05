@@ -52,6 +52,7 @@ public actor StorytellerActor {
     public var lastUpdateBookError: String?
     private var cachedStatuses: [BookStatus] = []
     public private(set) var connectionStatus: ConnectionStatus = .disconnected
+    private var cachedBookUpdatePermission: Bool?
 
     public var isConfigured: Bool {
         apiBaseURL != nil && username != nil && password != nil
@@ -596,6 +597,27 @@ public actor StorytellerActor {
         case allowed
         case denied
         case error(String)
+    }
+
+    /// Whether the logged-in user may create books on this server, for gating upload UI. A
+    /// definitive server answer is cached for the session. Unknown (not connected, or a transient
+    /// error) reports true so connection hiccups don't hide features; the upload itself will
+    /// surface the real failure.
+    public func currentUserCanUploadBooks() async -> Bool {
+        if let cachedBookUpdatePermission {
+            return cachedBookUpdatePermission
+        }
+        guard connectionStatus == .connected else { return true }
+        switch await checkBookUpdatePermission() {
+            case .allowed:
+                cachedBookUpdatePermission = true
+                return true
+            case .denied:
+                cachedBookUpdatePermission = false
+                return false
+            case .error:
+                return true
+        }
     }
 
     /// Checks if the current user has the `bookUpdate` permission.
@@ -2854,7 +2876,7 @@ extension StorytellerActor: BookSourceActor {
         readaloud: StorytellerUploadAsset?,
         collectionUUID: String?,
         onProgress: (@Sendable (Double) -> Void)?,
-    ) async -> Bool {
+    ) async -> String? {
         // The new-book upload endpoint classifies every epub as the ebook, so a pre-aligned readaloud
         // (also an epub) can't go through it because it would overwrite the ebook. Upload ebook + audiobook
         // there, then attach the readaloud through the format-aware replace-asset endpoint.
@@ -2879,11 +2901,11 @@ extension StorytellerActor: BookSourceActor {
             collectionUUID: collectionUUID,
             onProgress: phase1Progress,
         )
-        guard uploaded else { return false }
+        guard uploaded else { return nil }
 
         guard let readaloud else {
             onProgress?(1.0)
-            return true
+            return bookUUID
         }
 
         var phase2Progress: (@Sendable (Int64, Int64) -> Void)?
@@ -2904,15 +2926,15 @@ extension StorytellerActor: BookSourceActor {
         switch result {
             case .success:
                 onProgress?(1.0)
-                return true
+                return bookUUID
             case .notSupported:
                 debugLog(
                     "[StorytellerActor] acceptBook: server cannot attach a readaloud (replace-asset unsupported); ebook + audiobook uploaded for \(bookUUID)"
                 )
-                return false
+                return nil
             case .failed:
                 debugLog("[StorytellerActor] acceptBook: readaloud attach failed for \(bookUUID)")
-                return false
+                return nil
         }
     }
 

@@ -12,5 +12,6 @@ public func bootstrapApplePlatformDefaultsIfNeeded() {
         audioMetadata: AVAssetMetadataProbe(),
         keychain: SecurityKeychainStore(),
         fontMetadata: CoreTextFontTraitsProbe(),
+        folderWatcher: applePlatformFolderWatcher(),
     )
 }

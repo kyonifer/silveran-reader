@@ -13,6 +13,7 @@ public enum SilveranPlatform {
     public private(set) nonisolated(unsafe) static var audioMetadata: (any AudioMetadataProbing)?
     public private(set) nonisolated(unsafe) static var keychain: (any KeychainStoring)?
     public private(set) nonisolated(unsafe) static var fontMetadata: (any FontMetadataProbing)?
+    public private(set) nonisolated(unsafe) static var folderWatcher: (any FolderWatching)?
     /// True once bootstrap has run. Entry points use this to install platform
     /// defaults only when the app shell has not already chosen its own.
     public private(set) nonisolated(unsafe) static var isBootstrapped = false
@@ -23,12 +24,14 @@ public enum SilveranPlatform {
         audioMetadata: (any AudioMetadataProbing)? = nil,
         keychain: (any KeychainStoring)? = nil,
         fontMetadata: (any FontMetadataProbing)? = nil,
+        folderWatcher: (any FolderWatching)? = nil,
     ) {
         Self.audioPlayers = audioPlayers
         Self.nowPlaying = nowPlaying
         Self.audioMetadata = audioMetadata
         Self.keychain = keychain
         Self.fontMetadata = fontMetadata
+        Self.folderWatcher = folderWatcher
         Self.isBootstrapped = true
     }
 }

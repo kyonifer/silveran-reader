@@ -309,11 +309,21 @@ public actor BookServiceActor {
                     )
                 }
                 await closeFolderAccessIfNeeded(sourceID: record.id)
-                sourcesByID[record.id] = FolderSourceActor(sourceRecord: record)
+                sourcesByID[record.id] = await makeFolderSourceActor(record: record)
         }
 
         await upsertSourceRecord(record)
         return record
+    }
+
+    /// Every FolderSourceActor must be created through here: the change handler is what routes
+    /// watcher-triggered rescans to UI observers, and a bare actor rescans invisibly.
+    private func makeFolderSourceActor(record: BookSourceRecord) async -> FolderSourceActor {
+        let actor = FolderSourceActor(sourceRecord: record)
+        await actor.setLibraryChangeHandler { [weak self] in
+            await self?.notifyLibraryObservers()
+        }
+        return actor
     }
 
     public func updateBookSource(
@@ -401,7 +411,7 @@ public actor BookServiceActor {
                     )
                 }
                 await closeFolderAccessIfNeeded(sourceID: sourceID)
-                sourcesByID[sourceID] = FolderSourceActor(sourceRecord: updatedRecord)
+                sourcesByID[sourceID] = await makeFolderSourceActor(record: updatedRecord)
                 await upsertSourceRecord(updatedRecord)
         }
         return true
@@ -1243,7 +1253,7 @@ public actor BookServiceActor {
             ?? readaloud?.filename
             ?? audiobookAssets.first?.filename
             ?? "Book"
-        let success = await source.acceptBook(
+        let acceptedBookID = await source.acceptBook(
             bookUUID: bookUUID,
             title: title,
             ebook: ebook,
@@ -1252,10 +1262,10 @@ public actor BookServiceActor {
             collectionUUID: collectionUUID,
             onProgress: onProgress,
         )
-        if success {
+        if acceptedBookID != nil {
             await notifyLibraryObservers()
         }
-        return success
+        return acceptedBookID != nil
     }
 
     public func replaceBookAsset(
@@ -1337,17 +1347,20 @@ public actor BookServiceActor {
             return false
         }
 
-        let destinationBookID = UUID().uuidString
-        let success = await destination.acceptBook(
-            bookUUID: destinationBookID,
-            title: book.title,
-            ebook: assets.ebook,
-            audiobooks: assets.audiobooks,
-            readaloud: assets.readaloud,
-            collectionUUID: nil,
-            onProgress: onProgress,
-        )
-        guard success else { return false }
+        // acceptBook reports the id the destination actually gave the book (a folder source's
+        // scan can mint its own or merge into an existing work); progress must target that id,
+        // not the one we proposed.
+        guard
+            let destinationBookID = await destination.acceptBook(
+                bookUUID: UUID().uuidString,
+                title: book.title,
+                ebook: assets.ebook,
+                audiobooks: assets.audiobooks,
+                readaloud: assets.readaloud,
+                collectionUUID: nil,
+                onProgress: onProgress,
+            )
+        else { return false }
 
         // Carry reading progress across: read the source's locator and push it onto the new book id.
         // Best-effort: a progress-mirror failure does not undo the media copy.
@@ -1508,10 +1521,27 @@ public actor BookServiceActor {
                     sourcesByID[record.id] = actor
                 case .localFolder:
                     if sourcesByID[record.id] as? FolderSourceActor == nil {
-                        sourcesByID[record.id] = FolderSourceActor(sourceRecord: record)
+                        sourcesByID[record.id] = await makeFolderSourceActor(record: record)
                     }
             }
         }
+    }
+
+    /// Sources the logged-in user may upload books to right now: folders always, storyteller
+    /// servers when the user holds the server's book-update permission.
+    public func uploadPermittedSourceIDs() async -> Set<BookSourceID> {
+        await ensureSourceRegistryLoaded()
+        var permitted: Set<BookSourceID> = []
+        for record in sourceRecords where record.capabilities.canUploadBooks {
+            if let storyteller = sourcesByID[record.id] as? StorytellerActor {
+                if await storyteller.currentUserCanUploadBooks() {
+                    permitted.insert(record.id)
+                }
+            } else {
+                permitted.insert(record.id)
+            }
+        }
+        return permitted
     }
 
     private func storytellerActors() -> [StorytellerActor] {

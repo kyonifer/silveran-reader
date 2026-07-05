@@ -150,9 +150,7 @@ struct MediaItemCardView: View {
 
     @ViewBuilder
     private var iOSCopyToMenu: some View {
-        let destinations = mediaViewModel.bookSources.filter {
-            $0.id != iOSCurrentItem.sourceID && $0.capabilities.canUploadBooks
-        }
+        let destinations = mediaViewModel.copyDestinations(for: iOSCurrentItem)
         if !destinations.isEmpty {
             Divider()
 

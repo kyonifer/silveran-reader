@@ -525,7 +525,7 @@ import Testing
     let actor = FolderSourceActor(sourceRecord: source)
     _ = try await actor.debugScanLibrary(in: root)
 
-    try await actor.debugImportBookAssets(
+    let importedBookID = try await actor.debugImportBookAssets(
         in: root,
         bookUUID: UUID().uuidString,
         bookName: "The Last Contract",
@@ -562,6 +562,46 @@ import Testing
     let book = try #require(metadata.first { $0.title == "The Last Contract" })
     #expect(book.ebook != nil)
     #expect(book.audiobook != nil)
+    #expect(book.uuid == importedBookID)
+}
+
+@Test func folderSourceImportOntoExistingBookReturnsThatBookID() async throws {
+    let root = try makeTemporaryFolderSource()
+    defer { try? FileManager.default.removeItem(at: root) }
+    try Data([0]).write(to: root.appendingPathComponent("Existing Book.epub"))
+
+    let source = BookSourceRecord(
+        id: "folder-import-merge-\(UUID().uuidString)",
+        name: "Folder",
+        kind: .localFolder,
+        capabilities: .localFolder,
+        storagePath: root.path,
+    )
+    let actor = FolderSourceActor(sourceRecord: source)
+    let existing = try #require(
+        try await actor.debugScanLibrary(in: root).first { $0.title == "Existing Book" }
+    )
+
+    let importedBookID = try await actor.debugImportBookAssets(
+        in: root,
+        bookUUID: existing.uuid,
+        bookName: "Existing Book",
+        audiobooks: [
+            StorytellerUploadAsset(
+                format: .audiobook,
+                filename: "Some Other Name.m4b",
+                data: Data([0]),
+                contentType: "audio/mp4",
+            )
+        ],
+    )
+
+    #expect(importedBookID == existing.uuid)
+    let book = try #require(
+        try await actor.debugScanLibrary(in: root).first { $0.uuid == existing.uuid }
+    )
+    #expect(book.ebook != nil)
+    #expect(book.audiobook != nil)
 }
 
 @Test func folderSourceImportNamesAssetsAfterBookInSubfolderLayout() async throws {
@@ -577,7 +617,7 @@ import Testing
     )
     let actor = FolderSourceActor(sourceRecord: source)
 
-    try await actor.debugImportBookAssets(
+    let importedBookID = try await actor.debugImportBookAssets(
         in: root,
         bookUUID: UUID().uuidString,
         bookName: "A New Book.epub",
@@ -616,6 +656,7 @@ import Testing
     #expect(book.ebook != nil)
     #expect(book.audiobook != nil)
     #expect(book.readaloud != nil)
+    #expect(book.uuid == importedBookID)
 }
 
 @Test func folderSourceDeletePathValidationRejectsEscapes() async throws {
@@ -771,4 +812,162 @@ private func makeTemporaryFolderSource() throws -> URL {
         .appendingPathComponent("SilveranKitTests-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     return root
+}
+
+@Test func copyDestinationsRespectFormatsPermissionsAndOrigin() {
+    let server = BookSourceRecord(
+        id: "server",
+        name: "Server",
+        kind: .storyteller,
+        capabilities: .storyteller,
+    )
+    let folder = BookSourceRecord(
+        id: "folder",
+        name: "Folder",
+        kind: .localFolder,
+        capabilities: .localFolder,
+    )
+    let sources = [server, folder]
+    let allPermitted: Set<BookSourceID> = ["server", "folder"]
+
+    let comic = makeCopyTestBook(sourceID: "other-folder", ebookFile: "comic.cbz")
+    #expect(
+        CopyDestinations.destinations(
+            for: comic,
+            sources: sources,
+            uploadPermittedSourceIDs: allPermitted,
+        ).map(\.id) == ["folder"]
+    )
+
+    let epub = makeCopyTestBook(sourceID: "other-folder", ebookFile: "book.epub")
+    #expect(
+        CopyDestinations.destinations(
+            for: epub,
+            sources: sources,
+            uploadPermittedSourceIDs: allPermitted,
+        ).map(\.id) == ["server", "folder"]
+    )
+
+    #expect(
+        CopyDestinations.destinations(
+            for: epub,
+            sources: sources,
+            uploadPermittedSourceIDs: ["folder"],
+        ).map(\.id) == ["folder"]
+    )
+
+    let fromServer = makeCopyTestBook(sourceID: "server", ebookFile: "book.epub")
+    #expect(
+        CopyDestinations.destinations(
+            for: fromServer,
+            sources: sources,
+            uploadPermittedSourceIDs: allPermitted,
+        ).map(\.id) == ["folder"]
+    )
+
+    let readaloudOnly = makeCopyTestBook(sourceID: "other-folder", hasReadaloud: true)
+    #expect(
+        CopyDestinations.destinations(
+            for: readaloudOnly,
+            sources: sources,
+            uploadPermittedSourceIDs: allPermitted,
+        ).map(\.id) == ["folder"]
+    )
+
+    let audiobookOnly = makeCopyTestBook(sourceID: "other-folder", hasAudiobook: true)
+    #expect(
+        CopyDestinations.destinations(
+            for: audiobookOnly,
+            sources: sources,
+            uploadPermittedSourceIDs: allPermitted,
+        ).map(\.id) == ["server", "folder"]
+    )
+}
+
+private func makeCopyTestBook(
+    sourceID: BookSourceID,
+    ebookFile: String? = nil,
+    hasAudiobook: Bool = false,
+    hasReadaloud: Bool = false,
+) -> BookMetadata {
+    let uuid = UUID().uuidString
+    var book = BookMetadata(
+        uuid: uuid,
+        title: "Book",
+        subtitle: nil,
+        description: nil,
+        language: nil,
+        createdAt: nil,
+        updatedAt: nil,
+        publicationDate: nil,
+        authors: nil,
+        narrators: nil,
+        creators: nil,
+        series: nil,
+        tags: nil,
+        collections: nil,
+        ebook: ebookFile.map {
+            BookAsset(uuid: uuid, filepath: $0, missing: 0, createdAt: nil, updatedAt: nil)
+        },
+        audiobook: hasAudiobook
+            ? BookAsset(
+                uuid: uuid,
+                filepath: "book.m4b",
+                missing: 0,
+                createdAt: nil,
+                updatedAt: nil,
+            )
+            : nil,
+        readaloud: hasReadaloud
+            ? BookReadaloud(
+                uuid: uuid,
+                filepath: "book.epub",
+                missing: 0,
+                status: nil,
+                currentStage: nil,
+                stageProgress: nil,
+                queuePosition: nil,
+                restartPending: nil,
+                createdAt: nil,
+                updatedAt: nil,
+            )
+            : nil,
+        status: nil,
+        position: nil,
+        rating: nil,
+    )
+    book.sourceID = sourceID
+    return book
+}
+
+@Test func pollingFolderWatcherFiresOnFileChanges() async throws {
+    let root = try makeTemporaryFolderSource()
+    defer { try? FileManager.default.removeItem(at: root) }
+    try Data([0]).write(to: root.appendingPathComponent("a.epub"))
+
+    let watcher = PollingFolderWatcher(interval: .milliseconds(50))
+    let changed = ChangeFlag()
+    let token = try #require(watcher.watch(root) { changed.set() })
+    defer { token.cancel() }
+
+    for index in 0..<100 where !changed.isSet {
+        try Data([UInt8(index % 256)]).write(
+            to: root.appendingPathComponent("b\(index).epub")
+        )
+        try await Task.sleep(for: .milliseconds(50))
+    }
+    #expect(changed.isSet)
+}
+
+private final class ChangeFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = false
+
+    var isSet: Bool {
+        lock.withLock { value }
+    }
+
+    func set() {
+        lock.withLock { value = true }
+    }
 }

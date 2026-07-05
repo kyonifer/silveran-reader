@@ -146,12 +146,23 @@ public final class MediaViewModel {
         return false
     }
 
+    /// Sources the Copy To menu should offer for this book: excludes the book's own source,
+    /// destinations that can't store its formats, and servers where the user may not upload.
+    public func copyDestinations(for book: BookMetadata) -> [BookSourceRecord] {
+        CopyDestinations.destinations(
+            for: book,
+            sources: bookSources,
+            uploadPermittedSourceIDs: uploadPermittedSourceIDs,
+        )
+    }
+
     public var cachedConfig: SilveranGlobalConfig = SilveranGlobalConfig()
     public var pendingSyncsByBook: [String: PendingProgressSync] = [:]
     public var syncNotification: SyncNotification?
     public var smartShelves: [SmartShelf] = []
     public var libraryViewSnapshot = LibraryViewSnapshot()
     public var bookSources: [BookSourceRecord] = []
+    public var uploadPermittedSourceIDs: Set<BookSourceID> = []
     var bookProgressCache: [String: BookProgress] = [:]
     @ObservationIgnored private var readBookIds: Set<String> = []
 
@@ -513,6 +524,12 @@ public final class MediaViewModel {
         }
 
         setIfChanged(\.bookSources, snapshot.sources)
+        // Cheap after the first query per source: storyteller actors cache the definitive
+        // server answer for the session and skip the network while disconnected.
+        setIfChanged(
+            \.uploadPermittedSourceIDs,
+            await BookServiceActor.shared.uploadPermittedSourceIDs(),
+        )
         logPerfCheckpoint(
             "refreshMetadata load source metadata",
             source: source,

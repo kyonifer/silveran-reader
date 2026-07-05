@@ -1216,9 +1216,7 @@ struct MediaTableView: NSViewRepresentable {
                 menu.addItem(local)
             }
 
-            let copyDestinations = mediaViewModel.bookSources.filter {
-                $0.id != item.sourceID && $0.capabilities.canUploadBooks
-            }
+            let copyDestinations = mediaViewModel.copyDestinations(for: item)
             if !copyDestinations.isEmpty {
                 menu.addItem(.separator())
                 let copyMenu = NSMenu()

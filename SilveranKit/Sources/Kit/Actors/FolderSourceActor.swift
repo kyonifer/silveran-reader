@@ -21,6 +21,9 @@ public actor FolderSourceActor: BookSourceActor {
     private var stateCache: FolderSourceLibraryState?
     private var activeFolderAccessURL: URL?
     private var activeFolderAccessDidStart = false
+    private var folderWatchToken: (any FolderWatchToken)?
+    private var folderChangeRescanTask: Task<Void, Never>?
+    private var libraryChangeHandler: (@Sendable () async -> Void)?
 
     private enum FolderSourceWriteLayout {
         case mediaTypeSubfolders
@@ -38,6 +41,8 @@ public actor FolderSourceActor: BookSourceActor {
     }
 
     deinit {
+        folderWatchToken?.cancel()
+        folderChangeRescanTask?.cancel()
         if activeFolderAccessDidStart {
             #if !os(Linux)
             activeFolderAccessURL?.stopAccessingSecurityScopedResource()
@@ -58,11 +63,53 @@ public actor FolderSourceActor: BookSourceActor {
             let library = try await scanLibrary()
             metadataCache = library.metadata
             pathCache = library.paths
+            await startWatchingFolderIfNeeded()
             return library.metadata
         } catch {
             debugLog("[FolderSourceActor] Failed to fetch library: \(error)")
             return nil
         }
+    }
+
+    /// Called after a watcher-triggered rescan finds actual changes, so the owning service can
+    /// notify UI observers. Folder sources otherwise have no channel back to the service layer.
+    public func setLibraryChangeHandler(_ handler: (@Sendable () async -> Void)?) {
+        libraryChangeHandler = handler
+    }
+
+    private func startWatchingFolderIfNeeded() async {
+        guard folderWatchToken == nil, let watcher = SilveranPlatform.folderWatcher else { return }
+        do {
+            try await retainFolderAccessForResolvedMedia()
+        } catch {
+            debugLog("[FolderSourceActor] Cannot watch folder without access: \(error)")
+            return
+        }
+        guard let url = activeFolderAccessURL else { return }
+        folderWatchToken = watcher.watch(url) { [weak self] in
+            guard let self else { return }
+            Task { await self.scheduleFolderChangeRescan() }
+        }
+    }
+
+    private func scheduleFolderChangeRescan() {
+        folderChangeRescanTask?.cancel()
+        folderChangeRescanTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(1))
+            guard !Task.isCancelled else { return }
+            await self?.rescanAfterFolderChange()
+        }
+    }
+
+    private func rescanAfterFolderChange() async {
+        // Saving our own library state file lands inside the watched folder and echoes back as
+        // one more event; that rescan finds nothing changed and goes quiet here.
+        let before = metadataCache
+        guard let after = await fetchLibraryInformation(), after != before else { return }
+        debugLog(
+            "[FolderSourceActor] Folder contents changed on disk; rescanned \(after.count) book(s)"
+        )
+        await libraryChangeHandler?()
     }
 
     public func cachedLibraryInformation() async -> [BookMetadata] {
@@ -140,8 +187,10 @@ public actor FolderSourceActor: BookSourceActor {
     }
 
     public func fetchBookPosition(bookId: String) async -> BookReadingPosition? {
-        if let position = metadataCache.first(where: { $0.uuid == bookId })?.position {
-            return position
+        // A known book with no saved position must answer nil from cache; falling through to a
+        // rescan here would put a full folder scan on every position poll for unopened books.
+        if let book = await cachedLibraryInformation().first(where: { $0.uuid == bookId }) {
+            return book.position
         }
         guard let metadata = await fetchLibraryInformation() else { return nil }
         return metadata.first(where: { $0.uuid == bookId })?.position
@@ -218,9 +267,9 @@ public actor FolderSourceActor: BookSourceActor {
         readaloud: StorytellerUploadAsset?,
         collectionUUID _: String?,
         onProgress: (@Sendable (Double) -> Void)?,
-    ) async -> Bool {
+    ) async -> String? {
         do {
-            try await importBookAssets(
+            let acceptedBookID = try await importBookAssets(
                 bookUUID: bookUUID,
                 bookName: title,
                 ebook: ebook,
@@ -228,10 +277,10 @@ public actor FolderSourceActor: BookSourceActor {
                 readaloud: readaloud,
             )
             onProgress?(1.0)
-            return true
+            return acceptedBookID
         } catch {
             debugLog("[FolderSourceActor] acceptBook failed: \(error)")
-            return false
+            return nil
         }
     }
 
@@ -296,6 +345,8 @@ public actor FolderSourceActor: BookSourceActor {
     }
 
     public func closeFolderAccess() {
+        folderWatchToken?.cancel()
+        folderWatchToken = nil
         if activeFolderAccessDidStart {
             #if !os(Linux)
             activeFolderAccessURL?.stopAccessingSecurityScopedResource()
@@ -424,16 +475,20 @@ public actor FolderSourceActor: BookSourceActor {
         }
     }
 
+    /// Returns the UUID of the work that ended up holding the assets, which is not always the
+    /// passed `bookUUID`: the post-import scan groups files by name, so assets can join an
+    /// existing work, and brand-new works are minted by the scan itself.
+    @discardableResult
     public func importBookAssets(
         bookUUID: String,
         bookName: String,
         ebook: StorytellerUploadAsset? = nil,
         audiobooks: [StorytellerUploadAsset] = [],
         readaloud: StorytellerUploadAsset? = nil,
-    ) async throws {
+    ) async throws -> String {
         let resolved = try await resolvedFolderURL()
         defer { stopAccessing(resolved) }
-        try await importBookAssets(
+        return try await importBookAssets(
             bookUUID: bookUUID,
             bookName: bookName,
             ebook: ebook,
@@ -443,6 +498,7 @@ public actor FolderSourceActor: BookSourceActor {
         )
     }
 
+    @discardableResult
     func debugImportBookAssets(
         in folderURL: URL,
         bookUUID: String,
@@ -450,7 +506,7 @@ public actor FolderSourceActor: BookSourceActor {
         ebook: StorytellerUploadAsset? = nil,
         audiobooks: [StorytellerUploadAsset] = [],
         readaloud: StorytellerUploadAsset? = nil,
-    ) async throws {
+    ) async throws -> String {
         try await importBookAssets(
             bookUUID: bookUUID,
             bookName: bookName,
@@ -468,7 +524,7 @@ public actor FolderSourceActor: BookSourceActor {
         audiobooks: [StorytellerUploadAsset],
         readaloud: StorytellerUploadAsset?,
         root: URL,
-    ) async throws {
+    ) async throws -> String {
         guard ebook != nil || !audiobooks.isEmpty || readaloud != nil else {
             throw LocalMediaError.importFailed("No assets selected")
         }
@@ -495,10 +551,14 @@ public actor FolderSourceActor: BookSourceActor {
             ? newBookStem
             : existingAssetFilenameStem(forBook: bookUUID) ?? newBookStem
 
+        var writtenURLs: [URL] = []
+
         if let ebook {
-            _ = try await writeAsset(
-                renamed(ebook, to: "\(stem).\(fileExtension(for: ebook))"),
-                to: destinationDirectory(for: .ebook, placement: placement),
+            writtenURLs.append(
+                try await writeAsset(
+                    renamed(ebook, to: "\(stem).\(fileExtension(for: ebook))"),
+                    to: destinationDirectory(for: .ebook, placement: placement),
+                )
             )
         }
 
@@ -514,22 +574,38 @@ public actor FolderSourceActor: BookSourceActor {
                     audiobooks.count == 1
                     ? "\(stem).\(fileExtension(for: audiobook))"
                     : "\(stem) - \(preferredFilename(for: audiobook))"
-                _ = try await writeAsset(
-                    renamed(audiobook, to: filename),
-                    to: audioDirectory,
-                    usedFilenames: &usedFilenames,
+                writtenURLs.append(
+                    try await writeAsset(
+                        renamed(audiobook, to: filename),
+                        to: audioDirectory,
+                        usedFilenames: &usedFilenames,
+                    )
                 )
             }
         }
 
         if let readaloud {
-            _ = try await writeAsset(
-                renamed(readaloud, to: "\(stem) readaloud.\(fileExtension(for: readaloud))"),
-                to: destinationDirectory(for: .synced, placement: placement),
+            writtenURLs.append(
+                try await writeAsset(
+                    renamed(readaloud, to: "\(stem) readaloud.\(fileExtension(for: readaloud))"),
+                    to: destinationDirectory(for: .synced, placement: placement),
+                )
             )
         }
 
         _ = try await scanLibrary(in: root)
+        return workID(containingAnyOf: writtenURLs, root: root) ?? bookUUID
+    }
+
+    private func workID(containingAnyOf urls: [URL], root: URL) -> String? {
+        guard let state = stateCache else { return nil }
+        let writtenPaths = Set(urls.map { relativePath(for: $0, root: root) })
+        let mediaByID = Dictionary(uniqueKeysWithValues: state.media.map { ($0.uuid, $0) })
+        return state.works.first { work in
+            work.mediaIDs.values.contains { mediaID in
+                mediaByID[mediaID]?.relativePaths.contains(where: writtenPaths.contains) ?? false
+            }
+        }?.uuid
     }
 
     public func replaceAsset(
@@ -625,12 +701,32 @@ public actor FolderSourceActor: BookSourceActor {
         let projected = projectLibrary(from: nextState, folderURL: folderURL)
 
         logDuplicateFolderUUIDs(projected.metadata, folderURL: folderURL)
-        try await filesystem.saveFolderSourceLibraryState(nextState, in: folderURL)
+        // The state file lives inside the folder, so an unconditional save makes every scan look
+        // like a folder change to the watcher. Rescans of an unchanged tree only bump lastSeenAt;
+        // skip the write for those.
+        if !Self.equivalentIgnoringSeenTimestamps(previousState, nextState) {
+            try await filesystem.saveFolderSourceLibraryState(nextState, in: folderURL)
+        }
         stateCache = nextState
         metadataCache = projected.metadata
         pathCache = projected.paths
 
         return LocalLibraryManager.ScanResult(metadata: projected.metadata, paths: projected.paths)
+    }
+
+    private static func equivalentIgnoringSeenTimestamps(
+        _ lhs: FolderSourceLibraryState,
+        _ rhs: FolderSourceLibraryState,
+    ) -> Bool {
+        var lhs = lhs
+        var rhs = rhs
+        for index in lhs.media.indices {
+            lhs.media[index].lastSeenAt = nil
+        }
+        for index in rhs.media.indices {
+            rhs.media[index].lastSeenAt = nil
+        }
+        return lhs == rhs
     }
 
     private func savedMetadata(in folderURL: URL) async throws -> [BookMetadata] {
