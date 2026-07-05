@@ -314,7 +314,7 @@ public struct EbookPlayerView: View {
                         Rectangle()
                             .fill(separatorColor)
                             .frame(width: 1)
-                        audiobookSidebar
+                        audiobookSidebar(foregroundColor: readerForegroundColor)
                             .frame(width: 360)
                     }
                     .compositingGroup()
@@ -387,7 +387,7 @@ public struct EbookPlayerView: View {
                 Rectangle()
                     .fill(separatorColor)
                     .frame(width: 1)
-                audiobookSidebar
+                audiobookSidebar(foregroundColor: readerForegroundColor)
                     .frame(width: 360)
                     .padding(.horizontal, 14)
                     .transition(.move(edge: .trailing))
@@ -411,6 +411,20 @@ public struct EbookPlayerView: View {
                 Color(uiColor: .systemBackground)
                 #endif
             }()
+    }
+
+    // Views drawn over readerBackgroundColor must use this instead of semantic
+    // colors: the theme background follows the user's theme while semantic colors
+    // follow the system appearance, and the two can disagree.
+    private var readerForegroundColor: Color {
+        if let fgColor = viewModel.settingsVM.foregroundColor, !fgColor.isEmpty,
+            let color = Color(hex: fgColor)
+        {
+            return color
+        }
+        let defaultHex =
+            colorScheme == .dark ? kDefaultForegroundColorDark : kDefaultForegroundColorLight
+        return Color(hex: defaultHex) ?? .primary
     }
 
     private var separatorColor: Color {
@@ -712,7 +726,7 @@ public struct EbookPlayerView: View {
                 isComicScrubberVisible = visible
             },
             fullContent: {
-                audiobookSidebar
+                audiobookSidebar()
             },
         )
     }
@@ -750,7 +764,7 @@ public struct EbookPlayerView: View {
     }
     #endif
 
-    private var audiobookSidebar: some View {
+    private func audiobookSidebar(foregroundColor: Color? = nil) -> some View {
         let pm = viewModel.progressManager
         let mom = viewModel.mediaOverlayManager
         let currentChapterTitle = pm?.selectedChapterId.flatMap { index in
@@ -795,6 +809,7 @@ public struct EbookPlayerView: View {
                 sleepTimerType: mom?.sleepTimerType,
             ),
             mode: readingMode,
+            foregroundColor: foregroundColor,
             chapterProgress: viewModel.chapterProgressBinding,
             chapters: viewModel.chapterList,
             progressData: progressData,
