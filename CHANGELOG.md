@@ -1,10 +1,12 @@
 # Changelog
 
-## [0.1-111]
+## [0.1-112]
 
 ### Features
 - Added preliminary CBZ/comic reading support.
 - Added book-copy support for moving media between sources, including progress transfer for copied books.
+- Folder sources on macOS now refresh automatically when their files change on disk.
+- Copy To now offers only destinations that can accept the book, based on format support and your upload permission on the server.
 - Added tvOS sentence mode and improved long-paragraph scrolling in the tvOS reader.
 - Added Apple Watch background audio playback on supported newer hardware.
 - Added Apple Watch progress reporting to the server through the paired phone relay.
@@ -19,6 +21,9 @@
 - Fixed Home view options not applying correctly.
 - Fixed library context menus causing excess update churn.
 - Fixed copy-complete banner placement and copied-book progress state.
+- Fixed copying a book into a folder sometimes splitting it into multiple books.
+- Fixed copied books starting at the cover instead of the reading position carried from the source.
+- Fixed folder sources repeatedly rescanning while the library contains unopened folder books.
 - Fixed cover display regressions.
 - Fixed iPad reader text reflow after toggling the menu.
 - Fixed reader sidebars becoming unreadable when the selected theme clashes with system colors.
