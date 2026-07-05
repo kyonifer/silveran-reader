@@ -1,9 +1,27 @@
 # Changelog
 
-## [0.1-109]
+## [0.1-111]
+
+### Features
+- Added preliminary CBZ/comic reading support.
+- Added book-copy support for moving media between sources, including progress transfer for copied books.
+- Added tvOS sentence mode and improved long-paragraph scrolling in the tvOS reader.
+- Added Apple Watch background audio playback on supported newer hardware.
+- Added Apple Watch progress reporting to the server through the paired phone relay.
+
+### Platform
+- Reorganized SilveranKit for external SwiftPM apps and bundled reader resources so downstream apps can embed the kit.
+- Added the first Linux app proof of concept and platform facades for audio, fonts, keychain, now-playing, content server, and readaloud services.
 
 ### Bug Fixes
 - Fixed folder sources stored inside the app container failing to resolve after iOS relocates the app's data container, which could make a local library appear empty.
+- Fixed local book restore delays and removed an extraction fast path that could leave local reader state stale.
+- Fixed Home view options not applying correctly.
+- Fixed library context menus causing excess update churn.
+- Fixed copy-complete banner placement and copied-book progress state.
+- Fixed cover display regressions.
+- Fixed iPad reader text reflow after toggling the menu.
+- Fixed reader sidebars becoming unreadable when the selected theme clashes with system colors.
 
 ---
 
