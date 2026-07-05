@@ -949,6 +949,12 @@ struct DoubleCoverView: View {
                         .offset(x: scaledWidth / 2, y: audioSize / 2 + xShift)
                         .zIndex(100)
                 }
+            } else {
+                singleCoverFallback(
+                    ebookState: ebookState,
+                    audioState: audioState,
+                    containerHeight: containerHeight,
+                )
             }
         }
         .frame(width: coverWidth, height: containerHeight)
@@ -993,6 +999,41 @@ struct DoubleCoverView: View {
             mediaViewModel.cancelCoverLoad(for: item, variant: .standard)
             mediaViewModel.cancelCoverLoad(for: item, variant: .audioSquare)
         }
+    }
+
+    // The double layout needs both images; until the second one loads (or when a
+    // variant has no artwork at all) render whichever cover exists rather than nothing.
+    @ViewBuilder
+    private func singleCoverFallback(
+        ebookState: MediaViewModel.CoverImageState,
+        audioState: MediaViewModel.CoverImageState,
+        containerHeight: CGFloat,
+    ) -> some View {
+        let useAudio = ebookState.image == nil && audioState.image != nil
+        let state = useAudio ? audioState : ebookState
+        let height = useAudio ? coverWidth : containerHeight
+
+        coverImage(state: state)
+            .frame(width: coverWidth, height: height)
+            .stableCoverRendering()
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .overlay(alignment: .topTrailing) {
+                if showReadaloudWedge {
+                    AudioIndicatorBadge(
+                        item: item,
+                        coverVariant: useAudio ? .audioSquare : .standard,
+                    )
+                    .padding(.trailing, 4)
+                    .padding(.top, 4)
+                }
+            }
+            .overlay(alignment: .bottomTrailing) {
+                if let notchProgress {
+                    CircularProgressBadge(progress: notchProgress, showsBackground: true)
+                        .padding(.trailing, 4)
+                        .padding(.bottom, 4)
+                }
+            }
     }
 
     private func debugCoverLog(_ message: String) {
