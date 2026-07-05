@@ -510,6 +510,114 @@ import Testing
     #expect(destination == "Book One/synced")
 }
 
+@Test func folderSourceImportUnifiesAssetFilenameStemsInFlatLayout() async throws {
+    let root = try makeTemporaryFolderSource()
+    defer { try? FileManager.default.removeItem(at: root) }
+    try Data([0]).write(to: root.appendingPathComponent("Existing Book.epub"))
+
+    let source = BookSourceRecord(
+        id: "folder-import-flat-\(UUID().uuidString)",
+        name: "Folder",
+        kind: .localFolder,
+        capabilities: .localFolder,
+        storagePath: root.path,
+    )
+    let actor = FolderSourceActor(sourceRecord: source)
+    _ = try await actor.debugScanLibrary(in: root)
+
+    try await actor.debugImportBookAssets(
+        in: root,
+        bookUUID: UUID().uuidString,
+        bookName: "The Last Contract",
+        ebook: StorytellerUploadAsset(
+            format: .ebook,
+            filename: "98E5FF0B-5D99-4E91-B5E8-999CEA4CC398.epub",
+            data: Data([0]),
+        ),
+        audiobooks: [
+            StorytellerUploadAsset(
+                format: .audiobook,
+                filename: "Part 1.mp3",
+                data: Data([0]),
+            ),
+            StorytellerUploadAsset(
+                format: .audiobook,
+                filename: "Part 2.mp3",
+                data: Data([0]),
+            ),
+        ],
+    )
+
+    let bookDirectory = root.appendingPathComponent("The Last Contract", isDirectory: true)
+    for filename in [
+        "The Last Contract.epub",
+        "The Last Contract - Part 1.mp3",
+        "The Last Contract - Part 2.mp3",
+    ] {
+        let path = bookDirectory.appendingPathComponent(filename).path
+        #expect(FileManager.default.fileExists(atPath: path))
+    }
+
+    let metadata = try await actor.debugScanLibrary(in: root)
+    let book = try #require(metadata.first { $0.title == "The Last Contract" })
+    #expect(book.ebook != nil)
+    #expect(book.audiobook != nil)
+}
+
+@Test func folderSourceImportNamesAssetsAfterBookInSubfolderLayout() async throws {
+    let root = try makeTemporaryFolderSource()
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let source = BookSourceRecord(
+        id: "folder-import-subfolders-\(UUID().uuidString)",
+        name: "Folder",
+        kind: .localFolder,
+        capabilities: .localFolder,
+        storagePath: root.path,
+    )
+    let actor = FolderSourceActor(sourceRecord: source)
+
+    try await actor.debugImportBookAssets(
+        in: root,
+        bookUUID: UUID().uuidString,
+        bookName: "A New Book.epub",
+        ebook: StorytellerUploadAsset(
+            format: .ebook,
+            filename: "23AC1A2B-0499-4B36-892A-246E786CF00E.epub",
+            data: Data([0]),
+        ),
+        audiobooks: [
+            StorytellerUploadAsset(
+                format: .audiobook,
+                filename: "A New Book (Unabridged).m4b",
+                data: Data([0]),
+                contentType: "audio/mp4",
+            )
+        ],
+        readaloud: StorytellerUploadAsset(
+            format: .readaloud,
+            filename: "23AC1A2B-0499-4B36-892A-246E786CF00E.epub",
+            data: Data([0]),
+        ),
+    )
+
+    let bookDirectory = root.appendingPathComponent("A New Book", isDirectory: true)
+    for relativePath in [
+        "ebook/A New Book.epub",
+        "audio/A New Book.m4b",
+        "synced/A New Book readaloud.epub",
+    ] {
+        let path = bookDirectory.appendingPathComponent(relativePath).path
+        #expect(FileManager.default.fileExists(atPath: path))
+    }
+
+    let metadata = try await actor.debugScanLibrary(in: root)
+    let book = try #require(metadata.first { $0.title == "A New Book" })
+    #expect(book.ebook != nil)
+    #expect(book.audiobook != nil)
+    #expect(book.readaloud != nil)
+}
+
 @Test func folderSourceDeletePathValidationRejectsEscapes() async throws {
     let root = try makeTemporaryFolderSource()
     defer { try? FileManager.default.removeItem(at: root) }

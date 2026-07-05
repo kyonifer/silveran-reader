@@ -431,26 +431,73 @@ public actor FolderSourceActor: BookSourceActor {
         audiobooks: [StorytellerUploadAsset] = [],
         readaloud: StorytellerUploadAsset? = nil,
     ) async throws {
+        let resolved = try await resolvedFolderURL()
+        defer { stopAccessing(resolved) }
+        try await importBookAssets(
+            bookUUID: bookUUID,
+            bookName: bookName,
+            ebook: ebook,
+            audiobooks: audiobooks,
+            readaloud: readaloud,
+            root: resolved.url,
+        )
+    }
+
+    func debugImportBookAssets(
+        in folderURL: URL,
+        bookUUID: String,
+        bookName: String,
+        ebook: StorytellerUploadAsset? = nil,
+        audiobooks: [StorytellerUploadAsset] = [],
+        readaloud: StorytellerUploadAsset? = nil,
+    ) async throws {
+        try await importBookAssets(
+            bookUUID: bookUUID,
+            bookName: bookName,
+            ebook: ebook,
+            audiobooks: audiobooks,
+            readaloud: readaloud,
+            root: folderURL,
+        )
+    }
+
+    private func importBookAssets(
+        bookUUID: String,
+        bookName: String,
+        ebook: StorytellerUploadAsset?,
+        audiobooks: [StorytellerUploadAsset],
+        readaloud: StorytellerUploadAsset?,
+        root: URL,
+    ) async throws {
         guard ebook != nil || !audiobooks.isEmpty || readaloud != nil else {
             throw LocalMediaError.importFailed("No assets selected")
         }
 
-        let resolved = try await resolvedFolderURL()
-        defer { stopAccessing(resolved) }
-
         if stateCache == nil {
-            _ = try await scanLibrary(in: resolved.url)
+            _ = try await scanLibrary(in: root)
         }
 
         // An existing book reuses its on-disk placement; a new book gets a fresh directory using the
         // folder's prevailing layout.
+        let existingPlacement = writePlacement(for: bookUUID, root: root)
+        let newBookStem = assetFilenameStem(forNewBookTitled: bookName)
         let placement =
-            writePlacement(for: bookUUID, root: resolved.url)
-            ?? defaultWritePlacement(forNewBookTitled: bookName, root: resolved.url)
+            existingPlacement
+            ?? defaultWritePlacement(forNewBookTitled: newBookStem, root: root)
+
+        // Incoming filenames are whatever the origin used (storyteller, for one, caches epubs
+        // under work UUIDs but audio under human-readable names), and same-folder layouts group
+        // media into works by filename stem. Rewrite every asset onto one stem so the scan sees a
+        // single work: the book title for a new book, or the stem of the already-present files for
+        // an existing one.
+        let stem =
+            existingPlacement == nil
+            ? newBookStem
+            : existingAssetFilenameStem(forBook: bookUUID) ?? newBookStem
 
         if let ebook {
             _ = try await writeAsset(
-                ebook,
+                renamed(ebook, to: "\(stem).\(fileExtension(for: ebook))"),
                 to: destinationDirectory(for: .ebook, placement: placement),
             )
         }
@@ -461,8 +508,14 @@ public actor FolderSourceActor: BookSourceActor {
 
             var usedFilenames: Set<String> = []
             for audiobook in audiobooks {
+                // Multi-track audiobooks keep their original names as a suffix: tracks stay
+                // distinct and their name-sorted playback order survives the rename.
+                let filename =
+                    audiobooks.count == 1
+                    ? "\(stem).\(fileExtension(for: audiobook))"
+                    : "\(stem) - \(preferredFilename(for: audiobook))"
                 _ = try await writeAsset(
-                    audiobook,
+                    renamed(audiobook, to: filename),
                     to: audioDirectory,
                     usedFilenames: &usedFilenames,
                 )
@@ -471,12 +524,12 @@ public actor FolderSourceActor: BookSourceActor {
 
         if let readaloud {
             _ = try await writeAsset(
-                readaloud,
+                renamed(readaloud, to: "\(stem) readaloud.\(fileExtension(for: readaloud))"),
                 to: destinationDirectory(for: .synced, placement: placement),
             )
         }
 
-        _ = try await scanLibrary(in: resolved.url)
+        _ = try await scanLibrary(in: root)
     }
 
     public func replaceAsset(
@@ -1413,6 +1466,45 @@ public actor FolderSourceActor: BookSourceActor {
         let filename = asset.filename.isEmpty ? fallback : asset.filename
         let lastPathComponent = URL(fileURLWithPath: filename).lastPathComponent
         return lastPathComponent.isEmpty ? fallback : lastPathComponent
+    }
+
+    private func renamed(
+        _ asset: StorytellerUploadAsset,
+        to filename: String,
+    ) -> StorytellerUploadAsset {
+        StorytellerUploadAsset(
+            format: asset.format,
+            filename: filename,
+            data: asset.data,
+            contentType: asset.contentType,
+            relativePath: asset.relativePath,
+        )
+    }
+
+    private func fileExtension(for asset: StorytellerUploadAsset) -> String {
+        let ext = URL(fileURLWithPath: preferredFilename(for: asset)).pathExtension
+        return ext.isEmpty ? defaultExtension(for: asset) : ext
+    }
+
+    /// Filename stem for a new book's assets. Some callers derive the title from an asset's
+    /// filename, so a trailing media extension is stripped to avoid names like "Book.epub.epub".
+    private func assetFilenameStem(forNewBookTitled title: String) -> String {
+        let sanitized = sanitizedDirectoryName(from: title)
+        let url = URL(fileURLWithPath: sanitized)
+        let ext = url.pathExtension.lowercased()
+        guard ext == "epub" || ext == "cbz" || audiobookMediaExtensions.contains(ext) else {
+            return sanitized
+        }
+        return nonEmpty(url.deletingPathExtension().lastPathComponent) ?? sanitized
+    }
+
+    /// Filename stem shared by a book's files already on disk, so newly written assets join the
+    /// same scan group instead of introducing a second stem.
+    private func existingAssetFilenameStem(forBook bookID: String) -> String? {
+        let media = mediaForWork(bookID: bookID)
+        let preferred = media[.ebook] ?? media[.readaloud] ?? media[.audio]
+        guard let path = preferred?.relativePaths.first else { return nil }
+        return nonEmpty(URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent)
     }
 
     private func uniqueAvailableFileURL(
