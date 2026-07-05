@@ -1,10 +1,6 @@
 // swift-tools-version: 6.2
 import PackageDescription
 
-// App shell for the Linux build. This package is never consumed as a dependency,
-// so the branch-based swift-cross-ui requirement is legal here (SwiftPM forbids
-// unversioned dependencies in transitive position, which is why it cannot live
-// in the root manifest).
 let package = Package(
     name: "SilveranLinuxApp",
     platforms: [.macOS(.v15)],
@@ -12,18 +8,45 @@ let package = Package(
         .executable(name: "SilveranLinuxApp", targets: ["SilveranLinuxApp"])
     ],
     dependencies: [
-        .package(path: ".."),
-        .package(url: "https://github.com/stackotter/swift-cross-ui.git", branch: "main"),
+        .package(name: "Silveran", path: ".."),
+        .package(
+            url: "https://github.com/moreSwift/swift-cross-ui.git",
+            .upToNextMinor(from: "0.8.0"),
+        ),
     ],
     targets: [
         .executableTarget(
             name: "SilveranLinuxApp",
             dependencies: [
-                .product(name: "SilveranKit", package: "silveran-reader"),
+                .product(name: "SilveranKit", package: "Silveran"),
                 .product(name: "SwiftCrossUI", package: "swift-cross-ui"),
                 .product(name: "DefaultBackend", package: "swift-cross-ui"),
+                .product(
+                    name: "Gtk",
+                    package: "swift-cross-ui",
+                    condition: .when(platforms: [.linux]),
+                ),
+                .product(
+                    name: "GtkBackend",
+                    package: "swift-cross-ui",
+                    condition: .when(platforms: [.linux]),
+                ),
+                .target(name: "CWebKitGTK", condition: .when(platforms: [.linux])),
+                .target(name: "CMpv", condition: .when(platforms: [.linux])),
             ],
-            path: "Sources",
-        )
+            path: "Sources/SilveranLinuxApp",
+        ),
+        .systemLibrary(
+            name: "CWebKitGTK",
+            path: "Sources/CWebKitGTK",
+            pkgConfig: "webkitgtk-6.0",
+            providers: [.apt(["libwebkitgtk-6.0-dev"])],
+        ),
+        .systemLibrary(
+            name: "CMpv",
+            path: "Sources/CMpv",
+            pkgConfig: "mpv",
+            providers: [.apt(["libmpv-dev"])],
+        ),
     ],
 )

@@ -1,5 +1,9 @@
 import Foundation
 
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+
 public enum HTTPRequestError: Error {
     case invalidURL(String)
     case malformedResponse

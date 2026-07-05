@@ -5,6 +5,8 @@ xcshareddata/swiftpm/Package.resolved
 *.swp
 *.lock
 .build*
+LinuxApp/.cache-container/
+LinuxApp/.cache-docker/
 Packages/
 .swiftpm/configuration/registries.json
 .swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata

@@ -1,6 +1,10 @@
 import Foundation
 import ZIPFoundation
 
+#if canImport(FoundationXML)
+import FoundationXML
+#endif
+
 public enum SMILParserError: Error {
     case failedToOpenArchive(String)
     case containerNotFound

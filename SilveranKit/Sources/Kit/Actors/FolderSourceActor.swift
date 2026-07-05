@@ -39,7 +39,9 @@ public actor FolderSourceActor: BookSourceActor {
 
     deinit {
         if activeFolderAccessDidStart {
+            #if !os(Linux)
             activeFolderAccessURL?.stopAccessingSecurityScopedResource()
+            #endif
         }
     }
 
@@ -295,7 +297,9 @@ public actor FolderSourceActor: BookSourceActor {
 
     public func closeFolderAccess() {
         if activeFolderAccessDidStart {
+            #if !os(Linux)
             activeFolderAccessURL?.stopAccessingSecurityScopedResource()
+            #endif
         }
         activeFolderAccessURL = nil
         activeFolderAccessDidStart = false
@@ -1677,7 +1681,9 @@ public actor FolderSourceActor: BookSourceActor {
 
     private func stopAccessing(_ resolved: (url: URL, didStartAccessing: Bool)) {
         if resolved.didStartAccessing {
+            #if !os(Linux)
             resolved.url.stopAccessingSecurityScopedResource()
+            #endif
         }
     }
 

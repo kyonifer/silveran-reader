@@ -1,5 +1,8 @@
 import Foundation
 
+#if canImport(CoreFoundation)
+import CoreFoundation
+#endif
 #if canImport(FoundationNetworking)
 import FoundationNetworking
 #endif

@@ -1,5 +1,9 @@
 import Foundation
 
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+
 public struct ProgressUploadRequest: Sendable {
     public let request: URLRequest
     public let body: Data
@@ -49,13 +53,19 @@ public actor ProgressUploadManager {
 
     private let delegate = ProgressUploadDelegate()
     private lazy var uploadSession: URLSession = {
+        #if os(Linux)
+        let config = URLSessionConfiguration.default
+        #else
         let config = URLSessionConfiguration.background(withIdentifier: Self.sessionIdentifier)
+        #endif
+        #if !os(Linux)
         config.waitsForConnectivity = true
         config.sessionSendsLaunchEvents = true
         config.allowsCellularAccess = true
+        config.isDiscretionary = false
+        #endif
         config.timeoutIntervalForRequest = 60
         config.timeoutIntervalForResource = 12 * 3600
-        config.isDiscretionary = false
 
         return URLSession(
             configuration: config,

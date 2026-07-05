@@ -1,5 +1,12 @@
 import Foundation
 
+#if canImport(CoreFoundation)
+import CoreFoundation
+#endif
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+
 final class DownloadManagerDelegate: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
     private let queue = DispatchQueue(label: "com.kyonifer.silveran.download-manager-delegate")
     private var taskToDownloadId: [Int: String] = [:]
@@ -118,7 +125,11 @@ final class DownloadManagerDelegate: NSObject, URLSessionDownloadDelegate, @unch
         guard let error else { return }
         guard let id = removeTask(task) else { return }
 
+        #if os(Linux)
+        let resumeData: Data? = nil
+        #else
         let resumeData = (error as NSError).userInfo[NSURLSessionDownloadTaskResumeData] as? Data
+        #endif
 
         Task {
             await DownloadManager.shared.handleFailure(

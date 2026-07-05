@@ -1,6 +1,9 @@
 import Foundation
 import ZIPFoundation
 
+#if canImport(CoreFoundation)
+import CoreFoundation
+#endif
 #if canImport(FoundationNetworking)
 import FoundationNetworking
 #endif
@@ -3113,7 +3116,9 @@ private final class StorytellerDownloadDelegate: NSObject, URLSessionDownloadDel
         return removed
     }
 
+    #if canImport(ObjectiveC)
     @objc(urlSession:downloadTask:didReceiveResponse:completionHandler:)
+    #endif
     private func handleDownloadResponse(
         _ session: URLSession,
         downloadTask: URLSessionDownloadTask,
@@ -3256,7 +3261,9 @@ private final class StorytellerDownloadDelegate: NSObject, URLSessionDownloadDel
         }
     }
 
+    #if canImport(ObjectiveC)
     @objc(urlSession:task:didReceiveResponse:completionHandler:)
+    #endif
     func handleTaskResponse(
         _ session: URLSession,
         task: URLSessionTask,

@@ -1,5 +1,9 @@
 import Foundation
 
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+
 public actor DownloadManager {
     public static let shared = DownloadManager()
 
@@ -15,10 +19,16 @@ public actor DownloadManager {
         identifier = "com.kyonifer.silveran.downloads"
         #endif
 
+        #if os(Linux)
+        let config = URLSessionConfiguration.default
+        #else
         let config = URLSessionConfiguration.background(withIdentifier: identifier)
+        #endif
+        #if !os(Linux)
         config.waitsForConnectivity = true
         config.sessionSendsLaunchEvents = true
         config.allowsCellularAccess = true
+        #endif
         config.timeoutIntervalForRequest = 60
         config.timeoutIntervalForResource = 3600
 

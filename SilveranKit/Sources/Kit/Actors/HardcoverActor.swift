@@ -1,5 +1,9 @@
 import Foundation
 
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+
 public struct HardcoverSearchResult: Sendable, Identifiable {
     public let id: Int
     public let title: String
