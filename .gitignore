@@ -12,7 +12,7 @@ Packages/
 .swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
 DerivedData/
 .netrc
-XCodeWrapper/Configs/Local.xcconfig
+XCodeApps/Configs/Local.xcconfig
 .vscode/
 *.xcodeproj/
 .build/
@@ -20,10 +20,11 @@ Package.resolved
 !/Package.resolved
 .cache
 icon*.png
-XCodeWrapper/Assets.xcassets/AppIcon.appiconset/*.png
-XCodeWrapper/WatchAssets.xcassets/AppIcon.appiconset/*.png
-XCodeWrapper/TVAssets.xcassets/**/*.png
-XCodeWrapper/Info-iOS.plist
-XCodeWrapper/Info-macOS.plist
-XCodeWrapper/Info-tvOS.plist
-XCodeWrapper/Info-watchOS.plist
+XCodeApps/Assets.xcassets/AppIcon.appiconset/*.png
+XCodeApps/WatchAssets.xcassets/AppIcon.appiconset/*.png
+XCodeApps/TVAssets.xcassets/**/*.png
+XCodeApps/Info-iOS.plist
+XCodeApps/Info-macOS.plist
+XCodeApps/Info-tvOS.plist
+XCodeApps/Info-watchOS.plist
+!XCodeApps/Info-tvOS.plist

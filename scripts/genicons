@@ -5,9 +5,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")" && pwd)"
 cd "${SCRIPT_DIR}/.."
 
-ASSETS_DIR="XCodeWrapper/Assets.xcassets/AppIcon.appiconset"
-WATCH_ASSETS_DIR="XCodeWrapper/WatchAssets.xcassets/AppIcon.appiconset"
-TV_ASSETS_DIR="XCodeWrapper/TVAssets.xcassets/App Icon.brandassets"
+ASSETS_DIR="XCodeApps/Assets.xcassets/AppIcon.appiconset"
+WATCH_ASSETS_DIR="XCodeApps/WatchAssets.xcassets/AppIcon.appiconset"
+TV_ASSETS_DIR="XCodeApps/TVAssets.xcassets/App Icon.brandassets"
 ORIG_ICON="SilveranKit/Sources/AppleKit/Resources/assets/icons/app_icon_orig.png"
 MAC_MASK="SilveranKit/Sources/AppleKit/Resources/assets/icons/macos_icon_mask.png"
 

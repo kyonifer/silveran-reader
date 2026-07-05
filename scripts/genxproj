@@ -3,4 +3,4 @@
 SCRIPT_DIR="$(cd -- "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")" && pwd)"
 cd "${SCRIPT_DIR}/.."
 
-xcodegen -r . -p . -s XCodeWrapper/project.yml
+xcodegen -r . -p . -s XCodeApps/project.yml

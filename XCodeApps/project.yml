@@ -17,8 +17,8 @@ targetTemplates:
     type: application
     productName: "Silveran Reader"
     configFiles:
-      Debug: XCodeWrapper/Configs/Debug.xcconfig
-      Release: XCodeWrapper/Configs/Release.xcconfig
+      Debug: XCodeApps/Configs/Debug.xcconfig
+      Release: XCodeApps/Configs/Release.xcconfig
     settings:
       base:
         CURRENT_PROJECT_VERSION: 1
@@ -38,15 +38,15 @@ targets:
       base:
         MACOSX_DEPLOYMENT_TARGET: 15.0
         ENABLE_HARDENED_RUNTIME: YES
-        CODE_SIGN_ENTITLEMENTS: XCodeWrapper/SilveranReaderMac.entitlements
-        INFOPLIST_FILE: XCodeWrapper/Info-macOS.plist
+        CODE_SIGN_ENTITLEMENTS: XCodeApps/SilveranReaderMac.entitlements
+        INFOPLIST_FILE: XCodeApps/Info-macOS.plist
         PRODUCT_BUNDLE_IDENTIFIER: "$(APP_BUNDLE_ID)"
         #INFOPLIST_KEY_CFBundleDisplayName: Silveran Reader
         #INFOPLIST_KEY_CFBundleName: Silveran Reader
         # Unknown why this redundant definition is needed for XCode to honor the app name
         #SWIFT_UPCOMING_FEATURE_NONSENDING_NONISOLATING_BY_DEFAULT: YES
     info:
-      path: XCodeWrapper/Info-macOS.plist
+      path: XCodeApps/Info-macOS.plist
       properties:
         CFBundleName: "Silveran Reader"
         CFBundleIdentifier: "$(PRODUCT_BUNDLE_IDENTIFIER)"
@@ -61,12 +61,12 @@ targets:
         ITSAppUsesNonExemptEncryption: false
         ATSApplicationFontsPath: "fonts"
     sources:
-      - path: XCodeWrapper
+      - path: XCodeApps
         includes:
           - "**/*.swift"
-      - path: XCodeWrapper/Assets.xcassets
+      - path: XCodeApps/Assets.xcassets
         type: assetcatalog
-      - path: XCodeWrapper/PrivacyInfo.xcprivacy
+      - path: XCodeApps/PrivacyInfo.xcprivacy
         buildPhase: resources
     dependencies:
       - package: Silveran
@@ -83,16 +83,16 @@ targets:
     settings:
       base:
         IPHONEOS_DEPLOYMENT_TARGET: 18.0
-        CODE_SIGN_ENTITLEMENTS: XCodeWrapper/SilveranReaderIos.entitlements
+        CODE_SIGN_ENTITLEMENTS: XCodeApps/SilveranReaderIos.entitlements
         CODE_SIGN_STYLE: Automatic
-        INFOPLIST_FILE: XCodeWrapper/Info-iOS.plist
+        INFOPLIST_FILE: XCodeApps/Info-iOS.plist
         PRODUCT_BUNDLE_IDENTIFIER: "$(APP_BUNDLE_ID)"
         #INFOPLIST_KEY_CFBundleDisplayName: Silveran Reader
         #INFOPLIST_KEY_CFBundleName: Silveran Reader
         SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
         #SWIFT_UPCOMING_FEATURE_NONSENDING_NONISOLATING_BY_DEFAULT: YES
     info:
-      path: XCodeWrapper/Info-iOS.plist
+      path: XCodeApps/Info-iOS.plist
       properties:
         CFBundleName: "Silveran Reader"
         CFBundleDisplayName: "Silveran Reader"
@@ -128,12 +128,12 @@ targets:
               - UISceneConfigurationName: CarPlay
                 UISceneDelegateClassName: SilveranAppleKit.CarPlaySceneDelegate
     sources:
-      - path: XCodeWrapper
+      - path: XCodeApps
         includes:
           - "**/*.swift"
-      - path: XCodeWrapper/Assets.xcassets
+      - path: XCodeApps/Assets.xcassets
         type: assetcatalog
-      - path: XCodeWrapper/PrivacyInfo.xcprivacy
+      - path: XCodeApps/PrivacyInfo.xcprivacy
         buildPhase: resources
     dependencies:
       - package: Silveran
@@ -149,13 +149,13 @@ targets:
     settings:
       base:
         WATCHOS_DEPLOYMENT_TARGET: 10.0
-        CODE_SIGN_ENTITLEMENTS: XCodeWrapper/SilveranReaderWatch.entitlements
+        CODE_SIGN_ENTITLEMENTS: XCodeApps/SilveranReaderWatch.entitlements
         CODE_SIGN_STYLE: Automatic
-        INFOPLIST_FILE: XCodeWrapper/Info-watchOS.plist
+        INFOPLIST_FILE: XCodeApps/Info-watchOS.plist
         PRODUCT_BUNDLE_IDENTIFIER: "$(WATCH_APP_BUNDLE_ID)"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     info:
-      path: XCodeWrapper/Info-watchOS.plist
+      path: XCodeApps/Info-watchOS.plist
       properties:
         CFBundleName: "Silveran Reader"
         CFBundleDisplayName: "Silveran Reader"
@@ -171,8 +171,8 @@ targets:
           - audio
         WKCompanionAppBundleIdentifier: "$(APP_BUNDLE_ID)"
     sources:
-      - path: XCodeWrapper/EntryPointStub.swift
-      - path: XCodeWrapper/WatchAssets.xcassets
+      - path: XCodeApps/EntryPointStub.swift
+      - path: XCodeApps/WatchAssets.xcassets
         type: assetcatalog
     dependencies:
       - package: Silveran
@@ -184,13 +184,13 @@ targets:
     settings:
       base:
         TVOS_DEPLOYMENT_TARGET: 17.0
-        CODE_SIGN_ENTITLEMENTS: XCodeWrapper/SilveranReaderTV.entitlements
+        CODE_SIGN_ENTITLEMENTS: XCodeApps/SilveranReaderTV.entitlements
         CODE_SIGN_STYLE: Automatic
-        INFOPLIST_FILE: XCodeWrapper/Info-tvOS.plist
+        INFOPLIST_FILE: XCodeApps/Info-tvOS.plist
         PRODUCT_BUNDLE_IDENTIFIER: "$(APP_BUNDLE_ID)"
         ASSETCATALOG_COMPILER_APPICON_NAME: "App Icon"
     info:
-      path: XCodeWrapper/Info-tvOS.plist
+      path: XCodeApps/Info-tvOS.plist
       properties:
         CFBundleName: "Silveran Reader"
         CFBundleDisplayName: "Silveran Reader"
@@ -208,8 +208,8 @@ targets:
           - audio
         ITSAppUsesNonExemptEncryption: false
     sources:
-      - path: XCodeWrapper/EntryPointStub.swift
-      - path: XCodeWrapper/TVAssets.xcassets
+      - path: XCodeApps/EntryPointStub.swift
+      - path: XCodeApps/TVAssets.xcassets
         type: assetcatalog
     dependencies:
       - package: Silveran
