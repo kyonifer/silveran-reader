@@ -13,7 +13,7 @@ class SilveranAppDelegate: NSObject, UIApplicationDelegate {
     ) -> Bool {
         BGTaskScheduler.shared.register(
             forTaskWithIdentifier: Self.progressSyncTaskIdentifier,
-            using: nil,
+            using: DispatchQueue.main,
         ) { task in
             guard let refreshTask = task as? BGAppRefreshTask else {
                 task.setTaskCompleted(success: false)
