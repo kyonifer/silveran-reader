@@ -44,7 +44,7 @@ public actor FolderSourceActor: BookSourceActor {
         folderWatchToken?.cancel()
         folderChangeRescanTask?.cancel()
         if activeFolderAccessDidStart {
-            #if !os(Linux)
+            #if canImport(Darwin)
             activeFolderAccessURL?.stopAccessingSecurityScopedResource()
             #endif
         }
@@ -348,7 +348,7 @@ public actor FolderSourceActor: BookSourceActor {
         folderWatchToken?.cancel()
         folderWatchToken = nil
         if activeFolderAccessDidStart {
-            #if !os(Linux)
+            #if canImport(Darwin)
             activeFolderAccessURL?.stopAccessingSecurityScopedResource()
             #endif
         }
@@ -1869,7 +1869,7 @@ public actor FolderSourceActor: BookSourceActor {
 
     private func stopAccessing(_ resolved: (url: URL, didStartAccessing: Bool)) {
         if resolved.didStartAccessing {
-            #if !os(Linux)
+            #if canImport(Darwin)
             resolved.url.stopAccessingSecurityScopedResource()
             #endif
         }

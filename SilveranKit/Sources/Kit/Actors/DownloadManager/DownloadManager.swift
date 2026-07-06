@@ -19,12 +19,12 @@ public actor DownloadManager {
         identifier = "com.kyonifer.silveran.downloads"
         #endif
 
-        #if os(Linux)
+        #if !canImport(Darwin)
         let config = URLSessionConfiguration.default
         #else
         let config = URLSessionConfiguration.background(withIdentifier: identifier)
         #endif
-        #if !os(Linux)
+        #if canImport(Darwin)
         config.waitsForConnectivity = true
         config.sessionSendsLaunchEvents = true
         config.allowsCellularAccess = true

@@ -16,7 +16,10 @@ let package = Package(
         .library(name: "SilveranReadaloud", targets: ["SilveranReadaloud"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/weichsel/ZIPFoundation.git", from: "0.9.0"),
+        // Fork pinned past 0.9.20: upstream's development branch gained Android
+        // cross-compile support (platform-conditional CZLib + Bionic fixes) that
+        // no tagged release has yet. Repoint at upstream once a release includes it.
+        .package(url: "https://github.com/kyonifer/ZIPFoundation.git", revision: "187ee77287ea4b23df4d7de32771ec38bbafb840"),
         .package(url: "https://github.com/scinfu/SwiftSoup.git", from: "2.7.0"),
         .package(url: "https://github.com/kyonifer/StoryAlign.git", from: "1.2.4"),
         .package(url: "https://github.com/hummingbird-project/hummingbird.git", from: "2.0.0"),

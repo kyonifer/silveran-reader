@@ -29,6 +29,12 @@ Read [ARCHITECTURE.md](ARCHITECTURE.md) first. It maps the SwiftPM products, dep
 
 Not supported yet, but coming soon. You can try playing around with the `scripts/linuxbuild` and `linuxrun` if you want to, though.
 
+### Android (experimental)
+
+`scripts/androidbuild` cross-compiles the `SilveranAndroidCore` facade package (`AndroidApp/swift`) with the Swift SDK for Android, generates Kotlin-callable JNI bindings via swift-java's jextract plugin, stages the `.so` set into jniLibs, and assembles the debug APK. It needs a swift.org toolchain with the matching `swift sdk install` Android bundle (versions must match exactly; the Xcode toolchain cannot cross-compile), an Android SDK/NDK (default location `~/Library/Android/sdk`, override with `ANDROID_HOME`), and a host JDK 17+. Use `--swift-only` or `--apk-only` for partial builds.
+
+`scripts/androidrun` installs and launches the built APK, booting the first available emulator AVD if no device is connected (override with `SILVERAN_ANDROID_AVD`, or plug in a device with USB debugging enabled).
+
 ## SourceKit-LSP Completion
 
 If you are using SourceKit-LSP for code completion, run `scripts/initcompletion` once from the repo root; it builds `SilveranAppleKit` for macOS and the iOS simulator so the LSP has indexes for both.

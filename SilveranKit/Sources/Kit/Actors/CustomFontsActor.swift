@@ -103,14 +103,14 @@ public actor CustomFontsActor {
         let fileName = sourceURL.lastPathComponent
         let destinationURL = fontsDirectory.appendingPathComponent(fileName)
 
-        #if os(Linux)
+        #if !canImport(Darwin)
         let accessing = false
         #else
         let accessing = sourceURL.startAccessingSecurityScopedResource()
         #endif
         defer {
             if accessing {
-                #if !os(Linux)
+                #if canImport(Darwin)
                 sourceURL.stopAccessingSecurityScopedResource()
                 #endif
             }

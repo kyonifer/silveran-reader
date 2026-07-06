@@ -125,7 +125,7 @@ final class DownloadManagerDelegate: NSObject, URLSessionDownloadDelegate, @unch
         guard let error else { return }
         guard let id = removeTask(task) else { return }
 
-        #if os(Linux)
+        #if !canImport(Darwin)
         let resumeData: Data? = nil
         #else
         let resumeData = (error as NSError).userInfo[NSURLSessionDownloadTaskResumeData] as? Data

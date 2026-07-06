@@ -53,12 +53,12 @@ public actor ProgressUploadManager {
 
     private let delegate = ProgressUploadDelegate()
     private lazy var uploadSession: URLSession = {
-        #if os(Linux)
+        #if !canImport(Darwin)
         let config = URLSessionConfiguration.default
         #else
         let config = URLSessionConfiguration.background(withIdentifier: Self.sessionIdentifier)
         #endif
-        #if !os(Linux)
+        #if canImport(Darwin)
         config.waitsForConnectivity = true
         config.sessionSendsLaunchEvents = true
         config.allowsCellularAccess = true
