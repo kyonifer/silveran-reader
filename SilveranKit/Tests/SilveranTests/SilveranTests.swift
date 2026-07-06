@@ -830,58 +830,32 @@ private func makeTemporaryFolderSource() throws -> URL {
     let sources = [server, folder]
     let allPermitted: Set<BookSourceID> = ["server", "folder"]
 
-    let comic = makeCopyTestBook(sourceID: "other-folder", ebookFile: "comic.cbz")
-    #expect(
+    func destinations(
+        for book: BookMetadata,
+        uploadPermitted: Set<BookSourceID> = allPermitted,
+    ) -> [BookSourceID] {
         CopyDestinations.destinations(
-            for: comic,
+            for: book,
             sources: sources,
-            uploadPermittedSourceIDs: allPermitted,
-        ).map(\.id) == ["folder"]
-    )
+            uploadPermittedSourceIDs: uploadPermitted,
+        ).map(\.id)
+    }
+
+    let comic = makeCopyTestBook(sourceID: "other-folder", ebookFile: "comic.cbz")
+    #expect(destinations(for: comic) == ["folder"])
 
     let epub = makeCopyTestBook(sourceID: "other-folder", ebookFile: "book.epub")
-    #expect(
-        CopyDestinations.destinations(
-            for: epub,
-            sources: sources,
-            uploadPermittedSourceIDs: allPermitted,
-        ).map(\.id) == ["server", "folder"]
-    )
-
-    #expect(
-        CopyDestinations.destinations(
-            for: epub,
-            sources: sources,
-            uploadPermittedSourceIDs: ["folder"],
-        ).map(\.id) == ["folder"]
-    )
+    #expect(destinations(for: epub) == ["server", "folder"])
+    #expect(destinations(for: epub, uploadPermitted: ["folder"]) == ["folder"])
 
     let fromServer = makeCopyTestBook(sourceID: "server", ebookFile: "book.epub")
-    #expect(
-        CopyDestinations.destinations(
-            for: fromServer,
-            sources: sources,
-            uploadPermittedSourceIDs: allPermitted,
-        ).map(\.id) == ["folder"]
-    )
+    #expect(destinations(for: fromServer) == ["folder"])
 
     let readaloudOnly = makeCopyTestBook(sourceID: "other-folder", hasReadaloud: true)
-    #expect(
-        CopyDestinations.destinations(
-            for: readaloudOnly,
-            sources: sources,
-            uploadPermittedSourceIDs: allPermitted,
-        ).map(\.id) == ["folder"]
-    )
+    #expect(destinations(for: readaloudOnly) == ["server", "folder"])
 
     let audiobookOnly = makeCopyTestBook(sourceID: "other-folder", hasAudiobook: true)
-    #expect(
-        CopyDestinations.destinations(
-            for: audiobookOnly,
-            sources: sources,
-            uploadPermittedSourceIDs: allPermitted,
-        ).map(\.id) == ["server", "folder"]
-    )
+    #expect(destinations(for: audiobookOnly) == ["server", "folder"])
 }
 
 private func makeCopyTestBook(

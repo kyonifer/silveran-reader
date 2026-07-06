@@ -460,13 +460,6 @@ public enum CopyDestinations {
             {
                 return false
             }
-            // Storyteller creates books only through its ebook/audiobook upload endpoint; a
-            // readaloud can be attached to a book afterwards but cannot found one by itself.
-            if record.kind == .storyteller,
-                book.ebook == nil, book.audiobook == nil, book.readaloud != nil
-            {
-                return false
-            }
             return true
         }
     }

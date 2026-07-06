@@ -1527,8 +1527,8 @@ public actor BookServiceActor {
         }
     }
 
-    /// Sources the logged-in user may upload books to right now: folders always, storyteller
-    /// servers when the user holds the server's book-update permission.
+    /// Sources the logged-in user may upload new books to right now: folders always, storyteller
+    /// servers when the user holds the server's book-create permission.
     public func uploadPermittedSourceIDs() async -> Set<BookSourceID> {
         await ensureSourceRegistryLoaded()
         var permitted: Set<BookSourceID> = []

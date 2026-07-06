@@ -52,6 +52,7 @@ public actor StorytellerActor {
     public var lastUpdateBookError: String?
     private var cachedStatuses: [BookStatus] = []
     public private(set) var connectionStatus: ConnectionStatus = .disconnected
+    private var cachedBookCreatePermission: Bool?
     private var cachedBookUpdatePermission: Bool?
 
     public var isConfigured: Bool {
@@ -599,16 +600,38 @@ public actor StorytellerActor {
         case error(String)
     }
 
-    /// Whether the logged-in user may create books on this server, for gating upload UI. A
-    /// definitive server answer is cached for the session. Unknown (not connected, or a transient
-    /// error) reports true so connection hiccups don't hide features; the upload itself will
-    /// surface the real failure.
+    /// Whether the logged-in user may create books on this server, for gating upload UI. The
+    /// server gates its new-book endpoints with `bookCreate` (`bookUpdate` only covers editing
+    /// existing books). A definitive server answer is cached for the session. Unknown (not
+    /// connected, or a transient error) reports true so connection hiccups don't hide features;
+    /// the upload itself will report the real failure.
     public func currentUserCanUploadBooks() async -> Bool {
+        if let cachedBookCreatePermission {
+            return cachedBookCreatePermission
+        }
+        guard connectionStatus == .connected else { return true }
+        switch await checkUserPermission(named: "bookCreate") {
+            case .allowed:
+                cachedBookCreatePermission = true
+                return true
+            case .denied:
+                cachedBookCreatePermission = false
+                return false
+            case .error:
+                return true
+        }
+    }
+
+    /// Whether the logged-in user definitively holds `bookUpdate`, which the replace-asset
+    /// endpoint is gated on. Unlike the menu-gating `currentUserCanUploadBooks`, unknown is NOT
+    /// treated as allowed: the caller is deciding whether to create a book that a later denial
+    /// would strand half-made, so only a server-confirmed yes passes. Definitive answers are
+    /// cached for the session.
+    public func currentUserCanUpdateBooks() async -> Bool {
         if let cachedBookUpdatePermission {
             return cachedBookUpdatePermission
         }
-        guard connectionStatus == .connected else { return true }
-        switch await checkBookUpdatePermission() {
+        switch await checkUserPermission(named: "bookUpdate") {
             case .allowed:
                 cachedBookUpdatePermission = true
                 return true
@@ -616,28 +639,40 @@ public actor StorytellerActor {
                 cachedBookUpdatePermission = false
                 return false
             case .error:
-                return true
+                return false
         }
     }
 
     /// Checks if the current user has the `bookUpdate` permission.
-    /// Server implementation: `storyteller/web/src/app/api/v2/user/route.ts`.
     public func checkBookUpdatePermission() async -> PermissionCheckResult {
+        await checkUserPermission(named: "bookUpdate")
+    }
+
+    /// Server implementation: `storyteller/applications/web/src/app/api/v2/user/route.ts`.
+    private func checkUserPermission(named permission: String) async -> PermissionCheckResult {
         guard let (baseURL, token) = await ensureAuthentication() else {
             return .error("Not connected to server")
         }
 
-        let result = await fetchBookUpdatePermission(baseURL: baseURL, token: token)
+        let result = await fetchUserPermission(named: permission, baseURL: baseURL, token: token)
         if case .error = result {
             guard let (retryURL, retryToken) = await ensureAuthentication(forceReauth: true) else {
                 return .error("Authentication failed")
             }
-            return await fetchBookUpdatePermission(baseURL: retryURL, token: retryToken)
+            return await fetchUserPermission(
+                named: permission,
+                baseURL: retryURL,
+                token: retryToken,
+            )
         }
         return result
     }
 
-    private func fetchBookUpdatePermission(baseURL: URL, token: AccessToken) async
+    private func fetchUserPermission(
+        named permission: String,
+        baseURL: URL,
+        token: AccessToken,
+    ) async
         -> PermissionCheckResult
     {
         let userURL = baseURL.appendingPathComponent("user")
@@ -658,7 +693,7 @@ public actor StorytellerActor {
 
             switch evaluateResponse(
                 response,
-                methodName: "checkBookUpdatePermission",
+                methodName: "checkUserPermission",
                 context: "user permissions",
             ) {
                 case .success:
@@ -672,11 +707,11 @@ public actor StorytellerActor {
             guard
                 let json = try? JSONSerialization.jsonObject(with: response.data) as? [String: Any],
                 let permissions = json["permissions"] as? [String: Any],
-                let bookUpdate = permissions["bookUpdate"] as? Bool
+                let granted = permissions[permission] as? Bool
             else {
                 return .error("Invalid response from server")
             }
-            return bookUpdate ? .allowed : .denied
+            return granted ? .allowed : .denied
         } catch {
             return .error(error.localizedDescription)
         }
@@ -2877,9 +2912,35 @@ extension StorytellerActor: BookSourceActor {
         collectionUUID: String?,
         onProgress: (@Sendable (Double) -> Void)?,
     ) async -> String? {
+        // A readaloud-only book goes straight through the new-book upload: the server's ingest
+        // scanner detects media overlays and registers the epub as the readaloud on its own, and
+        // the replace-asset phase below both needs the separate bookUpdate permission and would
+        // leave a stray created book behind if it failed.
+        if ebook == nil, audiobooks.isEmpty, let readaloud {
+            let uploaded = await uploadBookAssets(
+                bookUUID: bookUUID,
+                readaloud: readaloud,
+                collectionUUID: collectionUUID,
+                onProgress: onProgress,
+            )
+            return uploaded ? bookUUID : nil
+        }
+
         // The new-book upload endpoint classifies every epub as the ebook, so a pre-aligned readaloud
         // (also an epub) can't go through it because it would overwrite the ebook. Upload ebook + audiobook
         // there, then attach the readaloud through the format-aware replace-asset endpoint.
+        if readaloud != nil {
+            // The attach step needs bookUpdate where the create only needed bookCreate; failing
+            // it after phase 1 would leave a partial book behind, so refuse up front unless the
+            // server confirms the permission.
+            guard await currentUserCanUpdateBooks() else {
+                debugLog(
+                    "[StorytellerActor] acceptBook: bookUpdate not confirmed; refusing to create a book the readaloud attach could strand (\(bookUUID))"
+                )
+                return nil
+            }
+        }
+
         let ebookBytes = Int64(ebook?.data.count ?? 0)
         let audioBytes = audiobooks.reduce(Int64(0)) { $0 + Int64($1.data.count) }
         let readaloudBytes = Int64(readaloud?.data.count ?? 0)
