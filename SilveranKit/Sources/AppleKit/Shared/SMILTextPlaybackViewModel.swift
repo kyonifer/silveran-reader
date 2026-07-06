@@ -277,12 +277,6 @@ public final class SMILTextPlaybackViewModel: NSObject {
         let playingChanged = state.isPlaying != isPlaying
         let entryChanged = state.currentEntryIndex != currentEntryIndex
 
-        if entryChanged {
-            print(
-                "[TVDBG] handleStateUpdate entryChanged: \(currentEntryIndex) -> \(state.currentEntryIndex)"
-            )
-        }
-
         if playingChanged { isPlaying = state.isPlaying }
         if state.chapterElapsed != currentTime { currentTime = state.chapterElapsed }
         if sectionChanged { currentSectionIndex = state.currentSectionIndex }
@@ -396,9 +390,6 @@ public final class SMILTextPlaybackViewModel: NSObject {
                 targetSectionIndex = nextSectionIndex
                 targetEntryIndex = 0
             }
-            print(
-                "[TVDBG] nextSentence: current=\(position.entryIndex) target=\(targetEntryIndex) viewModel.currentEntryIndex=\(currentEntryIndex)"
-            )
             try? await SMILPlayerActor.shared.seekToEntry(
                 sectionIndex: targetSectionIndex,
                 entryIndex: targetEntryIndex,
@@ -438,9 +429,6 @@ public final class SMILTextPlaybackViewModel: NSObject {
             else {
                 return
             }
-            print(
-                "[TVDBG] previousSentence: current=\(position.entryIndex) target=\(targetEntryIndex) viewModel.currentEntryIndex=\(currentEntryIndex)"
-            )
             try? await SMILPlayerActor.shared.seekToEntry(
                 sectionIndex: targetSectionIndex,
                 entryIndex: targetEntryIndex,
@@ -593,11 +581,12 @@ public final class SMILTextPlaybackViewModel: NSObject {
         }
 
         let entry = section.mediaOverlay[targetIndex]
-        if let elementHTML = EPUBContentLoader.extractElement(
+        if let text = EPUBContentLoader.extractElementText(
             from: currentSectionHTML,
             elementId: entry.textId,
+            excludingNestedIds: Set(section.mediaOverlay.map { $0.textId }),
         ) {
-            return EPUBContentLoader.stripHTML(elementHTML)
+            return text
         }
 
         return ""

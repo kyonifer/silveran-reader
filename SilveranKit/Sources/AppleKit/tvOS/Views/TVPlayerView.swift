@@ -27,9 +27,8 @@ struct TVPlayerView: View {
     @State private var forceInstantScroll = false
     @State private var scrollDebounceTask: Task<Void, Never>?
     @State private var paragraphHeights: [Int: CGFloat] = [:]
+    @State private var paragraphTops: [Int: CGFloat] = [:]
     @State private var viewportHeight: CGFloat = 0
-    @State private var oversizedParagraphIndex = -1
-    @State private var oversizedAnchorY: CGFloat = 0
 
     @Environment(\.dismiss) private var dismiss
 
@@ -89,12 +88,10 @@ struct TVPlayerView: View {
                 viewModel.cleanup()
             }
             .onPlayPauseCommand {
-                print("[TVDBG] onPlayPauseCommand fired")
                 viewModel.playPause()
                 showControlsTemporarily()
             }
             .onChange(of: viewModel.isPlaying) { _, _ in
-                print("[TVDBG] isPlaying changed")
                 showControlsTemporarily()
             }
             .onExitCommand {
@@ -192,12 +189,10 @@ struct TVPlayerView: View {
                 if !showControls {
                     DirectionalPressButton(
                         onSelect: {
-                            print("[TVDBG] background onSelect called")
                             viewModel.playPause()
                             showControlsTemporarily()
                         },
                         onMove: { direction in
-                            print("[TVDBG] background onMove: \(direction)")
                             handleBackgroundMove(direction)
                         },
                     ) {
@@ -312,28 +307,45 @@ struct TVPlayerView: View {
     private var subtitleView: some View {
         ScrollViewReader { proxy in
             ScrollView(showsIndicators: false) {
-                LazyVStack(alignment: .leading, spacing: paragraphSpacing) {
+                // Non-lazy on purpose: scroll targeting needs real geometry for every
+                // paragraph. Lazy estimation made scrollTo land screens away from tall
+                // paragraphs and thrash without ever materializing the target.
+                VStack(alignment: .leading, spacing: paragraphSpacing) {
                     ForEach(viewModel.chapterParagraphs) { paragraph in
-                        paragraphView(paragraph)
-                            .onGeometryChange(for: CGFloat.self) { geometryProxy in
-                                geometryProxy.size.height
-                            } action: { height in
-                                paragraphHeights[paragraph.index] = height
-                            }
-                            .id(paragraph.index)
+                        ParagraphCell(
+                            paragraphIndex: paragraph.index,
+                            paragraphText: paragraph.text,
+                            activeEntryIndex: activeEntryIndex(in: paragraph),
+                            appearance: tvReaderAppearance,
+                            fontFamily: fontFamily,
+                            fontSize: subtitleFontSize,
+                        ) {
+                            AnyView(paragraphView(paragraph))
+                        }
+                        .equatable()
+                        .onGeometryChange(for: CGRect.self) { geometryProxy in
+                            geometryProxy.frame(in: .named("TVScrollViewport"))
+                        } action: { frame in
+                            paragraphHeights[paragraph.index] = frame.height
+                            paragraphTops[paragraph.index] = frame.minY
+                        }
+                        .id(paragraph.index)
                     }
                 }
                 .padding(.vertical, 600)
+                .id("chapter-\(viewModel.currentSectionIndex)")
             }
             .scrollDisabled(true)
+            .coordinateSpace(name: "TVScrollViewport")
             .onGeometryChange(for: CGFloat.self) { geometryProxy in
                 geometryProxy.size.height
             } action: { height in
                 viewportHeight = height
             }
             .onChange(of: viewModel.currentEntryIndex) { _, _ in
-                scrollToCurrent(proxy, animated: true)
+                let hadMeasuredGeometry = scrollToCurrent(proxy, animated: true)
                 scrollDebounceTask?.cancel()
+                guard !hadMeasuredGeometry else { return }
                 scrollDebounceTask = Task {
                     try? await Task.sleep(for: .milliseconds(500))
                     guard !Task.isCancelled else { return }
@@ -341,18 +353,17 @@ struct TVPlayerView: View {
                 }
             }
             .onChange(of: viewModel.chapterParagraphs.count) { _, _ in
-                oversizedParagraphIndex = -1
                 forceInstantScroll = true
                 DispatchQueue.main.async {
                     scrollToCurrent(proxy, animated: false, consumeForce: false)
                 }
             }
             .onChange(of: tvReaderAppearance.scrollMode) { _, _ in
-                oversizedParagraphIndex = -1
                 scrollToCurrent(proxy, animated: true)
             }
-            .onChange(of: viewModel.chapterTitle) { _, _ in
-                oversizedParagraphIndex = -1
+            .onChange(of: viewModel.currentSectionIndex) { _, _ in
+                paragraphHeights.removeAll()
+                paragraphTops.removeAll()
             }
         }
         .frame(maxWidth: textMaxWidth)
@@ -360,6 +371,14 @@ struct TVPlayerView: View {
         .offset(x: showControls ? -160 : 0)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .animation(.easeInOut(duration: 0.3), value: showControls)
+    }
+
+    private func activeEntryIndex(
+        in paragraph: SMILTextPlaybackViewModel.ChapterParagraph
+    ) -> Int {
+        viewModel.scrollTargetIndex(for: viewModel.currentEntryIndex) == paragraph.index
+            ? viewModel.currentEntryIndex
+            : -1
     }
 
     @ViewBuilder
@@ -962,9 +981,7 @@ struct TVPlayerView: View {
     }
 
     private func showControlsTemporarily() {
-        print("[TVDBG] showControlsTemporarily showControls=\(showControls)")
         if !showControls {
-            print("[TVDBG] setting showControls=true")
             showControls = true
         } else if focusedControl == nil {
             focusedControl = lastFocusedControl
@@ -992,20 +1009,26 @@ struct TVPlayerView: View {
         }
     }
 
+    // Returns whether the target paragraph had measured geometry, so callers can
+    // schedule a one-shot corrective scroll for the fresh-chapter case where the
+    // first scroll had to fall back to a centered anchor.
+    @discardableResult
     private func scrollToCurrent(
         _ proxy: ScrollViewProxy,
         animated: Bool = true,
         consumeForce: Bool = true,
-    ) {
+    ) -> Bool {
         guard
             let targetIndex = viewModel.scrollTargetIndex(
                 for: viewModel.currentEntryIndex
             )
         else {
-            return
+            return true
         }
+        let hadMeasuredGeometry =
+            paragraphHeights[targetIndex] != nil && viewportHeight > 0
         guard let anchor = resolvedScrollAnchor(for: targetIndex) else {
-            return
+            return hadMeasuredGeometry
         }
         let shouldAnimate = animated && !forceInstantScroll
         let action = { proxy.scrollTo(targetIndex, anchor: anchor) }
@@ -1023,13 +1046,15 @@ struct TVPlayerView: View {
         if forceInstantScroll && consumeForce {
             forceInstantScroll = false
         }
+        return hadMeasuredGeometry
     }
 
     // scrollTo(id, anchor: UnitPoint(0.5, a)) aligns the point a*paragraphHeight inside the
     // paragraph with the point a*viewportHeight in the viewport, so the content offset lands at
     // paragraphTop + a*(paragraphHeight - viewportHeight). Solving for a places the estimated
-    // sentence position at a chosen fraction of the viewport. Returns nil when the sentence is
-    // still comfortably visible and no scroll should happen.
+    // sentence position at a chosen fraction of the viewport. Returns nil when the current
+    // measured position is already comfortably visible, so word-cadence overlays step
+    // occasionally instead of animating on every entry.
     private func resolvedScrollAnchor(for paragraphIndex: Int) -> UnitPoint? {
         guard
             paragraphIndex >= 0,
@@ -1037,51 +1062,49 @@ struct TVPlayerView: View {
             let paragraphHeight = paragraphHeights[paragraphIndex],
             viewportHeight > 0
         else {
-            oversizedParagraphIndex = -1
             return .center
         }
         let paragraph = viewModel.chapterParagraphs[paragraphIndex]
+        let measuredTop = paragraphTops[paragraphIndex]
 
         if tvReaderAppearance.scrollMode == "sentence" {
-            oversizedParagraphIndex = -1
             guard let fraction = activeSentenceFraction(in: paragraph) else { return .center }
-            let anchor = centeredSentenceAnchor(
+            if let measuredTop {
+                let screenY = measuredTop + fraction * paragraphHeight
+                if screenY >= viewportHeight * 0.34 && screenY <= viewportHeight * 0.62 {
+                    return nil
+                }
+            }
+            return centeredSentenceAnchor(
                 sentenceCenter: fraction * paragraphHeight,
                 paragraphHeight: paragraphHeight,
             )
-            print(
-                "[TVDBG] scroll sentence idx=\(paragraphIndex) H=\(Int(paragraphHeight)) V=\(Int(viewportHeight)) frac=\(String(format: "%.2f", fraction)) anchorY=\(String(format: "%.2f", anchor.y))"
-            )
-            return anchor
         }
 
-        guard
-            paragraphHeight > viewportHeight,
-            let fraction = activeSentenceFraction(in: paragraph)
-        else {
-            oversizedParagraphIndex = -1
+        if paragraphHeight <= viewportHeight {
+            if let measuredTop,
+                measuredTop >= viewportHeight * 0.10,
+                measuredTop + paragraphHeight <= viewportHeight * 0.90
+            {
+                return nil
+            }
             return .center
         }
-        let sentenceCenter = fraction * paragraphHeight
-        if oversizedParagraphIndex == paragraphIndex {
-            let screenY = sentenceCenter - oversizedAnchorY * (paragraphHeight - viewportHeight)
+
+        guard let fraction = activeSentenceFraction(in: paragraph) else { return .center }
+        if let measuredTop {
+            let screenY = measuredTop + fraction * paragraphHeight
             if screenY >= viewportHeight * 0.36 && screenY <= viewportHeight * 0.70 {
                 return nil
             }
-            print(
-                "[TVDBG] scroll jump idx=\(paragraphIndex) H=\(Int(paragraphHeight)) V=\(Int(viewportHeight)) screenY=\(Int(screenY)) out of band"
-            )
-        } else {
-            print(
-                "[TVDBG] scroll enter idx=\(paragraphIndex) H=\(Int(paragraphHeight)) V=\(Int(viewportHeight)) frac=\(String(format: "%.2f", fraction))"
-            )
         }
-        oversizedParagraphIndex = paragraphIndex
-        oversizedAnchorY = jumpAnchorY(
-            sentenceCenter: sentenceCenter,
-            paragraphHeight: paragraphHeight,
+        return UnitPoint(
+            x: 0.5,
+            y: jumpAnchorY(
+                sentenceCenter: fraction * paragraphHeight,
+                paragraphHeight: paragraphHeight,
+            ),
         )
-        return UnitPoint(x: 0.5, y: oversizedAnchorY)
     }
 
     // Estimates where the active sentence sits vertically in its paragraph by character
@@ -1156,6 +1179,31 @@ struct TVPlayerView: View {
         }
     }
 
+}
+
+// Skips re-rendering paragraphs untouched by an entry change. With a non-lazy stack every
+// paragraph exists at once, so without this every word tick would rebuild the whole chapter.
+private struct ParagraphCell: View, Equatable {
+    let paragraphIndex: Int
+    let paragraphText: String
+    let activeEntryIndex: Int
+    let appearance: SilveranGlobalConfig.Reading.TVReaderAppearance
+    let fontFamily: String
+    let fontSize: Double
+    let content: () -> AnyView
+
+    nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.paragraphIndex == rhs.paragraphIndex
+            && lhs.paragraphText == rhs.paragraphText
+            && lhs.activeEntryIndex == rhs.activeEntryIndex
+            && lhs.appearance == rhs.appearance
+            && lhs.fontFamily == rhs.fontFamily
+            && lhs.fontSize == rhs.fontSize
+    }
+
+    var body: some View {
+        content()
+    }
 }
 
 private enum FocusedControl: Hashable {
@@ -1452,7 +1500,6 @@ private final class PressButton: UIButton {
                     {
                         verticalSwipeTriggered = true
                         let direction: MoveCommandDirection = translation.y < 0 ? .up : .down
-                        print("[TVDBG] vertical swipe -> onMove \(direction)")
                         onMove?(direction)
                         return
                     }
@@ -1494,40 +1541,30 @@ private final class PressButton: UIButton {
 
     override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
         for press in presses {
-            print("[TVDBG] pressesBegan type=\(press.type.rawValue)")
             switch press.type {
                 case .leftArrow:
-                    print("[TVDBG] leftArrow -> onMove")
                     onMove?(.left)
                     return
                 case .rightArrow:
-                    print("[TVDBG] rightArrow -> onMove")
                     onMove?(.right)
                     return
                 case .playPause:
-                    print("[TVDBG] playPause onPlayPause=\(onPlayPause == nil ? "nil" : "set")")
                     if let onPlayPause {
-                        print("[TVDBG] calling onPlayPause")
                         onPlayPause()
                         return
                     }
                 case .select:
-                    print("[TVDBG] select -> fallthrough")
                     break
                 case .upArrow:
-                    print("[TVDBG] upArrow -> onMove")
                     onMove?(.up)
                     return
                 case .downArrow:
-                    print("[TVDBG] downArrow -> onMove")
                     onMove?(.down)
                     return
                 default:
-                    print("[TVDBG] unknown type=\(press.type.rawValue)")
                     break
             }
         }
-        print("[TVDBG] calling super.pressesBegan")
         super.pressesBegan(presses, with: event)
     }
 }

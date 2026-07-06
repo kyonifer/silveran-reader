@@ -92,9 +92,10 @@ public enum EPUBContentLoader {
             let doc = try SwiftSoup.parse(html)
             var textById: [String: String] = [:]
             var paragraphKeyById: [String: String] = [:]
-            for elementId in Set(elementIds) {
+            let idSet = Set(elementIds)
+            for elementId in idSet {
                 guard let element = try doc.getElementById(elementId) else { continue }
-                let text = try element.text()
+                let text = try entryOwnText(of: element, excludingNestedIds: idSet)
                 if !text.isEmpty {
                     textById[elementId] = text
                 }
@@ -106,6 +107,45 @@ public enum EPUBContentLoader {
             )
         } catch {
             return ElementTextExtraction(textById: [:], paragraphKeyById: [:])
+        }
+    }
+
+    /// Text of an entry element excluding descendants that are themselves entries.
+    /// Word-level media overlays (e.g. StoryAlign) nest each entry span inside the next,
+    /// so a plain text() would repeat every earlier word of the sentence.
+    public static func entryOwnText(
+        of element: Element,
+        excludingNestedIds entryIds: Set<String>,
+    ) throws -> String {
+        let nestedEntries = try element.select("[id]").filter { candidate in
+            candidate !== element && entryIds.contains(candidate.id())
+        }
+        guard !nestedEntries.isEmpty else {
+            return try element.text()
+        }
+        guard let clone = element.copy() as? Element else {
+            return try element.text()
+        }
+        for candidate in try clone.select("[id]")
+        where candidate !== clone && entryIds.contains(candidate.id()) {
+            try candidate.remove()
+        }
+        return try clone.text()
+    }
+
+    /// Plain text for one entry element, with the same nested-entry exclusion as
+    /// extractElementsTextAndParagraphKeys.
+    public static func extractElementText(
+        from html: String,
+        elementId: String,
+        excludingNestedIds entryIds: Set<String> = [],
+    ) -> String? {
+        do {
+            let doc = try SwiftSoup.parse(html)
+            guard let element = try doc.getElementById(elementId) else { return nil }
+            return try entryOwnText(of: element, excludingNestedIds: entryIds)
+        } catch {
+            return nil
         }
     }
 
