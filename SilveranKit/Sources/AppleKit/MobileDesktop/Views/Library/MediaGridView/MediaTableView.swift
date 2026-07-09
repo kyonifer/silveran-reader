@@ -62,7 +62,12 @@ private final class ImmediateSelectTableView: NSTableView {
         guard abs(remaining) > 1 else { return }
 
         isFitting = true
-        defer { isFitting = false }
+        let previousSuppression = suppressColumnWidthPersistence
+        suppressColumnWidthPersistence = true
+        defer {
+            suppressColumnWidthPersistence = previousSuppression
+            isFitting = false
+        }
 
         for column in visibleColumns.reversed() {
             guard abs(remaining) > 0.5 else { break }
@@ -503,6 +508,10 @@ struct MediaTableView: NSViewRepresentable {
 
         if !coordinator.visibleColumnIDs.isEmpty && newVisibleIDs != coordinator.visibleColumnIDs {
             if let immediateTable = tableView as? ImmediateSelectTableView {
+                let previousSuppression = immediateTable.suppressColumnWidthPersistence
+                immediateTable.suppressColumnWidthPersistence = true
+                defer { immediateTable.suppressColumnWidthPersistence = previousSuppression }
+
                 let savedWidths = loadColumnWidths()
                 for column in tableView.tableColumns where !column.isHidden {
                     let id = column.identifier.rawValue
@@ -738,19 +747,33 @@ struct MediaTableView: NSViewRepresentable {
             isHandlingColumnResize = true
             defer { isHandlingColumnResize = false }
 
-            (tv as? ImmediateSelectTableView)?.tile()
-
             let parent = self.parent
             let key = parent.columnWidthsKey
+            let currentWidths = parent.columnWidths(from: tv).mapValues { CGFloat($0) }
+            var idealWidths =
+                (tv as? ImmediateSelectTableView)?.activeIdealWidths
+                ?? parent.loadColumnWidths()
+
+            for (id, width) in currentWidths where idealWidths[id] == nil {
+                idealWidths[id] = width
+            }
+            if let resizedColumn = notification.userInfo?["NSTableColumn"] as? NSTableColumn {
+                idealWidths[resizedColumn.identifier.rawValue] = resizedColumn.width
+            } else {
+                idealWidths = currentWidths
+            }
+
+            (tv as? ImmediateSelectTableView)?.activeIdealWidths = idealWidths
+            (tv as? ImmediateSelectTableView)?.tile()
 
             saveWidthsWorkItem?.cancel()
+            let widthsToSave = idealWidths.mapValues { Double($0) }
             let work = DispatchWorkItem { [weak tv] in
                 MainActor.assumeIsolated {
                     guard let tv = tv else { return }
-                    let currentWidths = parent.columnWidths(from: tv)
-                    parent.saveColumnWidths(currentWidths, forKey: key)
+                    parent.saveColumnWidths(widthsToSave, forKey: key)
                     if let immediateTable = tv as? ImmediateSelectTableView {
-                        immediateTable.activeIdealWidths = currentWidths.mapValues { CGFloat($0) }
+                        immediateTable.activeIdealWidths = idealWidths
                     }
                 }
             }
