@@ -416,7 +416,7 @@ private struct SmallCoverWidgetView: View {
                                 weight: .semibold,
                             )
                         )
-                        .foregroundStyle(.white.opacity(0.72))
+                        .foregroundStyle(WidgetPalette.primaryText.opacity(0.72))
                     }
                 }
                 .frame(width: proxy.size.width, height: proxy.size.height)
@@ -483,7 +483,7 @@ private struct FocusedBookWidgetView: View {
                             .lineLimit(1)
                             Text(book.title)
                                 .font(.system(size: FocusedTypography.title, weight: .semibold))
-                                .foregroundStyle(.white)
+                                .foregroundStyle(WidgetPalette.primaryText)
                                 .lineLimit(2)
                                 .minimumScaleFactor(FocusedTypography.titleMinScale)
                         }
@@ -721,7 +721,7 @@ private struct CoverArtView: View {
                             weight: .semibold,
                         )
                     )
-                    .foregroundStyle(.white.opacity(0.72))
+                    .foregroundStyle(WidgetPalette.primaryText.opacity(0.72))
                 }
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
@@ -742,7 +742,7 @@ private struct ProgressStripView: View {
         HStack(spacing: 10) {
             GeometryReader { proxy in
                 ZStack(alignment: .leading) {
-                    Capsule().fill(.white.opacity(0.12))
+                    Capsule().fill(WidgetPalette.primaryText.opacity(0.12))
                     Capsule()
                         .fill(WidgetPalette.progress)
                         .frame(width: max(6, proxy.size.width * book.progress))
@@ -752,7 +752,7 @@ private struct ProgressStripView: View {
 
             Text("\(book.percentComplete)%")
                 .font(.system(size: FocusedTypography.percent, weight: .medium, design: .rounded))
-                .foregroundStyle(.white)
+                .foregroundStyle(WidgetPalette.primaryText)
                 .monospacedDigit()
                 .frame(minWidth: FocusedTypography.percentMinWidth, alignment: .trailing)
         }
@@ -819,7 +819,7 @@ private struct EmptyReadingWidgetView: View {
                 .foregroundStyle(WidgetPalette.secondaryText)
             Text("No books yet")
                 .font(.headline)
-                .foregroundStyle(.white)
+                .foregroundStyle(WidgetPalette.primaryText)
             Text("Add a book in Silveran Reader to see it here.")
                 .font(.caption)
                 .foregroundStyle(WidgetPalette.secondaryText)
@@ -837,15 +837,49 @@ private enum WidgetMetrics {
 private enum WidgetPalette {
     static let background = LinearGradient(
         colors: [
-            Color(red: 0.12, green: 0.12, blue: 0.13),
-            Color(red: 0.16, green: 0.16, blue: 0.17),
+            adaptiveColor(
+                light: (red: 0.97, green: 0.97, blue: 0.98),
+                dark: (red: 0.12, green: 0.12, blue: 0.13),
+            ),
+            adaptiveColor(
+                light: (red: 0.91, green: 0.91, blue: 0.93),
+                dark: (red: 0.16, green: 0.16, blue: 0.17),
+            ),
         ],
         startPoint: .topLeading,
         endPoint: .bottomTrailing,
     )
-    static let coverFallback = Color(red: 0.22, green: 0.23, blue: 0.25)
+    static let coverFallback = adaptiveColor(
+        light: (red: 0.82, green: 0.83, blue: 0.86),
+        dark: (red: 0.22, green: 0.23, blue: 0.25),
+    )
     static let progress = Color.accentColor
-    static let secondaryText = Color(red: 0.66, green: 0.66, blue: 0.74)
+    static let primaryText = Color.primary
+    static let secondaryText = Color.secondary
+
+    private static func adaptiveColor(
+        light: (red: CGFloat, green: CGFloat, blue: CGFloat),
+        dark: (red: CGFloat, green: CGFloat, blue: CGFloat),
+    ) -> Color {
+        #if canImport(UIKit)
+        Color(
+            uiColor: UIColor { traits in
+                let value = traits.userInterfaceStyle == .dark ? dark : light
+                return UIColor(red: value.red, green: value.green, blue: value.blue, alpha: 1)
+            }
+        )
+        #elseif canImport(AppKit)
+        Color(
+            nsColor: NSColor(name: nil) { appearance in
+                let bestMatch = appearance.bestMatch(from: [.darkAqua, .aqua])
+                let value = bestMatch == .darkAqua ? dark : light
+                return NSColor(red: value.red, green: value.green, blue: value.blue, alpha: 1)
+            }
+        )
+        #else
+        Color(red: light.red, green: light.green, blue: light.blue)
+        #endif
+    }
 }
 
 extension SilveranWidgetBookSnapshot {
