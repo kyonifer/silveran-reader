@@ -1020,13 +1020,6 @@ class FoliateManager {
     const contents = renderer.getContents?.();
     const sectionHref = this.#view.book?.sections?.[sectionIndex]?.id;
 
-    if (seekToLocation && sectionHref) {
-      debugLog("FoliateManager", `seekToLocation enabled, navigating to ${sectionHref}#${textId}`);
-      this.#pendingHighlight = { sectionIndex, textId };
-      this.#view.goTo(`${sectionHref}#${textId}`);
-      return;
-    }
-
     if (!contents || !contents.length) {
       debugLog("FoliateManager", "No contents loaded, storing pending highlight and navigating");
       this.#pendingHighlight = { sectionIndex, textId };
@@ -1047,7 +1040,20 @@ class FoliateManager {
     if (!el) {
       debugLog("FoliateManager", `Element ${textId} not found yet in section ${sectionIndex}, storing as pending`);
       this.#pendingHighlight = { sectionIndex, textId };
+      if (seekToLocation && sectionHref) this.#view.goTo(`${sectionHref}#${textId}`);
       return;
+    }
+
+    if (seekToLocation && sectionHref) {
+      const pageInfo = this.#getElementPageInfo(el, doc, renderer);
+      const intersectsCurrentPage = !renderer.scrolled && pageInfo?.visibleArea > 0;
+      if (!intersectsCurrentPage) {
+        debugLog("FoliateManager", `seekToLocation enabled, navigating to ${sectionHref}#${textId}`);
+        this.#pendingHighlight = { sectionIndex, textId };
+        this.#view.goTo(`${sectionHref}#${textId}`);
+        return;
+      }
+      debugLog("FoliateManager", `Element ${textId} already intersects the current page; skipping anchor navigation`);
     }
 
     this.#pendingHighlight = null;
@@ -1162,9 +1168,8 @@ class FoliateManager {
     await this.#view.goTo(cfi);
   }
 
-  #getElementSplitInfo(el, doc, renderer) {
+  #getElementPageInfo(el, doc, renderer) {
     if (!el || !doc?.defaultView || !renderer) return null;
-    if (renderer.scrolled) return null;
 
     const rects = Array.from(el.getClientRects())
       .filter(rect => rect.width > 0 && rect.height > 0);
@@ -1194,8 +1199,8 @@ class FoliateManager {
 
     let totalArea = 0;
     let visibleArea = 0;
-    let forwardArea = 0;
-    let backwardArea = 0;
+    let leftHiddenArea = 0;
+    let rightHiddenArea = 0;
 
     for (const rect of rects) {
       const area = rect.width * rect.height;
@@ -1223,42 +1228,43 @@ class FoliateManager {
         Math.max(globalTop, viewportRect.top));
       if (verticalOverlap <= 0) continue;
 
-      const forwardHiddenWidth = rtl
-        ? Math.max(0, Math.min(rect.width,
-            viewportRect.left - globalLeft))
-        : Math.max(0, Math.min(rect.width,
-            globalRight - viewportRect.right));
-      const backwardHiddenWidth = rtl
-        ? Math.max(0, Math.min(rect.width,
-            globalRight - viewportRect.right))
-        : Math.max(0, Math.min(rect.width,
-            viewportRect.left - globalLeft));
+      const leftHiddenWidth = Math.max(0, Math.min(rect.width,
+        viewportRect.left - globalLeft));
+      const rightHiddenWidth = Math.max(0, Math.min(rect.width,
+        globalRight - viewportRect.right));
 
-      if (forwardHiddenWidth > 0) {
-        forwardArea += forwardHiddenWidth * verticalOverlap;
-      }
-      if (backwardHiddenWidth > 0) {
-        backwardArea += backwardHiddenWidth * verticalOverlap;
-      }
+      leftHiddenArea += leftHiddenWidth * verticalOverlap;
+      rightHiddenArea += rightHiddenWidth * verticalOverlap;
     }
 
-    if (!totalArea || !visibleArea) return null;
+    if (!totalArea) return null;
 
-    const visibleRatio = visibleArea / totalArea;
-    const forwardRatio = forwardArea / totalArea;
-    const backwardRatio = backwardArea / totalArea;
+    return {
+      totalArea,
+      visibleArea,
+      forwardArea: rtl ? leftHiddenArea : rightHiddenArea,
+      backwardArea: rtl ? rightHiddenArea : leftHiddenArea
+    };
+  }
+
+  #getElementSplitInfo(el, doc, renderer) {
+    if (renderer?.scrolled) return null;
+
+    const pageInfo = this.#getElementPageInfo(el, doc, renderer);
+    if (!pageInfo?.visibleArea || !pageInfo.forwardArea) return null;
+
+    // Ignore the part of an overlapping highlight which is behind the current page.
+    // Only the visible and forward portions determine whether and when to turn forward.
+    const remainingArea = pageInfo.visibleArea + pageInfo.forwardArea;
+    const visibleRatio = pageInfo.visibleArea / remainingArea;
+    const forwardRatio = pageInfo.forwardArea / remainingArea;
 
     if (visibleRatio >= 0.98) return null;
-
-    const progressionRatio = rtl ? backwardRatio : forwardRatio;
-    const oppositeRatio = rtl ? forwardRatio : backwardRatio;
-
-    if (progressionRatio < 0.1) return null;
-    if (progressionRatio <= oppositeRatio) return null;
+    if (forwardRatio < 0.1) return null;
 
     return {
       visibleRatio,
-      offScreenRatio: progressionRatio
+      offScreenRatio: forwardRatio
     };
   }
 
