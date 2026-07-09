@@ -500,6 +500,29 @@ struct MediaGridView: View {
     }
 
     #if os(macOS)
+    // Fixed columns resolve once from the settled width, so the grid does not reflow
+    // against the live frame while the detail sidebar animates the width.
+    private func fixedGridColumns(
+        containerWidth: CGFloat,
+        tileSize: CGFloat,
+        maxSize: CGFloat,
+        spacing: CGFloat,
+    ) -> [GridItem] {
+        let availableWidth = max(0, containerWidth - gridHorizontalPadding * 2)
+        guard availableWidth > 0, tileSize > 0 else {
+            return [GridItem(.fixed(tileSize), spacing: spacing, alignment: .top)]
+        }
+        let count = max(1, Int((availableWidth + spacing) / (tileSize + spacing)))
+        let totalSpacing = spacing * CGFloat(count - 1)
+        let resolvedTileWidth = min(maxSize, (availableWidth - totalSpacing) / CGFloat(count))
+        return Array(
+            repeating: GridItem(.fixed(resolvedTileWidth), spacing: spacing, alignment: .top),
+            count: count,
+        )
+    }
+    #endif
+
+    #if os(macOS)
     #endif
 
     var body: some View {
@@ -1188,12 +1211,21 @@ struct MediaGridView: View {
                         let gridTileSize = coverSize
                         let gridMaxSize = gridTileSize + 40
                         #endif
+                        #if os(macOS)
+                        let gridColumns = fixedGridColumns(
+                            containerWidth: containerWidth,
+                            tileSize: gridTileSize,
+                            maxSize: gridMaxSize,
+                            spacing: 0,
+                        )
+                        #else
                         let gridColumns = [
                             GridItem(
                                 .adaptive(minimum: gridTileSize, maximum: gridMaxSize),
                                 spacing: 0,
                             )
                         ]
+                        #endif
                         let gridMetrics = MediaItemCardMetrics.make(
                             for: gridTileSize,
                             mediaKind: mediaKind,
@@ -1221,12 +1253,21 @@ struct MediaGridView: View {
                         let compactTileSize = coverSize
                         let compactMaxSize = compactTileSize + 20
                         #endif
+                        #if os(macOS)
+                        let compactColumns = fixedGridColumns(
+                            containerWidth: containerWidth,
+                            tileSize: compactTileSize,
+                            maxSize: compactMaxSize,
+                            spacing: 4,
+                        )
+                        #else
                         let compactColumns = [
                             GridItem(
                                 .adaptive(minimum: compactTileSize, maximum: compactMaxSize),
                                 spacing: 4,
                             )
                         ]
+                        #endif
                         #if os(iOS)
                         let compactGridAlignment: HorizontalAlignment = .center
                         #else
