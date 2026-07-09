@@ -134,7 +134,9 @@ public actor AudnexusActor {
             asin: decoded.asin ?? asin,
             title: decoded.title,
             subtitle: decoded.subtitle,
-            description: decoded.description ?? decoded.summary,
+            // `summary` is the full publisher blurb (HTML); `description` is a truncated plaintext
+            // preview that ends mid-sentence. Prefer the full one, falling back only if absent.
+            description: decoded.summary ?? decoded.description,
             authors: (decoded.authors ?? []).compactMap { $0.name },
             narrators: (decoded.narrators ?? []).compactMap { $0.name },
             seriesPrimary: decoded.seriesPrimary.map {
