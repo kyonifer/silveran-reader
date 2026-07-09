@@ -4,6 +4,28 @@ import Testing
 @testable import SilveranAppleKit
 @testable import SilveranKit
 
+@Test func playerBookDataIdentityIgnoresMutableMetadata() async throws {
+    var originalMetadata = makeBook(publicationDate: nil)
+    var refreshedMetadata = originalMetadata
+    originalMetadata.pageCount = 100
+    refreshedMetadata.pageCount = 101
+
+    let path = URL(fileURLWithPath: "/tmp/book.epub")
+    let original = PlayerBookData(
+        metadata: originalMetadata,
+        localMediaPath: path,
+        category: .ebook,
+    )
+    let refreshed = PlayerBookData(
+        metadata: refreshedMetadata,
+        localMediaPath: path,
+        category: .ebook,
+    )
+
+    #expect(original == refreshed)
+    #expect(original.hashValue == refreshed.hashValue)
+}
+
 @Test func publicationYearExtractsFourDigitYearFromSupportedDates() async throws {
     #expect(BookMetadata.publicationYear(from: "1950-01-02T00:00:00.000Z") == "1950")
     #expect(BookMetadata.publicationYear(from: "1987-09-16") == "1987")
