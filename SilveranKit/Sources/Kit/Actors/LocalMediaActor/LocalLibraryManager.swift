@@ -1,4 +1,5 @@
 import Foundation
+import SwiftSoup
 import ZIPFoundation
 
 #if canImport(AVFoundation)
@@ -717,7 +718,7 @@ public final class LocalLibraryManager: Sendable {
                     content = content.replacingOccurrences(of: "]]>", with: "")
                     let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
                     if !trimmed.isEmpty {
-                        return trimmed
+                        return decodedXMLText(trimmed)
                     }
                 }
             }
@@ -738,13 +739,17 @@ public final class LocalLibraryManager: Sendable {
                 let content = String(match[match.index(after: contentStart)..<contentEnd])
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                 if !content.isEmpty {
-                    results.append(content)
+                    results.append(decodedXMLText(content))
                 }
             }
             searchRange = range.upperBound..<xml.endIndex
         }
 
         return results
+    }
+
+    private func decodedXMLText(_ text: String) -> String {
+        (try? Entities.unescape(text)) ?? text
     }
 
     public func extractCoverFromEpub(at epubURL: URL) -> Data? {
