@@ -287,47 +287,15 @@ struct MediaItemCardView: View {
 
     #if os(iOS)
     private var preferredPlayerBookData: PlayerBookData? {
-        let settings = mediaViewModel.cachedConfig.library
-        guard settings.tapToPlayPreferredPlayer else { return nil }
-
-        let syncedDownloaded = mediaViewModel.isCategoryDownloaded(.synced, for: item)
-        let audioDownloaded = mediaViewModel.isCategoryDownloaded(.audio, for: item)
-        let ebookDownloaded = mediaViewModel.isCategoryDownloaded(.ebook, for: item)
-
-        let category: LocalMediaCategory?
-        if syncedDownloaded {
-            category = .synced
-        } else if audioDownloaded && ebookDownloaded {
-            category = settings.preferAudioOverEbook ? .audio : .ebook
-        } else if audioDownloaded {
-            category = .audio
-        } else if ebookDownloaded {
-            category = .ebook
-        } else {
-            category = nil
+        guard mediaViewModel.cachedConfig.library.tapToPlayPreferredPlayer else { return nil }
+        guard let category = mediaViewModel.preferredDownloadedCategory(for: item) else {
+            return nil
         }
-
-        guard let category else { return nil }
         return makePlayerBookData(for: category)
     }
 
     private func makePlayerBookData(for category: LocalMediaCategory) -> PlayerBookData {
-        let freshMetadata = mediaViewModel.library.bookMetaData.first { $0.id == item.id } ?? item
-        let path = mediaViewModel.localMediaPath(for: item.id, category: category)
-        let variant: MediaViewModel.CoverVariant =
-            freshMetadata.hasAvailableAudiobook ? .audioSquare : .standard
-        let cover = mediaViewModel.coverImage(for: freshMetadata, variant: variant)
-        let ebookCover =
-            freshMetadata.hasAvailableAudiobook
-            ? mediaViewModel.coverImage(for: freshMetadata, variant: .standard)
-            : nil
-        return PlayerBookData(
-            metadata: freshMetadata,
-            localMediaPath: path,
-            category: category,
-            coverArt: cover,
-            ebookCoverArt: ebookCover,
-        )
+        mediaViewModel.makePlayerBookData(for: item, category: category)
     }
 
     private func handleDetailsNavigation() {

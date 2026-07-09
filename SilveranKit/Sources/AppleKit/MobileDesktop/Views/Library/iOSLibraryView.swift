@@ -64,6 +64,7 @@ public struct iOSLibraryView: View {
     @State private var downloadedNavigationPath = NavigationPath()
     @State private var showCarPlayPlayer: Bool = false
     @State private var shortcutReaderBook: ShortcutReaderBook?
+    @State private var shortcutDetailBook: BookMetadata?
     @State private var metadataEditorData: MetadataEditorData?
     @State private var metadataEditorHasUnsavedChanges = false
     @State private var showMetadataEditorCloseWarning = false
@@ -174,6 +175,15 @@ public struct iOSLibraryView: View {
                 }
             }
         }
+        .onChange(of: mediaViewModel.pendingOpenBookID) { _, _ in
+            openPendingBookIfReady()
+        }
+        .onChange(of: mediaViewModel.library.bookMetaData.count) { _, _ in
+            openPendingBookIfReady()
+        }
+        .task {
+            openPendingBookIfReady()
+        }
         .fullScreenCover(item: $shortcutReaderBook) { wrapper in
             NavigationStack {
                 playerView(for: wrapper.data)
@@ -181,6 +191,22 @@ public struct iOSLibraryView: View {
                         ToolbarItem(placement: .topBarLeading) {
                             Button("Done") {
                                 shortcutReaderBook = nil
+                            }
+                        }
+                    }
+            }
+        }
+        .sheet(item: $shortcutDetailBook) { book in
+            NavigationStack {
+                iOSBookDetailView(item: book, mediaKind: .ebook)
+                    .libraryNavigationDestinations(
+                        showSettings: $showSettings,
+                        showOfflineSheet: $showOfflineSheet,
+                    )
+                    .toolbar {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button("Done") {
+                                shortcutDetailBook = nil
                             }
                         }
                     }
@@ -560,6 +586,31 @@ public struct iOSLibraryView: View {
             case .ebook, .synced:
                 EbookPlayerView(bookData: bookData)
                     .navigationBarTitleDisplayMode(.inline)
+        }
+    }
+
+    private func openPendingBookIfReady() {
+        guard let bookID = mediaViewModel.pendingOpenBookID,
+            !mediaViewModel.library.bookMetaData.isEmpty
+        else { return }
+        mediaViewModel.pendingOpenBookID = nil
+
+        guard let book = mediaViewModel.library.bookMetaData.first(where: { $0.id == bookID })
+        else {
+            debugLog("[iOSLibraryView] Dropping deep link for unknown book \(bookID)")
+            return
+        }
+        guard let category = mediaViewModel.preferredDownloadedCategory(for: book) else {
+            shortcutDetailBook = book
+            return
+        }
+        Task {
+            shortcutReaderBook = ShortcutReaderBook(
+                data: await mediaViewModel.makePlayerBookDataLoadingCovers(
+                    for: book,
+                    category: category,
+                )
+            )
         }
     }
 }

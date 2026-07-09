@@ -36,7 +36,8 @@ private final class ResultBox: @unchecked Sendable {
 }
 
 private func errorJSON(_ message: String) -> String {
-    let escaped = message
+    let escaped =
+        message
         .replacingOccurrences(of: "\\", with: "\\\\")
         .replacingOccurrences(of: "\"", with: "\\\"")
     return "{\"error\":\"\(escaped)\"}"

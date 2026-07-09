@@ -271,6 +271,9 @@ private struct iOSRootView: View {
                     }
             }
         }
+        .onOpenURL { url in
+            handleOpenURL(url)
+        }
         .task {
             guard !restoreStartupFinished else { return }
             let restoreStarted = CFAbsoluteTimeGetCurrent()
@@ -279,11 +282,30 @@ private struct iOSRootView: View {
             debugLog(
                 "[RestoreTrace][Restore] awaitPrerequisites deltaMs=\(String(format: "%.1f", (afterStartup - restoreStarted) * 1000))"
             )
-            restoredPlayer = await LastOpenBookStore.loadPlayerBookData()
+            if mediaViewModel.pendingOpenBookID == nil {
+                restoredPlayer = await LastOpenBookStore.loadPlayerBookData()
+                if mediaViewModel.pendingOpenBookID != nil {
+                    restoredPlayer = nil
+                }
+            }
             debugLog(
                 "[RestoreTrace][Restore] loadPlayerBookData deltaMs=\(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - afterStartup) * 1000))"
             )
             restoreStartupFinished = true
+        }
+    }
+
+    private func handleOpenURL(_ url: URL) {
+        guard url.scheme == "silveran" else { return }
+        switch url.host() {
+            case "book":
+                let bookID = url.pathComponents.dropFirst().joined(separator: "/")
+                guard !bookID.isEmpty else { return }
+                mediaViewModel.pendingOpenBookID = bookID
+                // The tapped book supersedes whatever the restore flow brought back.
+                restoredPlayer = nil
+            default:
+                break
         }
     }
 

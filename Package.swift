@@ -14,12 +14,16 @@ let package = Package(
         .library(name: "SilveranAppleKit", targets: ["SilveranAppleKit"]),
         .library(name: "SilveranContentServer", targets: ["SilveranContentServer"]),
         .library(name: "SilveranReadaloud", targets: ["SilveranReadaloud"]),
+        .library(name: "SilveranAppleWidgets", targets: ["SilveranAppleWidgets"]),
     ],
     dependencies: [
         // Fork pinned past 0.9.20: upstream's development branch gained Android
         // cross-compile support (platform-conditional CZLib + Bionic fixes) that
         // no tagged release has yet. Repoint at upstream once a release includes it.
-        .package(url: "https://github.com/kyonifer/ZIPFoundation.git", revision: "187ee77287ea4b23df4d7de32771ec38bbafb840"),
+        .package(
+            url: "https://github.com/kyonifer/ZIPFoundation.git",
+            revision: "187ee77287ea4b23df4d7de32771ec38bbafb840",
+        ),
         .package(url: "https://github.com/scinfu/SwiftSoup.git", from: "2.7.0"),
         .package(url: "https://github.com/kyonifer/StoryAlign.git", from: "1.2.4"),
         .package(url: "https://github.com/hummingbird-project/hummingbird.git", from: "2.0.0"),
@@ -35,9 +39,10 @@ let package = Package(
         ),
         .target(
             name: "SilveranAppleKit",
-            dependencies: ["SilveranKit"],
+            dependencies: ["SilveranKit", "SilveranAppleWidgets"],
             path: "SilveranKit/Sources/AppleKit",
             exclude: [
+                "WidgetSupport",
                 "Resources/WebResources/foliate-js/.github",
                 "Resources/WebResources/foliate-js/.git",
                 "Resources/WebResources/foliate-js/rollup",
@@ -54,6 +59,11 @@ let package = Package(
                 .copy("Resources/WebResources"),
                 .copy("Resources/assets/fonts"),
             ],
+        ),
+        .target(
+            name: "SilveranAppleWidgets",
+            dependencies: ["SilveranKit"],
+            path: "SilveranKit/Sources/AppleKit/WidgetSupport",
         ),
         .target(
             name: "SilveranContentServer",

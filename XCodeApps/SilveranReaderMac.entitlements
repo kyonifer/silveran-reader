@@ -12,6 +12,10 @@
 	<true/>
 	<key>com.apple.security.files.bookmarks.app-scope</key>
 	<true/>
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>$(MAC_APP_GROUP_ID)</string>
+	</array>
 	<key>keychain-access-groups</key>
 	<array>
 		<string>$(AppIdentifierPrefix)$(KEYCHAIN_GROUP_SUFFIX)</string>

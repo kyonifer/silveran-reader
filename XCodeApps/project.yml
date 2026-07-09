@@ -56,10 +56,15 @@ targets:
         CFBundleExecutable: "$(EXECUTABLE_NAME)"
         KEYCHAIN_ACCESS_GROUP: "$(KEYCHAIN_ACCESS_GROUP)"
         KEYCHAIN_SERVICE: "$(KEYCHAIN_SERVICE)"
+        SILVERAN_WIDGET_APP_GROUP: "$(MAC_APP_GROUP_ID)"
         LSApplicationCategoryType: "public.app-category.books"
         NSLocalNetworkUsageDescription: "Silveran Reader needs local network access to connect to your Storyteller server."
         ITSAppUsesNonExemptEncryption: false
         ATSApplicationFontsPath: "fonts"
+        CFBundleURLTypes:
+          - CFBundleURLName: com.kyonifer.SilveranReader
+            CFBundleURLSchemes:
+              - silveran
     sources:
       - path: XCodeApps
         includes:
@@ -75,6 +80,8 @@ targets:
         product: SilveranContentServer
       - package: Silveran
         product: SilveranReadaloud
+      - target: "Silveran Reader Widgets (macOS)"
+        embed: true
 
   Silveran Reader (iOS):
     templates:
@@ -103,8 +110,13 @@ targets:
         CFBundleExecutable: "$(EXECUTABLE_NAME)"
         KEYCHAIN_ACCESS_GROUP: "$(KEYCHAIN_ACCESS_GROUP)"
         KEYCHAIN_SERVICE: "$(KEYCHAIN_SERVICE)"
+        SILVERAN_WIDGET_APP_GROUP: "$(APP_GROUP_ID)"
         LSApplicationCategoryType: "public.app-category.books"
         NSLocalNetworkUsageDescription: "Silveran Reader needs local network access to connect to your Storyteller server."
+        CFBundleURLTypes:
+          - CFBundleURLName: com.kyonifer.SilveranReader
+            CFBundleURLSchemes:
+              - silveran
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
@@ -140,8 +152,87 @@ targets:
         product: SilveranAppleKit
       - package: Silveran
         product: SilveranReadaloud
+      - target: "Silveran Reader Widgets (iOS)"
+        embed: true
       - target: "Silveran Reader (watchOS)"
         embed: true
+  Silveran Reader Widgets (iOS):
+    type: app-extension
+    platform: iOS
+    configFiles:
+      Debug: XCodeApps/Configs/Debug.xcconfig
+      Release: XCodeApps/Configs/Release.xcconfig
+    settings:
+      base:
+        IPHONEOS_DEPLOYMENT_TARGET: 18.0
+        APPLICATION_EXTENSION_API_ONLY: YES
+        CODE_SIGN_ENTITLEMENTS: XCodeApps/SilveranReaderWidgets.entitlements
+        CODE_SIGN_STYLE: Automatic
+        CURRENT_PROJECT_VERSION: 1
+        DEVELOPMENT_TEAM: "$(DEVELOPMENT_TEAM)"
+        INFOPLIST_FILE: XCodeApps/Info-Widgets-iOS.plist
+        MARKETING_VERSION: 0.1
+        PRODUCT_BUNDLE_IDENTIFIER: "$(APP_BUNDLE_ID).widgets"
+        PRODUCT_NAME: Silveran Reader Widgets
+        SWIFT_VERSION: 6.2
+    info:
+      path: XCodeApps/Info-Widgets-iOS.plist
+      properties:
+        CFBundleName: "Silveran Reader Widgets"
+        CFBundleDisplayName: "Silveran Reader"
+        CFBundleIdentifier: "$(PRODUCT_BUNDLE_IDENTIFIER)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundlePackageType: "$(PRODUCT_BUNDLE_PACKAGE_TYPE)"
+        CFBundleExecutable: "$(EXECUTABLE_NAME)"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+        SILVERAN_WIDGET_APP_GROUP: "$(APP_GROUP_ID)"
+    sources:
+      - path: SilveranWidgets/Sources
+    dependencies:
+      - package: Silveran
+        product: SilveranAppleWidgets
+  Silveran Reader Widgets (macOS):
+    # Native macOS WidgetKit extensions are ExtensionKit extensions living in
+    # Contents/Extensions; the NSExtension/PlugIns style is iOS-only.
+    type: extensionkit-extension
+    platform: macOS
+    configFiles:
+      Debug: XCodeApps/Configs/Debug.xcconfig
+      Release: XCodeApps/Configs/Release.xcconfig
+    settings:
+      base:
+        MACOSX_DEPLOYMENT_TARGET: 15.0
+        APPLICATION_EXTENSION_API_ONLY: YES
+        ENABLE_HARDENED_RUNTIME: YES
+        CODE_SIGN_ENTITLEMENTS: XCodeApps/SilveranReaderWidgetsMac.entitlements
+        CODE_SIGN_STYLE: Automatic
+        CURRENT_PROJECT_VERSION: 1
+        DEVELOPMENT_TEAM: "$(DEVELOPMENT_TEAM)"
+        INFOPLIST_FILE: XCodeApps/Info-Widgets-macOS.plist
+        MARKETING_VERSION: 0.1
+        PRODUCT_BUNDLE_IDENTIFIER: "$(APP_BUNDLE_ID).widgets"
+        PRODUCT_NAME: Silveran Reader Widgets
+        SWIFT_VERSION: 6.2
+    info:
+      path: XCodeApps/Info-Widgets-macOS.plist
+      properties:
+        CFBundleName: "Silveran Reader Widgets"
+        CFBundleDisplayName: "Silveran Reader"
+        CFBundleIdentifier: "$(PRODUCT_BUNDLE_IDENTIFIER)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundlePackageType: "$(PRODUCT_BUNDLE_PACKAGE_TYPE)"
+        CFBundleExecutable: "$(EXECUTABLE_NAME)"
+        EXAppExtensionAttributes:
+          EXExtensionPointIdentifier: com.apple.widgetkit-extension
+        SILVERAN_WIDGET_APP_GROUP: "$(MAC_APP_GROUP_ID)"
+    sources:
+      - path: SilveranWidgets/Sources
+    dependencies:
+      - package: Silveran
+        product: SilveranAppleWidgets
   Silveran Reader (watchOS):
     templates:
       - appBase
@@ -220,6 +311,7 @@ schemes:
     build:
       targets:
         "Silveran Reader (macOS)": all
+        "Silveran Reader Widgets (macOS)": all
     run:
       config: Debug
       executable: "Silveran Reader (macOS)"
@@ -237,6 +329,7 @@ schemes:
     build:
       targets:
         "Silveran Reader (iOS)": all
+        "Silveran Reader Widgets (iOS)": all
         "Silveran Reader (watchOS)": all
     run:
       config: Debug

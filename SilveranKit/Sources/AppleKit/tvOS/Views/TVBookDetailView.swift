@@ -238,7 +238,7 @@ struct TVBookDetailView: View {
 
     private var cleanedDescription: String? {
         guard let description = trimmed(book.description) else { return nil }
-        return trimmed(EPUBContentLoader.stripHTML(description))
+        return trimmed(BookDescriptionText.plain(from: description))
     }
 
     private var authorLine: String? {

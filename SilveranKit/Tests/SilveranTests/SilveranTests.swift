@@ -933,6 +933,19 @@ private func makeCopyTestBook(
     #expect(changed.isSet)
 }
 
+@Test func bookDescriptionTextFlattensHTMLAndMarkdown() async throws {
+    #expect(
+        BookDescriptionText.plain(from: "**Bold** and *italic* markdown.")
+            == "Bold and italic markdown."
+    )
+    #expect(
+        BookDescriptionText.plain(from: "<p>First **para**.</p><p>Second<br>line.</p>")
+            == "First para.\n\nSecond\nline."
+    )
+    #expect(BookDescriptionText.plain(from: "Plain text. 2 * 3 = 6.") == "Plain text. 2 * 3 = 6.")
+    #expect(BookDescriptionText.plain(from: "  <b>Just bold html</b>  ") == "Just bold html")
+}
+
 private final class ChangeFlag: @unchecked Sendable {
     private let lock = NSLock()
     private var value = false

@@ -299,7 +299,7 @@ struct MediaGridInfoSidebar: View {
         let html = description
 
         descriptionTask = Task.detached(priority: .userInitiated) { [html, itemID] in
-            let parsed = Self.htmlToAttributedString(html)
+            let parsed = BookDescriptionText.attributed(from: html)
             await MainActor.run {
                 guard !Task.isCancelled, itemID == self.item.id else {
                     self.descriptionTask = nil
@@ -309,47 +309,6 @@ struct MediaGridInfoSidebar: View {
                 self.descriptionTask = nil
             }
         }
-    }
-
-    private nonisolated static func htmlToAttributedString(_ html: String) -> AttributedString {
-        #if canImport(AppKit) || canImport(UIKit)
-        let options: [NSAttributedString.DocumentReadingOptionKey: Any] = [
-            .documentType: NSAttributedString.DocumentType.html,
-            .characterEncoding: String.Encoding.utf8.rawValue,
-        ]
-
-        #if canImport(AppKit)
-        let font = NSFont.systemFont(ofSize: NSFont.systemFontSize)
-        #else
-        let font = UIFont.systemFont(ofSize: UIFont.systemFontSize)
-        #endif
-
-        let wrappedHTML = """
-            <html>
-            <head>
-            <style>
-            body {
-                font-family: -apple-system;
-                font-size: \(font.pointSize)px;
-            }
-            </style>
-            </head>
-            <body>\(html)</body>
-            </html>
-            """
-
-        if let data = wrappedHTML.data(using: .utf8),
-            let nsAttributedString = try? NSAttributedString(
-                data: data,
-                options: options,
-                documentAttributes: nil,
-            )
-        {
-            return AttributedString(nsAttributedString)
-        }
-        #endif
-
-        return AttributedString(html)
     }
 
     private func formatDate(_ isoString: String) -> String {

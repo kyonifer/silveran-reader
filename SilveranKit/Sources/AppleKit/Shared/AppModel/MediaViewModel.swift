@@ -1,6 +1,7 @@
 import Foundation
 import ImageIO
 import Observation
+import SilveranAppleWidgets
 import SilveranKit
 import SwiftUI
 
@@ -182,7 +183,15 @@ public final class MediaViewModel {
     private var removableCachedBookPaths: [String: MediaPaths] = [:]
     private var folderSourceBookIds: Set<String> = []
     private var storytellerBookIds: Set<String> = []
+    // Deep-link target (e.g. from a widget tap) waiting for the library to be ready.
+    // Consumed and cleared by the first open attempt.
+    public var pendingOpenBookID: String?
+    // Deep-link target that should show book details in the library UI.
+    // macOS has no standalone details screen, so the grid's info sidebar
+    // consumes this; LibraryView navigates to a grid if none is on screen.
+    public var pendingInfoBookID: String?
     @ObservationIgnored private var metadataRefreshTask: Task<Void, Never>?
+    @ObservationIgnored private var widgetSnapshotPublishTask: Task<Void, Never>?
 
     private var sourceNamesByID: [BookSourceID: String] {
         Dictionary(uniqueKeysWithValues: bookSources.map { ($0.id, $0.name) })
@@ -607,6 +616,7 @@ public final class MediaViewModel {
         debugLog(
             "[PerfTrace][MediaViewModel] refreshMetadata complete books=\(library.bookMetaData.count)"
         )
+        scheduleWidgetSnapshotPublish(reason: "refreshMetadata(\(source))")
         let elapsed = (CFAbsoluteTimeGetCurrent() - started) * 1000
         debugLog(
             "[PerfTrace][MediaViewModel] refreshMetadata end source=\(source) elapsedMs=\(String(format: "%.1f", elapsed))"
@@ -723,6 +733,25 @@ public final class MediaViewModel {
 
     private func startMetadataRefreshTask() {
         restartMetadataRefreshTask()
+    }
+
+    private func scheduleWidgetSnapshotPublish(reason: String) {
+        #if os(iOS) || os(macOS)
+        widgetSnapshotPublishTask?.cancel()
+        let metadata = library.bookMetaData
+        let progress = bookProgressCache
+        let sources = bookSources
+        widgetSnapshotPublishTask = Task {
+            try? await Task.sleep(for: .milliseconds(500))
+            guard !Task.isCancelled else { return }
+            debugLog("[MediaViewModel] Publishing widget snapshot: \(reason)")
+            await SilveranWidgetSnapshotStore.publishSnapshot(
+                metadata: metadata,
+                progress: progress,
+                sources: sources,
+            )
+        }
+        #endif
     }
 
     private func restartMetadataRefreshTask() {
@@ -1865,6 +1894,69 @@ public final class MediaViewModel {
         }
     }
 
+    public func preferredDownloadedCategory(for item: BookMetadata) -> LocalMediaCategory? {
+        if isCategoryDownloaded(.synced, for: item) { return .synced }
+        let audioDownloaded = isCategoryDownloaded(.audio, for: item)
+        let ebookDownloaded = isCategoryDownloaded(.ebook, for: item)
+        if audioDownloaded && ebookDownloaded {
+            return cachedConfig.library.preferAudioOverEbook ? .audio : .ebook
+        }
+        if audioDownloaded { return .audio }
+        if ebookDownloaded { return .ebook }
+        return nil
+    }
+
+    // Deep-link opens can run before the in-memory cover cache is warm, so fill any
+    // missing art from the on-disk cover cache, mirroring the restore path.
+    public func makePlayerBookDataLoadingCovers(
+        for item: BookMetadata,
+        category: LocalMediaCategory,
+    ) async -> PlayerBookData {
+        var bookData = makePlayerBookData(for: item, category: category)
+        let hasAudio = bookData.metadata.hasAvailableAudiobook
+        guard bookData.coverArt == nil || (hasAudio && bookData.ebookCoverArt == nil) else {
+            return bookData
+        }
+
+        let audioCover = hasAudio ? await cachedCoverImage(bookID: item.id, audio: true) : nil
+        let standardCover = await cachedCoverImage(bookID: item.id, audio: false)
+        if bookData.coverArt == nil {
+            bookData.coverArt =
+                hasAudio ? (audioCover ?? standardCover) : (standardCover ?? audioCover)
+        }
+        if hasAudio && bookData.ebookCoverArt == nil {
+            bookData.ebookCoverArt = standardCover
+        }
+        return bookData
+    }
+
+    private func cachedCoverImage(bookID: String, audio: Bool) async -> Image? {
+        guard let data = await BookServiceActor.shared.cachedCoverData(for: bookID, audio: audio),
+            let payload = Self.makeCoverPayload(from: data)
+        else { return nil }
+        return Image(decorative: payload.cgImage.image, scale: 1, orientation: .up)
+    }
+
+    public func makePlayerBookData(
+        for item: BookMetadata,
+        category: LocalMediaCategory,
+    ) -> PlayerBookData {
+        let freshMetadata = library.bookMetaData.first { $0.id == item.id } ?? item
+        let variant: CoverVariant = freshMetadata.hasAvailableAudiobook ? .audioSquare : .standard
+        let cover = coverImage(for: freshMetadata, variant: variant)
+        let ebookCover =
+            freshMetadata.hasAvailableAudiobook
+            ? coverImage(for: freshMetadata, variant: .standard)
+            : nil
+        return PlayerBookData(
+            metadata: freshMetadata,
+            localMediaPath: localMediaPath(for: item.id, category: category),
+            category: category,
+            coverArt: cover,
+            ebookCoverArt: ebookCover,
+        )
+    }
+
     public func isLocalStandaloneBook(_ bookID: String) -> Bool {
         folderSourceBookIds.contains(bookID)
     }
@@ -2554,13 +2646,19 @@ public final class MediaViewModel {
 
         missingCoverKeys.remove(key)
 
-        guard persist else { return }
-        Task {
+        guard persist else {
+            scheduleWidgetSnapshotPublish(reason: "coverCache(\(item.id))")
+            return
+        }
+        Task { [weak self] in
             await BookServiceActor.shared.persistCachedCover(
                 bookID: item.id,
                 audio: variant.requestParameters.audio,
                 data: payload.data,
             )
+            await MainActor.run {
+                self?.scheduleWidgetSnapshotPublish(reason: "coverPersisted(\(item.id))")
+            }
         }
     }
 

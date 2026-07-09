@@ -77,6 +77,18 @@ public struct LibraryView: View {
                     return event
                 }
             }
+            .onChange(of: mediaViewModel.pendingInfoBookID) { _, _ in
+                guard mediaViewModel.pendingInfoBookID != nil else { return }
+                Task { @MainActor in
+                    // A grid already on screen consumes the request itself;
+                    // navigate to All Books only if none did.
+                    try? await Task.sleep(for: .milliseconds(50))
+                    guard mediaViewModel.pendingInfoBookID != nil,
+                        let item = allBooksSidebarItem
+                    else { return }
+                    selectedItem = item
+                }
+            }
             #endif
             .onChange(of: selectedItem) {
                 searchText = ""
@@ -201,6 +213,7 @@ public struct LibraryView: View {
                     initialLocationFilter: locationFilter,
                     scrollPosition: scrollBinding,
                     showAddBookButton: isRootAllBooksGrid(configuration),
+                    isPendingInfoFallbackTarget: isRootAllBooksGrid(configuration),
                 )
                 .id(identity)
                 .toolbar {
@@ -560,6 +573,17 @@ public struct LibraryView: View {
     }
 
     #if os(macOS)
+    private var allBooksSidebarItem: SidebarItemDescription? {
+        (sections + LibrarySidebarDefaults.getSections())
+            .flatMap(\.items)
+            .first { item in
+                if case .mediaGrid(let config) = item.content {
+                    return isRootAllBooksGrid(config)
+                }
+                return false
+            }
+    }
+
     private func handleEditMetadata(bookIds: [String]) {
         if bookIds.contains(where: { mediaViewModel.isLocalStandaloneBook($0) }) {
             permissionErrorMessage = "Editing metadata for local books is not supported yet."

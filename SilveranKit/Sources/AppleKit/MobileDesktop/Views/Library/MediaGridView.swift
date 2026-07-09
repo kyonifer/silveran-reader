@@ -98,6 +98,9 @@ struct MediaGridView: View {
     let addBookSourceID: BookSourceID?
     let sourceFilterKind: BookSourceKind?
     let emptyStateMessage: String
+    // The grid designated to consume pendingInfoBookID even when its filters
+    // hide the book; other grids only consume books they can display.
+    let isPendingInfoFallbackTarget: Bool
 
     #if os(macOS)
     // Workaround for macOS Sequoia bug where parent view's onTapGesture fires after card tap
@@ -315,6 +318,7 @@ struct MediaGridView: View {
         sourceFilterKind: BookSourceKind? = nil,
         emptyStateMessage: String =
             "Add a local folder or Storyteller server in Settings > Book Sources, then use Add Book to add files.",
+        isPendingInfoFallbackTarget: Bool = false,
     ) {
         _layoutStyleRaw = AppStorage(
             wrappedValue: LibraryLayoutStyle.grid.rawValue,
@@ -424,6 +428,7 @@ struct MediaGridView: View {
         self.addBookSourceID = addBookSourceID
         self.sourceFilterKind = sourceFilterKind
         self.emptyStateMessage = emptyStateMessage
+        self.isPendingInfoFallbackTarget = isPendingInfoFallbackTarget
     }
 
     private static func defaultColumnBreakpoints(preferredTileWidth: CGFloat) -> [ColumnBreakpoint]
@@ -571,11 +576,32 @@ struct MediaGridView: View {
         } message: {
             Text(permissionErrorMessage)
         }
+        .onAppear {
+            consumePendingInfoBookID()
+        }
+        .onChange(of: mediaViewModel.pendingInfoBookID) { _, _ in
+            consumePendingInfoBookID()
+        }
+        .onChange(of: cachedDisplayItems) { _, _ in
+            consumePendingInfoBookID()
+        }
         #endif
         .sheet(isPresented: $showLocalFolderHelp) {
             LocalFolderSourceHelpView()
         }
     }
+
+    #if os(macOS)
+    private func consumePendingInfoBookID() {
+        guard let bookID = mediaViewModel.pendingInfoBookID,
+            let book = mediaViewModel.library.bookMetaData.first(where: { $0.id == bookID })
+        else { return }
+        let displayable = cachedDisplayItems.contains { $0.id == bookID }
+        guard displayable || isPendingInfoFallbackTarget else { return }
+        mediaViewModel.pendingInfoBookID = nil
+        openSidebar(for: book)
+    }
+    #endif
 
     #if os(macOS)
     @ViewBuilder

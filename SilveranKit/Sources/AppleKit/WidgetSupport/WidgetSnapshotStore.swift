@@ -1,0 +1,388 @@
+import CryptoKit
+import Foundation
+import SilveranKit
+
+#if canImport(WidgetKit) && (os(iOS) || os(macOS))
+import WidgetKit
+#endif
+
+public enum SilveranWidgetConstants {
+    public static let appGroupInfoKey = "SILVERAN_WIDGET_APP_GROUP"
+    public static let fallbackAppGroupIdentifier = "group.com.kyonifer.SilveranReader"
+    public static let readingWidgetKind = "SilveranReadingWidget"
+}
+
+public enum SilveranWidgetReadingKind: String, Codable, Sendable, Hashable {
+    case ebook
+    case audiobook
+    case readaloud
+}
+
+public struct SilveranWidgetBookSnapshot: Codable, Sendable, Hashable, Identifiable {
+    public var id: String
+    public var title: String
+    public var authorLine: String
+    public var subtitle: String?
+    public var summary: String?
+    public var sourceName: String?
+    public var progress: Double
+    public var lastReadAt: Date?
+    public var coverFilename: String?
+    public var audioCoverFilename: String?
+    public var readingKind: SilveranWidgetReadingKind
+    public var isCurrentlyReading: Bool
+    public var durationSeconds: Double?
+    public var pageCount: Int?
+    public var statusName: String?
+    // Raw server timestamp string; sorts lexically, matching the home view.
+    public var createdAt: String?
+
+    public init(
+        id: String,
+        title: String,
+        authorLine: String,
+        subtitle: String?,
+        summary: String?,
+        sourceName: String?,
+        progress: Double,
+        lastReadAt: Date?,
+        coverFilename: String?,
+        audioCoverFilename: String?,
+        readingKind: SilveranWidgetReadingKind,
+        isCurrentlyReading: Bool,
+        durationSeconds: Double?,
+        pageCount: Int?,
+        statusName: String?,
+        createdAt: String?,
+    ) {
+        self.id = id
+        self.title = title
+        self.authorLine = authorLine
+        self.subtitle = subtitle
+        self.summary = summary
+        self.sourceName = sourceName
+        self.progress = min(max(progress, 0), 1)
+        self.lastReadAt = lastReadAt
+        self.coverFilename = coverFilename
+        self.audioCoverFilename = audioCoverFilename
+        self.readingKind = readingKind
+        self.isCurrentlyReading = isCurrentlyReading
+        self.durationSeconds = durationSeconds
+        self.pageCount = pageCount
+        self.statusName = statusName
+        self.createdAt = createdAt
+    }
+
+    public var percentComplete: Int {
+        Int((progress * 100).rounded())
+    }
+
+    public var remainingLabel: String? {
+        guard progress < 1 else { return nil }
+        let ordered =
+            readingKind == .ebook
+            ? [pagesRemainingText, timeRemainingText]
+            : [timeRemainingText, pagesRemainingText]
+        let parts = ordered.compactMap { $0 }
+        guard !parts.isEmpty else { return nil }
+        return parts.joined(separator: " · ") + " left"
+    }
+
+    private var timeRemainingText: String? {
+        guard let durationSeconds, durationSeconds > 0 else { return nil }
+        let seconds = Int((durationSeconds * (1 - progress)).rounded())
+        guard seconds > 0 else { return nil }
+        let hours = seconds / 3600
+        let minutes = (seconds % 3600) / 60
+        return hours > 0 ? "\(hours)h \(minutes)m" : "\(minutes)m"
+    }
+
+    private var pagesRemainingText: String? {
+        guard let pageCount, pageCount > 0 else { return nil }
+        let remaining = Int((Double(pageCount) * (1 - progress)).rounded())
+        guard remaining > 0 else { return nil }
+        return remaining == 1 ? "1 page" : "\(remaining) pages"
+    }
+}
+
+public struct SilveranWidgetSnapshot: Codable, Sendable, Hashable {
+    public var generatedAt: Date
+    public var books: [SilveranWidgetBookSnapshot]
+
+    public init(generatedAt: Date = Date(), books: [SilveranWidgetBookSnapshot]) {
+        self.generatedAt = generatedAt
+        self.books = books
+    }
+
+    public static let empty = SilveranWidgetSnapshot(books: [])
+}
+
+public enum SilveranWidgetSnapshotStore {
+    private static let snapshotFilename = "currently-reading.json"
+    private static let coversDirectoryName = "Covers"
+
+    public static func appGroupIdentifier(bundle: Bundle = .main) -> String {
+        if let identifier = bundle.object(
+            forInfoDictionaryKey: SilveranWidgetConstants.appGroupInfoKey
+        ) as? String,
+            !identifier.isEmpty
+        {
+            return identifier
+        }
+        return SilveranWidgetConstants.fallbackAppGroupIdentifier
+    }
+
+    public static func sharedContainerURL(bundle: Bundle = .main) -> URL? {
+        FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: appGroupIdentifier(bundle: bundle)
+        )
+    }
+
+    public static func loadSnapshot(bundle: Bundle = .main) -> SilveranWidgetSnapshot {
+        guard let container = sharedContainerURL(bundle: bundle) else {
+            return .empty
+        }
+        let url = snapshotURL(in: container)
+        guard let data = try? Data(contentsOf: url) else {
+            return .empty
+        }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return (try? decoder.decode(SilveranWidgetSnapshot.self, from: data)) ?? .empty
+    }
+
+    public static func coverURL(for filename: String, bundle: Bundle = .main) -> URL? {
+        guard let container = sharedContainerURL(bundle: bundle) else { return nil }
+        return coversDirectory(in: container).appendingPathComponent(filename, isDirectory: false)
+    }
+
+    public static func publishSnapshot(
+        metadata: [BookMetadata],
+        progress: [String: BookProgress],
+        sources: [BookSourceRecord],
+    ) async {
+        guard let container = sharedContainerURL() else {
+            debugLog("[SilveranWidgetSnapshotStore] App group container unavailable")
+            return
+        }
+
+        do {
+            try ensureDirectoryExists(at: container)
+            try ensureDirectoryExists(at: coversDirectory(in: container))
+            var snapshot = makeSnapshot(
+                metadata: metadata,
+                progress: progress,
+                sources: sources,
+            )
+            try await attachCachedCovers(to: &snapshot, container: container)
+            try cleanupStaleCovers(keeping: snapshot.books, container: container)
+            try saveSnapshot(snapshot, in: container)
+            reloadWidgetTimelines()
+        } catch {
+            debugLog("[SilveranWidgetSnapshotStore] Failed to publish snapshot: \(error)")
+        }
+    }
+
+    public static func makeSnapshot(
+        metadata: [BookMetadata],
+        progress: [String: BookProgress],
+        sources: [BookSourceRecord],
+    ) -> SilveranWidgetSnapshot {
+        let sourceNames = Dictionary(uniqueKeysWithValues: sources.map { ($0.id, $0.name) })
+        let books = metadata.map { book -> SilveranWidgetBookSnapshot in
+            let progressInfo = progress[book.id]
+            let effectiveProgress = progressInfo?.progressFraction ?? book.progress
+            let statusName = book.status?.name.lowercased() ?? ""
+            let isCurrentlyReading =
+                statusName == "reading"
+                || (statusName != "read" && effectiveProgress > 0 && effectiveProgress < 1)
+
+            return SilveranWidgetBookSnapshot(
+                id: book.id,
+                title: book.title,
+                authorLine: creatorLine(for: book),
+                subtitle: trimmedNonEmpty(book.subtitle),
+                summary: plainSummary(from: book.description),
+                sourceName: book.source ?? book.sourceID.flatMap { sourceNames[$0] },
+                progress: effectiveProgress,
+                lastReadAt: lastReadDate(for: book, progressInfo: progressInfo),
+                coverFilename: nil,
+                audioCoverFilename: nil,
+                readingKind: readingKind(for: book),
+                isCurrentlyReading: isCurrentlyReading,
+                durationSeconds: book.durationValue,
+                pageCount: book.pageCountValue,
+                statusName: statusName.isEmpty ? nil : statusName,
+                createdAt: trimmedNonEmpty(book.createdAt),
+            )
+        }
+        .sorted { lhs, rhs in
+            if lhs.isCurrentlyReading != rhs.isCurrentlyReading {
+                return lhs.isCurrentlyReading
+            }
+            return readingRecencySort(lhs, rhs)
+        }
+
+        return SilveranWidgetSnapshot(books: books)
+    }
+
+    private static func attachCachedCovers(
+        to snapshot: inout SilveranWidgetSnapshot,
+        container: URL,
+    ) async throws {
+        guard !snapshot.books.isEmpty else { return }
+        let coversDirectory = coversDirectory(in: container)
+        try ensureDirectoryExists(at: coversDirectory)
+
+        for index in snapshot.books.indices {
+            let bookID = snapshot.books[index].id
+            snapshot.books[index].coverFilename = try await writeCachedCover(
+                bookID: bookID,
+                audio: false,
+                coversDirectory: coversDirectory,
+            )
+            snapshot.books[index].audioCoverFilename = try await writeCachedCover(
+                bookID: bookID,
+                audio: true,
+                coversDirectory: coversDirectory,
+            )
+        }
+    }
+
+    private static func writeCachedCover(
+        bookID: String,
+        audio: Bool,
+        coversDirectory: URL,
+    ) async throws -> String? {
+        guard let data = await BookServiceActor.shared.cachedCoverData(for: bookID, audio: audio)
+        else { return nil }
+        // The filename carries a content hash, so a replaced cover gets a new
+        // file (the old one is swept by cleanupStaleCovers) and an existing
+        // file never needs rewriting.
+        let filename = coverFilename(forBookID: bookID, audio: audio, data: data)
+        let url = coversDirectory.appendingPathComponent(filename, isDirectory: false)
+        if !FileManager.default.fileExists(atPath: url.path) {
+            try data.write(to: url, options: [.atomic])
+        }
+        return filename
+    }
+
+    private static func saveSnapshot(_ snapshot: SilveranWidgetSnapshot, in container: URL) throws {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.sortedKeys]
+        let data = try encoder.encode(snapshot)
+        try data.write(to: snapshotURL(in: container), options: [.atomic])
+    }
+
+    private static func cleanupStaleCovers(
+        keeping books: [SilveranWidgetBookSnapshot],
+        container: URL,
+    ) throws {
+        let keep = Set(books.compactMap(\.coverFilename) + books.compactMap(\.audioCoverFilename))
+        let directory = coversDirectory(in: container)
+        let contents = try? FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles],
+        )
+        for url in contents ?? [] where !keep.contains(url.lastPathComponent) {
+            try? FileManager.default.removeItem(at: url)
+        }
+    }
+
+    private static func snapshotURL(in container: URL) -> URL {
+        container.appendingPathComponent(snapshotFilename, isDirectory: false)
+    }
+
+    private static func coversDirectory(in container: URL) -> URL {
+        container.appendingPathComponent(coversDirectoryName, isDirectory: true)
+    }
+
+    private static func ensureDirectoryExists(at url: URL) throws {
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+    }
+
+    private static func readingRecencySort(
+        _ lhs: SilveranWidgetBookSnapshot,
+        _ rhs: SilveranWidgetBookSnapshot,
+    ) -> Bool {
+        switch (lhs.lastReadAt, rhs.lastReadAt) {
+            case (let left?, let right?) where left != right:
+                return left > right
+            case (.some, .none):
+                return true
+            case (.none, .some):
+                return false
+            default:
+                if lhs.progress != rhs.progress {
+                    return lhs.progress > rhs.progress
+                }
+                return lhs.title.articleStrippedCompare(rhs.title) == .orderedAscending
+        }
+    }
+
+    private static func creatorLine(for book: BookMetadata) -> String {
+        let authorNames = (book.authors ?? []).compactMap { trimmedNonEmpty($0.name) }
+        if !authorNames.isEmpty { return authorNames.joined(separator: ", ") }
+
+        let narratorNames = (book.narrators ?? []).compactMap { trimmedNonEmpty($0.name) }
+        if !narratorNames.isEmpty { return narratorNames.joined(separator: ", ") }
+
+        let creatorNames = (book.creators ?? []).compactMap { trimmedNonEmpty($0.name) }
+        return creatorNames.joined(separator: ", ")
+    }
+
+    private static func plainSummary(from description: String?) -> String? {
+        guard let description = trimmedNonEmpty(description) else { return nil }
+        let stripped = BookDescriptionText.plain(from: description)
+        let collapsed =
+            stripped
+            .components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+        return trimmedNonEmpty(collapsed)
+    }
+
+    private static func lastReadDate(
+        for book: BookMetadata,
+        progressInfo: BookProgress?,
+    ) -> Date? {
+        if let timestamp = progressInfo?.timestamp ?? book.position?.timestamp {
+            return Date(timeIntervalSince1970: timestamp / 1000)
+        }
+        return book.lastReadValue
+    }
+
+    private static func readingKind(for book: BookMetadata) -> SilveranWidgetReadingKind {
+        if book.hasAvailableReadaloud { return .readaloud }
+        if book.hasAvailableEbook { return .ebook }
+        return .audiobook
+    }
+
+    private static func coverFilename(forBookID bookID: String, audio: Bool, data: Data) -> String {
+        let token = SHA256.hash(data: data).prefix(8).map { String(format: "%02x", $0) }.joined()
+        return "\(sanitizedPathComponent(bookID))_\(audio ? "audio" : "text")_\(token).dat"
+    }
+
+    private static func sanitizedPathComponent(_ value: String) -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_."))
+        let scalars = value.unicodeScalars.map { scalar in
+            allowed.contains(scalar) ? Character(scalar) : "_"
+        }
+        let result = String(scalars)
+        return result.isEmpty ? "book" : result
+    }
+
+    private static func trimmedNonEmpty(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private static func reloadWidgetTimelines() {
+        #if canImport(WidgetKit) && (os(iOS) || os(macOS))
+        WidgetCenter.shared.reloadTimelines(ofKind: SilveranWidgetConstants.readingWidgetKind)
+        #endif
+    }
+}

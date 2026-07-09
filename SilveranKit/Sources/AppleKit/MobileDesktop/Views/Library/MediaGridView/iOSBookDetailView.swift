@@ -12,6 +12,7 @@ struct iOSBookDetailView: View {
     @State private var isUpdatingStatus = false
     @State private var showOfflineError = false
     @State private var showingOptionsSheet = false
+    @State private var attributedDescription: AttributedString?
     @AppStorage("showEbookCoverInAudioView") private var showEbookCover = false
 
     private var currentItem: BookMetadata {
@@ -477,10 +478,15 @@ struct iOSBookDetailView: View {
                 Text("Description")
                     .font(.callout)
                     .fontWeight(.medium)
-                Text(htmlToPlainText(description))
+                Text(attributedDescription ?? AttributedString())
                     .font(.body)
                     .foregroundStyle(.primary)
                     .textSelection(.enabled)
+            }
+            .task(id: description) {
+                attributedDescription = await Task.detached(priority: .userInitiated) {
+                    BookDescriptionText.attributed(from: description)
+                }.value
             }
         }
     }
@@ -518,11 +524,6 @@ struct iOSBookDetailView: View {
             .clipShape(RoundedRectangle(cornerRadius: 10))
         }
         .buttonStyle(.plain)
-    }
-
-    private func htmlToPlainText(_ html: String) -> String {
-        html.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression, range: nil)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func formatDate(_ isoString: String) -> String {

@@ -117,6 +117,55 @@ struct SilveranReaderApp: App {
                 guard !didOpenSecondaryWindows else { return }
                 didOpenSecondaryWindows = true
             }
+            .onOpenURL { url in
+                handleOpenURL(url)
+            }
+            .onChange(of: mediaViewModel.pendingOpenBookID) { _, _ in
+                openPendingBookIfReady()
+            }
+            .onChange(of: mediaViewModel.library.bookMetaData.count) { _, _ in
+                openPendingBookIfReady()
+            }
+    }
+
+    private func handleOpenURL(_ url: URL) {
+        guard url.scheme == "silveran" else { return }
+        switch url.host() {
+            case "book":
+                let bookID = url.pathComponents.dropFirst().joined(separator: "/")
+                guard !bookID.isEmpty else { return }
+                mediaViewModel.pendingOpenBookID = bookID
+            default:
+                break
+        }
+    }
+
+    private func openPendingBookIfReady() {
+        guard let bookID = mediaViewModel.pendingOpenBookID,
+            !mediaViewModel.library.bookMetaData.isEmpty
+        else { return }
+        mediaViewModel.pendingOpenBookID = nil
+
+        guard let book = mediaViewModel.library.bookMetaData.first(where: { $0.id == bookID })
+        else {
+            debugLog("[macApp] Dropping deep link for unknown book \(bookID)")
+            return
+        }
+        guard let category = mediaViewModel.preferredDownloadedCategory(for: book) else {
+            debugLog("[macApp] Book \(bookID) not downloaded; showing details in library")
+            mediaViewModel.pendingInfoBookID = book.id
+            return
+        }
+        Task {
+            let bookData = await mediaViewModel.makePlayerBookDataLoadingCovers(
+                for: book,
+                category: category,
+            )
+            openWindow(
+                id: category == .audio ? "AudiobookPlayer" : "EbookPlayer",
+                value: bookData,
+            )
+        }
     }
 
     private var audiobookScene: some Scene {
