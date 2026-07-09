@@ -155,6 +155,7 @@ public final class ReadaloudEngine: ReadaloudAligning {
     public private(set) var sourceOutputBookID: String?
     public private(set) var sourceWorkflowSourceID: BookSourceID?
     public private(set) var isLoadingSourceInputs = false
+    public var selectedTranscriber: ReadaloudTranscriber
     public var selectedModelSize: ReadaloudModelSize = .tiny
     public var customModelPath: URL?
     public var selectedGranularity: ReadaloudGranularity = .group
@@ -175,7 +176,13 @@ public final class ReadaloudEngine: ReadaloudAligning {
 
     private var alignmentTask: Task<Void, Never>?
 
-    public init() {}
+    public init() {
+        if #available(macOS 26.0, iOS 26.0, *) {
+            selectedTranscriber = .speechAnalyzer
+        } else {
+            selectedTranscriber = .whisper
+        }
+    }
 
     public func loadUploadSources() async {
         let sources = await BookServiceActor.shared.bookSources.filter {
@@ -186,6 +193,14 @@ public final class ReadaloudEngine: ReadaloudAligning {
     }
 
     public func configure(with input: ReadaloudGeneratorInput?) async {
+        alignmentTask?.cancel()
+        alignmentTask = nil
+        state = .idle
+        currentStage = .epub
+        currentMessage = ""
+        overallProgress = 0
+        logMessages = []
+
         guard let input else { return }
         sourceOutputBookID = input.bookID
         sourceWorkflowBookTitle = input.bookTitle
@@ -283,6 +298,18 @@ public final class ReadaloudEngine: ReadaloudAligning {
         return modelPath(for: selectedModelSize) != nil
     }
 
+    public var isTranscriberReady: Bool {
+        switch selectedTranscriber {
+            case .whisper:
+                return isModelDownloaded
+            case .speechAnalyzer:
+                if #available(macOS 26.0, iOS 26.0, *) {
+                    return true
+                }
+                return false
+        }
+    }
+
     public func loadChapters() {
         guard let epubURL else {
             availableChapters = []
@@ -362,6 +389,7 @@ public final class ReadaloudEngine: ReadaloudAligning {
 
     private nonisolated func runAlignment(epubURL: URL, audioURLs: [URL], outputURL: URL?) async {
         let customPath = await self.customModelPath
+        let selectedTranscriber = await self.selectedTranscriber
         let selectedSize = await self.selectedModelSize
         let builtInModelPath = await self.modelPath(for: selectedSize)
         let uploadAllToServer = await self.uploadAllToServer
@@ -390,11 +418,32 @@ public final class ReadaloudEngine: ReadaloudAligning {
         }
         let endChapter = endIdx.flatMap { chapters.indices.contains($0) ? chapters[$0].id : nil }
 
-        guard let modelPath else {
-            await MainActor.run {
-                self.state = .error("Whisper model not found. Please download it first.")
-            }
-            return
+        let transcriberFactory: any TranscriberFactory
+        switch selectedTranscriber {
+            case .whisper:
+                guard let modelPath else {
+                    await MainActor.run {
+                        self.state = .error("Whisper model not found. Please download it first.")
+                    }
+                    return
+                }
+                let whisperConfig = WhisperConfig(
+                    modelFile: modelPath,
+                    beamSize: nil,
+                    dtw: false,
+                )
+                transcriberFactory = WhisperTranscriberFactory(whisperConfig: whisperConfig)
+            case .speechAnalyzer:
+                guard #available(macOS 26.0, iOS 26.0, *) else {
+                    await MainActor.run {
+                        self.state = .error("Apple Speech requires macOS 26 or iOS 26.")
+                    }
+                    return
+                }
+                let speechConfig = SpeechAnalyzerConfig(bias: .standard, localeId: nil)
+                transcriberFactory = SpeechAnalyzerTranscriberFactory(
+                    speechAnalyzerConfig: speechConfig
+                )
         }
 
         // Start accessing security-scoped resources for sandboxed app
@@ -433,17 +482,12 @@ public final class ReadaloudEngine: ReadaloudAligning {
                 granularityExpansion: granularityExpansion,
                 extraContributors: ["SilveranReader 1.0"],
             )
-            let whisperConfig = WhisperConfig(
-                modelFile: modelPath,
-                beamSize: nil,
-                dtw: false,
-            )
             let transcriptionStore = try ReadaloudTranscriptionStore()
             let session = AlignmentSession(
                 request: alignmentRequest,
                 config: alignmentConfig,
                 logger: logger,
-                transcriberFactory: WhisperTranscriberFactory(whisperConfig: whisperConfig),
+                transcriberFactory: transcriberFactory,
                 transcriptionStore: transcriptionStore,
             )
             defer { session.cleanup() }

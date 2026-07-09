@@ -12,7 +12,8 @@ public enum ReadaloudGeneratorDestination: String, Codable, Hashable, Sendable {
 }
 
 public struct ReadaloudGeneratorData: Codable, Hashable, Sendable, Identifiable {
-    public var id: String { bookID }
+    public var id: UUID { requestID }
+    public let requestID: UUID
     public let bookID: String
     public let bookTitle: String
     public let sourceID: BookSourceID?
@@ -23,6 +24,7 @@ public struct ReadaloudGeneratorData: Codable, Hashable, Sendable, Identifiable 
     public let audioURLs: [URL]
 
     private enum CodingKeys: String, CodingKey {
+        case requestID
         case bookID
         case bookTitle
         case sourceID
@@ -44,6 +46,7 @@ public struct ReadaloudGeneratorData: Codable, Hashable, Sendable, Identifiable 
         ebookURL: URL?,
         audioURLs: [URL],
     ) {
+        self.requestID = UUID()
         self.bookID = bookID
         self.bookTitle = bookTitle
         self.sourceID = sourceID
@@ -78,6 +81,7 @@ public struct ReadaloudGeneratorData: Codable, Hashable, Sendable, Identifiable 
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        requestID = try container.decodeIfPresent(UUID.self, forKey: .requestID) ?? UUID()
         bookID = try container.decode(String.self, forKey: .bookID)
         bookTitle = try container.decode(String.self, forKey: .bookTitle)
         sourceID = try container.decodeIfPresent(BookSourceID.self, forKey: .sourceID)
@@ -99,6 +103,7 @@ public struct ReadaloudGeneratorData: Codable, Hashable, Sendable, Identifiable 
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(requestID, forKey: .requestID)
         try container.encode(bookID, forKey: .bookID)
         try container.encode(bookTitle, forKey: .bookTitle)
         try container.encodeIfPresent(sourceID, forKey: .sourceID)

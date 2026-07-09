@@ -24,9 +24,11 @@ public protocol ReadaloudAligning: AnyObject, Observable {
     var isLoadingSourceInputs: Bool { get }
     var isMissingSourceWorkflowMedia: Bool { get }
 
+    var selectedTranscriber: ReadaloudTranscriber { get set }
     var selectedModelSize: ReadaloudModelSize { get set }
     var customModelPath: URL? { get set }
     var isModelDownloaded: Bool { get }
+    var isTranscriberReady: Bool { get }
 
     var selectedGranularity: ReadaloudGranularity { get set }
     var expandingHighlight: Bool { get set }
@@ -60,6 +62,18 @@ public enum ReadaloudGranularity: String, CaseIterable, Sendable {
     case segment
     case phrase
     case sentence
+}
+
+public enum ReadaloudTranscriber: String, CaseIterable, Sendable {
+    case whisper
+    case speechAnalyzer
+
+    public var displayName: String {
+        switch self {
+            case .whisper: return "Whisper"
+            case .speechAnalyzer: return "Apple Speech"
+        }
+    }
 }
 
 public enum ReadaloudExpansionMode: String, CaseIterable, Sendable {

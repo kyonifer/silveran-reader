@@ -230,68 +230,94 @@ private struct ReadaloudGeneratorForm: View {
 
     private var modelSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Whisper Model")
+            Text("Transcription")
                 .font(.headline)
 
-            HStack {
-                Picker("Model:", selection: bind(\.selectedModelSize)) {
-                    ForEach(ReadaloudModelSize.allCases) { size in
-                        Text(size.displayName).tag(size)
+            Picker("Engine:", selection: bind(\.selectedTranscriber)) {
+                Text(ReadaloudTranscriber.whisper.displayName)
+                    .tag(ReadaloudTranscriber.whisper)
+                if speechAnalyzerAvailable {
+                    Text(ReadaloudTranscriber.speechAnalyzer.displayName)
+                        .tag(ReadaloudTranscriber.speechAnalyzer)
+                }
+            }
+
+            if viewModel.selectedTranscriber == .whisper {
+                HStack {
+                    Picker("Model:", selection: bind(\.selectedModelSize)) {
+                        ForEach(ReadaloudModelSize.allCases) { size in
+                            Text(size.displayName).tag(size)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                    if viewModel.selectedModelSize == .custom {
+                        Button("Browse...") {
+                            #if os(macOS)
+                            let panel = NSOpenPanel()
+                            panel.allowedContentTypes = [UTType(filenameExtension: "bin")!]
+                            panel.allowsMultipleSelection = false
+                            panel.canChooseDirectories = false
+                            if panel.runModal() == .OK {
+                                viewModel.customModelPath = panel.url
+                            }
+                            #else
+                            fileImporterRequest = FileImporterRequest(
+                                allowedContentTypes: [UTType(filenameExtension: "bin")].compactMap {
+                                    $0
+                                },
+                                allowsMultipleSelection: false,
+                            ) { urls in
+                                viewModel.customModelPath = urls.first
+                            }
+                            #endif
+                        }
+                    } else if viewModel.isModelDownloaded {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                        Text("Downloaded")
+                            .foregroundStyle(.secondary)
+                            .font(.caption)
+                    } else {
+                        Button("Download") {
+                            viewModel.downloadModel()
+                        }
+                        .disabled(viewModel.state == .processing)
                     }
                 }
-                .labelsHidden()
-                .frame(maxWidth: .infinity, alignment: .leading)
 
-                if viewModel.selectedModelSize == .custom {
-                    Button("Browse...") {
-                        #if os(macOS)
-                        let panel = NSOpenPanel()
-                        panel.allowedContentTypes = [UTType(filenameExtension: "bin")!]
-                        panel.allowsMultipleSelection = false
-                        panel.canChooseDirectories = false
-                        if panel.runModal() == .OK {
-                            viewModel.customModelPath = panel.url
-                        }
-                        #else
-                        fileImporterRequest = FileImporterRequest(
-                            allowedContentTypes: [UTType(filenameExtension: "bin")].compactMap {
-                                $0
-                            },
-                            allowsMultipleSelection: false,
-                        ) { urls in
-                            viewModel.customModelPath = urls.first
-                        }
-                        #endif
-                    }
-                } else if viewModel.isModelDownloaded {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
-                    Text("Downloaded")
+                if viewModel.selectedModelSize == .custom,
+                    let customPath = viewModel.customModelPath
+                {
+                    Text(customPath.path)
+                        .font(.caption)
                         .foregroundStyle(.secondary)
-                        .font(.caption)
-                } else {
-                    Button("Download") {
-                        viewModel.downloadModel()
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+
+                if case .downloading(let progress) = viewModel.state {
+                    ProgressView(value: progress) {
+                        Text("Downloading model...")
+                            .font(.caption)
                     }
-                    .disabled(viewModel.state == .processing)
                 }
-            }
-
-            if viewModel.selectedModelSize == .custom, let customPath = viewModel.customModelPath {
-                Text(customPath.path)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
-
-            if case .downloading(let progress) = viewModel.state {
-                ProgressView(value: progress) {
-                    Text("Downloading model...")
-                        .font(.caption)
-                }
+            } else {
+                Text(
+                    "Uses Apple's on-device SpeechAnalyzer with its higher-quality standard mode. Language assets are managed by the system."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
         }
+    }
+
+    private var speechAnalyzerAvailable: Bool {
+        if #available(macOS 26.0, iOS 26.0, *) {
+            return true
+        }
+        return false
     }
 
     private var granularityDescription: String {
@@ -961,12 +987,12 @@ private struct ReadaloudGeneratorForm: View {
             return true
         }
         if viewModel.uploadAllToServer {
-            return viewModel.selectedUploadSourceID == nil || !viewModel.isModelDownloaded
+            return viewModel.selectedUploadSourceID == nil || !viewModel.isTranscriberReady
         }
         #if os(iOS)
-        return !viewModel.isModelDownloaded
+        return !viewModel.isTranscriberReady
         #else
-        return viewModel.outputURL == nil || !viewModel.isModelDownloaded
+        return viewModel.outputURL == nil || !viewModel.isTranscriberReady
         #endif
     }
 
@@ -1003,7 +1029,10 @@ private struct ReadaloudGeneratorForm: View {
                 return "Select an audiobook file"
             }
         }
-        if !viewModel.isModelDownloaded {
+        if !viewModel.isTranscriberReady {
+            if viewModel.selectedTranscriber == .speechAnalyzer {
+                return "Apple Speech requires macOS 26 or iOS 26"
+            }
             if viewModel.selectedModelSize == .custom {
                 if viewModel.customModelPath == nil {
                     return "Select a custom model file"
@@ -1202,7 +1231,7 @@ extension View {
     @ViewBuilder
     fileprivate func readaloudGeneratorSizing() -> some View {
         #if os(macOS)
-        frame(width: 820, height: 760)
+        frame(width: 820, height: 820)
         #else
         frame(maxWidth: .infinity, maxHeight: .infinity)
         #endif
