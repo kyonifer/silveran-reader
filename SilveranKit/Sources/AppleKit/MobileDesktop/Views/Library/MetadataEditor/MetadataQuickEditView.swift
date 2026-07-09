@@ -66,11 +66,14 @@ struct MetadataQuickEditView: View {
     @State private var isReady = false
     @FocusState private var singleLineFocused: Bool
 
-    @State private var hcConfigured = false
-    @State private var hcLoading = false
-    @State private var hcDetails: HardcoverBookDetails?
-    @State private var hcMatchLabel: String?
-    @State private var hcError: String?
+    @State private var lookupLoading = false
+    @State private var lookupResults: [AudnexusSearchResult] = []
+    // Only the tags field needs the full Audnexus record; every other field is derivable straight
+    // from the lightweight search result, so details are fetched lazily per row and cached here.
+    @State private var lookupTagDetailsByAsin: [String: HardcoverBookDetails] = [:]
+    @State private var lookupError: String?
+    @State private var audnexusRegion = "us"
+    @State private var editorContentHeight: CGFloat = 0
 
     private var book: MetadataEditorViewModel.EditableBook? {
         viewModel.books.first { $0.id == bookId }
@@ -83,14 +86,14 @@ struct MetadataQuickEditView: View {
 
             if isReady, book != nil {
                 editorArea
-                if hcConfigured, fieldSupportsHardcover {
-                    if let hcError {
-                        Text(hcError)
+                if fieldSupportsLookup {
+                    if let lookupError {
+                        Text(lookupError)
                             .font(.callout)
                             .foregroundStyle(.orange)
                     }
-                    if let hcDetails {
-                        hardcoverPeekRow(details: hcDetails)
+                    if !lookupResults.isEmpty {
+                        lookupResultsList
                     }
                 }
                 if let message = validationError {
@@ -140,8 +143,19 @@ struct MetadataQuickEditView: View {
             ScrollView {
                 editor
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(
+                        GeometryReader { geo in
+                            Color.clear.preference(
+                                key: QuickEditContentHeightKey.self,
+                                value: geo.size.height,
+                            )
+                        }
+                    )
             }
-            .frame(maxHeight: 360)
+            // A bare ScrollView expands to fill; size it to its content instead so a short editor
+            // (one narrator pill) doesn't reserve the full height, only scrolling past the cap.
+            .frame(height: min(max(editorContentHeight, 44), 360))
+            .onPreferenceChange(QuickEditContentHeightKey.self) { editorContentHeight = $0 }
         }
     }
 
@@ -238,17 +252,17 @@ struct MetadataQuickEditView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            if hcConfigured, fieldSupportsHardcover {
-                if hcLoading {
+            if fieldSupportsLookup {
+                if lookupLoading {
                     ProgressView()
                         .controlSize(.small)
                 } else {
                     Button {
-                        Task { await lookupHardcover() }
+                        Task { await performLookup() }
                     } label: {
                         Image(systemName: "magnifyingglass")
                     }
-                    .help("Look up this field on Hardcover")
+                    .help("Look up this field on Audnexus")
                 }
             }
             Button("Cancel", role: .cancel) { onClose() }
@@ -288,13 +302,9 @@ struct MetadataQuickEditView: View {
             }
         }
 
-        if fieldSupportsHardcover,
-            let token = try? await AuthenticationActor.shared.loadHardcoverToken(),
-            !token.isEmpty
-        {
-            await HardcoverActor.shared.setToken(token)
-            hcConfigured = true
-        }
+        // Mirror the full importer's marketplace choice so a quick lookup queries the same Audible
+        // region the user already picked there.
+        audnexusRegion = UserDefaults.standard.string(forKey: "audnexusImport.region") ?? "us"
 
         isReady = true
         if field.isSingleLine {
@@ -316,159 +326,201 @@ struct MetadataQuickEditView: View {
         }
     }
 
-    private var fieldSupportsHardcover: Bool {
+    private var fieldSupportsLookup: Bool {
         switch field {
-            case .status, .collections: return false
-            // Book-level language is not populated by HardcoverActor.fetchBookDetails (it only
-            // exists per-edition), and the field stores a language code rather than a display name,
-            // so a Hardcover lookup here would show nothing and mis-apply the raw name.
+            // Audnexus models only authors + narrators, so it has nothing to offer the general
+            // creators field. Language is a display name in the record, not the stored code, so a
+            // lookup would mis-apply it.
+            case .status, .collections, .creators: return false
             case .scalar(let key, _): return key != "language"
             default: return true
         }
     }
 
     @ViewBuilder
-    private func hardcoverPeekRow(details: HardcoverBookDetails) -> some View {
-        let value = hardcoverValueDisplay(details)
-        VStack(alignment: .leading, spacing: 6) {
-            if let hcMatchLabel {
-                Text("Hardcover match: \(hcMatchLabel)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
+    private var lookupResultsList: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Audnexus matches")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(lookupResults) { result in
+                        lookupResultRow(result)
+                        Divider()
+                    }
+                }
             }
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(value.isEmpty ? "(no value on Hardcover)" : value)
-                    .font(.callout)
-                    .foregroundStyle(value.isEmpty ? .secondary : .primary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .textSelection(.enabled)
-                Button("Use") { applyHardcover(details) }
-                    .disabled(value.isEmpty)
+            .frame(maxHeight: 240)
+            .background(RoundedRectangle(cornerRadius: 6).fill(Color.secondary.opacity(0.06)))
+        }
+    }
+
+    private func lookupResultRow(_ result: AudnexusSearchResult) -> some View {
+        let value = lookupValue(for: result)
+        return HStack(alignment: .top, spacing: 10) {
+            coverThumb(result.coverUrl)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(result.title).font(.callout.weight(.semibold)).lineLimit(2)
+                if !result.authorNames.isEmpty {
+                    Text(result.authorNames.joined(separator: ", "))
+                        .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
+                if let year = result.releaseYear {
+                    Text(String(year)).font(.caption2).foregroundStyle(.tertiary)
+                }
             }
+            Spacer(minLength: 8)
+            VStack(alignment: .trailing, spacing: 6) {
+                if let value {
+                    Text(value.isEmpty ? "(none)" : value)
+                        .font(.caption)
+                        .foregroundStyle(value.isEmpty ? .tertiary : .secondary)
+                        .lineLimit(3)
+                        .multilineTextAlignment(.trailing)
+                        .textSelection(.enabled)
+                    Button("Use") { applyResult(result) }
+                        .controlSize(.small)
+                        .disabled(value.isEmpty)
+                } else {
+                    ProgressView().controlSize(.small)
+                }
+            }
+            .frame(width: 140, alignment: .trailing)
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 6).fill(Color.secondary.opacity(0.08)))
+        .task { await loadTagDetailsIfNeeded(for: result) }
     }
 
-    private func lookupHardcover() async {
+    private func coverThumb(_ url: String?) -> some View {
+        Group {
+            if let url, let parsed = URL(string: url) {
+                AsyncImage(url: parsed) { image in
+                    image.resizable().aspectRatio(contentMode: .fit)
+                } placeholder: {
+                    Color.secondary.opacity(0.12)
+                }
+            } else {
+                Color.secondary.opacity(0.12)
+            }
+        }
+        .frame(width: 40, height: 54)
+        .clipShape(RoundedRectangle(cornerRadius: 4))
+    }
+
+    private func performLookup() async {
         guard let book else { return }
-        hcError = nil
-        hcLoading = true
-        defer { hcLoading = false }
+        lookupError = nil
+        lookupLoading = true
+        defer { lookupLoading = false }
 
         let author =
             book.authors.first
             ?? book.originalMetadata.authors?.first?.name
-            ?? ""
-        let query = "\(book.title) \(author)".trimmingCharacters(in: .whitespaces)
 
         do {
-            let results = try await HardcoverActor.shared.searchBooks(query: query)
-            guard let first = results.first else {
-                hcDetails = nil
-                hcMatchLabel = nil
-                hcError = "No Hardcover match found"
-                return
+            let results = try await AudnexusActor.shared.searchBooks(
+                title: book.title,
+                author: author,
+                region: audnexusRegion,
+            )
+            lookupResults = results
+            lookupTagDetailsByAsin = [:]
+            if results.isEmpty {
+                lookupError = "No Audnexus matches found"
             }
-            hcDetails = try await HardcoverActor.shared.fetchBookDetails(id: first.id)
-            hcMatchLabel = first.releaseYear.map { "\(first.title) (\($0))" } ?? first.title
         } catch {
-            hcDetails = nil
-            hcMatchLabel = nil
-            hcError =
-                (error as? HardcoverError)?.errorDescription ?? "Hardcover lookup failed"
+            lookupResults = []
+            lookupError = "Audnexus lookup failed"
         }
     }
 
-    private func hardcoverValueDisplay(_ details: HardcoverBookDetails) -> String {
+    /// Value returned for a result. `nil` means the tags field is still fetching its record (the
+    /// only field not derivable from the lightweight search result); every other field resolves
+    /// synchronously to a string that may be empty.
+    private func lookupValue(for result: AudnexusSearchResult) -> String? {
         switch field {
             case .scalar(let key, _):
                 switch key {
-                    case "title": return details.title ?? ""
-                    case "subtitle": return details.subtitle ?? ""
+                    case "title": return result.title
+                    case "subtitle": return result.subtitle ?? ""
                     default: return ""
                 }
             case .stringList(let key, _):
                 switch key {
-                    case "authors": return details.authors.joined(separator: ", ")
-                    case "narrators": return details.narrators.joined(separator: ", ")
-                    case "tags": return details.tags.map(\.name).joined(separator: ", ")
+                    case "authors": return result.authorNames.joined(separator: ", ")
+                    case "narrators": return result.narratorNames.joined(separator: ", ")
+                    case "tags":
+                        guard let details = lookupTagDetailsByAsin[result.asin] else { return nil }
+                        return details.tags.map(\.name).joined(separator: ", ")
                     default: return ""
                 }
             case .series:
-                return details.series
-                    .map { s in
-                        let pos = Self.seriesPositionString(s.position)
-                        return pos.isEmpty ? s.name : "\(s.name) #\(pos)"
-                    }
-                    .joined(separator: ", ")
-            case .creators:
-                return details.creators
-                    .map { $0.role.isEmpty ? $0.name : "\($0.name) (\($0.role))" }
-                    .joined(separator: ", ")
+                guard let name = result.seriesName else { return "" }
+                return result.seriesPosition.map { "\(name) #\($0)" } ?? name
             case .publicationDate:
-                return Self.hardcoverDateOnly(details.releaseDate)
-            case .status, .collections:
+                return Self.dateOnly(result.releaseDate)
+            case .status, .collections, .creators:
                 return ""
         }
     }
 
-    private func applyHardcover(_ details: HardcoverBookDetails) {
+    private func applyResult(_ result: AudnexusSearchResult) {
         guard let index = viewModel.books.firstIndex(where: { $0.id == bookId }) else { return }
         switch field {
             case .scalar(let key, _):
                 switch key {
-                    case "title": viewModel.books[index].title = details.title ?? ""
-                    case "subtitle": viewModel.books[index].subtitle = details.subtitle ?? ""
+                    case "title": viewModel.books[index].title = result.title
+                    case "subtitle": viewModel.books[index].subtitle = result.subtitle ?? ""
                     default: break
                 }
                 viewModel.markDirty(field: key, for: bookId)
             case .stringList(let key, _):
                 switch key {
-                    case "authors": viewModel.books[index].authors = details.authors
-                    case "narrators": viewModel.books[index].narrators = details.narrators
-                    case "tags": viewModel.books[index].tags = details.tags.map(\.name)
+                    case "authors": viewModel.books[index].authors = result.authorNames
+                    case "narrators": viewModel.books[index].narrators = result.narratorNames
+                    case "tags":
+                        guard let details = lookupTagDetailsByAsin[result.asin] else { return }
+                        viewModel.books[index].tags = details.tags.map(\.name)
                     default: break
                 }
                 viewModel.markDirty(field: key, for: bookId)
             case .series:
-                viewModel.books[index].series = details.series.map { s in
+                guard let name = result.seriesName else { return }
+                viewModel.books[index].series = [
                     MetadataEditorViewModel.EditableSeries(
-                        name: s.name,
-                        position: Self.seriesPositionString(s.position),
-                        featured: s.featured,
+                        name: name,
+                        position: result.seriesPosition ?? "",
+                        featured: true,
                         uuid: nil,
                     )
-                }
+                ]
                 viewModel.markDirty(field: "series", for: bookId)
-            case .creators:
-                viewModel.books[index].creators = details.creators.map { creator in
-                    MetadataEditorViewModel.EditableCreator(
-                        name: creator.name,
-                        fileAs: "",
-                        role: creator.role,
-                        uuid: nil,
-                    )
-                }
-                viewModel.markDirty(field: "creators", for: bookId)
             case .publicationDate:
-                viewModel.books[index].publicationDate = Self.hardcoverDateOnly(details.releaseDate)
+                viewModel.books[index].publicationDate = Self.dateOnly(result.releaseDate)
                 viewModel.markDirty(field: "publicationDate", for: bookId)
-            case .status, .collections:
+            case .status, .collections, .creators:
                 break
         }
     }
 
-    private static func seriesPositionString(_ position: Double?) -> String {
-        guard let position else { return "" }
-        return position.truncatingRemainder(dividingBy: 1) == 0
-            ? String(Int(position)) : String(position)
+    private var lookupNeedsDetails: Bool {
+        if case .stringList(let key, _) = field { return key == "tags" }
+        return false
     }
 
-    private static func hardcoverDateOnly(_ raw: String?) -> String {
+    private func loadTagDetailsIfNeeded(for result: AudnexusSearchResult) async {
+        guard lookupNeedsDetails, lookupTagDetailsByAsin[result.asin] == nil else { return }
+        if let details = try? await AudnexusActor.shared.fetchBookDetails(
+            asin: result.asin,
+            region: audnexusRegion,
+        ) {
+            lookupTagDetailsByAsin[result.asin] = details.asImportDetails
+        }
+    }
+
+    private static func dateOnly(_ raw: String?) -> String {
         guard let raw, !raw.isEmpty else { return "" }
         return raw.contains("T") ? String(raw.prefix(10)) : raw
     }
@@ -627,6 +679,13 @@ struct MetadataQuickEditView: View {
             }
         }
         return names.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+    }
+}
+
+private struct QuickEditContentHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }
 #endif

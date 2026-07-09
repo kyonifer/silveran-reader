@@ -5,8 +5,6 @@ func metadataEditorChangeColor(for colorScheme: ColorScheme) -> Color {
     colorScheme == .light ? Color(red: 0.78, green: 0.31, blue: 0.0) : .orange
 }
 
-// MARK: - Shared Boundaries
-
 extension View {
     func metadataEditorBoundary(cornerRadius: CGFloat = 6) -> some View {
         overlay {
@@ -21,8 +19,6 @@ extension View {
             .metadataEditorBoundary(cornerRadius: cornerRadius)
     }
 }
-
-// MARK: - Word Diff
 
 struct WordDiffView: View {
     let oldText: String

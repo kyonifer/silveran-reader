@@ -144,7 +144,7 @@ public struct MetadataEditorView: View {
         }
         .sheet(isPresented: $showHardcoverImportSheet) {
             if let book = viewModel.selectedBook {
-                HardcoverImportView(
+                UnifiedMetadataImportView(
                     bookTitle: book.title,
                     bookAuthor: book.authors.first,
                     currentBook: book,
@@ -225,8 +225,6 @@ public struct MetadataEditorView: View {
         )
     }
 
-    // MARK: - Warning Banner
-
     @ViewBuilder
     private var warningBanner: some View {
         Group {
@@ -298,8 +296,6 @@ public struct MetadataEditorView: View {
             alignment: .bottom,
         )
     }
-
-    // MARK: - Book Sidebar
 
     @ViewBuilder
     private var bookSidebar: some View {
@@ -481,8 +477,6 @@ public struct MetadataEditorView: View {
         )
     }
 
-    // MARK: - Window Title
-
     private var windowTitle: String {
         guard let book = viewModel.selectedBook else { return "Edit Metadata" }
         return "Edit Metadata - \(book.displayTitle)"
@@ -639,8 +633,6 @@ public struct MetadataEditorView: View {
         }
     }
     #endif
-
-    // MARK: - Bottom Bar
 
     private var currentBookErrors: [MetadataEditorViewModel.ValidationError] {
         guard let bookId = viewModel.selectedBookId else { return [] }

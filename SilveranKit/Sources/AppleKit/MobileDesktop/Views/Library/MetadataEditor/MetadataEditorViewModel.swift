@@ -942,8 +942,6 @@ final class MetadataEditorViewModel {
         books.first(where: { $0.id == bookId })?.originalMetadata.sourceID
     }
 
-    // MARK: - Hardcover Import
-
     func applyImport(
         imports: [HardcoverImportSource: HardcoverBookDetails],
         fields: Set<String>,
@@ -1010,101 +1008,47 @@ final class MetadataEditorViewModel {
             }
         }
 
-        if shouldApplyToCurrent("authors") && !details.authors.isEmpty {
-            var seen = Set(books[index].authors.map { $0.lowercased() })
-            var changed = false
-            for author in details.authors {
-                guard !seen.contains(author.lowercased()) else { continue }
-                seen.insert(author.lowercased())
-                books[index].authors.append(author)
-                changed = true
-            }
-            if changed {
-                markDirty(field: "authors", for: bookId)
-            }
+        // List fields replace outright: the import UI is a per-field source picker where choosing a
+        // column means "use this column's value", so the selected source's list wins wholesale.
+        if shouldApplyToCurrent("authors"), !details.authors.isEmpty,
+            books[index].authors != details.authors
+        {
+            books[index].authors = details.authors
+            markDirty(field: "authors", for: bookId)
         }
 
-        if shouldApplyToCurrent("narrators") && !details.narrators.isEmpty {
-            var seen = Set(books[index].narrators.map { $0.lowercased() })
-            var changed = false
-            for narrator in details.narrators {
-                guard !seen.contains(narrator.lowercased()) else { continue }
-                seen.insert(narrator.lowercased())
-                books[index].narrators.append(narrator)
-                changed = true
-            }
-            if changed {
-                markDirty(field: "narrators", for: bookId)
-            }
+        if shouldApplyToCurrent("narrators"), !details.narrators.isEmpty,
+            books[index].narrators != details.narrators
+        {
+            books[index].narrators = details.narrators
+            markDirty(field: "narrators", for: bookId)
         }
 
-        if shouldApplyToCurrent("creators") && !details.creators.isEmpty {
-            var seenKeys = Set(
-                books[index].creators.map {
-                    "\($0.name.lowercased())|\($0.role.lowercased())"
-                }
-            )
-            var changed = false
-            for creator in details.creators {
-                let key = "\(creator.name.lowercased())|\(creator.role.lowercased())"
-                guard !seenKeys.contains(key) else { continue }
-                seenKeys.insert(key)
-                books[index].creators.append(
-                    EditableCreator(
-                        name: creator.name,
-                        fileAs: "",
-                        role: creator.role,
-                    )
-                )
-                changed = true
+        if shouldApplyToCurrent("creators"), !details.creators.isEmpty {
+            let newCreators = details.creators.map {
+                EditableCreator(name: $0.name, fileAs: "", role: $0.role)
             }
-            if changed {
+            let oldKey = books[index].creators.map { "\($0.name)|\($0.role)" }
+            let newKey = newCreators.map { "\($0.name)|\($0.role)" }
+            if oldKey != newKey {
+                books[index].creators = newCreators
                 markDirty(field: "creators", for: bookId)
             }
         }
 
-        if shouldApplyToCurrent("series") && !details.series.isEmpty {
-            var seenNames = Set(
-                books[index].series.map { $0.name.lowercased() }
-            )
-            var updated = false
-            for s in details.series {
-                if seenNames.contains(s.name.lowercased()) {
-                    if let existingIdx = books[index].series.firstIndex(where: {
-                        $0.name.lowercased() == s.name.lowercased()
-                    }) {
-                        if let pos = s.position {
-                            let posStr =
-                                pos.truncatingRemainder(dividingBy: 1) == 0
-                                ? String(Int(pos)) : String(pos)
-                            if books[index].series[existingIdx].position != posStr {
-                                books[index].series[existingIdx].position = posStr
-                                updated = true
-                            }
-                        }
-                        if books[index].series[existingIdx].featured != s.featured {
-                            books[index].series[existingIdx].featured = s.featured
-                            updated = true
-                        }
-                    }
-                } else {
-                    seenNames.insert(s.name.lowercased())
-                    let posStr: String =
-                        s.position.map {
-                            $0.truncatingRemainder(dividingBy: 1) == 0
-                                ? String(Int($0)) : String($0)
-                        } ?? ""
-                    books[index].series.append(
-                        EditableSeries(
-                            name: s.name,
-                            position: posStr,
-                            featured: s.featured,
-                        )
-                    )
-                    updated = true
-                }
+        if shouldApplyToCurrent("series"), !details.series.isEmpty {
+            let newSeries = details.series.map { s -> EditableSeries in
+                let posStr: String =
+                    s.position.map {
+                        $0.truncatingRemainder(dividingBy: 1) == 0
+                            ? String(Int($0)) : String($0)
+                    } ?? ""
+                return EditableSeries(name: s.name, position: posStr, featured: s.featured)
             }
-            if updated {
+            let oldKey = books[index].series.map { "\($0.name)|\($0.position)|\($0.featured)" }
+            let newKey = newSeries.map { "\($0.name)|\($0.position)|\($0.featured)" }
+            if oldKey != newKey {
+                books[index].series = newSeries
                 markDirty(field: "series", for: bookId)
             }
         }

@@ -38,6 +38,12 @@ public struct HardcoverTagInfo: Sendable {
     public let name: String
     public let count: Int
     public let category: String?
+
+    public init(name: String, count: Int, category: String?) {
+        self.name = name
+        self.count = count
+        self.category = category
+    }
 }
 
 public struct HardcoverBookDetails: Sendable {
