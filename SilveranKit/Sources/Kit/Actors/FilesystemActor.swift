@@ -72,6 +72,11 @@ public actor FilesystemActor {
             .appendingPathComponent("WhisperModels", isDirectory: true)
     }
 
+    public nonisolated func storyAlignCacheDirectory() -> URL {
+        applicationSupportBaseDirectory()
+            .appendingPathComponent("StoryAlignCache", isDirectory: true)
+    }
+
     public func ensureInternalFolderSourceDirectory(sourceID: BookSourceID) throws -> URL {
         let directory = internalFolderSourceDirectory()
         try ensureSourceIDMarker(in: directory, sourceID: sourceID)

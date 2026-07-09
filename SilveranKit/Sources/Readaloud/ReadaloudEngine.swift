@@ -438,12 +438,13 @@ public final class ReadaloudEngine: ReadaloudAligning {
                 beamSize: nil,
                 dtw: false,
             )
+            let transcriptionStore = try ReadaloudTranscriptionStore()
             let session = AlignmentSession(
                 request: alignmentRequest,
                 config: alignmentConfig,
                 logger: logger,
-                whisperConfig: whisperConfig,
-                transcriptionStore: nil,
+                transcriberFactory: WhisperTranscriberFactory(whisperConfig: whisperConfig),
+                transcriptionStore: transcriptionStore,
             )
             defer { session.cleanup() }
             _ = session.addProgressListener(progressListener)
