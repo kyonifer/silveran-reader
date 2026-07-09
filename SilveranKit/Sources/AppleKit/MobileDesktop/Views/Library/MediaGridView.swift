@@ -147,6 +147,9 @@ struct MediaGridView: View {
     @State private var creatorSortRoleCode: String?
     @State private var enabledCreatorRoles: Set<String> = Self.loadEnabledCreatorRoles()
     @State private var columnResetToken: Int = 0
+    #if os(macOS)
+    @State private var quickEditTarget: MetadataQuickEditTarget?
+    #endif
 
     private static let columnCustomizationKey = "library.table.columnCustomization"
     private static let enabledCreatorRolesKey = "library.table.enabledCreatorRoles"
@@ -739,6 +742,9 @@ struct MediaGridView: View {
                     onInfo: { openSidebar(for: $0) },
                     onMetadataLinkClicked: onMetadataLinkClicked,
                     onEditMetadata: handleEditMetadata,
+                    onQuickEdit: { bookId, field in
+                        quickEditTarget = MetadataQuickEditTarget(bookId: bookId, field: field)
+                    },
                     onManageServerMedia: { bookId in
                         openWindow(
                             id: "ServerMediaManagement",
@@ -831,6 +837,14 @@ struct MediaGridView: View {
                 },
             )
         )
+        .sheet(item: $quickEditTarget) { target in
+            MetadataQuickEditView(
+                bookId: target.bookId,
+                field: target.field,
+                onClose: { quickEditTarget = nil },
+            )
+            .environment(mediaViewModel)
+        }
     }
 
     private func updateTableSortedItems(forceResort: Bool = false) {

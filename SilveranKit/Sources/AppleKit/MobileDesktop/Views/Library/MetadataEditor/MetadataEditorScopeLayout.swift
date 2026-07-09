@@ -2018,7 +2018,7 @@ struct ExpandedStringListEditor: View {
                     .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
                 .fullTextPill()
-                .metadataEditorAutocompleteExitCommand {
+                .metadataEditorAutocompleteExitCommand(active: showsAutocomplete) {
                     showsAutocomplete = false
                 }
             }
@@ -2218,7 +2218,7 @@ private struct CreatorNameAutocompleteField: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .metadataEditorAutocompleteExitCommand {
+        .metadataEditorAutocompleteExitCommand(active: showsAutocomplete) {
             showsAutocomplete = false
         }
     }
@@ -2963,7 +2963,7 @@ private func fuzzyMatches(_ query: String, in value: String) -> Bool {
 }
 
 #if os(macOS)
-private struct MetadataEditorDatePicker: NSViewRepresentable {
+struct MetadataEditorDatePicker: NSViewRepresentable {
     @Binding var selection: Date
 
     func makeNSView(context: Context) -> NSDatePicker {
@@ -3130,11 +3130,16 @@ extension View {
     }
 
     @ViewBuilder
-    fileprivate func metadataEditorAutocompleteExitCommand(_ action: @escaping () -> Void)
-        -> some View
-    {
+    fileprivate func metadataEditorAutocompleteExitCommand(
+        active: Bool,
+        _ action: @escaping () -> Void,
+    ) -> some View {
         #if os(macOS)
-        self.onExitCommand(perform: action)
+        self.onKeyPress(.escape) {
+            guard active else { return .ignored }
+            action()
+            return .handled
+        }
         #else
         self
         #endif

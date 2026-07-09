@@ -7,6 +7,7 @@ private let tableTrailingPadding: CGFloat = 12
 private final class ImmediateSelectTableView: NSTableView {
     var onRowDoubleClicked: ((Int) -> Void)?
     var onLinkClicked: ((MetadataLinkTarget) -> Void)?
+    var onQuickEditCell: ((Int, String) -> Void)?
     fileprivate var isFitting = false
     fileprivate var suppressColumnWidthPersistence = false
     fileprivate var activeIdealWidths: [String: CGFloat] = [:]
@@ -97,6 +98,23 @@ private final class ImmediateSelectTableView: NSTableView {
         let point = convert(event.locationInWindow, from: nil)
         let clickedRow = row(at: point)
 
+        let isOptionClick =
+            event.modifierFlags.contains(.option) && !event.modifierFlags.contains(.command)
+        if isOptionClick, clickedRow >= 0 {
+            let clickedCol = column(at: point)
+            if clickedCol >= 0 {
+                let colID = tableColumns[clickedCol].identifier.rawValue
+                if MediaTableView.quickEditField(forColumnID: colID) != nil {
+                    if window?.firstResponder !== self {
+                        window?.makeFirstResponder(self)
+                    }
+                    selectRowIndexes(IndexSet(integer: clickedRow), byExtendingSelection: false)
+                    onQuickEditCell?(clickedRow, colID)
+                    return
+                }
+            }
+        }
+
         if clickedRow >= 0 {
             if window?.firstResponder !== self {
                 window?.makeFirstResponder(self)
@@ -169,6 +187,7 @@ struct MediaTableView: NSViewRepresentable {
     let onInfo: (BookMetadata) -> Void
     var onMetadataLinkClicked: ((MetadataLinkTarget) -> Void)?
     var onEditMetadata: (([String]) -> Void)?
+    var onQuickEdit: ((String, MetadataQuickEditField) -> Void)?
     var onManageServerMedia: ((String) -> Void)?
     var onCreateLocalReadaloud: ((ReadaloudGeneratorData) -> Void)?
     var onCopyBook: ((CopyBookData) -> Void)?
@@ -189,6 +208,7 @@ struct MediaTableView: NSViewRepresentable {
         onInfo: @escaping (BookMetadata) -> Void,
         onMetadataLinkClicked: ((MetadataLinkTarget) -> Void)? = nil,
         onEditMetadata: (([String]) -> Void)? = nil,
+        onQuickEdit: ((String, MetadataQuickEditField) -> Void)? = nil,
         onManageServerMedia: ((String) -> Void)? = nil,
         onCreateLocalReadaloud: ((ReadaloudGeneratorData) -> Void)? = nil,
         onCopyBook: ((CopyBookData) -> Void)? = nil,
@@ -208,6 +228,7 @@ struct MediaTableView: NSViewRepresentable {
         self.onInfo = onInfo
         self.onMetadataLinkClicked = onMetadataLinkClicked
         self.onEditMetadata = onEditMetadata
+        self.onQuickEdit = onQuickEdit
         self.onManageServerMedia = onManageServerMedia
         self.onCreateLocalReadaloud = onCreateLocalReadaloud
         self.onCopyBook = onCopyBook
@@ -261,6 +282,9 @@ struct MediaTableView: NSViewRepresentable {
         }
         tableView.onLinkClicked = { [weak coordinator] target in
             coordinator?.handleLinkClicked(target)
+        }
+        tableView.onQuickEditCell = { [weak coordinator] row, columnID in
+            coordinator?.handleQuickEditCell(row: row, columnID: columnID)
         }
 
         return scrollView
@@ -390,6 +414,30 @@ struct MediaTableView: NSViewRepresentable {
             case .fileSize: return "fileSize"
             case .source: return "source"
             case .creators, .alignment, .location: return nil
+        }
+    }
+
+    /// The quick-edit field an option-clicked column maps to, or nil for read-only columns
+    /// (cover, progress, pages, duration, file size, dates, media, aggregate creators, alignment,
+    /// source) which have no inline editor.
+    static func quickEditField(forColumnID id: String) -> MetadataQuickEditField? {
+        switch id {
+            case "title": return .scalar(key: "title", label: "Title")
+            case "subtitle": return .scalar(key: "subtitle", label: "Subtitle")
+            case "language": return .scalar(key: "language", label: "Language")
+            case "author": return .stringList(key: "authors", label: "Author")
+            case "narrator": return .stringList(key: "narrators", label: "Narrator(s)")
+            case "tags": return .stringList(key: "tags", label: "Tags")
+            case "series": return .series
+            case "publicationYear": return .publicationDate
+            case "status": return .status
+            case "collections": return .collections
+            case "allCreators": return .creators(roleLabel: "Creators")
+            default:
+                if let roleCode = creatorRoleCode(from: id) {
+                    return .creators(roleLabel: labelForRole(roleCode))
+                }
+                return nil
         }
     }
 
@@ -1093,6 +1141,13 @@ struct MediaTableView: NSViewRepresentable {
 
         func handleLinkClicked(_ target: MetadataLinkTarget) {
             parent.onMetadataLinkClicked?(target)
+        }
+
+        func handleQuickEditCell(row: Int, columnID: String) {
+            guard row >= 0, row < items.count,
+                let field = MediaTableView.quickEditField(forColumnID: columnID)
+            else { return }
+            parent.onQuickEdit?(items[row].uuid, field)
         }
 
         // MARK: - NSMenuDelegate (right-click context menu)
@@ -2644,6 +2699,17 @@ private final class HostingCellView: NSTableCellView {
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    /// While option is held, become transparent to hit-testing so an option+click on an interactive
+    /// pill falls through to the table view, whose `mouseDown` drives quick-edit. Without this the
+    /// SwiftUI pill consumes the event and quick-edit only works on the cell's empty padding.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let flags = NSEvent.modifierFlags
+        if flags.contains(.option) && !flags.contains(.command) {
+            return nil
+        }
+        return super.hitTest(point)
     }
 
     func setContent<V: View>(_ view: V) {
