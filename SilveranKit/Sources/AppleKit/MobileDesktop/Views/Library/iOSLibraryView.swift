@@ -645,6 +645,7 @@ struct MoreMenuView: View {
         case ratings
         case currentlyDownloading
         case addBook
+        case createReadaloud
         case appleWatch
     }
 
@@ -725,6 +726,11 @@ struct MoreMenuView: View {
                 }
                 NavigationLink(value: MoreDestination.addBook) {
                     Label("Add Book", systemImage: "plus.circle")
+                }
+                if AppLaunchContext.environment.readaloudAligner != nil {
+                    NavigationLink(value: MoreDestination.createReadaloud) {
+                        Label("Create Readaloud", systemImage: "waveform.and.book.pages")
+                    }
                 }
                 if isWatchPaired {
                     NavigationLink(value: MoreDestination.appleWatch) {
@@ -855,6 +861,9 @@ struct MoreMenuView: View {
                             showSettings: $showSettings,
                             showOfflineSheet: $showOfflineSheet,
                         )
+                case .createReadaloud:
+                    ReadaloudGeneratorView()
+                        .navigationBarTitleDisplayMode(.inline)
                 case .appleWatch:
                     WatchTransferView()
                         .iOSLibraryToolbar(

@@ -88,9 +88,7 @@ public struct UploadNewBookView: View {
                 } header: {
                     Text("Select Files")
                 } footer: {
-                    Text(
-                        "Select up to three formats to upload to the Storyteller server. To add books to a local folder source, copy the files into that folder."
-                    )
+                    Text("Selected formats are added together as one book in the destination source.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 }
@@ -257,7 +255,13 @@ public struct UploadNewBookView: View {
         selectedEbookURL != nil || !selectedAudiobookURLs.isEmpty || selectedReadaloudURL != nil
     }
 
-    private let primaryActionTitle = "Upload"
+    private var selectedSource: BookSourceRecord? {
+        bookSources.first { $0.id == selectedSourceID }
+    }
+
+    private var primaryActionTitle: String {
+        selectedSource?.kind == .localFolder ? "Add" : "Upload"
+    }
 
     private func resetForNewUpload() {
         selectedEbookURL = nil
@@ -270,7 +274,7 @@ public struct UploadNewBookView: View {
 
     private func loadSources() async {
         let sources = await BookServiceActor.shared.bookSources
-            .filter { $0.kind == .storyteller }
+            .filter { $0.capabilities.canUploadBooks }
         await MainActor.run {
             bookSources = sources
             if let selectedSourceID,
@@ -454,7 +458,7 @@ public struct UploadNewBookView: View {
             }
 
             await MainActor.run {
-                uploadProgress = "Uploading..."
+                uploadProgress = selectedSource?.kind == .localFolder ? "Adding..." : "Uploading..."
                 uploadProgressFraction = 0.1
             }
 

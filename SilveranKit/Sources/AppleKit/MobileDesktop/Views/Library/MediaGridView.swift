@@ -135,6 +135,9 @@ struct MediaGridView: View {
     @State private var showPermissionError: Bool = false
     @State private var permissionErrorMessage: String = ""
     @State private var showLocalFolderHelp: Bool = false
+    #if os(iOS)
+    @State private var showAddBook: Bool = false
+    #endif
     @AppStorage private var layoutStyleRaw: String
     @AppStorage private var coverPrefRaw: String
     @AppStorage private var coverSizeValue: Double
@@ -615,6 +618,22 @@ struct MediaGridView: View {
         .sheet(isPresented: $showLocalFolderHelp) {
             LocalFolderSourceHelpView()
         }
+        #if os(iOS)
+        .sheet(isPresented: $showAddBook) {
+            NavigationStack {
+                UploadNewBookView(initialSourceID: addBookSourceID)
+                    .navigationTitle("Add Book")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button("Done") {
+                                showAddBook = false
+                            }
+                        }
+                    }
+            }
+        }
+        #endif
     }
 
     #if os(macOS)
@@ -1070,14 +1089,19 @@ struct MediaGridView: View {
 
     private var addBookAction: (() -> Void)? {
         #if os(macOS)
-        guard showAddBookButton, sourceFilterKind != .localFolder else {
+        guard showAddBookButton else {
             return nil
         }
         return {
             openWindow(id: "UploadNewBook", value: UploadNewBookData(sourceID: addBookSourceID))
         }
         #else
-        return nil
+        guard showAddBookButton else {
+            return nil
+        }
+        return {
+            showAddBook = true
+        }
         #endif
     }
 
