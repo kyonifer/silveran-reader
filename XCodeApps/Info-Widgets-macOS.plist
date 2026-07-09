@@ -20,9 +20,9 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
-	<key>EXAppExtensionAttributes</key>
+	<key>NSExtension</key>
 	<dict>
-		<key>EXExtensionPointIdentifier</key>
+		<key>NSExtensionPointIdentifier</key>
 		<string>com.apple.widgetkit-extension</string>
 	</dict>
 	<key>SILVERAN_WIDGET_APP_GROUP</key>

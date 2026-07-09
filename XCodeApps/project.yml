@@ -194,9 +194,7 @@ targets:
       - package: Silveran
         product: SilveranAppleWidgets
   Silveran Reader Widgets (macOS):
-    # Native macOS WidgetKit extensions are ExtensionKit extensions living in
-    # Contents/Extensions; the NSExtension/PlugIns style is iOS-only.
-    type: extensionkit-extension
+    type: app-extension
     platform: macOS
     configFiles:
       Debug: XCodeApps/Configs/Debug.xcconfig
@@ -225,8 +223,8 @@ targets:
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundlePackageType: "$(PRODUCT_BUNDLE_PACKAGE_TYPE)"
         CFBundleExecutable: "$(EXECUTABLE_NAME)"
-        EXAppExtensionAttributes:
-          EXExtensionPointIdentifier: com.apple.widgetkit-extension
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
         SILVERAN_WIDGET_APP_GROUP: "$(MAC_APP_GROUP_ID)"
     sources:
       - path: SilveranWidgets/Sources
