@@ -132,6 +132,8 @@ struct MediaGridView: View {
     @AppStorage private var showAudioIndicator: Bool
     @AppStorage private var progressStyleRaw: String
     @State private var showStickyControls: Bool = false
+    @Environment(\.libraryNavigationSidebarVisible) private var libraryNavigationSidebarVisible
+    @Environment(\.colorScheme) private var colorScheme
     @State private var showPermissionError: Bool = false
     @State private var permissionErrorMessage: String = ""
     @State private var showLocalFolderHelp: Bool = false
@@ -278,7 +280,6 @@ struct MediaGridView: View {
     private let verticalSpacing: CGFloat = 24
     private let gridHorizontalPadding: CGFloat = 16
     private let sidebarWidth: CGFloat = 340
-    private let sidebarSpacing: CGFloat = 1
     private let headerFontSize: CGFloat = 32
 
     #if os(macOS)
@@ -537,7 +538,7 @@ struct MediaGridView: View {
             let shouldShowSidebar = isSidebarVisible && activeInfoItem != nil
             let usesTableLayout = layoutStyle == .table
             let availableWidth = geometry.size.width
-            let detailWidth = sidebarWidth + sidebarSpacing
+            let detailWidth = sidebarWidth
             let contentWidth =
                 shouldShowSidebar
                 ? max(availableWidth - detailWidth, 0)
@@ -698,6 +699,8 @@ struct MediaGridView: View {
             }
             #if os(macOS)
             .contentMargins(.top, 52, for: .scrollContent)
+            .contentMargins(.top, 52, for: .scrollIndicators)
+            .contentMargins(.trailing, 6, for: .scrollIndicators)
             #endif
             #if os(iOS)
             .overlay(alignment: .trailing) {
@@ -1101,13 +1104,67 @@ struct MediaGridView: View {
 
     #if os(macOS)
     private var stickyControlsOverlay: some View {
-        contentFilterBar
-            .padding(.horizontal, gridHorizontalPadding)
-            .padding(.leading, 8)
-            .padding(.top, 8)
-            .padding(.bottom, 12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(stickyControlsBackground)
+        ZStack(alignment: .topLeading) {
+            if !libraryNavigationSidebarVisible {
+                stickyTrafficLightBackground
+                    .frame(width: 124, height: 52)
+                    .allowsHitTesting(false)
+            }
+
+            contentFilterBar
+                .padding(.horizontal, gridHorizontalPadding)
+                .padding(.leading, 8)
+                .padding(.top, 8)
+                .padding(.bottom, 12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(stickyControlsBackground)
+                .padding(.leading, libraryNavigationSidebarVisible ? 0 : 280)
+        }
+    }
+
+    @ViewBuilder
+    private var stickyTrafficLightBackground: some View {
+        let edgeMask = LinearGradient(
+            stops: [
+                .init(color: .white, location: 0),
+                .init(color: .white, location: 0.62),
+                .init(color: .clear, location: 1),
+            ],
+            startPoint: .leading,
+            endPoint: .trailing,
+        )
+        let bottomMask = LinearGradient(
+            stops: [
+                .init(color: .white, location: 0),
+                .init(color: .white, location: 0.7),
+                .init(color: .clear, location: 1),
+            ],
+            startPoint: .top,
+            endPoint: .bottom,
+        )
+
+        if #available(macOS 26.0, *) {
+            Rectangle()
+                .fill(Color.clear)
+                .glassEffect(.regular, in: Rectangle())
+                .mask(edgeMask)
+                .mask(bottomMask)
+                .background(
+                    LinearGradient(
+                        colors: colorScheme == .dark
+                            ? [.black.opacity(0.62), .black.opacity(0)]
+                            : [.white.opacity(0.55), .white.opacity(0)],
+                        startPoint: .top,
+                        endPoint: .bottom,
+                    )
+                    .mask(edgeMask)
+                    .mask(bottomMask)
+                )
+        } else {
+            Color(nsColor: .windowBackgroundColor)
+                .mask(edgeMask)
+                .mask(bottomMask)
+        }
     }
 
     @ViewBuilder
@@ -1145,9 +1202,21 @@ struct MediaGridView: View {
                 .background(
                     LinearGradient(
                         stops: [
-                            .init(color: .black.opacity(0.75), location: 0),
-                            .init(color: .black.opacity(0.5), location: 0.5),
-                            .init(color: .black.opacity(0), location: 1),
+                            .init(
+                                color: colorScheme == .dark
+                                    ? .black.opacity(0.75) : .white.opacity(0.5),
+                                location: 0,
+                            ),
+                            .init(
+                                color: colorScheme == .dark
+                                    ? .black.opacity(0.5) : .white.opacity(0.25),
+                                location: 0.5,
+                            ),
+                            .init(
+                                color: colorScheme == .dark
+                                    ? .black.opacity(0) : .white.opacity(0),
+                                location: 1,
+                            ),
                         ],
                         startPoint: .top,
                         endPoint: .bottom,

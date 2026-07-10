@@ -15,12 +15,20 @@ struct MediaCompactCardView: View {
     let onInfo: (BookMetadata) -> Void
     var onEditMetadata: (([String]) -> Void)? = nil
     @Environment(MediaViewModel.self) private var mediaViewModel
+    @Environment(\.colorScheme) private var colorScheme
     #if os(macOS)
     @Environment(\.openWindow) private var openWindow
     @State private var isHovered = false
     @State private var hoveredTab: TabCategory?
     #endif
-    private let availableMediaColor = Color.gray.opacity(0.72)
+    private var palette: CoverDerivedPalette {
+        let ebook = mediaViewModel.coverState(for: item, variant: .standard).cgImage
+        let audio = mediaViewModel.coverState(for: item, variant: .audioSquare).cgImage
+        return ((ebook ?? audio).flatMap(CoverDerivedPalette.make(from:)) ?? .fallback())
+            .resolved(for: colorScheme)
+    }
+
+    private var availableMediaColor: Color { palette.mutedAccent }
     #if os(iOS)
     @Environment(\.mediaNavigationPath) private var mediaNavigationPath
     @Environment(\.editMetadataAction) private var editMetadataAction
@@ -63,10 +71,10 @@ struct MediaCompactCardView: View {
         let displayImage = coverState.image ?? fallbackState.image
         let shownVariant: MediaViewModel.CoverVariant =
             coverState.image == nil && fallbackState.image != nil ? fallbackVariant : coverVariant
-        let shouldRenderDoubleCover =
-            isDoubleCover
-            && ((item.hasAvailableEbook && item.hasAvailableAudiobook)
-                || item.hasAvailableReadaloud)
+        let shouldRenderDoubleCover = isDoubleCover
+        let slotHeight =
+            shouldRenderDoubleCover
+            ? DoubleCoverView.layoutHeight(for: tileSize) : tileSize / aspectRatio
         let placeholderColor = Color(white: 0.2)
         let progress = mediaViewModel.progress(for: item.id)
 
@@ -77,13 +85,13 @@ struct MediaCompactCardView: View {
                         item: item,
                         placeholderColor: placeholderColor,
                         coverWidth: tileSize,
-                        containerAspectRatio: aspectRatio,
                         cornerRadius: 8,
                         isSwapping: .constant(false),
                         showReadaloudWedge: showAudioIndicator && item.hasAvailableReadaloud,
                         notchProgress: (progressStyle == .circle && progress > 0) ? progress : nil,
+                        lineProgress: (progressStyle == .line && progress > 0) ? progress : nil,
                     )
-                    .frame(width: tileSize, height: tileSize / aspectRatio)
+                    .frame(width: tileSize, height: slotHeight)
                 } else {
                     RoundedCoverArtwork(
                         image: displayImage,
@@ -91,12 +99,19 @@ struct MediaCompactCardView: View {
                         variant: shownVariant,
                         cornerRadius: 8,
                     )
-                    .frame(width: tileSize, height: tileSize / shownVariant.displayAspectRatio)
+                    // Keep every compact tile in the selected cover-style slot. If we fall back
+                    // from a missing square audiobook cover to a portrait ebook cover,
+                    // RoundedCoverArtwork fits it inside this square instead of growing the row.
+                    .frame(width: tileSize, height: tileSize / aspectRatio)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .strokeBorder(Color.primary.opacity(0.14), lineWidth: 1)
+                    }
                 }
             }
             .stableCoverRendering()
             .overlay(alignment: .bottom) {
-                if progressStyle == .line && progress > 0 {
+                if progressStyle == .line && progress > 0 && !shouldRenderDoubleCover {
                     MediaProgressBar(progress: progress, backgroundOpacity: 0.3)
                     .frame(height: 3)
                 }
@@ -105,7 +120,11 @@ struct MediaCompactCardView: View {
             .overlay(alignment: .bottomTrailing) {
                 if progress > 0 {
                     if progressStyle == .circle && !shouldRenderDoubleCover {
-                        CircularProgressBadge(progress: progress, showsBackground: true)
+                        CoverThemedProgressBadge(
+                            item: item,
+                            variant: shownVariant,
+                            progress: progress,
+                        )
                             .padding(.trailing, 3)
                             .padding(.bottom, 3)
                     } else if progressStyle == .text {
@@ -151,10 +170,15 @@ struct MediaCompactCardView: View {
             #endif
             .overlay(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 2)
+                    .stroke(
+                        isSelected
+                            ? (shouldRenderDoubleCover ? palette.accent : Color.accentColor)
+                            : Color.clear,
+                        lineWidth: 2,
+                    )
             )
             // Slot keeps a uniform row height; the cover (and its badges) center within it.
-            .frame(width: tileSize, height: tileSize / aspectRatio)
+            .frame(width: tileSize, height: slotHeight)
         }
         .contentShape(Rectangle())
         #if os(macOS)
@@ -453,7 +477,7 @@ struct MediaCompactCardView: View {
         } label: {
             ZStack {
                 Circle()
-                    .fill(Color.black.opacity(0.82))
+                    .fill(palette.accentBackground)
                     .frame(width: size.frame, height: size.frame)
                 tabIcon(for: tab, status: status, isHovered: isTabHovered, size: size)
             }
@@ -476,7 +500,7 @@ struct MediaCompactCardView: View {
         if case .downloading(let progress) = status {
             DownloadCancelProgressIcon(
                 progress: progress,
-                color: .white,
+                color: palette.brightAccent,
                 size: size.icon,
                 lineWidth: 2.5,
                 showsCancel: isHovered,
@@ -488,16 +512,17 @@ struct MediaCompactCardView: View {
         } else if isHovered && status == .availableNotDownloaded {
             Image(systemName: "arrow.down.circle.fill")
                 .font(.system(size: size.playIcon))
-                .foregroundStyle(.white)
+                .foregroundStyle(palette.brightAccent)
         } else if isHovered && status == .downloaded {
             Image(systemName: "play.circle.fill")
                 .font(.system(size: size.playIcon))
-                .foregroundStyle(.white)
+                .foregroundStyle(palette.brightAccent)
         } else {
             tab.iconView(size: size.icon)
                 .foregroundStyle(
                     status == .downloaded
-                        ? AnyShapeStyle(Color.white) : AnyShapeStyle(availableMediaColor)
+                        ? AnyShapeStyle(palette.brightAccent)
+                        : AnyShapeStyle(availableMediaColor)
                 )
         }
     }

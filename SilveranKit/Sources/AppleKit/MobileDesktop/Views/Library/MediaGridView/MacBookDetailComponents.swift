@@ -496,19 +496,36 @@ private struct MacCompactMediaIconButton: View {
 
     @State private var isHovered = false
     @Environment(\.bookDetailHeroColors) private var heroColors
+    @Environment(\.bookDetailPalette) private var palette
+
+    private var buttonBackground: Color {
+        palette?.accentBackground ?? heroColors.controlFill
+    }
+
+    private var brightForeground: Color {
+        palette?.brightAccent ?? heroColors.primary
+    }
+
+    private var mutedForeground: Color {
+        palette?.mutedAccent ?? heroColors.primary.opacity(0.55)
+    }
 
     var body: some View {
         Button(action: action) {
             ZStack {
                 RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .fill(
-                        isHovered
-                            ? heroColors.primary.opacity(0.18) : heroColors.controlFill
-                    )
+                    .fill(buttonBackground)
+                    .overlay {
+                        if isHovered {
+                            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                .strokeBorder(brightForeground.opacity(0.24), lineWidth: 1)
+                        }
+                    }
 
                 icon
                     .foregroundStyle(
-                        isHovered ? heroColors.primary : heroColors.primary.opacity(0.55)
+                        isHovered || isDownloaded || isDownloading
+                            ? brightForeground : mutedForeground
                     )
             }
             .frame(width: 34, height: 34)
@@ -537,11 +554,11 @@ private struct MacCompactMediaIconButton: View {
             } else if let progress {
                 ZStack {
                     Circle()
-                        .stroke(heroColors.primary.opacity(0.25), lineWidth: 2)
+                        .stroke(brightForeground.opacity(0.25), lineWidth: 2)
                     Circle()
                         .trim(from: 0, to: progress)
                         .stroke(
-                            heroColors.primary,
+                            brightForeground,
                             style: StrokeStyle(lineWidth: 2, lineCap: .round),
                         )
                         .rotationEffect(.degrees(-90))
@@ -550,14 +567,15 @@ private struct MacCompactMediaIconButton: View {
             } else {
                 ProgressView()
                     .controlSize(.small)
-                    .tint(heroColors.primary)
+                    .tint(brightForeground)
+                    .environment(\.colorScheme, .dark)
             }
         } else if isFailed {
             Image(systemName: isHovered ? "arrow.clockwise" : "exclamationmark.triangle.fill")
                 .font(.system(size: 14, weight: .semibold))
         } else if isHovered {
-            Image(systemName: isDownloaded ? "play.fill" : "arrow.down.circle")
-                .font(.system(size: 15, weight: .medium))
+            Image(systemName: isDownloaded ? "play.fill" : "arrow.down")
+                .font(.system(size: 15, weight: .semibold))
         } else {
             mediaIcon
         }

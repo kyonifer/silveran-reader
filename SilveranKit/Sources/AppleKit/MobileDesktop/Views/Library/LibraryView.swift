@@ -1,6 +1,17 @@
 #if os(iOS) || os(macOS)
 import SwiftUI
 
+private struct LibraryNavigationSidebarVisibleKey: EnvironmentKey {
+    static let defaultValue = true
+}
+
+extension EnvironmentValues {
+    var libraryNavigationSidebarVisible: Bool {
+        get { self[LibraryNavigationSidebarVisibleKey.self] }
+        set { self[LibraryNavigationSidebarVisibleKey.self] = newValue }
+    }
+}
+
 extension Notification.Name {
     static let openSmartShelves = Notification.Name("openSmartShelves")
 }
@@ -27,6 +38,7 @@ public struct LibraryView: View {
     @State private var gridScrollPositions: [String: BookMetadata.ID?] = [:]
     @State private var metadataNavStack: [SidebarItemDescription] = []
     @State private var isMetadataLinkNavigation = false
+    @State private var navigationColumnVisibility: NavigationSplitViewVisibility = .all
     #if os(macOS)
     @State private var showPermissionError: Bool = false
     @State private var permissionErrorMessage: String = ""
@@ -36,7 +48,7 @@ public struct LibraryView: View {
 
     public var body: some View {
         ZStack {
-            NavigationSplitView {
+            NavigationSplitView(columnVisibility: $navigationColumnVisibility) {
                 SidebarView(
                     sections: sections,
                     selectedItem: $selectedItem,
@@ -61,6 +73,10 @@ public struct LibraryView: View {
                         ?? .storytellerOrange
                 )
                 #endif
+                .environment(
+                    \.libraryNavigationSidebarVisible,
+                    navigationColumnVisibility != .detailOnly,
+                )
             }
             #if os(macOS)
             .onChange(of: mediaViewModel.cachedConfig.library.accentColorHex) { _, newHex in

@@ -244,6 +244,15 @@ private struct CompactMediaButton: View {
     @Environment(MediaViewModel.self) private var mediaViewModel
     @State private var showConnectionAlert = false
     @Environment(\.bookDetailHeroColors) private var heroColors
+    @Environment(\.bookDetailPalette) private var palette
+
+    private var brightForeground: Color {
+        palette?.brightAccent ?? heroColors.primary
+    }
+
+    private var mutedForeground: Color {
+        palette?.mutedAccent ?? heroColors.primary.opacity(0.55)
+    }
 
     private var isDownloaded: Bool {
         mediaViewModel.isCategoryDownloaded(option.category, for: item)
@@ -292,13 +301,15 @@ private struct CompactMediaButton: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
         }
-        .foregroundStyle(heroColors.primary.opacity(0.78))
+        .foregroundStyle(
+            isDownloaded || isDownloading ? brightForeground : mutedForeground
+        )
         .frame(maxWidth: .infinity)
         .frame(height: 38)
         .padding(.horizontal, 8)
         .background {
             RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .fill(heroColors.controlFill)
+                .fill(palette?.accentBackground ?? heroColors.controlFill)
         }
         .contentShape(Rectangle())
         .accessibilityLabel(actionLabel)
@@ -312,11 +323,11 @@ private struct CompactMediaButton: View {
                 category: option.category,
             ) {
                 ZStack {
-                    Circle().stroke(heroColors.primary.opacity(0.25), lineWidth: 2)
+                    Circle().stroke(brightForeground.opacity(0.25), lineWidth: 2)
                     Circle()
                         .trim(from: 0, to: progress)
                         .stroke(
-                            heroColors.primary,
+                            brightForeground,
                             style: StrokeStyle(lineWidth: 2, lineCap: .round),
                         )
                         .rotationEffect(.degrees(-90))
@@ -326,7 +337,9 @@ private struct CompactMediaButton: View {
                 .frame(width: 18, height: 18)
             } else {
                 ZStack {
-                    ProgressView().tint(heroColors.primary)
+                    ProgressView()
+                        .tint(brightForeground)
+                        .environment(\.colorScheme, .dark)
                     Image(systemName: "xmark")
                         .font(.system(size: 7, weight: .bold))
                 }
@@ -336,7 +349,7 @@ private struct CompactMediaButton: View {
         } else if isDownloaded {
             Image(systemName: "play.fill")
         } else {
-            Image(systemName: "arrow.down.circle")
+            Image(systemName: "arrow.down")
         }
     }
 

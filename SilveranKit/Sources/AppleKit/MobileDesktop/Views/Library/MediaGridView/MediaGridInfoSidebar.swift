@@ -16,6 +16,7 @@ struct MediaGridInfoSidebar: View {
     let onDelete: () -> Void
     let onSeriesSelected: ((String) -> Void)?
     let showsInspectorToolbar: Bool
+    let roundsTopTrailingCorner: Bool
     let onRelatedItemChange: ((Bool) -> Void)?
 
     @Environment(MediaViewModel.self) private var mediaViewModel: MediaViewModel
@@ -42,6 +43,7 @@ struct MediaGridInfoSidebar: View {
         onDelete: @escaping () -> Void,
         onSeriesSelected: ((String) -> Void)? = nil,
         showsInspectorToolbar: Bool = true,
+        roundsTopTrailingCorner: Bool = false,
         onRelatedItemChange: ((Bool) -> Void)? = nil,
     ) {
         self.item = item
@@ -52,6 +54,7 @@ struct MediaGridInfoSidebar: View {
         self.onDelete = onDelete
         self.onSeriesSelected = onSeriesSelected
         self.showsInspectorToolbar = showsInspectorToolbar
+        self.roundsTopTrailingCorner = roundsTopTrailingCorner
         self.onRelatedItemChange = onRelatedItemChange
     }
 
@@ -77,6 +80,7 @@ struct MediaGridInfoSidebar: View {
                     macHeroSection
                     content
                 }
+                .background(MacBookDetailScrollViewConfiguration())
             }
             .id(currentItem.id)
             .background {
@@ -218,7 +222,7 @@ struct MediaGridInfoSidebar: View {
         .clipShape(
             UnevenRoundedRectangle(
                 topLeadingRadius: 16,
-                topTrailingRadius: 16,
+                topTrailingRadius: roundsTopTrailingCorner ? 16 : 0,
                 style: .continuous,
             )
         )
@@ -823,5 +827,46 @@ struct MediaGridInfoSidebar: View {
     }
 
 }
+
+#if os(macOS)
+private struct MacBookDetailScrollViewConfiguration: NSViewRepresentable {
+    func makeNSView(context: Context) -> MacBookDetailScrollViewConfigurationView {
+        MacBookDetailScrollViewConfigurationView()
+    }
+
+    func updateNSView(
+        _ nsView: MacBookDetailScrollViewConfigurationView,
+        context: Context,
+    ) {
+        nsView.applyConfiguration()
+    }
+}
+
+private final class MacBookDetailScrollViewConfigurationView: NSView {
+    override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+        applyConfiguration()
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        applyConfiguration()
+    }
+
+    func applyConfiguration() {
+        DispatchQueue.main.async { [weak self] in
+            var ancestor: NSView? = self
+            while let current = ancestor {
+                if let scrollView = current as? NSScrollView {
+                    scrollView.scrollerStyle = .overlay
+                    scrollView.hasVerticalScroller = true
+                    return
+                }
+                ancestor = current.superview
+            }
+        }
+    }
+}
+#endif
 
 #endif

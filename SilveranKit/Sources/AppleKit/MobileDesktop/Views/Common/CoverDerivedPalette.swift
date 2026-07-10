@@ -15,6 +15,8 @@ import UIKit
 struct CoverDerivedPalette {
     let surface: Color
     let accent: Color
+    let brightAccent: Color
+    let mutedAccent: Color
     let accentBackground: Color
     let contentBackground: Color
     let cardBackground: Color
@@ -33,6 +35,8 @@ struct CoverDerivedPalette {
         return CoverDerivedPalette(
             surface: lightSurface,
             accent: accent,
+            brightAccent: brightAccent,
+            mutedAccent: mutedAccent,
             accentBackground: accentBackground,
             contentBackground: lightContentBackground,
             cardBackground: lightCardBackground,
@@ -96,6 +100,8 @@ struct CoverDerivedPalette {
             return CoverDerivedPalette(
                 surface: surface,
                 accent: Color(white: 0.86),
+                brightAccent: Color(white: 0.98),
+                mutedAccent: Color(white: 0.68),
                 accentBackground: Color(white: 0.14).opacity(0.94),
                 contentBackground: Color(white: 0.19),
                 cardBackground: Color(white: 0.22),
@@ -113,6 +119,16 @@ struct CoverDerivedPalette {
                 hue: hue,
                 saturation: min(max(saturation * 0.72, 0.24), 0.62),
                 brightness: 0.9,
+            ),
+            brightAccent: Color(
+                hue: hue,
+                saturation: min(max(saturation * 0.48, 0.14), 0.42),
+                brightness: 1,
+            ),
+            mutedAccent: Color(
+                hue: hue,
+                saturation: min(max(saturation * 0.07, 0.015), 0.06),
+                brightness: 0.72,
             ),
             accentBackground: Color(
                 hue: hue,

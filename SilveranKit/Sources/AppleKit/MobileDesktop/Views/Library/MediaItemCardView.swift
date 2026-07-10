@@ -34,25 +34,22 @@ struct MediaItemCardMetrics {
         let coverWidth = max(tileWidth - (cardPadding * 2), tileWidth * 0.90)
         let contentSpacing = max(4, tileWidth * 0.03)
 
-        let tallestCoverAspectRatio: CGFloat = 1.0 / coverPreference.preferredContainerAspectRatio
-        let tallestCoverHeight = coverWidth * tallestCoverAspectRatio
-
-        let progressBarHeight: CGFloat = 3
-        let progressBarTopPadding: CGFloat = 4
+        let coverContainerHeight: CGFloat =
+            coverPreference == .storytellerDouble
+            ? DoubleCoverView.layoutHeight(for: coverWidth)
+            : coverWidth / coverPreference.preferredContainerAspectRatio
 
         let estimatedLineHeight: CGFloat = 16
         let maxTitleLines: CGFloat = 2
         let titleContainerHeight = estimatedLineHeight * maxTitleLines
 
         let authorRowHeight: CGFloat = 20
-        let authorRowBottomPadding: CGFloat = 0
-        let titleToAuthorGap: CGFloat = 2
-
-        let coverContainerHeight = tallestCoverHeight + progressBarTopPadding + progressBarHeight
+        let titleBottomSpacing: CGFloat = 4
+        let titleToAuthorGap: CGFloat = 0
 
         let maxCardHeight =
             (cardPadding * 2) + coverContainerHeight + contentSpacing + titleContainerHeight
-            + titleToAuthorGap + authorRowHeight + authorRowBottomPadding
+            + titleToAuthorGap + authorRowHeight + titleBottomSpacing
 
         return MediaItemCardMetrics(
             tileWidth: tileWidth,
@@ -84,6 +81,7 @@ struct MediaItemCardView: View {
     var onEditMetadata: (([String]) -> Void)? = nil
     var debugContext: String? = nil
     @Environment(MediaViewModel.self) private var mediaViewModel
+    @Environment(\.colorScheme) private var colorScheme
     #if os(macOS)
     @State private var doubleCoverSwapping = false
     #endif
@@ -379,11 +377,7 @@ struct MediaItemCardView: View {
     private func cardVisual(isHovered: Bool) -> some View {
         let placeholderColor = Color(white: 0.2)
         let coverVariant = resolveCoverVariant(for: item)
-        let containerAspectRatio: CGFloat = coverPreference.preferredContainerAspectRatio
-        let shouldRenderDoubleCover =
-            isDoubleCover
-            && ((item.hasAvailableEbook && item.hasAvailableAudiobook)
-                || item.hasAvailableReadaloud)
+        let shouldRenderDoubleCover = isDoubleCover
 
         VStack(alignment: .leading, spacing: 0) {
             ZStack(alignment: .center) {
@@ -395,7 +389,6 @@ struct MediaItemCardView: View {
                                 item: item,
                                 placeholderColor: placeholderColor,
                                 coverWidth: metrics.coverWidth,
-                                containerAspectRatio: containerAspectRatio,
                                 cornerRadius: metrics.coverCornerRadius,
                                 isSwapping: {
                                     #if os(macOS)
@@ -410,6 +403,10 @@ struct MediaItemCardView: View {
                                     let p = mediaViewModel.progress(for: item.id)
                                     return (progressStyle == .circle && p > 0) ? p : nil
                                 }(),
+                                lineProgress: {
+                                    let p = mediaViewModel.progress(for: item.id)
+                                    return (progressStyle == .line && p > 0) ? p : nil
+                                }(),
                                 isHoveringCard: {
                                     #if os(macOS)
                                     return isHovered
@@ -419,8 +416,10 @@ struct MediaItemCardView: View {
                                 }(),
                                 debugContext: debugContext,
                             )
-                            .frame(width: metrics.coverWidth)
-                            .aspectRatio(containerAspectRatio, contentMode: .fit)
+                            .frame(
+                                width: metrics.coverWidth,
+                                height: metrics.coverContainerHeight,
+                            )
                         } else {
                             MediaItemCoverImage(
                                 item: item,
@@ -431,11 +430,18 @@ struct MediaItemCardView: View {
                             )
                             .frame(width: metrics.coverWidth)
                             .aspectRatio(coverVariant.displayAspectRatio, contentMode: .fit)
+                            .overlay {
+                                RoundedRectangle(
+                                    cornerRadius: metrics.coverCornerRadius,
+                                    style: .continuous,
+                                )
+                                .strokeBorder(Color.primary.opacity(0.14), lineWidth: 1)
+                            }
                         }
                     }
                     .overlay(alignment: .bottom) {
                         let progress = mediaViewModel.progress(for: item.id)
-                        if progressStyle == .line {
+                        if progressStyle == .line && !shouldRenderDoubleCover {
                             MediaProgressBar(progress: progress)
                                 .frame(height: 3)
                         }
@@ -467,7 +473,11 @@ struct MediaItemCardView: View {
                             // Circle progress lives in the bottom notch for double covers; over a
                             // single cover it gets a dark backing disc for contrast.
                             if progressStyle == .circle && !shouldRenderDoubleCover {
-                                CircularProgressBadge(progress: progress, showsBackground: true)
+                                CoverThemedProgressBadge(
+                                    item: item,
+                                    variant: coverVariant,
+                                    progress: progress,
+                                )
                                     .padding(.trailing, 4)
                                     .padding(.bottom, 4)
                             } else if progressStyle == .text {
@@ -496,7 +506,13 @@ struct MediaItemCardView: View {
                             cornerRadius: metrics.coverCornerRadius,
                             style: .continuous,
                         )
-                        .strokeBorder(isSelected ? Color.accentColor : Color.clear, lineWidth: 2)
+                        .strokeBorder(
+                            isSelected
+                                ? (shouldRenderDoubleCover
+                                    ? resolvedCoverPalette.accent : Color.accentColor)
+                                : Color.clear,
+                            lineWidth: 2,
+                        )
                     )
                     Spacer(minLength: 0)
                 }
@@ -511,7 +527,7 @@ struct MediaItemCardView: View {
                 .environment(mediaViewModel)
                 #endif
             }
-            .frame(height: metrics.coverContainerHeight - 7)
+            .frame(height: metrics.coverContainerHeight)
 
             Spacer(minLength: metrics.contentSpacing)
                 .frame(height: metrics.contentSpacing)
@@ -585,7 +601,7 @@ struct MediaItemCardView: View {
         }
         .padding(.leading, 8)
         .padding(.trailing, 2)
-        .padding(.bottom, 4)
+        .padding(.bottom, 1)
     }
 
     // The top line normally shows the author. When sorting by a different field, it
@@ -648,12 +664,21 @@ struct MediaItemCardView: View {
     private func resolveCoverVariant(for item: BookMetadata) -> MediaViewModel.CoverVariant {
         mediaViewModel.coverVariant(for: item, preference: coverPreference)
     }
+
+    private var resolvedCoverPalette: CoverDerivedPalette {
+        let ebook = mediaViewModel.coverState(for: item, variant: .standard).cgImage
+        let audio = mediaViewModel.coverState(for: item, variant: .audioSquare).cgImage
+        return ((ebook ?? audio).flatMap(CoverDerivedPalette.make(from:)) ?? .fallback())
+            .resolved(for: colorScheme)
+    }
 }
 
 struct CircularProgressBadge: View {
     let progress: Double
     var showsBackground: Bool = false
     var backgroundColor: Color = .black.opacity(0.78)
+    var ringDiameter: CGFloat = 18
+    var backgroundDiameter: CGFloat = 24
 
     var body: some View {
         let clamped = min(max(progress, 0), 1)
@@ -665,16 +690,44 @@ struct CircularProgressBadge: View {
                 .stroke(.tint, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
                 .rotationEffect(.degrees(-90))
         }
-        .frame(width: 18, height: 18)
+        .frame(width: ringDiameter, height: ringDiameter)
         // Background sits behind without affecting the ring's layout, so the ring stays the
         // same size whether or not the backing disc is shown.
         .background {
             if showsBackground {
                 Circle()
                     .fill(backgroundColor)
-                    .frame(width: 24, height: 24)
+                    .frame(width: backgroundDiameter, height: backgroundDiameter)
             }
         }
+    }
+}
+
+struct CoverThemedProgressBadge: View {
+    @Environment(MediaViewModel.self) private var mediaViewModel
+    @Environment(\.colorScheme) private var colorScheme
+    let item: BookMetadata
+    let variant: MediaViewModel.CoverVariant
+    let progress: Double
+
+    private var palette: CoverDerivedPalette {
+        let primary = mediaViewModel.coverState(for: item, variant: variant).cgImage
+        let fallbackVariant: MediaViewModel.CoverVariant =
+            variant == .standard ? .audioSquare : .standard
+        let fallback = mediaViewModel.coverState(for: item, variant: fallbackVariant).cgImage
+        return ((primary ?? fallback).flatMap(CoverDerivedPalette.make(from:)) ?? .fallback())
+            .resolved(for: colorScheme)
+    }
+
+    var body: some View {
+        CircularProgressBadge(
+            progress: progress,
+            showsBackground: true,
+            backgroundColor: palette.accentBackground,
+            ringDiameter: 15,
+            backgroundDiameter: 21,
+        )
+        .tint(palette.accent)
     }
 }
 
@@ -812,14 +865,15 @@ private struct MediaItemCoverImage: View {
 
 struct DoubleCoverView: View {
     @Environment(MediaViewModel.self) private var mediaViewModel
+    @Environment(\.colorScheme) private var colorScheme
     let item: BookMetadata
     let placeholderColor: Color
     let coverWidth: CGFloat
-    let containerAspectRatio: CGFloat
     let cornerRadius: CGFloat
     @Binding var isSwapping: Bool
     var showReadaloudWedge: Bool = false
     var notchProgress: Double? = nil
+    var lineProgress: Double? = nil
     var isHoveringCard: Bool = false
     var debugContext: String? = nil
 
@@ -834,21 +888,48 @@ struct DoubleCoverView: View {
     }
     #endif
 
+    nonisolated static func layoutHeight(for coverWidth: CGFloat) -> CGFloat {
+        let normalCoverScale: CGFloat = 0.72
+        let verticalMargin: CGFloat = 0.06
+        return (coverWidth * normalCoverScale / 0.67) + (coverWidth * verticalMargin * 2)
+    }
+
     var body: some View {
-        let containerHeight = coverWidth / containerAspectRatio
+        let containerHeight = Self.layoutHeight(for: coverWidth)
+        let ebookState = mediaViewModel.coverState(for: item, variant: .standard)
+        let audioState = mediaViewModel.coverState(for: item, variant: .audioSquare)
+        let hasEbookCover = ebookState.image != nil
+        let hasAudioCover = audioState.image != nil
+        let hasBothCovers = hasEbookCover && hasAudioCover
         #if os(macOS)
         let swapped = swapPhase != .idle
-        let scale: CGFloat = isHoveringCard ? 0.70 : 0.80
-        let spread: CGFloat = isHoveringCard ? 0.15 : 0.10
+        let scale: CGFloat = isHoveringCard ? 0.66 : 0.72
+        let spread: CGFloat = isHoveringCard ? 0.12 : 0.08
         #else
         let swapped = false
-        let scale: CGFloat = 0.80
-        let spread: CGFloat = 0.10
+        let scale: CGFloat = 0.72
+        let spread: CGFloat = 0.08
         #endif
         let scaledWidth = coverWidth * scale
         let ebookHeight = scaledWidth / 0.67
         let audioSize = scaledWidth
         let xShift = coverWidth * spread
+        let themedPanelHeight = containerHeight
+        let notchBadgeDiameter: CGFloat = 21
+        let notchBadgeRadius = notchBadgeDiameter / 2
+        let notchGap = max(3, coverWidth * 0.02)
+        let panelEdgeInset: CGFloat = 2
+        let badgeCoverRightEdge =
+            hasBothCovers ? -xShift + (scaledWidth / 2) : scaledWidth / 2
+        let badgeCoverVerticalEdge = hasAudioCover ? audioSize / 2 : ebookHeight / 2
+        let badgeX = min(
+            badgeCoverRightEdge + notchBadgeRadius + notchGap,
+            (coverWidth / 2) - notchBadgeRadius - panelEdgeInset,
+        )
+        let badgeY = min(
+            badgeCoverVerticalEdge + notchBadgeRadius + notchGap,
+            (themedPanelHeight / 2) - notchBadgeRadius - panelEdgeInset,
+        )
 
         #if os(macOS)
         let audioXOffset: CGFloat =
@@ -857,7 +938,7 @@ struct DoubleCoverView: View {
                 case .slidingOut: coverWidth * 0.35
                 case .swapped: xShift
             }
-        let audioScale: CGFloat = swapPhase == .slidingOut ? 1.1 : 1.0
+        let audioScale: CGFloat = hasBothCovers && swapPhase == .slidingOut ? 1.1 : 1.0
         let audioZ: Double = swapPhase == .idle ? 10 : 30
         let ebookXOffset: CGFloat =
             switch swapPhase {
@@ -874,11 +955,26 @@ struct DoubleCoverView: View {
         let ebookZ: Double = 20
         #endif
 
-        let ebookState = mediaViewModel.coverState(for: item, variant: .standard)
-        let audioState = mediaViewModel.coverState(for: item, variant: .audioSquare)
+        let palette = derivedPalette(ebookState: ebookState, audioState: audioState)
+        let displayedAudioXOffset = hasBothCovers ? audioXOffset : 0
+        let displayedEbookXOffset = hasBothCovers ? ebookXOffset : 0
 
         ZStack {
-            if ebookState.image != nil && audioState.image != nil {
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(palette.surface)
+                .frame(width: coverWidth, height: themedPanelHeight)
+                .overlay(alignment: .bottom) {
+                    if let lineProgress {
+                        MediaProgressBar(progress: lineProgress, backgroundOpacity: 0.3)
+                            .tint(palette.accent)
+                            .frame(height: 3)
+                    }
+                }
+                .clipShape(
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                )
+
+            if audioState.image != nil {
                 coverImage(state: audioState)
                     .frame(width: audioSize, height: audioSize)
                     .stableCoverRendering()
@@ -887,49 +983,61 @@ struct DoubleCoverView: View {
                     )
                     .scaleEffect(audioScale)
                     .contentShape(Rectangle())
-                    .offset(x: audioXOffset)
+                    .offset(x: displayedAudioXOffset)
                     .zIndex(audioZ)
                     #if os(macOS)
                 .onTapGesture {
-                    toggleSwap()
+                    if hasBothCovers {
+                        toggleSwap()
+                    }
                 }
                     #endif
+            }
 
+            if ebookState.image != nil {
                 coverImage(state: ebookState)
                     .frame(width: scaledWidth, height: ebookHeight)
                     .stableCoverRendering()
                     .clipShape(
                         RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     )
-                    .offset(x: ebookXOffset)
+                    .offset(x: displayedEbookXOffset)
                     .zIndex(ebookZ)
+            }
 
+            if ebookState.image != nil || audioState.image != nil {
                 if showReadaloudWedge {
                     // Nestled in the empty top-right corner with an equal gap to the ebook's right
                     // edge (horizontal) and the audio's top edge (vertical). The badge half-size
                     // cancels out of both gaps, so they stay equal at any icon size or hover spread.
-                    Image("readalong")
-                        .renderingMode(.template)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 22)
-                        .foregroundStyle(.tint)
-                        .offset(x: scaledWidth / 2, y: -(audioSize / 2 + xShift))
+                    ZStack {
+                        Circle()
+                            .fill(palette.accentBackground)
+                        Image("readalong")
+                            .renderingMode(.template)
+                            .resizable()
+                            .scaledToFit()
+                            .foregroundStyle(palette.accent)
+                            .padding(5)
+                    }
+                    .frame(width: notchBadgeDiameter, height: notchBadgeDiameter)
+                    .offset(x: badgeX, y: -badgeY)
                         .zIndex(100)
                 }
 
                 if let notchProgress {
                     // Mirror of the readaloud wedge in the bottom-right notch.
-                    CircularProgressBadge(progress: notchProgress)
-                        .offset(x: scaledWidth / 2, y: audioSize / 2 + xShift)
+                    CircularProgressBadge(
+                        progress: notchProgress,
+                        showsBackground: true,
+                        backgroundColor: palette.accentBackground,
+                        ringDiameter: 15,
+                        backgroundDiameter: notchBadgeDiameter,
+                    )
+                        .tint(palette.accent)
+                        .offset(x: badgeX, y: badgeY)
                         .zIndex(100)
                 }
-            } else {
-                singleCoverFallback(
-                    ebookState: ebookState,
-                    audioState: audioState,
-                    containerHeight: containerHeight,
-                )
             }
         }
         .frame(width: coverWidth, height: containerHeight)
@@ -976,39 +1084,13 @@ struct DoubleCoverView: View {
         }
     }
 
-    // The double layout needs both images; until the second one loads (or when a
-    // variant has no artwork at all) render whichever cover exists rather than nothing.
-    @ViewBuilder
-    private func singleCoverFallback(
+    private func derivedPalette(
         ebookState: MediaViewModel.CoverImageState,
-        audioState: MediaViewModel.CoverImageState,
-        containerHeight: CGFloat,
-    ) -> some View {
-        let useAudio = ebookState.image == nil && audioState.image != nil
-        let state = useAudio ? audioState : ebookState
-        let height = useAudio ? coverWidth : containerHeight
-
-        coverImage(state: state)
-            .frame(width: coverWidth, height: height)
-            .stableCoverRendering()
-            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-            .overlay(alignment: .topTrailing) {
-                if showReadaloudWedge {
-                    AudioIndicatorBadge(
-                        item: item,
-                        coverVariant: useAudio ? .audioSquare : .standard,
-                    )
-                    .padding(.trailing, 4)
-                    .padding(.top, 4)
-                }
-            }
-            .overlay(alignment: .bottomTrailing) {
-                if let notchProgress {
-                    CircularProgressBadge(progress: notchProgress, showsBackground: true)
-                        .padding(.trailing, 4)
-                        .padding(.bottom, 4)
-                }
-            }
+        audioState: MediaViewModel.CoverImageState
+    ) -> CoverDerivedPalette {
+        let image = ebookState.cgImage ?? audioState.cgImage
+        return (image.flatMap(CoverDerivedPalette.make(from:)) ?? .fallback())
+            .resolved(for: colorScheme)
     }
 
     private func debugCoverLog(_ message: String) {

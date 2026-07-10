@@ -21,6 +21,9 @@ struct DownloadCancelProgressIcon: View {
                 ProgressView()
                     .controlSize(.small)
                     .tint(color)
+                    // NSProgressIndicator ignores SwiftUI tint here. Force its light
+                    // appearance so the radial spokes stay visible on the dark button.
+                    .environment(\.colorScheme, .dark)
             }
 
             if showsCancel {
@@ -151,6 +154,7 @@ struct MediaItemCardTopTabsButtonOverlay: View {
     let isSelected: Bool
     let isHoveringCard: Bool
     @Environment(MediaViewModel.self) private var mediaViewModel
+    @Environment(\.colorScheme) private var colorScheme
 
     #if os(macOS)
     @Environment(\.openWindow) private var openWindow
@@ -158,7 +162,14 @@ struct MediaItemCardTopTabsButtonOverlay: View {
 
     @State private var hoveredTab: MediaItemCardTopTabs.TabCategory?
     @State private var showConnectionAlert = false
-    private let availableMediaColor = Color.gray.opacity(0.72)
+    private var palette: CoverDerivedPalette {
+        let ebook = mediaViewModel.coverState(for: item, variant: .standard).cgImage
+        let audio = mediaViewModel.coverState(for: item, variant: .audioSquare).cgImage
+        return ((ebook ?? audio).flatMap(CoverDerivedPalette.make(from:)) ?? .fallback())
+            .resolved(for: colorScheme)
+    }
+
+    private var availableMediaColor: Color { palette.mutedAccent }
 
     private enum ButtonSize {
         case large, medium, small
@@ -274,16 +285,18 @@ struct MediaItemCardTopTabsButtonOverlay: View {
         } label: {
             ZStack {
                 Circle()
-                    .fill(Color.black.opacity(0.82))
+                    .fill(palette.accentBackground)
                     .frame(width: size.frame, height: size.frame)
                 if isHovered && status == .downloaded {
                     Image(systemName: "play.circle.fill")
                         .font(.system(size: size.playIcon))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(palette.brightAccent)
                 } else {
                     Image(systemName: "rectangle.stack.fill")
                         .font(.system(size: size.icon))
-                        .foregroundStyle(status == .downloaded ? .white : availableMediaColor)
+                        .foregroundStyle(
+                            status == .downloaded ? palette.brightAccent : availableMediaColor
+                        )
                 }
             }
             .frame(width: size.frame, height: size.frame)
@@ -311,7 +324,7 @@ struct MediaItemCardTopTabsButtonOverlay: View {
         } label: {
             ZStack {
                 Circle()
-                    .fill(Color.black.opacity(0.82))
+                    .fill(palette.accentBackground)
                     .frame(width: size.frame, height: size.frame)
                 tabIcon(for: tab, status: status, isHovered: isHovered, size: size)
             }
@@ -348,7 +361,7 @@ struct MediaItemCardTopTabsButtonOverlay: View {
         if case .downloading(let progress) = status {
             DownloadCancelProgressIcon(
                 progress: progress,
-                color: .white,
+                color: palette.brightAccent,
                 size: size.icon,
                 lineWidth: 2.5,
                 showsCancel: isHovered,
@@ -366,22 +379,25 @@ struct MediaItemCardTopTabsButtonOverlay: View {
             } else {
                 Image(systemName: "arrow.down.circle.fill")
                     .font(.system(size: size.playIcon))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(palette.brightAccent)
             }
         } else if isHovered && status == .downloaded {
             Image(systemName: "play.circle.fill")
                 .font(.system(size: size.playIcon))
-                .foregroundStyle(.white)
+                .foregroundStyle(palette.brightAccent)
         } else {
             if isComicBook && tab == .ebook {
                 Image(systemName: "rectangle.stack.fill")
                     .font(.system(size: size.icon))
-                    .foregroundStyle(status == .downloaded ? .white : availableMediaColor)
+                    .foregroundStyle(
+                        status == .downloaded ? palette.brightAccent : availableMediaColor
+                    )
             } else {
                 tab.iconView(size: size.icon)
                     .foregroundStyle(
                         status == .downloaded
-                            ? AnyShapeStyle(Color.white) : AnyShapeStyle(availableMediaColor)
+                            ? AnyShapeStyle(palette.brightAccent)
+                            : AnyShapeStyle(availableMediaColor)
                     )
             }
         }
