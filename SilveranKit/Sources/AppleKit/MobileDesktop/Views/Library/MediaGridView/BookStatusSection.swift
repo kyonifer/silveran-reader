@@ -2,7 +2,14 @@
 import SwiftUI
 
 struct BookStatusSection: View {
+    enum Presentation {
+        case section
+        case toolbarMenu
+    }
+
     let item: BookMetadata
+    var showsHeading = true
+    var presentation: Presentation = .section
     @Environment(MediaViewModel.self) private var mediaViewModel: MediaViewModel
 
     @State private var selectedStatusName: String?
@@ -19,19 +26,40 @@ struct BookStatusSection: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Status")
-                    .font(.callout)
-                    .fontWeight(.medium)
-                Spacer()
-                if isUpdating {
-                    ProgressView()
-                        .controlSize(.small)
-                }
-            }
+        Group {
+            switch presentation {
+                case .section:
+                    VStack(alignment: .leading, spacing: 8) {
+                        if showsHeading {
+                            HStack {
+                                Text("Status")
+                                    .font(.callout)
+                                    .fontWeight(.medium)
+                                Spacer()
+                                if isUpdating {
+                                    ProgressView()
+                                        .controlSize(.small)
+                                }
+                            }
+                        }
 
-            statusPicker
+                        HStack {
+                            if !showsHeading {
+                                Text("Status")
+                                    .font(.callout)
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                            }
+                            statusPicker
+                            if !showsHeading && isUpdating {
+                                ProgressView()
+                                    .controlSize(.small)
+                            }
+                        }
+                    }
+                case .toolbarMenu:
+                    statusMenu
+            }
         }
         .onAppear {
             selectedStatusName = currentItem.status?.name
@@ -44,6 +72,48 @@ struct BookStatusSection: View {
         } message: {
             Text("Please connect to the Storyteller server to change the book status.")
         }
+    }
+
+    private var statusMenu: some View {
+        Menu {
+            Section("Reading Status") {
+                if sortedStatuses.isEmpty {
+                    Text(currentItem.status?.name ?? "No statuses available")
+                } else {
+                    ForEach(sortedStatuses, id: \.name) { status in
+                        Button {
+                            selectStatus(status.name)
+                        } label: {
+                            if selectedStatusName == status.name {
+                                Label(status.name, systemImage: "checkmark")
+                            } else {
+                                Text(status.name)
+                            }
+                        }
+                        .disabled(selectedStatusName == status.name)
+                    }
+                }
+            }
+        } label: {
+            ZStack {
+                if isUpdating {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(.white)
+                } else {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 12, weight: .semibold))
+                }
+            }
+            .frame(width: 24, height: 24)
+            .background(.white.opacity(0.12), in: Circle())
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .disabled(isUpdating)
+        .help("Reading status: \(currentItem.status?.name ?? "Unknown")")
+        .accessibilityLabel("Set reading status")
     }
 
     @ViewBuilder
@@ -90,6 +160,12 @@ struct BookStatusSection: View {
         if !success {
             selectedStatusName = currentItem.status?.name
         }
+    }
+
+    private func selectStatus(_ statusName: String) {
+        guard statusName != selectedStatusName else { return }
+        selectedStatusName = statusName
+        Task { await updateStatus(to: statusName) }
     }
 }
 

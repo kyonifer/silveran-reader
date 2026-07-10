@@ -316,6 +316,7 @@ public final class MediaViewModel {
     @Observable
     public final class CoverImageState {
         public var image: Image?
+        public var cgImage: CGImage?
         #if canImport(AppKit)
         public var nsImage: NSImage?
         #endif
@@ -2547,6 +2548,7 @@ public final class MediaViewModel {
         uncancellableCoverKeys.removeAll()
         for state in coverStates.values {
             state.image = nil
+            state.cgImage = nil
             #if canImport(AppKit)
             state.nsImage = nil
             #endif
@@ -2581,6 +2583,7 @@ public final class MediaViewModel {
                     "[MetadataCoverRefresh] MediaVM invalidateCoverCache clearing state bookID=\(bookID) variant=\(variant) stateObject=\(ObjectIdentifier(state))"
                 )
                 state.image = nil
+                state.cgImage = nil
                 #if canImport(AppKit)
                 state.nsImage = nil
                 #endif
@@ -2623,6 +2626,7 @@ public final class MediaViewModel {
             )
             missingCoverKeys.insert(key)
             state.image = nil
+            state.cgImage = nil
             #if canImport(AppKit)
             state.nsImage = nil
             #endif
@@ -2630,6 +2634,7 @@ public final class MediaViewModel {
         }
 
         let cgImage = payload.cgImage.image
+        state.cgImage = cgImage
         #if canImport(AppKit)
         state.nsImage = NSImage(
             cgImage: cgImage,

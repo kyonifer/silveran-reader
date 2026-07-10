@@ -31,6 +31,8 @@ struct RoundedCoverArtwork: View {
     let placeholderColor: Color
     let variant: MediaViewModel.CoverVariant
     let cornerRadius: CGFloat
+    var progress: Double? = nil
+    var progressBackgroundColor: Color = .black.opacity(0.78)
 
     var body: some View {
         GeometryReader { geometry in
@@ -52,6 +54,16 @@ struct RoundedCoverArtwork: View {
             .frame(width: artworkSize.width, height: artworkSize.height)
             .stableCoverRendering()
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .overlay(alignment: .bottomTrailing) {
+                if let progress, progress > 0 {
+                    CircularProgressBadge(
+                        progress: progress,
+                        showsBackground: true,
+                        backgroundColor: progressBackgroundColor,
+                    )
+                        .padding(4)
+                }
+            }
             .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
         }
     }

@@ -97,19 +97,11 @@ struct MediaCompactCardView: View {
             .stableCoverRendering()
             .overlay(alignment: .bottom) {
                 if progressStyle == .line && progress > 0 {
-                    GeometryReader { geometry in
-                        let clamped = min(max(progress, 0), 1)
-                        ZStack(alignment: .leading) {
-                            Rectangle()
-                                .fill(.tint.opacity(0.3))
-                            Rectangle()
-                                .fill(.tint)
-                                .frame(width: geometry.size.width * CGFloat(clamped))
-                        }
-                    }
+                    MediaProgressBar(progress: progress, backgroundOpacity: 0.3)
                     .frame(height: 3)
                 }
             }
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             .overlay(alignment: .bottomTrailing) {
                 if progress > 0 {
                     if progressStyle == .circle && !shouldRenderDoubleCover {

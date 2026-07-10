@@ -433,6 +433,19 @@ struct MediaItemCardView: View {
                             .aspectRatio(coverVariant.displayAspectRatio, contentMode: .fit)
                         }
                     }
+                    .overlay(alignment: .bottom) {
+                        let progress = mediaViewModel.progress(for: item.id)
+                        if progressStyle == .line {
+                            MediaProgressBar(progress: progress)
+                                .frame(height: 3)
+                        }
+                    }
+                    .clipShape(
+                        RoundedRectangle(
+                            cornerRadius: metrics.coverCornerRadius,
+                            style: .continuous,
+                        )
+                    )
                     // Badges attach to the cover (sized to the artwork), not the slot, so they
                     // track the visible cover even when it is letterboxed in a taller slot.
                     .overlay(alignment: .bottomLeading) {
@@ -499,12 +512,6 @@ struct MediaItemCardView: View {
                 #endif
             }
             .frame(height: metrics.coverContainerHeight - 7)
-
-            if progressStyle == .line {
-                MediaProgressBar(progress: mediaViewModel.progress(for: item.id))
-                    .frame(width: metrics.coverWidth)
-                    .frame(height: 3)
-            }
 
             Spacer(minLength: metrics.contentSpacing)
                 .frame(height: metrics.contentSpacing)
@@ -646,6 +653,7 @@ struct MediaItemCardView: View {
 struct CircularProgressBadge: View {
     let progress: Double
     var showsBackground: Bool = false
+    var backgroundColor: Color = .black.opacity(0.78)
 
     var body: some View {
         let clamped = min(max(progress, 0), 1)
@@ -663,7 +671,7 @@ struct CircularProgressBadge: View {
         .background {
             if showsBackground {
                 Circle()
-                    .fill(Color.black.opacity(0.78))
+                    .fill(backgroundColor)
                     .frame(width: 24, height: 24)
             }
         }
@@ -687,16 +695,17 @@ struct ProgressTextBadge: View {
     }
 }
 
-private struct MediaProgressBar: View {
+struct MediaProgressBar: View {
     let progress: Double
+    var backgroundOpacity = 0.1
 
     var body: some View {
         GeometryReader { geometry in
             let clamped = min(max(progress, 0), 1)
             ZStack(alignment: .leading) {
-                Capsule()
-                    .fill(.tint.opacity(0.1))
-                Capsule()
+                Rectangle()
+                    .fill(.tint.opacity(backgroundOpacity))
+                Rectangle()
                     .fill(.tint)
                     .frame(width: geometry.size.width * CGFloat(clamped))
             }

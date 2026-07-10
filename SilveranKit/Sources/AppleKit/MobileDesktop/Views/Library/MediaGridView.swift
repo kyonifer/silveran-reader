@@ -551,34 +551,28 @@ struct MediaGridView: View {
                 )
 
                 if shouldShowSidebar, let activeInfoItem {
-                    HStack(spacing: 0) {
-                        Rectangle()
-                            .fill(Color(nsColor: .separatorColor))
-                            .frame(width: 1)
-                        MediaGridInfoSidebar(
-                            item: activeInfoItem,
-                            mediaKind: mediaKind,
-                            onClose: { dismissSidebar() },
-                            onReadNow: {
-                                onReadNow(activeInfoItem)
-                                dismissSidebar()
-                            },
-                            onRename: {
-                                onRename(activeInfoItem)
-                            },
-                            onDelete: {
-                                onDelete(activeInfoItem)
-                                dismissSidebar()
-                            },
-                            onSeriesSelected: onSeriesSelected.map { handler in
-                                { seriesName in
-                                    dismissSidebar()
-                                    handler(seriesName)
-                                }
-                            },
-                        )
-                        .frame(width: sidebarWidth)
-                    }
+                    MediaGridInfoSidebar(
+                        item: activeInfoItem,
+                        mediaKind: mediaKind,
+                        onClose: { dismissSidebar() },
+                        onReadNow: {
+                            onReadNow(activeInfoItem)
+                            dismissSidebar()
+                        },
+                        onRename: {
+                            onRename(activeInfoItem)
+                        },
+                        onDelete: {
+                            onDelete(activeInfoItem)
+                            dismissSidebar()
+                        },
+                        onSeriesSelected: onSeriesSelected.map { handler in
+                            { seriesName in
+                                handler(seriesName)
+                            }
+                        },
+                    )
+                    .frame(width: sidebarWidth)
                 }
             }
             .animation(.easeInOut(duration: 0.25), value: shouldShowSidebar)

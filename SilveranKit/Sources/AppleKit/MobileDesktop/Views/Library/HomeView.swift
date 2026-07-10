@@ -191,6 +191,9 @@ struct HomeView: View {
         GeometryReader { geometry in
             #if os(macOS)
             let shouldShowSidebar = isSidebarVisible && selectedItem != nil
+            let trailingContentPadding: CGFloat = shouldShowSidebar ? 0 : horizontalPadding
+            #else
+            let trailingContentPadding = horizontalPadding
             #endif
 
             HStack(spacing: 0) {
@@ -205,7 +208,11 @@ struct HomeView: View {
                                 viewOptionsButton
                                 #endif
                             }
-                            .padding(.horizontal, horizontalPadding)
+                            .padding(.leading, horizontalPadding)
+                            .padding(
+                                .trailing,
+                                trailingContentPadding,
+                            )
                             .padding(.bottom, headerBottomPadding)
 
                             if allowEmptyStateDisplay && sections.allSatisfy({ $0.items.isEmpty }) {
@@ -243,7 +250,11 @@ struct HomeView: View {
                                 .frame(maxWidth: 500)
                                 .frame(maxWidth: .infinity, alignment: .center)
                                 .padding(.top, 60)
-                                .padding(.horizontal, horizontalPadding)
+                                .padding(.leading, horizontalPadding)
+                                .padding(
+                                    .trailing,
+                                    trailingContentPadding,
+                                )
                             } else {
                                 ForEach(Array(sections.enumerated()), id: \.offset) {
                                     index,
@@ -285,7 +296,11 @@ struct HomeView: View {
                                         onNavigateToSection: { navigateToSection($0) },
                                     )
                                     .id(section.id)
-                                    .padding(.horizontal, horizontalPadding)
+                                    .padding(.leading, horizontalPadding)
+                                    .padding(
+                                        .trailing,
+                                        trailingContentPadding,
+                                    )
                                     #endif
                                 }
                             }
@@ -312,23 +327,17 @@ struct HomeView: View {
 
                 #if os(macOS)
                 if shouldShowSidebar, let item = selectedItem {
-                    HStack(spacing: 0) {
-                        Rectangle()
-                            .fill(Color(nsColor: .separatorColor))
-                            .frame(width: 1)
-                        MediaGridInfoSidebar(
-                            item: item,
-                            onClose: { dismissSidebar() },
-                            onReadNow: { dismissSidebar() },
-                            onRename: {},
-                            onDelete: { dismissSidebar() },
-                            onSeriesSelected: { seriesName in
-                                dismissSidebar()
-                                navigationPath.append(SeriesNavIdentifier(name: seriesName))
-                            },
-                        )
-                        .frame(width: sidebarWidth)
-                    }
+                    MediaGridInfoSidebar(
+                        item: item,
+                        onClose: { dismissSidebar() },
+                        onReadNow: { dismissSidebar() },
+                        onRename: {},
+                        onDelete: { dismissSidebar() },
+                        onSeriesSelected: { seriesName in
+                            navigationPath.append(SeriesNavIdentifier(name: seriesName))
+                        },
+                    )
+                    .frame(width: sidebarWidth)
                 }
                 #endif
             }
