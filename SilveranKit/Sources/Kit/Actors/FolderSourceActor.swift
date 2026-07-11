@@ -765,6 +765,7 @@ public actor FolderSourceActor: BookSourceActor {
         var works: [FolderSourceWork] = []
         var seenPreviousMediaIDs: Set<String> = []
         var seenPreviousWorkIDs: Set<String> = []
+        var claimedPreviousWorkIDs: Set<String> = []
 
         for group in groupedCandidates(candidates) {
             var mediaIDs: [FolderSourceMediaRole: String] = [:]
@@ -786,9 +787,15 @@ public actor FolderSourceActor: BookSourceActor {
                 }
             }
 
-            let previousWork = groupMedia.compactMap { previousWorkByMediaID[$0.uuid] }.first
-            for previousWork in groupMedia.compactMap({ previousWorkByMediaID[$0.uuid] }) {
+            let candidatePreviousWorks = groupMedia.compactMap { previousWorkByMediaID[$0.uuid] }
+            for previousWork in candidatePreviousWorks {
                 seenPreviousWorkIDs.insert(previousWork.uuid)
+            }
+            let previousWork = candidatePreviousWorks.first {
+                !claimedPreviousWorkIDs.contains($0.uuid)
+            }
+            if let previousWork {
+                claimedPreviousWorkIDs.insert(previousWork.uuid)
             }
             works.append(
                 workRecord(
@@ -937,11 +944,21 @@ public actor FolderSourceActor: BookSourceActor {
             let byStem = Dictionary(grouping: directoryCandidates, by: \.groupingStem)
             for stemCandidates in byStem.values {
                 let byRole = Dictionary(grouping: stemCandidates, by: \.role)
-                let duplicateRole = byRole.values.contains { $0.count > 1 }
-                if duplicateRole {
-                    groups.append(contentsOf: stemCandidates.map { [$0] })
-                } else {
-                    groups.append(FolderSourceMediaRole.allCases.compactMap { byRole[$0]?.first })
+                var group: [FolderMediaCandidate] = []
+                for role in FolderSourceMediaRole.allCases {
+                    guard let roleCandidates = byRole[role], !roleCandidates.isEmpty else { continue }
+                    let ordered = roleCandidates.sorted {
+                        ($0.relativePaths.first ?? "") < ($1.relativePaths.first ?? "")
+                    }
+                    group.append(ordered[0])
+                    for extra in ordered.dropFirst() {
+                        debugLog(
+                            "[FolderSourceActor] Multiple \(role.rawValue) files share stem '\(extra.groupingStem)'; using '\(ordered[0].relativePaths.first ?? "")', ignoring '\(extra.relativePaths.first ?? "")'"
+                        )
+                    }
+                }
+                if !group.isEmpty {
+                    groups.append(group)
                 }
             }
         }
@@ -1017,11 +1034,18 @@ public actor FolderSourceActor: BookSourceActor {
         from state: FolderSourceLibraryState,
         folderURL: URL,
     ) -> LocalLibraryManager.ScanResult {
-        let mediaByID = Dictionary(uniqueKeysWithValues: state.media.map { ($0.uuid, $0) })
+        let mediaByID = Dictionary(state.media.map { ($0.uuid, $0) }, uniquingKeysWith: { a, _ in a })
         var metadata: [BookMetadata] = []
         var paths: [String: MediaPaths] = [:]
+        var emittedWorkIDs: Set<String> = []
 
         for work in state.works {
+            guard emittedWorkIDs.insert(work.uuid).inserted else {
+                debugLog(
+                    "[FolderSourceActor] Duplicate work id '\(work.uuid)' (\(work.title)); skipping the duplicate in projection"
+                )
+                continue
+            }
             let ebook = mediaByID[work.mediaIDs[.ebook] ?? ""]
             let readaloud = mediaByID[work.mediaIDs[.readaloud] ?? ""]
             let audio = mediaByID[work.mediaIDs[.audio] ?? ""]

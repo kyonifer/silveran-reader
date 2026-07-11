@@ -28,9 +28,9 @@ struct UnifiedMetadataImportView: View {
             if isCompactIOS {
                 ScrollView {
                     VStack(spacing: 0) {
-                        leftPicker.frame(height: 300)
+                        leftPicker.frame(height: 320)
                         Divider()
-                        comparisonTable
+                        compactComparison
                     }
                 }
             } else {
@@ -307,6 +307,162 @@ struct UnifiedMetadataImportView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// Compact iOS can't fit 2-3 side-by-side value columns after a fixed label column, so each
+    /// field becomes a card that stacks its sources vertically at full width.
+    private var compactComparison: some View {
+        LazyVStack(spacing: 14) {
+            compactSelectAllBar
+            ForEach(UnifiedMetadataImportViewModel.scalarFields, id: \.self) { field in
+                compactFieldCard(field)
+            }
+            compactTagsCard
+        }
+        .padding(12)
+    }
+
+    private var compactSelectAllBar: some View {
+        HStack(spacing: 8) {
+            Text("Fill all from")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            ForEach(viewModel.visibleColumns) { column in
+                Button(column.title) { viewModel.selectAll(column: column) }
+                    .font(.caption.weight(.medium))
+                    .buttonStyle(.bordered)
+                    .disabled(!viewModel.hasCandidate(column))
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func compactFieldCard(_ field: String) -> some View {
+        let label = UnifiedMetadataImportViewModel.fieldLabels[field] ?? field
+        let expandable = isFieldExpandable(field)
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Text(label).font(.callout.weight(.semibold))
+                if expandable {
+                    Button {
+                        viewModel.toggleExpanded(field)
+                    } label: {
+                        Image(systemName: viewModel.isExpanded(field) ? "chevron.up" : "chevron.down")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+                Spacer(minLength: 0)
+            }
+            ForEach(viewModel.visibleColumns) { column in
+                compactSourceRow(field: field, column: column)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func compactSourceRow(
+        field: String,
+        column: UnifiedMetadataImportViewModel.Column,
+    ) -> some View {
+        if column != .current, !viewModel.hasCandidate(column) {
+            compactUnavailableRow(column)
+        } else {
+            let value = viewModel.value(field, from: column)
+            let hasValue = !value.isEmpty
+            let isCurrent = column == .current
+            let selectable = isCurrent || hasValue
+            let isSelected = viewModel.isSelected(field, column: column)
+            Button {
+                viewModel.selectField(field, column: column)
+            } label: {
+                HStack(alignment: .top, spacing: 8) {
+                    Image(
+                        systemName: isSelected
+                            ? "largecircle.fill.circle"
+                            : (selectable ? "circle" : "minus.circle")
+                    )
+                    .foregroundStyle(isSelected ? Color.accentColor : Color.secondary.opacity(0.5))
+                    .font(.callout)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(column.title)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        Group {
+                            if field == "description", hasValue {
+                                Text(viewModel.renderedDescription(value))
+                            } else {
+                                Text(hasValue ? value : (isCurrent ? "(empty)" : "(none)"))
+                            }
+                        }
+                        .font(.callout)
+                        .foregroundStyle(hasValue ? .primary : .tertiary)
+                        .lineLimit(viewModel.isExpanded(field) ? nil : 3)
+                        .textSelection(.enabled)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(isSelected ? Color.accentColor.opacity(0.10) : Color.secondary.opacity(0.05))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(isSelected ? Color.accentColor.opacity(0.5) : Color.clear, lineWidth: 1)
+                )
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(!selectable)
+        }
+    }
+
+    private func compactUnavailableRow(
+        _ column: UnifiedMetadataImportViewModel.Column,
+    ) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "minus.circle")
+                .foregroundStyle(.tertiary)
+                .font(.callout)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(column.title)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text(noCandidateHint(column))
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.secondary.opacity(0.03)))
+    }
+
+    private var compactTagsCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Genres & Tags").font(.callout.weight(.semibold))
+            ForEach(viewModel.visibleColumns) { column in
+                compactTagRow(column)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func compactTagRow(_ column: UnifiedMetadataImportViewModel.Column) -> some View {
+        if column != .current, !viewModel.hasCandidate(column) {
+            compactUnavailableRow(column)
+        } else {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(column.title)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                tagCellContent(column: column)
+            }
+        }
     }
 
     private var columnHeaderRow: some View {

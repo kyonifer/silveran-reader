@@ -201,6 +201,19 @@ public final class ReadaloudEngine: ReadaloudAligning {
         overallProgress = 0
         logMessages = []
 
+        sourceOutputBookID = nil
+        sourceWorkflowBookTitle = nil
+        sourceWorkflowSourceID = nil
+        sourceWorkflowName = nil
+        sourceWorkflowKind = nil
+        uploadAllToServer = false
+        epubURL = nil
+        audioURLs = []
+        outputURL = nil
+        availableChapters = []
+        startChapterIndex = nil
+        endChapterIndex = nil
+
         guard let input else { return }
         sourceOutputBookID = input.bookID
         sourceWorkflowBookTitle = input.bookTitle

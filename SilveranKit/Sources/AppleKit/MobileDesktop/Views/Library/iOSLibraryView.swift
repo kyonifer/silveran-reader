@@ -729,7 +729,15 @@ struct MoreMenuView: View {
                 }
                 if AppLaunchContext.environment.readaloudAligner != nil {
                     NavigationLink(value: MoreDestination.createReadaloud) {
-                        Label("Create Readaloud", systemImage: "waveform.and.book.pages")
+                        Label {
+                            Text("Create Readaloud")
+                        } icon: {
+                            Image("readalong")
+                                .renderingMode(.template)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(width: 20, height: 20)
+                        }
                     }
                 }
                 if isWatchPaired {

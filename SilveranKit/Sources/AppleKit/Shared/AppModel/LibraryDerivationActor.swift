@@ -808,23 +808,27 @@ public actor LibraryDerivationActor {
         paths: [String: MediaPaths],
         folderSourceBookIds: Set<String>,
     ) -> [BookMetadata.ID: MediaGridLocationInfo] {
-        Dictionary(
-            uniqueKeysWithValues: items.map { item in
-                let mediaPaths = paths[item.id]
-                let hasDownloadedContent =
-                    mediaPaths?.ebookPath != nil
-                    || mediaPaths?.audioPath != nil
-                    || mediaPaths?.syncedPath != nil
-                let isLocal = folderSourceBookIds.contains(item.id)
-                return (
-                    item.id,
-                    MediaGridLocationInfo(
-                        isDownloaded: hasDownloadedContent && !isLocal,
-                        isLocalStandalone: isLocal,
-                    ),
+        var result: [BookMetadata.ID: MediaGridLocationInfo] = [:]
+        result.reserveCapacity(items.count)
+        for item in items {
+            let mediaPaths = paths[item.id]
+            let hasDownloadedContent =
+                mediaPaths?.ebookPath != nil
+                || mediaPaths?.audioPath != nil
+                || mediaPaths?.syncedPath != nil
+            let isLocal = folderSourceBookIds.contains(item.id)
+            if result[item.id] != nil {
+                debugLog(
+                    "[LibraryDerivationActor] Duplicate book id '\(item.id)' (\(item.title)) in media grid items; keeping the first"
                 )
+                continue
             }
-        )
+            result[item.id] = MediaGridLocationInfo(
+                isDownloaded: hasDownloadedContent && !isLocal,
+                isLocalStandalone: isLocal,
+            )
+        }
+        return result
     }
 
     private func displayItems(

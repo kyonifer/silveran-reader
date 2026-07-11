@@ -93,6 +93,7 @@ struct MediaItemCardView: View {
     @State private var pendingDetailsNavigation = false
     @State private var pendingPlayerCategory: LocalMediaCategory?
     @State private var copyBookData: CopyBookData?
+    @State private var pendingFolderDelete: FolderDeleteRequest?
     #endif
 
     var body: some View {
@@ -105,6 +106,16 @@ struct MediaItemCardView: View {
             .background(deferredNavigationLinks)
             .contextMenu { iOSCardContextMenu }
             .sheet(item: $copyBookData) { copyBookSheet($0) }
+            .confirmationDialog(
+                folderDeleteTitle,
+                isPresented: folderDeletePresented,
+                titleVisibility: .visible,
+                presenting: pendingFolderDelete,
+            ) { request in
+                Button("Delete", role: .destructive) { performFolderDelete(request) }
+            } message: { request in
+                Text(folderDeleteMessage(request))
+            }
         } else {
             NavigationLink(value: item) {
                 cardContent
@@ -113,6 +124,16 @@ struct MediaItemCardView: View {
             .background(deferredNavigationLinks)
             .contextMenu { iOSCardContextMenu }
             .sheet(item: $copyBookData) { copyBookSheet($0) }
+            .confirmationDialog(
+                folderDeleteTitle,
+                isPresented: folderDeletePresented,
+                titleVisibility: .visible,
+                presenting: pendingFolderDelete,
+            ) { request in
+                Button("Delete", role: .destructive) { performFolderDelete(request) }
+            } message: { request in
+                Text(folderDeleteMessage(request))
+            }
         }
         #else
         cardContent
@@ -144,6 +165,14 @@ struct MediaItemCardView: View {
         iOSContextMenuMediaOption(for: .ebook, label: "Ebook")
         iOSContextMenuMediaOption(for: .audio, label: "Audiobook")
         iOSContextMenuMediaOption(for: .synced, label: "Readaloud")
+
+        if mediaViewModel.isLocalFolderBook(item.id) {
+            Button(role: .destructive) {
+                pendingFolderDelete = FolderDeleteRequest(format: nil, label: item.title)
+            } label: {
+                Label("Delete Book", systemImage: "trash")
+            }
+        }
 
         iOSCopyToMenu
     }
@@ -263,7 +292,18 @@ struct MediaItemCardView: View {
             }
         }()
 
-        if isDownloaded && mediaViewModel.hasCachedMedia(category, for: item) {
+        if mediaViewModel.isLocalFolderBook(item.id) {
+            if isAvailable {
+                Button(role: .destructive) {
+                    pendingFolderDelete = FolderDeleteRequest(
+                        format: folderFormat(for: category),
+                        label: label,
+                    )
+                } label: {
+                    Label("Delete \(label)", systemImage: "trash")
+                }
+            }
+        } else if isDownloaded && mediaViewModel.hasCachedMedia(category, for: item) {
             Button(role: .destructive) {
                 mediaViewModel.deleteDownload(for: item, category: category)
             } label: {
@@ -280,6 +320,72 @@ struct MediaItemCardView: View {
                 mediaViewModel.startDownload(for: item, category: category)
             } label: {
                 Label(label, systemImage: "arrow.down.circle")
+            }
+        }
+    }
+
+    private struct FolderDeleteRequest {
+        let format: StorytellerBookFormat?
+        let label: String
+    }
+
+    private func folderFormat(for category: LocalMediaCategory) -> StorytellerBookFormat {
+        switch category {
+            case .ebook: return .ebook
+            case .audio: return .audiobook
+            case .synced: return .readaloud
+        }
+    }
+
+    private var folderDeletePresented: Binding<Bool> {
+        Binding(
+            get: { pendingFolderDelete != nil },
+            set: { if !$0 { pendingFolderDelete = nil } },
+        )
+    }
+
+    private var folderDeleteTitle: String {
+        guard let request = pendingFolderDelete else { return "" }
+        return request.format == nil ? "Delete \(item.title)?" : "Delete \(request.label)?"
+    }
+
+    private func folderDeleteMessage(_ request: FolderDeleteRequest) -> String {
+        request.format == nil
+            ? "This permanently deletes \(item.title) and all its files from the folder source."
+            : "This permanently deletes the \(request.label.lowercased()) file from the folder source."
+    }
+
+    private func performFolderDelete(_ request: FolderDeleteRequest) {
+        Task {
+            if let format = request.format {
+                let result = await BookServiceActor.shared.deleteBookAsset(
+                    item.id,
+                    sourceID: item.sourceID,
+                    type: format,
+                )
+                await mediaViewModel.refreshMetadata(source: "MediaItemCardView.deleteSourceAsset")
+                let didDelete: Bool = {
+                    if case DeleteAssetResult.success = result { return true }
+                    return false
+                }()
+                mediaViewModel.showSyncNotification(
+                    SyncNotification(
+                        message: didDelete
+                            ? "Deleted \(request.label.lowercased()) from folder source"
+                            : "Failed to delete \(request.label.lowercased())",
+                        type: didDelete ? .success : .error,
+                    )
+                )
+            } else {
+                let success = await mediaViewModel.deleteBookFromSource(item)
+                mediaViewModel.showSyncNotification(
+                    SyncNotification(
+                        message: success
+                            ? "Deleted \(item.title) from folder source"
+                            : "Failed to delete \(item.title)",
+                        type: success ? .success : .error,
+                    )
+                )
             }
         }
     }

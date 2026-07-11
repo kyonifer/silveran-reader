@@ -1045,6 +1045,7 @@ private struct BookOptionsSheet: View {
     let editMetadataAction: MetadataEditorAction?
     @Environment(MediaViewModel.self) private var mediaViewModel
     @Environment(\.dismiss) private var dismiss
+    @State private var showDeleteConfirmation = false
 
     private var currentItem: BookMetadata {
         mediaViewModel.library.bookMetaData.first { $0.uuid == item.uuid } ?? item
@@ -1092,9 +1093,43 @@ private struct BookOptionsSheet: View {
                         Label("Edit Metadata...", systemImage: "pencil")
                     }
                 }
+
+                if mediaViewModel.isLocalFolderBook(item.id) {
+                    Section {
+                        Button(role: .destructive) {
+                            showDeleteConfirmation = true
+                        } label: {
+                            Label("Delete from Folder", systemImage: "trash")
+                        }
+                    }
+                }
             }
             .navigationTitle("Options")
             .navigationBarTitleDisplayMode(.inline)
+            .confirmationDialog(
+                "Delete \(currentItem.title)?",
+                isPresented: $showDeleteConfirmation,
+                titleVisibility: .visible,
+            ) {
+                Button("Delete", role: .destructive) {
+                    Task {
+                        let success = await mediaViewModel.deleteBookFromSource(currentItem)
+                        mediaViewModel.showSyncNotification(
+                            SyncNotification(
+                                message: success
+                                    ? "Deleted \(currentItem.title) from folder source"
+                                    : "Failed to delete \(currentItem.title)",
+                                type: success ? .success : .error,
+                            )
+                        )
+                        if success { dismiss() }
+                    }
+                }
+            } message: {
+                Text(
+                    "This permanently deletes \(currentItem.title) and all its files from the folder source."
+                )
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") {
