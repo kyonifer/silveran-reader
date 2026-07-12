@@ -61,6 +61,16 @@ public actor DownloadManager {
 
         let persisted = await loadPersistedState()
         for record in persisted {
+            if let sourceID = record.sourceID,
+                await BookServiceActor.shared.resolveLocalMedia(
+                    for: record.bookId,
+                    sourceID: sourceID,
+                    category: record.category,
+                ) != nil
+            {
+                await deleteResumeData(for: record.id)
+                continue
+            }
             downloads[record.id] = record
         }
 
@@ -375,6 +385,7 @@ public actor DownloadManager {
     }
 
     func handleFileDownloaded(downloadId: String, tempURL: URL) async {
+        activeTasks.removeValue(forKey: downloadId)
         guard var record = downloads[downloadId] else {
             try? FileManager.default.removeItem(at: tempURL)
             return
