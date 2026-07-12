@@ -6,6 +6,7 @@ import android.util.TypedValue
 import android.widget.ScrollView
 import android.widget.TextView
 import com.kyonifer.silveran.bridge.SilveranAndroidBridge
+import com.kyonifer.silveran.platform.AndroidSecureStore
 import java.io.File
 import kotlin.concurrent.thread
 
@@ -25,6 +26,8 @@ class MainActivity : Activity() {
         thread {
             val output = StringBuilder()
             try {
+                AndroidSecureStore.initialize(applicationContext)
+                SilveranAndroidBridge.bootstrapAndroid(filesDir.absolutePath)
                 output.appendLine(SilveranAndroidBridge.coreVersion())
                 output.appendLine()
 

@@ -3,6 +3,10 @@ import Dispatch
 import Foundation
 import SilveranKit
 
+public func bootstrapAndroid(filesDirectory: String) throws {
+    try AndroidPlatformBootstrap.bootstrap(filesDirectory: filesDirectory)
+}
+
 public func coreVersion() -> String {
     "SilveranKit on Android (Swift 6.2 runtime, jextract JNI bridge)"
 }
@@ -42,4 +46,22 @@ private func errorJSON(_ message: String) -> String {
         .replacingOccurrences(of: "\\", with: "\\\\")
         .replacingOccurrences(of: "\"", with: "\\\"")
     return "{\"error\":\"\(escaped)\"}"
+}
+
+enum AndroidBridgeError: Error, LocalizedError, CustomStringConvertible {
+    case alreadyBootstrapped(existing: String, requested: String)
+    case secureStorageFailure(String)
+
+    var errorDescription: String? {
+        switch self {
+            case .alreadyBootstrapped(let existing, let requested):
+                return "Silveran was already bootstrapped with \(existing), not \(requested)."
+            case .secureStorageFailure(let account):
+                return "Android secure storage failed for account \(account)."
+        }
+    }
+
+    var description: String {
+        errorDescription ?? "Android bridge error"
+    }
 }
