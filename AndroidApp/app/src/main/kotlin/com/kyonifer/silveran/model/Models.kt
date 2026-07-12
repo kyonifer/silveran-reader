@@ -1,5 +1,20 @@
 package com.kyonifer.silveran.model
 
+data class Book(
+    val id: String,
+    val sourceID: String,
+    val title: String,
+    val authors: String,
+) {
+    val key: String = "$sourceID:$id"
+}
+
+data class LibrarySnapshot(
+    val books: List<Book>,
+    val sourceStatus: String,
+    val sourceMessage: String?,
+)
+
 data class StorytellerSettings(
     val configured: Boolean = false,
     val sourceID: String? = null,

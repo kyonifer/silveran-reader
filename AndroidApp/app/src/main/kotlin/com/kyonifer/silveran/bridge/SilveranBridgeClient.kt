@@ -1,7 +1,8 @@
-package com.kyonifer.silveran.data
+package com.kyonifer.silveran.bridge
 
 import android.content.Context
-import com.kyonifer.silveran.bridge.SilveranAndroidBridge
+import com.kyonifer.silveran.model.Book
+import com.kyonifer.silveran.model.LibrarySnapshot
 import com.kyonifer.silveran.model.StorytellerSettings
 import com.kyonifer.silveran.platform.AndroidSecureStore
 import java.util.concurrent.CompletableFuture
@@ -19,9 +20,23 @@ class SilveranBridgeClient(context: Context) {
         SilveranAndroidBridge.bootstrapAndroid(filesDirectory)
     }
 
+    suspend fun observeLibraryChanges(onChange: () -> Unit) {
+        AndroidBridgeCallbacks.observe(onChange)
+        SilveranAndroidBridge.startLibraryObservation().awaitResult()
+    }
+
+    fun close() {
+        AndroidBridgeCallbacks.clear()
+    }
+
     suspend fun storytellerSettings(): StorytellerSettings {
         val json = SilveranAndroidBridge.storytellerSettingsJSON().awaitResult()
         return withContext(Dispatchers.Default) { parseSettings(json) }
+    }
+
+    suspend fun librarySnapshot(refresh: Boolean): LibrarySnapshot {
+        val json = SilveranAndroidBridge.librarySnapshotJSON(refresh).awaitResult()
+        return withContext(Dispatchers.Default) { parseLibrary(json) }
     }
 
     suspend fun saveStorytellerSettings(
@@ -46,6 +61,25 @@ class SilveranBridgeClient(context: Context) {
             username = root.optString("username"),
             connectionStatus = root.optString("connectionStatus", "notConfigured"),
             connectionMessage = root.optionalString("connectionMessage"),
+        )
+    }
+
+    private fun parseLibrary(json: String): LibrarySnapshot {
+        val root = JSONObject(json)
+        val items = root.getJSONArray("books")
+        val books = List(items.length()) { index ->
+            val item = items.getJSONObject(index)
+            Book(
+                id = item.getString("id"),
+                sourceID = item.getString("sourceID"),
+                title = item.getString("title"),
+                authors = item.optString("authors"),
+            )
+        }
+        return LibrarySnapshot(
+            books = books,
+            sourceStatus = root.optString("sourceStatus", "notConfigured"),
+            sourceMessage = root.optionalString("sourceMessage"),
         )
     }
 }

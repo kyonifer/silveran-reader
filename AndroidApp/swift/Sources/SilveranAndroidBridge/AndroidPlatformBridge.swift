@@ -1,4 +1,4 @@
-// Silveran-to-Kotlin platform adapters.
+// Silveran-to-Kotlin platform adapters and callbacks.
 import Foundation
 import SilveranKit
 import SwiftJava
@@ -16,6 +16,14 @@ extension JavaClass<JavaAndroidSecureStore> {
 
     @JavaStaticMethod
     func remove(_ key: String) -> Bool
+}
+
+@JavaClass("com.kyonifer.silveran.bridge.AndroidBridgeCallbacks")
+open class JavaAndroidBridgeCallbacks: JavaObject {}
+
+extension JavaClass<JavaAndroidBridgeCallbacks> {
+    @JavaStaticMethod
+    func librarySnapshotDidChange()
 }
 
 enum AndroidPlatformBootstrap {
@@ -79,4 +87,8 @@ final class AndroidKeychainStore: KeychainStoring, @unchecked Sendable {
             throw AndroidBridgeError.secureStorageFailure(account)
         }
     }
+}
+
+func notifyAndroidLibrarySnapshotDidChange() {
+    try? JavaClass<JavaAndroidBridgeCallbacks>().librarySnapshotDidChange()
 }

@@ -57,7 +57,63 @@ public func saveStorytellerSettings(
         throw AndroidBridgeError.couldNotSaveStorytellerSettings
     }
 
+    await installAndroidConnectionObserver()
+    _ = await BookServiceActor.shared.librarySnapshot(policy: .refresh)
     return try await encodeStorytellerSettings()
+}
+
+public func librarySnapshotJSON(refresh: Bool) async throws -> String {
+    try requireAndroidBootstrap()
+
+    let snapshot = await BookServiceActor.shared.librarySnapshot(
+        policy: refresh ? .refresh : .cachedOnly
+    )
+    var books: [AndroidBook] = []
+    books.reserveCapacity(snapshot.books.count)
+
+    for book in snapshot.books {
+        guard let sourceID = book.sourceID else { continue }
+        books.append(
+            AndroidBook(
+                id: book.uuid,
+                sourceID: sourceID,
+                title: book.title,
+                authors: book.authors?.compactMap(\.name).joined(separator: ", ") ?? "",
+            )
+        )
+    }
+
+    let status = connectionFields(await BookServiceActor.shared.connectionStatus)
+    return try encodeJSON(
+        AndroidLibrary(
+            books: books,
+            sourceStatus: status.status,
+            sourceMessage: status.message,
+        )
+    )
+}
+
+public func startLibraryObservation() async throws {
+    try requireAndroidBootstrap()
+    guard androidObserverStore.claimInstallation() else { return }
+
+    _ = await BookServiceActor.shared.addLibraryCacheObserver {
+        notifyAndroidLibrarySnapshotDidChange()
+    }
+    await installAndroidConnectionObserver()
+}
+
+private struct AndroidBook: Encodable {
+    let id: String
+    let sourceID: String
+    let title: String
+    let authors: String
+}
+
+private struct AndroidLibrary: Encodable {
+    let books: [AndroidBook]
+    let sourceStatus: String
+    let sourceMessage: String?
 }
 
 private struct AndroidStorytellerSettings: Encodable {
@@ -67,6 +123,27 @@ private struct AndroidStorytellerSettings: Encodable {
     let username: String?
     let connectionStatus: String
     let connectionMessage: String?
+}
+
+private final class AndroidObserverStore: @unchecked Sendable {
+    private let lock = NSLock()
+    private var observersInstalled = false
+
+    func claimInstallation() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !observersInstalled else { return false }
+        observersInstalled = true
+        return true
+    }
+}
+
+private let androidObserverStore = AndroidObserverStore()
+
+private func installAndroidConnectionObserver() async {
+    await BookServiceActor.shared.request_notify {
+        notifyAndroidLibrarySnapshotDidChange()
+    }
 }
 
 private func encodeStorytellerSettings() async throws -> String {
