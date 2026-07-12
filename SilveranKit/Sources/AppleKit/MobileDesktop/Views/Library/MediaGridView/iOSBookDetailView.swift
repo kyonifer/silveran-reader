@@ -1113,16 +1113,9 @@ private struct BookOptionsSheet: View {
             ) {
                 Button("Delete", role: .destructive) {
                     Task {
-                        let success = await mediaViewModel.deleteBookFromSource(currentItem)
-                        mediaViewModel.showSyncNotification(
-                            SyncNotification(
-                                message: success
-                                    ? "Deleted \(currentItem.title) from folder source"
-                                    : "Failed to delete \(currentItem.title)",
-                                type: success ? .success : .error,
-                            )
-                        )
-                        if success { dismiss() }
+                        if await mediaViewModel.deleteFolderBook(currentItem) {
+                            dismiss()
+                        }
                     }
                 }
             } message: {

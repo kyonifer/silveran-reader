@@ -170,7 +170,7 @@ struct MediaItemCardView: View {
             Button(role: .destructive) {
                 pendingFolderDelete = FolderDeleteRequest(format: nil, label: item.title)
             } label: {
-                Label("Delete Book", systemImage: "trash")
+                Label("Delete All", systemImage: "trash")
             }
         }
 
@@ -358,34 +358,9 @@ struct MediaItemCardView: View {
     private func performFolderDelete(_ request: FolderDeleteRequest) {
         Task {
             if let format = request.format {
-                let result = await BookServiceActor.shared.deleteBookAsset(
-                    item.id,
-                    sourceID: item.sourceID,
-                    type: format,
-                )
-                await mediaViewModel.refreshMetadata(source: "MediaItemCardView.deleteSourceAsset")
-                let didDelete: Bool = {
-                    if case DeleteAssetResult.success = result { return true }
-                    return false
-                }()
-                mediaViewModel.showSyncNotification(
-                    SyncNotification(
-                        message: didDelete
-                            ? "Deleted \(request.label.lowercased()) from folder source"
-                            : "Failed to delete \(request.label.lowercased())",
-                        type: didDelete ? .success : .error,
-                    )
-                )
+                _ = await mediaViewModel.deleteFolderAsset(for: item, format: format)
             } else {
-                let success = await mediaViewModel.deleteBookFromSource(item)
-                mediaViewModel.showSyncNotification(
-                    SyncNotification(
-                        message: success
-                            ? "Deleted \(item.title) from folder source"
-                            : "Failed to delete \(item.title)",
-                        type: success ? .success : .error,
-                    )
-                )
+                _ = await mediaViewModel.deleteFolderBook(item)
             }
         }
     }

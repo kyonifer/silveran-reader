@@ -1682,7 +1682,7 @@ struct MediaTableView: NSViewRepresentable {
 
         private func deleteSourceAsset(_ sender: NSMenuItem, format: StorytellerBookFormat) {
             guard let item = sender.representedObject as? BookMetadata else { return }
-            let label = sourceAssetLabel(format)
+            let label = mediaViewModel.folderAssetLabel(format)
             guard
                 confirmDestructiveAction(
                     title: "Delete \(label) from Folder?",
@@ -1692,26 +1692,7 @@ struct MediaTableView: NSViewRepresentable {
                 )
             else { return }
             Task {
-                let result = await BookServiceActor.shared.deleteBookAsset(
-                    item.id,
-                    sourceID: item.sourceID,
-                    type: format,
-                )
-                await mediaViewModel.refreshMetadata(source: "MediaTableView.deleteSourceAsset")
-                let didDelete = {
-                    if case DeleteAssetResult.success = result {
-                        return true
-                    }
-                    return false
-                }()
-                mediaViewModel.showSyncNotification(
-                    SyncNotification(
-                        message: didDelete
-                            ? "Deleted \(label.lowercased()) from folder source"
-                            : "Failed to delete \(label.lowercased())",
-                        type: didDelete ? .success : .error,
-                    )
-                )
+                _ = await mediaViewModel.deleteFolderAsset(for: item, format: format)
             }
         }
 
@@ -1744,16 +1725,6 @@ struct MediaTableView: NSViewRepresentable {
             return alert.runModal() == .alertFirstButtonReturn
         }
 
-        private func sourceAssetLabel(_ format: StorytellerBookFormat) -> String {
-            switch format {
-                case .ebook:
-                    return "Ebook"
-                case .audiobook:
-                    return "Audiobook"
-                case .readaloud:
-                    return "Readaloud"
-            }
-        }
 
         private func makeCoverCell(
             tableView: NSTableView,

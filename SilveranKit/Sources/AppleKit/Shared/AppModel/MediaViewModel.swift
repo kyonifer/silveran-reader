@@ -2006,6 +2006,52 @@ public final class MediaViewModel {
         return success
     }
 
+    public func deleteFolderAsset(for item: BookMetadata, format: StorytellerBookFormat) async
+        -> Bool
+    {
+        let result = await BookServiceActor.shared.deleteBookAsset(
+            item.id,
+            sourceID: item.sourceID,
+            type: format,
+        )
+        await refreshMetadata(source: "MediaViewModel.deleteFolderAsset")
+        let didDelete: Bool = {
+            if case DeleteAssetResult.success = result { return true }
+            return false
+        }()
+        let label = folderAssetLabel(format).lowercased()
+        showSyncNotification(
+            SyncNotification(
+                message: didDelete
+                    ? "Deleted \(label) from folder source"
+                    : "Failed to delete \(label)",
+                type: didDelete ? .success : .error,
+            )
+        )
+        return didDelete
+    }
+
+    public func deleteFolderBook(_ item: BookMetadata) async -> Bool {
+        let success = await deleteBookFromSource(item)
+        showSyncNotification(
+            SyncNotification(
+                message: success
+                    ? "Deleted \(item.title) from folder source"
+                    : "Failed to delete \(item.title)",
+                type: success ? .success : .error,
+            )
+        )
+        return success
+    }
+
+    public func folderAssetLabel(_ format: StorytellerBookFormat) -> String {
+        switch format {
+            case .ebook: return "Ebook"
+            case .audiobook: return "Audiobook"
+            case .readaloud: return "Readaloud"
+        }
+    }
+
     // MARK: - Progress from PSA
 
     public func progress(for bookId: String) -> Double {

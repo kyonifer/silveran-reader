@@ -410,7 +410,7 @@ struct BookContextMenuContent: View {
     }
 
     private func confirmDeleteSourceAsset(_ format: StorytellerBookFormat) {
-        let label = sourceAssetLabel(format)
+        let label = mediaViewModel.folderAssetLabel(format)
         guard
             confirmDestructiveAction(
                 title: "Delete \(label) from Folder?",
@@ -420,26 +420,7 @@ struct BookContextMenuContent: View {
             )
         else { return }
         Task {
-            let result = await BookServiceActor.shared.deleteBookAsset(
-                item.id,
-                sourceID: item.sourceID,
-                type: format,
-            )
-            await mediaViewModel.refreshMetadata(source: "BookContextMenuContent.deleteSourceAsset")
-            let didDelete = {
-                if case DeleteAssetResult.success = result {
-                    return true
-                }
-                return false
-            }()
-            mediaViewModel.showSyncNotification(
-                SyncNotification(
-                    message: didDelete
-                        ? "Deleted \(label.lowercased()) from folder source"
-                        : "Failed to delete \(label.lowercased())",
-                    type: didDelete ? .success : .error,
-                )
-            )
+            _ = await mediaViewModel.deleteFolderAsset(for: item, format: format)
         }
     }
 
@@ -453,15 +434,7 @@ struct BookContextMenuContent: View {
             )
         else { return }
         Task {
-            let success = await mediaViewModel.deleteBookFromSource(item)
-            mediaViewModel.showSyncNotification(
-                SyncNotification(
-                    message: success
-                        ? "Deleted \(item.title) from folder source"
-                        : "Failed to delete \(item.title)",
-                    type: success ? .success : .error,
-                )
-            )
+            _ = await mediaViewModel.deleteFolderBook(item)
         }
     }
 
@@ -476,16 +449,6 @@ struct BookContextMenuContent: View {
         }
     }
 
-    private func sourceAssetLabel(_ format: StorytellerBookFormat) -> String {
-        switch format {
-            case .ebook:
-                return "Ebook"
-            case .audiobook:
-                return "Audiobook"
-            case .readaloud:
-                return "Readaloud"
-        }
-    }
 
     private func confirmDestructiveAction(
         title: String,
