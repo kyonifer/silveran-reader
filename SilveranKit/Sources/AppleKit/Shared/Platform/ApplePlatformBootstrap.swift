@@ -13,5 +13,6 @@ public func bootstrapApplePlatformDefaultsIfNeeded() {
         keychain: SecurityKeychainStore(),
         fontMetadata: CoreTextFontTraitsProbe(),
         folderWatcher: applePlatformFolderWatcher(),
+        applicationStorage: AppleApplicationStorageProvider(),
     )
 }

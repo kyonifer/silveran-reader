@@ -107,7 +107,7 @@ extension FilesystemActor {
     }
 
     func legacySourceCacheRootDirectory() -> URL {
-        migrationApplicationSupportBaseDirectory()
+        SilveranPlatform.applicationSupportDirectory()
             .appendingPathComponent("storyteller_media", isDirectory: true)
     }
 
@@ -121,7 +121,7 @@ extension FilesystemActor {
     }
 
     func legacyLocalFolderRootDirectory() -> URL {
-        migrationApplicationSupportBaseDirectory()
+        SilveranPlatform.applicationSupportDirectory()
             .appendingPathComponent("local_media", isDirectory: true)
     }
 
@@ -132,34 +132,6 @@ extension FilesystemActor {
                 migrationSanitizedPathComponent(from: sourceID),
                 isDirectory: true,
             )
-    }
-
-    private func migrationApplicationSupportBaseDirectory() -> URL {
-        let fm = FileManager.default
-        let bundleID = Bundle.main.bundleIdentifier ?? "SilveranReader"
-
-        #if os(tvOS)
-        let cachesDir = try! fm.url(
-            for: .cachesDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: true,
-        )
-        return cachesDir.appendingPathComponent(bundleID, isDirectory: true)
-        #else
-        let appSupport = try! fm.url(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: true,
-        )
-
-        if appSupport.path.contains("/Containers/") {
-            return appSupport
-        } else {
-            return appSupport.appendingPathComponent(bundleID, isDirectory: true)
-        }
-        #endif
     }
 
     private func migrationSanitizedPathComponent(from input: String) -> String {
