@@ -193,7 +193,7 @@ public struct UploadNewBookView: View {
     ) -> some View {
         HStack {
             Text(label)
-                .frame(width: 80, alignment: .leading)
+                .fixedSize()
             Spacer()
             if let url = selectedURL {
                 Text(url.lastPathComponent)
@@ -225,7 +225,7 @@ public struct UploadNewBookView: View {
     ) -> some View {
         HStack {
             Text(label)
-                .frame(width: 80, alignment: .leading)
+                .fixedSize()
             Spacer()
             if !selectedURLs.isEmpty {
                 Text(

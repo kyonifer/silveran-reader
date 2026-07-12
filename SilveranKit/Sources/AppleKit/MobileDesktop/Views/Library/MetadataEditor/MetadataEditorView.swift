@@ -95,8 +95,6 @@ public struct MetadataEditorView: View {
         )
         #if os(macOS)
         .frame(minWidth: 700, minHeight: 560)
-        #else
-        .frame(minHeight: 560)
         #endif
         .navigationTitle(viewModel.selectedBook?.displayTitle ?? "Edit Metadata")
         #if os(macOS)
@@ -173,24 +171,6 @@ public struct MetadataEditorView: View {
             Text(
                 "This restores the book to the Storyteller metadata loaded when the editor opened."
             )
-        }
-        .alert("Save metadata to Storyteller?", isPresented: saveConfirmationBinding) {
-            Button("Save") {
-                if let pendingSaveBookId {
-                    Task { @MainActor in
-                        await viewModel.saveSingle(
-                            pendingSaveBookId,
-                            mediaViewModel: mediaViewModel,
-                        )
-                    }
-                }
-                pendingSaveBookId = nil
-            }
-            Button("Cancel", role: .cancel) {
-                pendingSaveBookId = nil
-            }
-        } message: {
-            Text("This writes the current book's staged metadata changes to Storyteller.")
         }
         .background {
             Button("Select All Sidebar Books") {
@@ -746,33 +726,100 @@ public struct MetadataEditorView: View {
     }
 
     private var iOSCompactBottomBar: some View {
-        HStack(alignment: .top, spacing: 10) {
-            iOSBottomBarButton("Import Metadata", systemImage: "square.and.arrow.down") {
-                showHardcoverImportSheet = true
-            }
-            .disabled(viewModel.selectedBookId == nil)
+        VStack(spacing: 6) {
+            iOSStatusLine
 
-            iOSBottomBarButton("Import Covers", systemImage: "photo.on.rectangle") {
-                showCoverImportSheet = true
-            }
-            .disabled(viewModel.selectedBook == nil)
+            HStack(alignment: .top, spacing: 10) {
+                if viewModel.isSaving {
+                    ProgressView()
+                        .controlSize(.small)
+                }
 
-            iOSBottomBarButton("Save to Storyteller", systemImage: "tray.and.arrow.up") {
-                pendingSaveBookId = viewModel.selectedBookId
+                iOSBottomBarButton("Import Metadata", systemImage: "square.and.arrow.down") {
+                    showHardcoverImportSheet = true
+                }
+                .disabled(viewModel.selectedBookId == nil)
+
+                iOSBottomBarButton("Import Covers", systemImage: "photo.on.rectangle") {
+                    showCoverImportSheet = true
+                }
+                .disabled(viewModel.selectedBook == nil)
+
+                iOSBottomBarButton("Save to Storyteller", systemImage: "tray.and.arrow.up") {
+                    pendingSaveBookId = viewModel.selectedBookId
+                }
+                .disabled(
+                    viewModel.isSaving || viewModel.selectedBookId == nil
+                        || !(viewModel.books.first { $0.id == viewModel.selectedBookId }?
+                            .hasDirtyFields
+                            ?? false)
+                        || viewModel.hasValidationErrors(for: viewModel.selectedBookId ?? "")
+                )
             }
-            .disabled(
-                viewModel.isSaving || viewModel.selectedBookId == nil
-                    || !(viewModel.books.first { $0.id == viewModel.selectedBookId }?.hasDirtyFields
-                        ?? false)
-                    || viewModel.hasValidationErrors(for: viewModel.selectedBookId ?? "")
-            )
         }
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
+        .alert("Save metadata to Storyteller?", isPresented: saveConfirmationBinding) {
+            Button("Save") {
+                if let pendingSaveBookId {
+                    Task { @MainActor in
+                        await viewModel.saveSingle(
+                            pendingSaveBookId,
+                            mediaViewModel: mediaViewModel,
+                        )
+                    }
+                }
+                pendingSaveBookId = nil
+            }
+            Button("Cancel", role: .cancel) {
+                pendingSaveBookId = nil
+            }
+        } message: {
+            Text("This writes the current book's staged metadata changes to Storyteller.")
+        }
+    }
+
+    @ViewBuilder
+    private var iOSStatusLine: some View {
+        if let error = viewModel.saveError {
+            Label(error, systemImage: "exclamationmark.triangle")
+                .foregroundStyle(.red)
+                .font(.caption)
+                .lineLimit(3)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        } else if !currentBookErrors.isEmpty {
+            Label(
+                currentBookErrors.map(\.message).joined(separator: "; "),
+                systemImage: "exclamationmark.triangle",
+            )
+            .foregroundStyle(.red)
+            .font(.caption)
+            .lineLimit(3)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else if let bookId = viewModel.selectedBookId,
+            viewModel.saveResults[bookId] == true,
+            !(viewModel.books.first { $0.id == bookId }?.hasDirtyFields ?? false)
+        {
+            Label("Saved to Storyteller", systemImage: "checkmark.circle")
+                .foregroundStyle(.green)
+                .font(.caption)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 
     private var iOSBottomBar: some View {
+        VStack(spacing: 6) {
+            iOSStatusLine
+
+            iOSBottomBarRegularButtons
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 8)
+    }
+
+    private var iOSBottomBarRegularButtons: some View {
         HStack(alignment: .top, spacing: 10) {
             if viewModel.isSaving {
                 ProgressView()
@@ -812,9 +859,6 @@ public struct MetadataEditorView: View {
                     || viewModel.hasAnyValidationErrors
             )
         }
-        .frame(maxWidth: .infinity)
-        .padding(.horizontal, 18)
-        .padding(.vertical, 8)
     }
 
     private func iOSBottomBarButton(

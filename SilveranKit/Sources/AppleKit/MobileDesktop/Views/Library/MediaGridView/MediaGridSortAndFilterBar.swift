@@ -71,7 +71,12 @@ struct MediaGridSortAndFilterBar: View {
             Button {
                 onAddBook()
             } label: {
+                #if os(iOS)
+                Label("Add Book", systemImage: "plus.circle")
+                    .labelStyle(.iconOnly)
+                #else
                 Label("Add Book", systemImage: "plus")
+                #endif
             }
             #if os(macOS)
             .buttonStyle(.borderless)
