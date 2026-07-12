@@ -7,9 +7,9 @@ cd "${SCRIPT_DIR}/.."
 
 usage() {
     cat <<'EOF'
-Usage: scripts/androidbuild [--swift-only|--apk-only] [swift build options]
+Usage: scripts/androidbuild [--swift-only|--apk-only]
 
-Cross-compiles the SilveranAndroidCore dynamic library (AndroidApp/swift, with
+Cross-compiles the SilveranAndroidBridge dynamic library (AndroidApp/swift, with
 jextract-generated JNI bindings) using the Swift SDK for Android, stages it
 plus the Swift runtime into AndroidApp jniLibs, and assembles the debug APK
 with Gradle.
@@ -20,8 +20,6 @@ Options:
   --apk-only      Skip the Swift build, only run Gradle.
 
 Environment:
-  SILVERAN_ANDROID_TOOLCHAIN  Toolchain identifier. Default: org.swift.623202512101a
-  SILVERAN_ANDROID_TRIPLE     Target triple. Default: aarch64-unknown-linux-android28
   ANDROID_HOME                Android SDK path. Default: ~/Library/Android/sdk
   ANDROID_NDK_HOME            NDK path. Default: newest under ANDROID_HOME/ndk
 EOF
@@ -44,25 +42,42 @@ case "${1:-}" in
     ;;
 esac
 
-TOOLCHAIN="${SILVERAN_ANDROID_TOOLCHAIN:-org.swift.623202512101a}"
-TRIPLE="${SILVERAN_ANDROID_TRIPLE:-aarch64-unknown-linux-android28}"
+if [[ "$#" -ne 0 ]]; then
+    usage >&2
+    exit 2
+fi
+
+# The Android project currently packages one ABI. Keep the Swift target,
+# runtime staging path, libc++, and Gradle abiFilter as one validated set.
+TOOLCHAIN="org.swift.623202512101a"
+TRIPLE="aarch64-unknown-linux-android28"
 SDK_BUNDLE="${HOME}/Library/org.swift.swiftpm/swift-sdks/swift-6.2.3-RELEASE_android.artifactbundle"
 JNILIBS="AndroidApp/app/src/main/jniLibs/arm64-v8a"
 
 export ANDROID_HOME="${ANDROID_HOME:-${HOME}/Library/Android/sdk}"
+if [[ -z "${JAVA_HOME:-}" && -x /usr/libexec/java_home ]]; then
+    JAVA_HOME="$(/usr/libexec/java_home)"
+    export JAVA_HOME
+fi
 if [[ -z "${ANDROID_NDK_HOME:-}" ]]; then
     ANDROID_NDK_HOME="$(ls -d "${ANDROID_HOME}"/ndk/* | sort -V | tail -1)"
     export ANDROID_NDK_HOME
 fi
 
 if [[ "${APK_ONLY}" -eq 0 ]]; then
-    (cd AndroidApp/swift && TOOLCHAINS="${TOOLCHAIN}" swift build \
-        --swift-sdk "${TRIPLE}" \
-        --product SilveranAndroidCore \
-        "$@")
+    # jextract does not remove Java sources when an exported Swift declaration
+    # disappears. Clear only its generated-source directory so stale bindings
+    # cannot leak into the next APK; keep the compiled tool/cache outputs.
+    rm -rf "AndroidApp/swift/.build/plugins/outputs/swift/SilveranAndroidBridge/destination/JExtractSwiftPlugin/src/generated/java"
 
+    (cd AndroidApp/swift && TOOLCHAINS="${TOOLCHAIN}" swift build \
+        --disable-sandbox \
+        --swift-sdk "${TRIPLE}" \
+        --product SilveranAndroidBridge)
+
+    rm -rf "${JNILIBS}"
     mkdir -p "${JNILIBS}"
-    cp "AndroidApp/swift/.build/${TRIPLE}/debug/libSilveranAndroidCore.so" "${JNILIBS}/"
+    cp "AndroidApp/swift/.build/${TRIPLE}/debug/libSilveranAndroidBridge.so" "${JNILIBS}/"
     cp "AndroidApp/swift/.build/${TRIPLE}/debug/libSwiftJava.so" "${JNILIBS}/"
 
     RUNTIME_LIBS="${SDK_BUNDLE}/swift-android/swift-resources/usr/lib/swift-aarch64/android"

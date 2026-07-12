@@ -1,6 +1,7 @@
 plugins {
     id("com.android.application") version "8.11.1"
     id("org.jetbrains.kotlin.android") version "2.2.0"
+    id("org.jetbrains.kotlin.plugin.compose") version "2.2.0"
 }
 
 android {
@@ -27,11 +28,15 @@ android {
         jvmTarget = "17"
     }
 
+    buildFeatures {
+        compose = true
+    }
+
     sourceSets {
         getByName("main") {
             java.srcDirs(
-                // jextract-generated bindings for the SilveranAndroidCore Swift module
-                "../swift/.build/plugins/outputs/swift/SilveranAndroidCore/destination/JExtractSwiftPlugin/src/generated/java",
+                // jextract-generated bindings for the SilveranAndroidBridge Swift module
+                "../swift/.build/plugins/outputs/swift/SilveranAndroidBridge/destination/JExtractSwiftPlugin/src/generated/java",
             )
         }
     }
@@ -42,4 +47,12 @@ dependencies {
     // resolved swift-java checkout by scripts/androidbuild. Consumed as a jar
     // because its sources reference jdk.jfr, which android.jar lacks.
     implementation(files("libs/swiftkit-core.jar"))
+    implementation(platform("androidx.compose:compose-bom:2025.06.01"))
+    implementation("androidx.activity:activity-compose:1.10.1")
+    implementation("androidx.compose.material:material-icons-core")
+    implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.ui:ui-tooling-preview")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.9.1")
+    debugImplementation("androidx.compose.ui:ui-tooling")
 }

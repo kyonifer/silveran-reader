@@ -2,20 +2,20 @@
 import PackageDescription
 
 let package = Package(
-    name: "SilveranAndroidCore",
+    name: "SilveranAndroidBridge",
     platforms: [
         .macOS(.v15)
     ],
     products: [
-        .library(name: "SilveranAndroidCore", type: .dynamic, targets: ["SilveranAndroidCore"])
+        .library(name: "SilveranAndroidBridge", type: .dynamic, targets: ["SilveranAndroidBridge"])
     ],
     dependencies: [
         .package(name: "Silveran", path: "../.."),
-        .package(url: "https://github.com/swiftlang/swift-java", from: "0.1.2"),
+        .package(url: "https://github.com/swiftlang/swift-java", exact: "0.4.2"),
     ],
     targets: [
         .target(
-            name: "SilveranAndroidCore",
+            name: "SilveranAndroidBridge",
             dependencies: [
                 .product(name: "SilveranKit", package: "Silveran"),
                 .product(name: "SwiftJava", package: "swift-java"),

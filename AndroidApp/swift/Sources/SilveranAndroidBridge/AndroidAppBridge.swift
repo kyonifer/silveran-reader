@@ -1,3 +1,4 @@
+// Kotlin-to-Silveran entry points exported through JExtract.
 import Dispatch
 import Foundation
 import SilveranKit

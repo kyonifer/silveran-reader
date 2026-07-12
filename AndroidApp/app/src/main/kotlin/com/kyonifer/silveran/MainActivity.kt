@@ -5,7 +5,7 @@ import android.os.Bundle
 import android.util.TypedValue
 import android.widget.ScrollView
 import android.widget.TextView
-import com.kyonifer.silveran.core.SilveranAndroidCore
+import com.kyonifer.silveran.bridge.SilveranAndroidBridge
 import java.io.File
 import kotlin.concurrent.thread
 
@@ -25,7 +25,7 @@ class MainActivity : Activity() {
         thread {
             val output = StringBuilder()
             try {
-                output.appendLine(SilveranAndroidCore.coreVersion())
+                output.appendLine(SilveranAndroidBridge.coreVersion())
                 output.appendLine()
 
                 val epub = File(cacheDir, "moby-dick.epub")
@@ -33,7 +33,7 @@ class MainActivity : Activity() {
                     epub.outputStream().use { input.copyTo(it) }
                 }
                 output.appendLine("Parsing ${epub.name} via SilveranKit:")
-                output.appendLine(SilveranAndroidCore.extractBookMetadata(epub.absolutePath))
+                output.appendLine(SilveranAndroidBridge.extractBookMetadata(epub.absolutePath))
             } catch (t: Throwable) {
                 output.appendLine("FAILED: $t")
             }
