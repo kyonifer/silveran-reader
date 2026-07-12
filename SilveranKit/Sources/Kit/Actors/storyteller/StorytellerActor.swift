@@ -42,7 +42,7 @@ public enum ActivitySource: String, Hashable, Sendable {
 public actor StorytellerActor {
 
     private let sourceRecordValue: BookSourceRecord
-    private var observers: (@Sendable @MainActor () -> Void)? = nil
+    private var observers: (@Sendable () -> Void)? = nil
 
     private var username: String?
     private var password: String?
@@ -132,7 +132,7 @@ public actor StorytellerActor {
         }
     }
 
-    public func request_notify(callback: @Sendable @MainActor @escaping () -> Void) {
+    public func request_notify(callback: @escaping @Sendable () -> Void) {
         self.observers = callback
     }
 
@@ -172,7 +172,7 @@ public actor StorytellerActor {
             "[StorytellerActor] updateConnectionStatus: \(connectionStatus) -> \(status), wasNotConnected: \(wasNotConnected)"
         )
         connectionStatus = status
-        await observers?()
+        observers?()
 
         if wasNotConnected && status == .connected {
             debugLog("[StorytellerActor] Connection restored, syncing pending progress queue")
@@ -372,7 +372,7 @@ public actor StorytellerActor {
         if connectionStatus != .connected {
             await updateConnectionStatus(.connected)
         } else if notifyWhenAlreadyConnected {
-            await observers?()
+            observers?()
         }
     }
 
@@ -387,7 +387,7 @@ public actor StorytellerActor {
             case .connected, .connecting:
                 await updateConnectionStatus(.error("Connection lost"))
             default:
-                await observers?()
+                observers?()
         }
         return true
     }

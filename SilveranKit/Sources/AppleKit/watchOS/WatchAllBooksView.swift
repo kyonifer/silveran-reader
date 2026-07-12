@@ -36,11 +36,13 @@ struct WatchAllBooksView: View {
         .task {
             await loadBooks()
             let _ = await DownloadManager.shared.addObserver { records in
-                var map: [String: DownloadRecord] = [:]
-                for record in records where record.isIncomplete {
-                    map[record.bookId] = record
+                Task { @MainActor in
+                    var map: [String: DownloadRecord] = [:]
+                    for record in records where record.isIncomplete {
+                        map[record.bookId] = record
+                    }
+                    downloadRecords = map
                 }
-                downloadRecords = map
             }
         }
         .sheet(isPresented: $showSettingsView) {

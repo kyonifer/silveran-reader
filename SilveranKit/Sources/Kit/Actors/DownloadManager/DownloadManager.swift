@@ -46,7 +46,7 @@ public actor DownloadManager {
     private var downloads: [String: DownloadRecord] = [:]
     private var activeTasks: [String: URLSessionDownloadTask] = [:]
     private var bookMetadataCache: [String: BookMetadata] = [:]
-    private var observers: [UUID: @Sendable @MainActor ([DownloadRecord]) -> Void] = [:]
+    private var observers: [UUID: @Sendable ([DownloadRecord]) -> Void] = [:]
     private var backgroundCompletionHandler: (@Sendable () -> Void)?
     private var initialized = false
     private var retryLoopRunning = false
@@ -316,7 +316,7 @@ public actor DownloadManager {
 
     // Ensures the retry loop starts on boot: called from MediaViewModel.init on iOS/macOS/tvOS,
     // and from SilveranWatchApp.task on watchOS.
-    public func addObserver(_ callback: @escaping @Sendable @MainActor ([DownloadRecord]) -> Void)
+    public func addObserver(_ callback: @escaping @Sendable ([DownloadRecord]) -> Void)
         async -> UUID
     {
         await ensureInitialized()
@@ -332,10 +332,8 @@ public actor DownloadManager {
     private func notifyObservers() {
         let snapshot = Array(downloads.values)
         let callbacks = Array(observers.values)
-        Task { @MainActor in
-            for callback in callbacks {
-                callback(snapshot)
-            }
+        for callback in callbacks {
+            callback(snapshot)
         }
     }
 

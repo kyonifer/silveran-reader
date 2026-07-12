@@ -32,10 +32,12 @@ struct CurrentlyDownloadingView: View {
             downloads = await DownloadManager.shared.incompleteDownloads
 
             observerId = await DownloadManager.shared.addObserver { records in
-                downloads =
-                    records
-                    .filter { $0.isIncomplete }
-                    .sorted { $0.createdAt < $1.createdAt }
+                Task { @MainActor in
+                    downloads =
+                        records
+                        .filter { $0.isIncomplete }
+                        .sorted { $0.createdAt < $1.createdAt }
+                }
             }
         }
     }

@@ -753,7 +753,9 @@ struct MoreMenuView: View {
             hasIncompleteDownloads = !downloads.isEmpty
 
             let _ = await DownloadManager.shared.addObserver { records in
-                hasIncompleteDownloads = records.contains { $0.isIncomplete }
+                Task { @MainActor in
+                    hasIncompleteDownloads = records.contains { $0.isIncomplete }
+                }
             }
         }
         .navigationTitle("More")

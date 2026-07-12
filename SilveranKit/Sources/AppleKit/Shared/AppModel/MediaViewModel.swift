@@ -412,8 +412,7 @@ public final class MediaViewModel {
                     )
                 }
 
-                await BookServiceActor.shared.request_notify { @MainActor [weak self] in
-                    guard let self else { return }
+                await BookServiceActor.shared.request_notify { [weak self] in
                     Task { @MainActor [weak self] in
                         guard let self else { return }
                         let status = await BookServiceActor.shared.connectionStatus
@@ -448,8 +447,9 @@ public final class MediaViewModel {
     private func setupDownloadManagerObserver() {
         Task { [weak self] in
             let id = await DownloadManager.shared.addObserver { [weak self] records in
-                guard let self else { return }
-                self.applyDownloadRecords(records)
+                Task { @MainActor [weak self] in
+                    self?.applyDownloadRecords(records)
+                }
             }
             let initialRecords = await DownloadManager.shared.incompleteDownloads
             await MainActor.run { [weak self] in

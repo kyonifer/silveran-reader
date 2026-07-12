@@ -164,7 +164,9 @@ struct WatchDownloadMenuView: View {
         .task {
             incompleteDownloads = await DownloadManager.shared.incompleteDownloads
             let _ = await DownloadManager.shared.addObserver { records in
-                incompleteDownloads = records.filter { $0.isIncomplete }
+                Task { @MainActor in
+                    incompleteDownloads = records.filter { $0.isIncomplete }
+                }
             }
         }
     }
@@ -238,10 +240,12 @@ struct WatchIncompleteDownloadsView: View {
         .task {
             downloads = await DownloadManager.shared.incompleteDownloads
             let _ = await DownloadManager.shared.addObserver { records in
-                downloads =
-                    records
-                    .filter { $0.isIncomplete }
-                    .sorted { $0.createdAt < $1.createdAt }
+                Task { @MainActor in
+                    downloads =
+                        records
+                        .filter { $0.isIncomplete }
+                        .sorted { $0.createdAt < $1.createdAt }
+                }
             }
         }
     }

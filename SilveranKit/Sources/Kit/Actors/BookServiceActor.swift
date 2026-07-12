@@ -210,7 +210,7 @@ public actor BookServiceActor {
         }
     }
 
-    public func request_notify(callback: @Sendable @MainActor @escaping () -> Void) async {
+    public func request_notify(callback: @escaping @Sendable () -> Void) async {
         await ensureSourceRegistryLoaded()
         for actor in storytellerActors() {
             await actor.request_notify(callback: callback)

@@ -214,54 +214,58 @@ struct WatchDownloadProgressView: View {
         }
 
         let _ = await DownloadManager.shared.addObserver { [downloadId] records in
-            guard let record = records.first(where: { $0.id == downloadId }) else {
-                if isDownloading || bytesDownloaded > 0 {
-                    progress = 1.0
-                    isComplete = true
-                    isDownloading = false
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                        onDismiss()
+            Task { @MainActor in
+                guard let record = records.first(where: { $0.id == downloadId }) else {
+                    if isDownloading || bytesDownloaded > 0 {
+                        progress = 1.0
+                        isComplete = true
+                        isDownloading = false
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                            onDismiss()
+                        }
                     }
+                    return
                 }
-                return
-            }
 
-            let now = Date()
-            if lastBytesDownloaded < 0 {
-                lastBytesDownloaded = record.receivedBytes
-                lastSpeedUpdate = now
-            } else {
-                let elapsed = now.timeIntervalSince(lastSpeedUpdate)
-                if elapsed >= 1.0 && record.receivedBytes > lastBytesDownloaded {
-                    let instantSpeed = Double(record.receivedBytes - lastBytesDownloaded) / elapsed
-                    downloadSpeed =
-                        downloadSpeed > 0 ? 0.3 * instantSpeed + 0.7 * downloadSpeed : instantSpeed
+                let now = Date()
+                if lastBytesDownloaded < 0 {
                     lastBytesDownloaded = record.receivedBytes
                     lastSpeedUpdate = now
-                }
-            }
-
-            progress = record.progressFraction
-            bytesDownloaded = record.receivedBytes
-            if let expected = record.expectedBytes {
-                totalBytes = expected
-            }
-
-            switch record.state {
-                case .completed:
-                    isComplete = true
-                    isDownloading = false
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                        onDismiss()
+                } else {
+                    let elapsed = now.timeIntervalSince(lastSpeedUpdate)
+                    if elapsed >= 1.0 && record.receivedBytes > lastBytesDownloaded {
+                        let instantSpeed =
+                            Double(record.receivedBytes - lastBytesDownloaded) / elapsed
+                        downloadSpeed =
+                            downloadSpeed > 0
+                            ? 0.3 * instantSpeed + 0.7 * downloadSpeed : instantSpeed
+                        lastBytesDownloaded = record.receivedBytes
+                        lastSpeedUpdate = now
                     }
-                case .failed, .paused:
-                    didFail = true
-                    isDownloading = false
-                case .downloading:
-                    isDownloading = true
-                    didFail = false
-                case .queued, .importing:
-                    isDownloading = true
+                }
+
+                progress = record.progressFraction
+                bytesDownloaded = record.receivedBytes
+                if let expected = record.expectedBytes {
+                    totalBytes = expected
+                }
+
+                switch record.state {
+                    case .completed:
+                        isComplete = true
+                        isDownloading = false
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                            onDismiss()
+                        }
+                    case .failed, .paused:
+                        didFail = true
+                        isDownloading = false
+                    case .downloading:
+                        isDownloading = true
+                        didFail = false
+                    case .queued, .importing:
+                        isDownloading = true
+                }
             }
         }
     }
