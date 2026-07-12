@@ -68,10 +68,11 @@ public final class CarPlayCoordinator {
     }
 
     private func observeLocalMediaActor() async {
-        lmaObserverId = await BookServiceActor.shared.addLibraryCacheObserver {
-            @MainActor [weak self] in
-            debugLog("[CarPlayCoordinator] Library updated, notifying CarPlay")
-            self?.onLibraryUpdated?()
+        lmaObserverId = await BookServiceActor.shared.addLibraryCacheObserver { [weak self] in
+            Task { @MainActor [weak self] in
+                debugLog("[CarPlayCoordinator] Library updated, notifying CarPlay")
+                self?.onLibraryUpdated?()
+            }
         }
     }
 

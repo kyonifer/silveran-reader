@@ -59,7 +59,7 @@ public actor LocalMediaActor: GlobalActor {
     private let localLibrary: LocalLibraryManager
     private var periodicScanTask: Task<Void, Never>?
 
-    private var observers: [UUID: @Sendable @MainActor () -> Void] = [:]
+    private var observers: [UUID: @Sendable () -> Void] = [:]
     private var sourceCacheLoaded = false
     private var ledgerBootstrapNeeded = false
 
@@ -98,7 +98,7 @@ public actor LocalMediaActor: GlobalActor {
     }
 
     @discardableResult
-    public func addObserver(_ callback: @escaping @Sendable @MainActor () -> Void) -> UUID {
+    public func addObserver(_ callback: @escaping @Sendable () -> Void) -> UUID {
         let id = UUID()
         observers[id] = callback
         debugLog("[LMA] addObserver: id=\(id), total observers=\(observers.count)")
@@ -108,7 +108,7 @@ public actor LocalMediaActor: GlobalActor {
     private func notifyObservers() async {
         debugLogVerbose("[LMA] notifyObservers: notifying \(observers.count) observers")
         for (_, callback) in observers {
-            await callback()
+            callback()
         }
     }
 

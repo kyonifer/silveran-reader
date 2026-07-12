@@ -15,7 +15,7 @@ public actor BookServiceActor {
     private var sourcesByID: [BookSourceID: any BookSourceActor]
     private var sourceRegistryLoaded = false
     private var lastUpdateErrorsBySourceID: [BookSourceID: String] = [:]
-    private var libraryObservers: [UUID: @Sendable @MainActor () -> Void] = [:]
+    private var libraryObservers: [UUID: @Sendable () -> Void] = [:]
     private var localMediaObserverID: UUID?
     private var startupRefreshStarted = false
 
@@ -38,7 +38,7 @@ public actor BookServiceActor {
 
     private func notifyLibraryObservers() async {
         for (_, callback) in libraryObservers {
-            await callback()
+            callback()
         }
     }
 
@@ -710,7 +710,7 @@ public actor BookServiceActor {
     }
 
     public func addLibraryCacheObserver(
-        _ callback: @escaping @Sendable @MainActor () -> Void
+        _ callback: @escaping @Sendable () -> Void
     ) async -> UUID {
         let id = UUID()
         libraryObservers[id] = callback

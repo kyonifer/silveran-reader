@@ -820,9 +820,8 @@ public final class MediaViewModel {
 
     private func setupPathCacheSync() {
         Task {
-            cachedMediaObserverId = await BookServiceActor.shared.addLibraryCacheObserver {
-                @MainActor [weak self] in
-                Task { @MainActor in
+            cachedMediaObserverId = await BookServiceActor.shared.addLibraryCacheObserver { [weak self] in
+                Task { @MainActor [weak self] in
                     await self?.syncPathCache()
                     await self?.refreshMetadata(source: "LocalMediaActor.cachedMediaObserver")
                 }
