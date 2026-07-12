@@ -4,19 +4,12 @@ import Foundation
 public actor AuthenticationActor {
     public static let shared = AuthenticationActor()
 
-    private let service: String
-    private let accessGroup: String
     private let serverURLKey = "serverURL"
     private let usernameKey = "username"
     private let passwordKey = "password"
     private let hardcoverTokenKey = "hardcoverToken"
-    private static let serviceInfoKey = "KEYCHAIN_SERVICE"
-    private static let accessGroupInfoKey = "KEYCHAIN_ACCESS_GROUP"
 
-    private init() {
-        service = Self.requiredInfoValue(for: Self.serviceInfoKey)
-        accessGroup = Self.requiredInfoValue(for: Self.accessGroupInfoKey)
-    }
+    private init() {}
 
     private var keychain: any KeychainStoring {
         get throws {
@@ -67,17 +60,13 @@ public actor AuthenticationActor {
 
     public func deleteCredentials() async throws {
         for key in [serverURLKey, usernameKey, passwordKey] {
-            try await keychain.removeItem(service: service, account: key, accessGroup: accessGroup)
+            try await keychain.removeItem(account: key)
         }
     }
 
     public func deleteCredentials(sourceID: BookSourceID) async throws {
         for key in [serverURLKey, usernameKey, passwordKey] {
-            try await keychain.removeItem(
-                service: service,
-                account: accountKey(key, sourceID: sourceID),
-                accessGroup: accessGroup,
-            )
+            try await keychain.removeItem(account: accountKey(key, sourceID: sourceID))
         }
     }
 
@@ -99,11 +88,7 @@ public actor AuthenticationActor {
     }
 
     public func deleteHardcoverToken() async throws {
-        try await keychain.removeItem(
-            service: service,
-            account: hardcoverTokenKey,
-            accessGroup: accessGroup,
-        )
+        try await keychain.removeItem(account: hardcoverTokenKey)
     }
 
     private func saveString(_ value: String, for account: String) async throws {
@@ -111,21 +96,12 @@ public actor AuthenticationActor {
             throw KeychainError.invalidData
         }
 
-        try await keychain.setItem(
-            data,
-            service: service,
-            account: account,
-            accessGroup: accessGroup,
-        )
+        try await keychain.setItem(data, account: account)
     }
 
     private func loadString(for account: String) async throws -> String? {
         guard
-            let data = try await keychain.item(
-                service: service,
-                account: account,
-                accessGroup: accessGroup,
-            )
+            let data = try await keychain.item(account: account)
         else {
             return nil
         }
@@ -141,20 +117,6 @@ public actor AuthenticationActor {
         return "bookSource.\(sourceID).\(key)"
     }
 
-    nonisolated private static func infoValue(for key: String) -> String? {
-        guard let value = Bundle.main.object(forInfoDictionaryKey: key) as? String else {
-            return nil
-        }
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
-    }
-
-    nonisolated private static func requiredInfoValue(for key: String) -> String {
-        guard let value = infoValue(for: key) else {
-            preconditionFailure("Missing required Info.plist value for \(key)")
-        }
-        return value
-    }
 }
 
 public enum KeychainError: Error, LocalizedError {

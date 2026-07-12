@@ -5,13 +5,25 @@ import Security
 #endif
 
 public struct SecurityKeychainStore: KeychainStoring {
-    public init() {}
+    private static let serviceInfoKey = "KEYCHAIN_SERVICE"
+    private static let accessGroupInfoKey = "KEYCHAIN_ACCESS_GROUP"
+
+    private let configuredService: String?
+    private let configuredAccessGroup: String?
+
+    public init() {
+        configuredService = nil
+        configuredAccessGroup = nil
+    }
+
+    public init(service: String, accessGroup: String? = nil) {
+        configuredService = service
+        configuredAccessGroup = accessGroup
+    }
 
     public func setItem(
         _ data: Data,
-        service: String,
         account: String,
-        accessGroup: String?,
     ) throws {
         #if canImport(Security)
         var query = Self.baseQuery(service: service, account: account, accessGroup: accessGroup)
@@ -31,7 +43,7 @@ public struct SecurityKeychainStore: KeychainStoring {
         #endif
     }
 
-    public func item(service: String, account: String, accessGroup: String?) throws -> Data? {
+    public func item(account: String) throws -> Data? {
         #if canImport(Security)
         var query = Self.baseQuery(service: service, account: account, accessGroup: accessGroup)
         query[kSecReturnData as String] = true
@@ -58,7 +70,7 @@ public struct SecurityKeychainStore: KeychainStoring {
         #endif
     }
 
-    public func removeItem(service: String, account: String, accessGroup: String?) throws {
+    public func removeItem(account: String) throws {
         #if canImport(Security)
         let query = Self.baseQuery(service: service, account: account, accessGroup: accessGroup)
 
@@ -69,6 +81,32 @@ public struct SecurityKeychainStore: KeychainStoring {
         #else
         throw KeychainError.unsupportedPlatform
         #endif
+    }
+
+    private static func infoValue(for key: String) -> String? {
+        guard let value = Bundle.main.object(forInfoDictionaryKey: key) as? String else {
+            return nil
+        }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private static func requiredInfoValue(for key: String) -> String {
+        guard let value = infoValue(for: key) else {
+            preconditionFailure("Missing required Info.plist value for \(key)")
+        }
+        return value
+    }
+
+    private var service: String {
+        configuredService ?? Self.requiredInfoValue(for: Self.serviceInfoKey)
+    }
+
+    private var accessGroup: String? {
+        if configuredService != nil {
+            return configuredAccessGroup
+        }
+        return Self.requiredInfoValue(for: Self.accessGroupInfoKey)
     }
 
     #if canImport(Security)
