@@ -106,9 +106,6 @@ if [[ "${APK_ONLY}" -eq 0 ]]; then
 fi
 
 if [[ "${SWIFT_ONLY}" -eq 0 ]]; then
-    mkdir -p AndroidApp/app/src/main/assets
-    cp SilveranKit/Sources/AppleKit/Resources/assets/fixtures/moby-dick.epub AndroidApp/app/src/main/assets/
-
     (cd AndroidApp && ./gradlew :app:assembleDebug)
     echo "APK: AndroidApp/app/build/outputs/apk/debug/app-debug.apk"
 fi

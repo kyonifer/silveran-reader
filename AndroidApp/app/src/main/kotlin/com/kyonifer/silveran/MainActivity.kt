@@ -1,47 +1,44 @@
 package com.kyonifer.silveran
 
-import android.app.Activity
 import android.os.Bundle
-import android.util.TypedValue
-import android.widget.ScrollView
-import android.widget.TextView
-import com.kyonifer.silveran.bridge.SilveranAndroidBridge
-import com.kyonifer.silveran.platform.AndroidSecureStore
+import android.system.Os
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.lifecycle.ViewModelProvider
+import com.kyonifer.silveran.ui.SilveranApp
+import com.kyonifer.silveran.ui.SilveranViewModel
 import java.io.File
-import kotlin.concurrent.thread
 
-class MainActivity : Activity() {
-
+class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        configureSwiftNetworking(filesDir)
+        enableEdgeToEdge()
 
-        val text = TextView(this).apply {
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
-            setPadding(32, 32, 32, 32)
-            typeface = android.graphics.Typeface.MONOSPACE
-            setText("Calling SilveranKit...")
-        }
-        setContentView(ScrollView(this).apply { addView(text) })
+        val viewModel = ViewModelProvider(
+            this,
+            SilveranViewModel.factory(applicationContext),
+        )[SilveranViewModel::class.java]
 
-        thread {
-            val output = StringBuilder()
-            try {
-                AndroidSecureStore.initialize(applicationContext)
-                SilveranAndroidBridge.bootstrapAndroid(filesDir.absolutePath)
-                output.appendLine(SilveranAndroidBridge.coreVersion())
-                output.appendLine()
+        setContent { SilveranApp(viewModel) }
+    }
+}
 
-                val epub = File(cacheDir, "moby-dick.epub")
-                assets.open("moby-dick.epub").use { input ->
-                    epub.outputStream().use { input.copyTo(it) }
-                }
-                output.appendLine("Parsing ${epub.name} via SilveranKit:")
-                output.appendLine(SilveranAndroidBridge.extractBookMetadata(epub.absolutePath))
-            } catch (t: Throwable) {
-                output.appendLine("FAILED: $t")
+private fun configureSwiftNetworking(filesDirectory: File) {
+    val bundle = File(filesDirectory, "android-system-cacerts.pem")
+    if (!bundle.exists()) {
+        val certificates = File("/system/etc/security/cacerts")
+            .listFiles()
+            ?.sortedBy { it.name }
+            .orEmpty()
+        bundle.outputStream().buffered().use { output ->
+            certificates.forEach { certificate ->
+                certificate.inputStream().use { it.copyTo(output) }
+                output.write('\n'.code)
             }
-            android.util.Log.i("SilveranApp", output.toString())
-            runOnUiThread { text.text = output.toString() }
         }
     }
+    // AndroidBootstrap adds another JNI runtime; CAINFO must be set before Swift loads.
+    Os.setenv("URLSessionCertificateAuthorityInfoFile", bundle.absolutePath, true)
 }
