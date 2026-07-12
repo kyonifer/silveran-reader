@@ -5,6 +5,7 @@ data class Book(
     val sourceID: String,
     val title: String,
     val authors: String,
+    val coverVersion: String,
 ) {
     val key: String = "$sourceID:$id"
 }

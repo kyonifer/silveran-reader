@@ -113,6 +113,8 @@ fun SilveranApp(viewModel: SilveranViewModel) {
                     state = state,
                     modifier = Modifier.padding(padding),
                     configure = { screenName = Screen.Settings.name },
+                    coverRevision = state.coverRevision,
+                    cover = viewModel::cover,
                 )
                 Screen.Settings -> SettingsScreen(
                     settings = state.settings,

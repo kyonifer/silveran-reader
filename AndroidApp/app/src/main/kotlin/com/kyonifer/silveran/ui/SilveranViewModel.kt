@@ -1,6 +1,7 @@
 package com.kyonifer.silveran.ui
 
 import android.content.Context
+import android.graphics.Bitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -21,6 +22,7 @@ data class SilveranUiState(
     val settings: StorytellerSettings = StorytellerSettings(),
     val books: List<Book> = emptyList(),
     val libraryLoaded: Boolean = false,
+    val coverRevision: Int = 0,
     val sourceStatus: String = "notConfigured",
     val sourceMessage: String? = null,
     val refreshingLibrary: Boolean = false,
@@ -96,6 +98,9 @@ class SilveranViewModel private constructor(
         }
     }
 
+    suspend fun cover(book: Book, width: Int, height: Int): Bitmap? =
+        client.cover(book, width, height)
+
     fun clearError() {
         mutableState.value = mutableState.value.copy(error = null)
     }
@@ -125,9 +130,13 @@ class SilveranViewModel private constructor(
                 val snapshot = client.librarySnapshot(refresh)
                 val current = mutableState.value
                 val settings = current.settings
+                val refreshCovers = refresh || !current.libraryLoaded ||
+                    current.sourceStatus != snapshot.sourceStatus ||
+                    current.books.map(Book::key) != snapshot.books.map(Book::key)
                 mutableState.value = current.copy(
                     books = snapshot.books,
                     libraryLoaded = true,
+                    coverRevision = current.coverRevision + if (refreshCovers) 1 else 0,
                     sourceStatus = snapshot.sourceStatus,
                     sourceMessage = snapshot.sourceMessage,
                     settings = if (settings.configured) {

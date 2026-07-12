@@ -79,6 +79,7 @@ public func librarySnapshotJSON(refresh: Bool) async throws -> String {
                 sourceID: sourceID,
                 title: book.title,
                 authors: book.authors?.compactMap(\.name).joined(separator: ", ") ?? "",
+                coverVersion: book.updatedAt ?? "",
             )
         )
     }
@@ -91,6 +92,39 @@ public func librarySnapshotJSON(refresh: Bool) async throws -> String {
             sourceMessage: status.message,
         )
     )
+}
+
+public func coverBase64(
+    bookID: String,
+    sourceID: String,
+    version: String,
+    width: Int32,
+    height: Int32,
+) async throws -> String {
+    try requireAndroidBootstrap()
+    guard width > 0, height > 0 else {
+        throw AndroidBridgeError.invalidCoverSize
+    }
+
+    let response = await BookServiceActor.shared.loadCover(
+        for: bookID,
+        sourceID: sourceID,
+        audio: false,
+        width: Int(width),
+        height: Int(height),
+        version: version.isEmpty ? nil : version,
+        allowNetwork: true,
+        policy: .forceRefresh,
+    )
+
+    switch response {
+        case .cached(let data):
+            return data.base64EncodedString()
+        case .fetched(let cover):
+            return cover.data.base64EncodedString()
+        case .missing, .skippedOffline:
+            return ""
+    }
 }
 
 public func startLibraryObservation() async throws {
@@ -108,6 +142,7 @@ private struct AndroidBook: Encodable {
     let sourceID: String
     let title: String
     let authors: String
+    let coverVersion: String
 }
 
 private struct AndroidLibrary: Encodable {
@@ -225,6 +260,7 @@ enum AndroidBridgeError: Error, LocalizedError, CustomStringConvertible {
     case missingUsername
     case missingPassword
     case couldNotSaveStorytellerSettings
+    case invalidCoverSize
     case secureStorageFailure(String)
 
     var errorDescription: String? {
@@ -241,6 +277,8 @@ enum AndroidBridgeError: Error, LocalizedError, CustomStringConvertible {
                 return "A Storyteller password is required."
             case .couldNotSaveStorytellerSettings:
                 return "Could not save the Storyteller server settings."
+            case .invalidCoverSize:
+                return "Cover width and height must be greater than zero."
             case .secureStorageFailure(let account):
                 return "Android secure storage failed for account \(account)."
         }

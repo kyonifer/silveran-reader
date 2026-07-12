@@ -1,5 +1,7 @@
 package com.kyonifer.silveran.ui
 
+import android.graphics.Bitmap
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,8 +20,13 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import com.kyonifer.silveran.model.Book
 
@@ -28,6 +35,8 @@ internal fun LibraryScreen(
     state: SilveranUiState,
     modifier: Modifier,
     configure: () -> Unit,
+    coverRevision: Int,
+    cover: suspend (Book, Int, Int) -> Bitmap?,
 ) {
     Column(modifier.fillMaxSize()) {
         state.sourceMessage?.let { message ->
@@ -63,15 +72,14 @@ internal fun LibraryScreen(
             ) {
                 items(state.books, key = Book::key) { book ->
                     Column {
-                        Surface(
+                        BookCover(
+                            book = book,
+                            width = 320,
+                            height = 480,
+                            revision = coverRevision,
+                            load = cover,
                             modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f),
-                            shape = RoundedCornerShape(6.dp),
-                            tonalElevation = 2.dp,
-                        ) {
-                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Text("No cover", style = MaterialTheme.typography.bodySmall)
-                            }
-                        }
+                        )
                         Text(
                             book.title,
                             style = MaterialTheme.typography.titleSmall,
@@ -101,6 +109,44 @@ private fun EmptyLibrary(title: String, message: String, action: () -> Unit) {
             OutlinedButton(onClick = action, modifier = Modifier.padding(top = 16.dp)) {
                 Text("Open settings")
             }
+        }
+    }
+}
+
+@Composable
+internal fun BookCover(
+    book: Book,
+    width: Int,
+    height: Int,
+    revision: Int,
+    load: suspend (Book, Int, Int) -> Bitmap?,
+    modifier: Modifier,
+) {
+    val bitmap by produceState<Bitmap?>(
+        null,
+        book.key,
+        book.coverVersion,
+        width,
+        height,
+        revision,
+    ) {
+        value = runCatching { load(book, width, height) }.getOrNull()
+    }
+    val imageBitmap = remember(bitmap) {
+        bitmap?.asImageBitmap()
+    }
+    Surface(modifier, shape = RoundedCornerShape(6.dp), tonalElevation = 2.dp) {
+        if (imageBitmap == null) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("No cover", style = MaterialTheme.typography.bodySmall)
+            }
+        } else {
+            Image(
+                bitmap = imageBitmap!!,
+                contentDescription = book.title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
         }
     }
 }
