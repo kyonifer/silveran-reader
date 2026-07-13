@@ -6,12 +6,29 @@ public func bootstrapAndroid(filesDirectory: String) throws {
     try AndroidPlatformBootstrap.bootstrap(filesDirectory: filesDirectory)
 }
 
-public func storytellerSettingsJSON() async throws -> String {
-    try requireAndroidBootstrap()
-    return try await encodeStorytellerSettings()
+public func storytellerSettingsJSON(requestID: String) async throws {
+    try await deliverAndroidBridgePayload(requestID: requestID) {
+        try requireAndroidBootstrap()
+        return try await encodeStorytellerSettings()
+    }
 }
 
 public func saveStorytellerSettings(
+    requestID: String,
+    serverURL: String,
+    username: String,
+    password: String,
+) async throws {
+    try await deliverAndroidBridgePayload(requestID: requestID) {
+        try await saveStorytellerSettingsJSON(
+            serverURL: serverURL,
+            username: username,
+            password: password,
+        )
+    }
+}
+
+private func saveStorytellerSettingsJSON(
     serverURL: String,
     username: String,
     password: String,
@@ -62,7 +79,13 @@ public func saveStorytellerSettings(
     return try await encodeStorytellerSettings()
 }
 
-public func librarySnapshotJSON(refresh: Bool) async throws -> String {
+public func librarySnapshotJSON(requestID: String, refresh: Bool) async throws {
+    try await deliverAndroidBridgePayload(requestID: requestID) {
+        try await makeLibrarySnapshotJSON(refresh: refresh)
+    }
+}
+
+private func makeLibrarySnapshotJSON(refresh: Bool) async throws -> String {
     try requireAndroidBootstrap()
 
     let snapshot = await BookServiceActor.shared.librarySnapshot(
@@ -129,6 +152,29 @@ public func librarySnapshotJSON(refresh: Bool) async throws -> String {
 }
 
 public func coverResponseJSON(
+    requestID: String,
+    bookID: String,
+    sourceID: String,
+    version: String,
+    audio: Bool,
+    width: Int32,
+    height: Int32,
+    refresh: Bool,
+) async throws {
+    try await deliverAndroidBridgePayload(requestID: requestID) {
+        try await makeCoverResponseJSON(
+            bookID: bookID,
+            sourceID: sourceID,
+            version: version,
+            audio: audio,
+            width: width,
+            height: height,
+            refresh: refresh,
+        )
+    }
+}
+
+private func makeCoverResponseJSON(
     bookID: String,
     sourceID: String,
     version: String,

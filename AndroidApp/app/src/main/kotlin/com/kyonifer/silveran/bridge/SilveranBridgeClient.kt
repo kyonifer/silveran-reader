@@ -47,13 +47,17 @@ class SilveranBridgeClient(context: Context) {
     }
 
     suspend fun storytellerSettings(): StorytellerSettings {
-        val json = SilveranAndroidBridge.storytellerSettingsJSON().awaitResult()
+        val json = AndroidBridgeCallbacks.requestPayload { requestID ->
+            SilveranAndroidBridge.storytellerSettingsJSON(requestID)
+        }
         return withContext(Dispatchers.Default) { parseSettings(json) }
     }
 
     suspend fun librarySnapshot(refresh: Boolean): LibrarySnapshot {
         if (refresh) missingCovers.clear()
-        val json = SilveranAndroidBridge.librarySnapshotJSON(refresh).awaitResult()
+        val json = AndroidBridgeCallbacks.requestPayload { requestID ->
+            SilveranAndroidBridge.librarySnapshotJSON(requestID, refresh)
+        }
         return withContext(Dispatchers.Default) { parseLibrary(json) }
     }
 
@@ -127,15 +131,18 @@ class SilveranBridgeClient(context: Context) {
         height: Int,
         refresh: Boolean,
     ): CoverResponse {
-        val json = SilveranAndroidBridge.coverResponseJSON(
-            book.id,
-            book.sourceID,
-            book.coverVersion,
-            audio,
-            width,
-            height,
-            refresh,
-        ).awaitResult()
+        val json = AndroidBridgeCallbacks.requestPayload { requestID ->
+            SilveranAndroidBridge.coverResponseJSON(
+                requestID,
+                book.id,
+                book.sourceID,
+                book.coverVersion,
+                audio,
+                width,
+                height,
+                refresh,
+            )
+        }
         return withContext(Dispatchers.Default) {
             val response = JSONObject(json)
             CoverResponse(
@@ -158,11 +165,14 @@ class SilveranBridgeClient(context: Context) {
         username: String,
         password: String,
     ): StorytellerSettings {
-        val json = SilveranAndroidBridge.saveStorytellerSettings(
-            serverURL,
-            username,
-            password,
-        ).awaitResult()
+        val json = AndroidBridgeCallbacks.requestPayload { requestID ->
+            SilveranAndroidBridge.saveStorytellerSettings(
+                requestID,
+                serverURL,
+                username,
+                password,
+            )
+        }
         return withContext(Dispatchers.Default) { parseSettings(json) }
     }
 
@@ -256,7 +266,7 @@ private fun decodeSampledBitmap(bytes: ByteArray, requestedWidth: Int, requested
     return scaled
 }
 
-private suspend fun <T> CompletableFuture<T>.awaitResult(): T =
+internal suspend fun <T> CompletableFuture<T>.awaitResult(): T =
     suspendCancellableCoroutine { continuation ->
         whenComplete { value, error ->
             if (error == null) {

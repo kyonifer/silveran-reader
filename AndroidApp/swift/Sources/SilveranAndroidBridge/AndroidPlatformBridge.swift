@@ -24,6 +24,9 @@ open class JavaAndroidBridgeCallbacks: JavaObject {}
 extension JavaClass<JavaAndroidBridgeCallbacks> {
     @JavaStaticMethod
     func librarySnapshotDidChange()
+
+    @JavaStaticMethod
+    func bridgeRequestDidComplete(_ requestID: String, _ payload: String, _ error: String)
 }
 
 enum AndroidPlatformBootstrap {
@@ -91,4 +94,23 @@ final class AndroidKeychainStore: KeychainStoring, @unchecked Sendable {
 
 func notifyAndroidLibrarySnapshotDidChange() {
     try? JavaClass<JavaAndroidBridgeCallbacks>().librarySnapshotDidChange()
+}
+
+func deliverAndroidBridgePayload(
+    requestID: String,
+    operation: () async throws -> String,
+) async throws {
+    // swift-java 0.4.2 retains async String refs; upcalls release them in a local frame.
+    let payload: String
+    do {
+        payload = try await operation()
+    } catch {
+        try JavaClass<JavaAndroidBridgeCallbacks>().bridgeRequestDidComplete(
+            requestID,
+            "",
+            String(describing: error),
+        )
+        return
+    }
+    try JavaClass<JavaAndroidBridgeCallbacks>().bridgeRequestDidComplete(requestID, payload, "")
 }
