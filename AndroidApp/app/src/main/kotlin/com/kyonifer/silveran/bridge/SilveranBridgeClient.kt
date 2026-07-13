@@ -200,6 +200,7 @@ class SilveranBridgeClient(context: Context) {
                 title = item.getString("title"),
                 authors = item.optString("authors"),
                 description = item.optionalString("description"),
+                createdAt = item.optionalString("createdAt"),
                 coverVersion = item.optString("coverVersion"),
                 media = List(mediaItems.length()) { mediaIndex ->
                     val media = mediaItems.getJSONObject(mediaIndex)

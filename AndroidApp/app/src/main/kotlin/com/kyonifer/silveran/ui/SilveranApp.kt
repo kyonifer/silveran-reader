@@ -5,8 +5,6 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -43,8 +41,11 @@ fun SilveranApp(viewModel: SilveranViewModel) {
     var screenName by rememberSaveable { mutableStateOf(Screen.Library.name) }
     var selectedBookKey by rememberSaveable { mutableStateOf<String?>(null) }
     var readerMode by rememberSaveable { mutableStateOf("ebook") }
+    var libraryTabName by rememberSaveable { mutableStateOf(LibraryTab.Home.name) }
+    var librarySearchText by rememberSaveable { mutableStateOf("") }
     var settingsSavePending by remember { mutableStateOf(false) }
     val screen = Screen.valueOf(screenName)
+    val libraryTab = LibraryTab.valueOf(libraryTabName)
     val selectedBook = state.books.firstOrNull { it.key == selectedBookKey }
     val canNavigateBack = screen == Screen.Details || screen == Screen.Reader ||
         (screen == Screen.Settings && state.settings.configured)
@@ -88,53 +89,49 @@ fun SilveranApp(viewModel: SilveranViewModel) {
         Scaffold(
             snackbarHost = { SnackbarHost(snackbar) },
             topBar = {
-                TopAppBar(
-                    title = {
-                        Text(
-                            when (screen) {
-                                Screen.Library -> "Library"
-                                Screen.Settings -> "Server settings"
-                                Screen.Details -> selectedBook?.title ?: "Book"
-                                Screen.Reader -> if (readerMode == "audio") "Player" else "Reader"
-                            },
-                            maxLines = 1,
-                        )
-                    },
-                    navigationIcon = {
-                        if (canNavigateBack) {
-                            IconButton(onClick = navigateBack) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                    contentDescription = "Back",
-                                )
+                if (screen == Screen.Library) {
+                    LibraryHeader(
+                        selectedTab = libraryTab,
+                        searchText = librarySearchText,
+                        refreshing = state.refreshingLibrary,
+                        refreshEnabled = !state.refreshingLibrary && state.settings.configured,
+                        selectTab = { libraryTabName = it.name },
+                        updateSearch = { librarySearchText = it },
+                        refresh = viewModel::refreshLibrary,
+                        openSettings = { screenName = Screen.Settings.name },
+                    )
+                } else {
+                    TopAppBar(
+                        title = {
+                            Text(
+                                when (screen) {
+                                    Screen.Library -> "Library"
+                                    Screen.Settings -> "Server settings"
+                                    Screen.Details -> selectedBook?.title ?: "Book"
+                                    Screen.Reader -> if (readerMode == "audio") "Player" else "Reader"
+                                },
+                                maxLines = 1,
+                            )
+                        },
+                        navigationIcon = {
+                            if (canNavigateBack) {
+                                IconButton(onClick = navigateBack) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                        contentDescription = "Back",
+                                    )
+                                }
                             }
-                        }
-                    },
-                    actions = {
-                        if (screen == Screen.Library) {
-                            IconButton(
-                                onClick = viewModel::refreshLibrary,
-                                enabled = !state.refreshingLibrary && state.settings.configured,
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Refresh,
-                                    contentDescription = "Refresh library",
-                                )
-                            }
-                            IconButton(onClick = { screenName = Screen.Settings.name }) {
-                                Icon(
-                                    imageVector = Icons.Default.Settings,
-                                    contentDescription = "Server settings",
-                                )
-                            }
-                        }
-                    },
-                )
+                        },
+                    )
+                }
             },
         ) { padding ->
             when (screen) {
                 Screen.Library -> LibraryScreen(
                     state = state,
+                    tab = libraryTab,
+                    searchText = librarySearchText,
                     modifier = Modifier.padding(padding),
                     configure = { screenName = Screen.Settings.name },
                     select = { book ->

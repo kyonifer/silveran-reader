@@ -6,6 +6,7 @@ data class Book(
     val title: String,
     val authors: String,
     val description: String?,
+    val createdAt: String?,
     val coverVersion: String,
     val media: List<BookMedia>,
 ) {
@@ -13,6 +14,7 @@ data class Book(
     val hasEbook: Boolean get() = media.any { it.category == "ebook" }
     val hasAudio: Boolean get() = media.any { it.category == "audio" }
     val hasReadaloud: Boolean get() = media.any { it.category == "synced" }
+    val hasDownloadedMedia: Boolean get() = media.any(BookMedia::downloaded)
 }
 
 data class BookMedia(

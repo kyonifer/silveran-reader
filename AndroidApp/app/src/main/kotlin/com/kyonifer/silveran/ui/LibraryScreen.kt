@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -15,28 +16,43 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
@@ -50,6 +66,12 @@ private const val PANEL_VERTICAL_MARGIN = 0.06f
 internal const val COVER_PANEL_ASPECT_RATIO =
     1f / (COVER_SCALE / EBOOK_ASPECT_RATIO + PANEL_VERTICAL_MARGIN * 2f)
 
+internal enum class LibraryTab(val label: String) {
+    Home("Home"),
+    Library("Library"),
+    Downloaded("Downloaded"),
+}
+
 private sealed interface CoverLoadState {
     data object Loading : CoverLoadState
     data object Missing : CoverLoadState
@@ -59,12 +81,33 @@ private sealed interface CoverLoadState {
 @Composable
 internal fun LibraryScreen(
     state: SilveranUiState,
+    tab: LibraryTab,
+    searchText: String,
     modifier: Modifier,
     configure: () -> Unit,
     select: (Book) -> Unit,
     coverRevision: Int,
     cover: suspend (Book, Boolean, Int, Int) -> Bitmap?,
 ) {
+    val visibleBooks = remember(state.books, tab, searchText) {
+        val tabBooks = when (tab) {
+            LibraryTab.Home -> state.books.sortedByDescending { it.createdAt.orEmpty() }
+            LibraryTab.Library -> state.books.sortedBy { it.title.lowercase() }
+            LibraryTab.Downloaded -> state.books
+                .filter(Book::hasDownloadedMedia)
+                .sortedBy { it.title.lowercase() }
+        }
+        val query = searchText.trim()
+        if (query.isEmpty()) {
+            tabBooks
+        } else {
+            tabBooks.filter { book ->
+                book.title.contains(query, ignoreCase = true) ||
+                    book.authors.contains(query, ignoreCase = true)
+            }
+        }
+    }
+
     Column(modifier.fillMaxSize()) {
         state.sourceMessage?.let { message ->
             Surface(color = MaterialTheme.colorScheme.errorContainer) {
@@ -91,13 +134,21 @@ internal fun LibraryScreen(
                 message = connectionText(state.sourceStatus, state.sourceMessage),
                 action = configure,
             )
+            visibleBooks.isEmpty() && searchText.isNotBlank() -> EmptyLibrary(
+                title = "No matches",
+                message = "Try a different title or author.",
+            )
+            visibleBooks.isEmpty() && tab == LibraryTab.Downloaded -> EmptyLibrary(
+                title = "No downloads",
+                message = "Download a book from Home or Library to find it here.",
+            )
             else -> LazyVerticalGrid(
                 columns = GridCells.Fixed(3),
                 contentPadding = PaddingValues(12.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                items(state.books, key = Book::key) { book ->
+                items(visibleBooks, key = Book::key) { book ->
                     Column(Modifier.clickable { select(book) }) {
                         BookCover(
                             book = book,
@@ -128,13 +179,89 @@ internal fun LibraryScreen(
 }
 
 @Composable
-private fun EmptyLibrary(title: String, message: String, action: () -> Unit) {
+@OptIn(ExperimentalMaterial3Api::class)
+internal fun LibraryHeader(
+    selectedTab: LibraryTab,
+    searchText: String,
+    refreshing: Boolean,
+    refreshEnabled: Boolean,
+    selectTab: (LibraryTab) -> Unit,
+    updateSearch: (String) -> Unit,
+    refresh: () -> Unit,
+    openSettings: () -> Unit,
+) {
+    val focusManager = LocalFocusManager.current
+    LaunchedEffect(Unit) {
+        focusManager.clearFocus(force = true)
+    }
+
+    Surface(color = MaterialTheme.colorScheme.surface) {
+        Column(Modifier.fillMaxWidth().statusBarsPadding()) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextField(
+                    value = searchText,
+                    onValueChange = updateSearch,
+                    modifier = Modifier.weight(1f),
+                    placeholder = { Text("Search books") },
+                    leadingIcon = {
+                        Icon(Icons.Default.Search, contentDescription = null)
+                    },
+                    trailingIcon = if (searchText.isNotEmpty()) {
+                        {
+                            IconButton(onClick = { updateSearch("") }) {
+                                Icon(Icons.Default.Close, contentDescription = "Clear search")
+                            }
+                        }
+                    } else {
+                        null
+                    },
+                    singleLine = true,
+                    shape = CircleShape,
+                    colors = TextFieldDefaults.colors(
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent,
+                    ),
+                )
+                IconButton(onClick = refresh, enabled = refreshEnabled) {
+                    if (refreshing) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            strokeWidth = 2.dp,
+                        )
+                    } else {
+                        Icon(Icons.Default.Refresh, contentDescription = "Refresh library")
+                    }
+                }
+                IconButton(onClick = openSettings) {
+                    Icon(Icons.Default.Settings, contentDescription = "Server settings")
+                }
+            }
+            PrimaryTabRow(selectedTabIndex = selectedTab.ordinal) {
+                LibraryTab.entries.forEach { tab ->
+                    Tab(
+                        selected = selectedTab == tab,
+                        onClick = { selectTab(tab) },
+                        text = { Text(tab.label) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EmptyLibrary(title: String, message: String, action: (() -> Unit)? = null) {
     Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(title, style = MaterialTheme.typography.headlineSmall)
             Text(message, modifier = Modifier.padding(top = 8.dp))
-            OutlinedButton(onClick = action, modifier = Modifier.padding(top = 16.dp)) {
-                Text("Open settings")
+            if (action != null) {
+                OutlinedButton(onClick = action, modifier = Modifier.padding(top = 16.dp)) {
+                    Text("Open settings")
+                }
             }
         }
     }

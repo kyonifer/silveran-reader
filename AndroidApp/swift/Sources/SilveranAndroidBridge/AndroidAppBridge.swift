@@ -135,6 +135,7 @@ private func makeLibrarySnapshotJSON(refresh: Bool) async throws -> String {
                 title: book.title,
                 authors: book.authors?.compactMap(\.name).joined(separator: ", ") ?? "",
                 description: book.description.map { BookDescriptionText.plain(from: $0) },
+                createdAt: book.createdAt,
                 coverVersion: book.updatedAt ?? "",
                 media: media,
             )
@@ -319,6 +320,7 @@ private struct AndroidBook: Encodable {
     let title: String
     let authors: String
     let description: String?
+    let createdAt: String?
     let coverVersion: String
     let media: [AndroidMedia]
 }
