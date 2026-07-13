@@ -7,18 +7,21 @@ data class Book(
     val authors: String,
     val description: String?,
     val coverVersion: String,
-    val hasEbook: Boolean,
-    val hasAudio: Boolean,
-    val hasReadaloud: Boolean,
-    val ebookDownloaded: Boolean,
-    val audioDownloaded: Boolean,
-    val ebookDownloadState: String?,
-    val audioDownloadState: String?,
-    val ebookDownloadProgress: Double?,
-    val audioDownloadProgress: Double?,
+    val media: List<BookMedia>,
 ) {
     val key: String = "$sourceID:$id"
+    val hasEbook: Boolean get() = media.any { it.category == "ebook" }
+    val hasAudio: Boolean get() = media.any { it.category == "audio" }
+    val hasReadaloud: Boolean get() = media.any { it.category == "synced" }
 }
+
+data class BookMedia(
+    val category: String,
+    val downloaded: Boolean,
+    val removable: Boolean,
+    val downloadState: String?,
+    val downloadProgress: Double?,
+)
 
 data class LibrarySnapshot(
     val books: List<Book>,

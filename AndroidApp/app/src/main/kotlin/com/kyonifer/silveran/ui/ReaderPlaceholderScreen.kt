@@ -18,7 +18,11 @@ internal fun ReaderPlaceholderScreen(book: Book, mode: String, modifier: Modifie
     val webView = remember { WebView(context) }
     val title = TextUtils.htmlEncode(book.title)
     val authors = TextUtils.htmlEncode(book.authors)
-    val modeTitle = if (mode == "audio") "Audio player" else "Ebook reader"
+    val modeTitle = when (mode) {
+        "audio" -> "Audio player"
+        "synced" -> "Readaloud reader"
+        else -> "Ebook reader"
+    }
     val html = remember(book.key, mode) {
         """
         <!doctype html>

@@ -76,15 +76,34 @@ public func librarySnapshotJSON(refresh: Bool) async throws -> String {
     for book in snapshot.books {
         guard let sourceID = book.sourceID else { continue }
 
-        let ebookDownloadRecord = downloadsByID[
-            downloadID(bookID: book.uuid, category: .ebook)
-        ]
-        let audioCategory: LocalMediaCategory =
-            book.hasAvailableAudiobook ? .audio : .synced
-        let audioDownloadRecord = downloadsByID[
-            downloadID(bookID: book.uuid, category: audioCategory)
-        ]
         let paths = snapshot.mediaPaths[book.uuid]
+        let cachedPaths = snapshot.cachedMediaPaths[book.uuid]
+        let media = [
+            androidMedia(
+                bookID: book.uuid,
+                category: .ebook,
+                available: book.hasAvailableEbook,
+                paths: paths,
+                cachedPaths: cachedPaths,
+                downloadsByID: downloadsByID,
+            ),
+            androidMedia(
+                bookID: book.uuid,
+                category: .audio,
+                available: book.hasAvailableAudiobook,
+                paths: paths,
+                cachedPaths: cachedPaths,
+                downloadsByID: downloadsByID,
+            ),
+            androidMedia(
+                bookID: book.uuid,
+                category: .synced,
+                available: book.hasAvailableReadaloud,
+                paths: paths,
+                cachedPaths: cachedPaths,
+                downloadsByID: downloadsByID,
+            ),
+        ].compactMap { $0 }
 
         books.append(
             AndroidBook(
@@ -94,15 +113,7 @@ public func librarySnapshotJSON(refresh: Bool) async throws -> String {
                 authors: book.authors?.compactMap(\.name).joined(separator: ", ") ?? "",
                 description: book.description.map { BookDescriptionText.plain(from: $0) },
                 coverVersion: book.updatedAt ?? "",
-                hasEbook: book.hasAvailableEbook,
-                hasAudio: book.hasAnyAudiobookAsset,
-                hasReadaloud: book.hasAvailableReadaloud,
-                ebookDownloaded: paths?.ebookPath != nil,
-                audioDownloaded: paths?.audioPath != nil || paths?.syncedPath != nil,
-                ebookDownloadState: downloadStateName(ebookDownloadRecord?.state),
-                audioDownloadState: downloadStateName(audioDownloadRecord?.state),
-                ebookDownloadProgress: downloadProgress(ebookDownloadRecord),
-                audioDownloadProgress: downloadProgress(audioDownloadRecord),
+                media: media,
             )
         )
     }
@@ -193,10 +204,7 @@ public func downloadBook(
 ) async throws {
     try requireAndroidBootstrap()
 
-    guard
-        category == LocalMediaCategory.ebook.rawValue
-            || category == LocalMediaCategory.audio.rawValue
-    else {
+    guard let mediaCategory = LocalMediaCategory(rawValue: category) else {
         throw AndroidBridgeError.invalidMediaCategory(category)
     }
 
@@ -208,15 +216,12 @@ public func downloadBook(
     else {
         throw AndroidBridgeError.bookNotFound(bookID)
     }
-    let mediaCategory: LocalMediaCategory
-    if category == LocalMediaCategory.ebook.rawValue {
-        mediaCategory = .ebook
-    } else if book.hasAvailableAudiobook {
-        mediaCategory = .audio
-    } else {
-        mediaCategory = .synced
+    let available = switch mediaCategory {
+        case .ebook: book.hasAvailableEbook
+        case .audio: book.hasAvailableAudiobook
+        case .synced: book.hasAvailableReadaloud
     }
-    guard mediaCategory == .ebook ? book.hasAvailableEbook : book.hasAnyAudiobookAsset else {
+    guard available else {
         throw AndroidBridgeError.mediaUnavailable(category: category, bookID: bookID)
     }
 
@@ -226,16 +231,27 @@ public func downloadBook(
 public func cancelBookDownload(bookID: String, category: String) async throws {
     try requireAndroidBootstrap()
 
-    switch category {
-        case LocalMediaCategory.ebook.rawValue:
-            await DownloadManager.shared.cancelDownload(for: bookID, category: .ebook)
-        case LocalMediaCategory.audio.rawValue:
-            // The Android "audio" action also represents readaloud media.
-            await DownloadManager.shared.cancelDownload(for: bookID, category: .audio)
-            await DownloadManager.shared.cancelDownload(for: bookID, category: .synced)
-        default:
-            throw AndroidBridgeError.invalidMediaCategory(category)
+    guard let mediaCategory = LocalMediaCategory(rawValue: category) else {
+        throw AndroidBridgeError.invalidMediaCategory(category)
     }
+    await DownloadManager.shared.cancelDownload(for: bookID, category: mediaCategory)
+}
+
+public func deleteBookDownload(
+    bookID: String,
+    sourceID: String,
+    category: String,
+) async throws {
+    try requireAndroidBootstrap()
+
+    guard let mediaCategory = LocalMediaCategory(rawValue: category) else {
+        throw AndroidBridgeError.invalidMediaCategory(category)
+    }
+    try await BookServiceActor.shared.deleteCachedMedia(
+        for: bookID,
+        sourceID: sourceID,
+        category: mediaCategory,
+    )
 }
 
 public func startLibraryObservation() async throws {
@@ -258,15 +274,15 @@ private struct AndroidBook: Encodable {
     let authors: String
     let description: String?
     let coverVersion: String
-    let hasEbook: Bool
-    let hasAudio: Bool
-    let hasReadaloud: Bool
-    let ebookDownloaded: Bool
-    let audioDownloaded: Bool
-    let ebookDownloadState: String?
-    let audioDownloadState: String?
-    let ebookDownloadProgress: Double?
-    let audioDownloadProgress: Double?
+    let media: [AndroidMedia]
+}
+
+private struct AndroidMedia: Encodable {
+    let category: String
+    let downloaded: Bool
+    let removable: Bool
+    let downloadState: String?
+    let downloadProgress: Double?
 }
 
 private struct AndroidCoverResponse: Encodable {
@@ -391,6 +407,25 @@ private func downloadStateName(_ state: DownloadState?) -> String? {
 private func downloadProgress(_ record: DownloadRecord?) -> Double? {
     guard let record, record.isActive else { return nil }
     return record.progressFraction
+}
+
+private func androidMedia(
+    bookID: String,
+    category: LocalMediaCategory,
+    available: Bool,
+    paths: MediaPaths?,
+    cachedPaths: MediaPaths?,
+    downloadsByID: [String: DownloadRecord],
+) -> AndroidMedia? {
+    guard available else { return nil }
+    let record = downloadsByID[downloadID(bookID: bookID, category: category)]
+    return AndroidMedia(
+        category: category.rawValue,
+        downloaded: paths?.path(for: category) != nil,
+        removable: cachedPaths?.path(for: category) != nil,
+        downloadState: downloadStateName(record?.state),
+        downloadProgress: downloadProgress(record),
+    )
 }
 
 private func downloadID(bookID: String, category: LocalMediaCategory) -> String {

@@ -6,6 +6,7 @@ import android.graphics.BitmapFactory
 import android.util.Base64
 import android.util.LruCache
 import com.kyonifer.silveran.model.Book
+import com.kyonifer.silveran.model.BookMedia
 import com.kyonifer.silveran.model.LibrarySnapshot
 import com.kyonifer.silveran.model.StorytellerSettings
 import com.kyonifer.silveran.platform.AndroidSecureStore
@@ -62,6 +63,14 @@ class SilveranBridgeClient(context: Context) {
 
     suspend fun cancelDownload(book: Book, category: String) {
         SilveranAndroidBridge.cancelBookDownload(book.id, category).awaitResult()
+    }
+
+    suspend fun deleteDownload(book: Book, category: String) {
+        SilveranAndroidBridge.deleteBookDownload(
+            book.id,
+            book.sourceID,
+            category,
+        ).awaitResult()
     }
 
     suspend fun cover(book: Book, audio: Boolean, width: Int, height: Int): Bitmap? {
@@ -174,6 +183,7 @@ class SilveranBridgeClient(context: Context) {
         val items = root.getJSONArray("books")
         val books = List(items.length()) { index ->
             val item = items.getJSONObject(index)
+            val mediaItems = item.getJSONArray("media")
             Book(
                 id = item.getString("id"),
                 sourceID = item.getString("sourceID"),
@@ -181,15 +191,16 @@ class SilveranBridgeClient(context: Context) {
                 authors = item.optString("authors"),
                 description = item.optionalString("description"),
                 coverVersion = item.optString("coverVersion"),
-                hasEbook = item.getBoolean("hasEbook"),
-                hasAudio = item.getBoolean("hasAudio"),
-                hasReadaloud = item.getBoolean("hasReadaloud"),
-                ebookDownloaded = item.getBoolean("ebookDownloaded"),
-                audioDownloaded = item.getBoolean("audioDownloaded"),
-                ebookDownloadState = item.optionalString("ebookDownloadState"),
-                audioDownloadState = item.optionalString("audioDownloadState"),
-                ebookDownloadProgress = item.optionalDouble("ebookDownloadProgress"),
-                audioDownloadProgress = item.optionalDouble("audioDownloadProgress"),
+                media = List(mediaItems.length()) { mediaIndex ->
+                    val media = mediaItems.getJSONObject(mediaIndex)
+                    BookMedia(
+                        category = media.getString("category"),
+                        downloaded = media.getBoolean("downloaded"),
+                        removable = media.getBoolean("removable"),
+                        downloadState = media.optionalString("downloadState"),
+                        downloadProgress = media.optionalDouble("downloadProgress"),
+                    )
+                },
             )
         }
         return LibrarySnapshot(

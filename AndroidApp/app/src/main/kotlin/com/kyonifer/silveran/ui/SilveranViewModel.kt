@@ -129,6 +129,15 @@ class SilveranViewModel private constructor(
         }
     }
 
+    fun deleteDownload(book: Book, category: String) {
+        viewModelScope.launch {
+            runCatching {
+                client.deleteDownload(book, category)
+                refreshLibraryNow(refresh = false)
+            }.onFailure(::showError)
+        }
+    }
+
     suspend fun cover(book: Book, audio: Boolean, width: Int, height: Int): Bitmap? =
         client.cover(book, audio, width, height)
 

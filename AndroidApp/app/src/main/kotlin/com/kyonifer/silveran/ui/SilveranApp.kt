@@ -165,6 +165,9 @@ fun SilveranApp(viewModel: SilveranViewModel) {
                         cancelDownload = { category ->
                             viewModel.cancelDownload(book, category)
                         },
+                        deleteDownload = { category ->
+                            viewModel.deleteDownload(book, category)
+                        },
                         open = { mode ->
                             readerMode = mode
                             screenName = Screen.Reader.name
