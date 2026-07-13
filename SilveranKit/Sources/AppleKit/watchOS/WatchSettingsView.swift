@@ -11,10 +11,15 @@ struct WatchSettingsView: View {
     @State private var sourceName: String = BookSourceKind.storyteller.defaultName
     @State private var storytellerSources: [BookSourceRecord] = []
     @State private var selectedSourceID: BookSourceID?
+    @State private var phoneSourceID: BookSourceID?
+    @State private var phoneSources: [WatchCredentialSourceInfo] = []
+    @State private var showPhoneSourcePicker = false
     @State private var isAddingSource = false
     @State private var isConnecting = false
     @State private var connectionStatus: ConnectionStatus = .disconnected
     @State private var isSyncingFromPhone = false
+    @State private var phoneSyncRequestID: UUID?
+    @State private var requestedPhoneSourceID: BookSourceID?
     @State private var showManualEntry = false
     @State private var hasCredentials = false
     @State private var errorMessage: String?
@@ -128,6 +133,10 @@ struct WatchSettingsView: View {
 
             syncFromPhoneButton
 
+            if showPhoneSourcePicker {
+                phoneSourcePicker
+            }
+
             manualEntrySection
 
             if !isAddingSource {
@@ -239,6 +248,33 @@ struct WatchSettingsView: View {
         }
     }
 
+    private var phoneSourcePicker: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Choose an iPhone Server")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            ForEach(phoneSources) { source in
+                Button {
+                    requestPhoneCredentials(for: source.sourceID)
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(source.name)
+                            .font(.caption2)
+                        Text(source.url)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .controlSize(.small)
+            }
+        }
+        .padding(10)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
+    }
+
     private var manualEntrySection: some View {
         VStack(spacing: 8) {
             Text("Login Credentials")
@@ -311,6 +347,7 @@ struct WatchSettingsView: View {
     }
 
     private func openSource(_ source: BookSourceRecord) async {
+        phoneSourceID = nil
         selectedSourceID = source.id
         showManualEntry = true
         await loadCredentialsForSelectedSource()
@@ -360,6 +397,11 @@ struct WatchSettingsView: View {
 
     private func startAddingSource() {
         isAddingSource = true
+        phoneSyncRequestID = nil
+        requestedPhoneSourceID = nil
+        phoneSourceID = nil
+        phoneSources = []
+        showPhoneSourcePicker = false
         selectedSourceID = nil
         sourceName = BookSourceKind.storyteller.defaultName
         serverURL = ""
@@ -373,6 +415,12 @@ struct WatchSettingsView: View {
 
     private func cancelEditingSource() {
         isAddingSource = false
+        phoneSyncRequestID = nil
+        requestedPhoneSourceID = nil
+        isSyncingFromPhone = false
+        phoneSourceID = nil
+        phoneSources = []
+        showPhoneSourcePicker = false
         showManualEntry = false
         errorMessage = nil
         Task {
@@ -381,30 +429,78 @@ struct WatchSettingsView: View {
     }
 
     private func syncFromPhone() {
+        let requestID = UUID()
+        phoneSyncRequestID = requestID
+        requestedPhoneSourceID = nil
         isSyncingFromPhone = true
         errorMessage = nil
+        phoneSources = []
+        showPhoneSourcePicker = false
 
-        WatchSessionManager.shared.onCredentialsReceived = { url, user, pass in
+        WatchSessionManager.shared.onCredentialSourcesReceived = { sources in
             Task { @MainActor in
-                serverURL = url
-                username = user
-                password = pass
-                hasCredentials = true
+                guard phoneSyncRequestID == requestID else { return }
+                phoneSyncRequestID = nil
                 isSyncingFromPhone = false
-                showManualEntry = false
+                guard !sources.isEmpty else {
+                    errorMessage = "No iPhone servers available"
+                    return
+                }
+                if sources.count == 1, let source = sources.first {
+                    requestPhoneCredentials(for: source.sourceID)
+                } else {
+                    phoneSources = sources
+                    showPhoneSourcePicker = true
+                }
+            }
+        }
 
+        WatchSessionManager.shared.onCredentialsReceived = { credentials in
+            Task { @MainActor in
+                guard phoneSyncRequestID != nil,
+                    requestedPhoneSourceID == credentials.sourceID
+                else { return }
+                phoneSyncRequestID = nil
+                requestedPhoneSourceID = nil
+                phoneSourceID = credentials.sourceID
+                selectedSourceID = credentials.sourceID
+                sourceName = credentials.name
+                serverURL = credentials.url
+                username = credentials.username
+                password = credentials.password
+                hasCredentials = true
+                isAddingSource = !storytellerSources.contains {
+                    $0.id == credentials.sourceID
+                }
+                isSyncingFromPhone = false
+                showPhoneSourcePicker = false
+                showManualEntry = true
                 await connect()
             }
         }
 
-        WatchSessionManager.shared.requestCredentialsFromPhone(sourceID: selectedSourceID)
+        WatchSessionManager.shared.requestCredentialSourcesFromPhone()
+        schedulePhoneSyncTimeout(requestID)
+    }
 
+    private func requestPhoneCredentials(for sourceID: BookSourceID) {
+        let requestID = UUID()
+        phoneSyncRequestID = requestID
+        requestedPhoneSourceID = sourceID
+        isSyncingFromPhone = true
+        errorMessage = nil
+        WatchSessionManager.shared.requestCredentialsFromPhone(sourceID: sourceID)
+        schedulePhoneSyncTimeout(requestID)
+    }
+
+    private func schedulePhoneSyncTimeout(_ requestID: UUID) {
         Task {
             try? await Task.sleep(for: .seconds(10))
-            if isSyncingFromPhone {
-                isSyncingFromPhone = false
-                errorMessage = "Sync timed out"
-            }
+            guard phoneSyncRequestID == requestID else { return }
+            phoneSyncRequestID = nil
+            requestedPhoneSourceID = nil
+            isSyncingFromPhone = false
+            errorMessage = "Sync timed out"
         }
     }
 
@@ -453,29 +549,60 @@ struct WatchSettingsView: View {
             showManualEntry = false
             errorMessage = nil
             await loadExistingCredentials()
+            await WatchSessionManager.shared.publishProtocolContext()
         } else {
             errorMessage = "Failed to remove"
         }
     }
 
     private func saveCurrentSource() async throws -> BookSourceID {
+        let configuration = BookSourceConfiguration(
+            kind: .storyteller,
+            name: sourceName,
+            serverURL: serverURL,
+            username: username,
+            password: password,
+        )
+
+        if let phoneSourceID {
+            let existing = await BookServiceActor.shared.bookSources.first {
+                $0.id == phoneSourceID
+            }
+            let saved: Bool
+            if let existing {
+                guard existing.kind == .storyteller else {
+                    throw WatchSettingsError.saveFailed
+                }
+                saved = await BookServiceActor.shared.updateBookSource(
+                    id: phoneSourceID,
+                    configuration: configuration,
+                )
+            } else {
+                saved = await BookServiceActor.shared.createBookSource(
+                    id: phoneSourceID,
+                    configuration: configuration,
+                ) != nil
+            }
+            guard saved else { throw WatchSettingsError.saveFailed }
+
+            selectedSourceID = phoneSourceID
+            self.phoneSourceID = nil
+            isAddingSource = false
+            await loadExistingCredentials()
+            await WatchSessionManager.shared.publishProtocolContext()
+            return phoneSourceID
+        }
+
         if isAddingSource || selectedSourceID == nil {
             guard
-                let record = await BookServiceActor.shared.createBookSource(
-                    BookSourceConfiguration(
-                        kind: .storyteller,
-                        name: sourceName,
-                        serverURL: serverURL,
-                        username: username,
-                        password: password,
-                    )
-                )
+                let record = await BookServiceActor.shared.createBookSource(configuration)
             else {
                 throw WatchSettingsError.saveFailed
             }
             selectedSourceID = record.id
             isAddingSource = false
             await loadExistingCredentials()
+            await WatchSessionManager.shared.publishProtocolContext()
             return record.id
         }
 
@@ -485,18 +612,13 @@ struct WatchSettingsView: View {
 
         let saved = await BookServiceActor.shared.updateBookSource(
             id: selectedSourceID,
-            configuration: BookSourceConfiguration(
-                kind: .storyteller,
-                name: sourceName,
-                serverURL: serverURL,
-                username: username,
-                password: password,
-            ),
+            configuration: configuration,
         )
         guard saved else {
             throw WatchSettingsError.saveFailed
         }
         await loadExistingCredentials()
+        await WatchSessionManager.shared.publishProtocolContext()
         return selectedSourceID
     }
 

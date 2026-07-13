@@ -16,8 +16,8 @@ public enum WatchTransferState: Sendable, Codable {
 }
 
 public struct WatchTransferItem: Sendable, Identifiable, Codable {
-    public let id: String
-    public let bookUUID: String
+    public let id: UUID
+    public let bookID: BookID
     public let bookTitle: String
     public let category: LocalMediaCategory
     public let state: WatchTransferState
@@ -32,18 +32,6 @@ public struct WatchTransferItem: Sendable, Identifiable, Codable {
     }
 }
 
-public struct WatchBookInfo: Sendable, Codable, Identifiable {
-    public let id: String
-    public let title: String
-    public let authorNames: [String]
-    public let category: LocalMediaCategory
-    public let sizeBytes: Int64
-
-    public var authorDisplay: String {
-        authorNames.joined(separator: ", ")
-    }
-}
-
 public enum WatchTransferEvent: Sendable {
     case stateChanged(item: WatchTransferItem)
     case transfersUpdated(items: [WatchTransferItem])
@@ -53,22 +41,20 @@ public enum WatchTransferEvent: Sendable {
 
 #if canImport(WatchConnectivity)
 
-private let kChunkCount = 100
+private let watchChunkCount = 100
 
 @globalActor
 public actor AppleWatchActor: NSObject {
     public static let shared = AppleWatchActor()
 
     private var session: WCSession?
-    private var isActivated = false
-    private var pendingTransfers: [String: WatchTransferItem] = [:]
-    private var completedTransfers: [String: WatchTransferItem] = [:]
+    private var pendingTransfers: [UUID: WatchTransferItem] = [:]
+    private var completedTransfers: [UUID: WatchTransferItem] = [:]
     private var watchBooks: [WatchBookInfo] = []
-    private var chunksCompleted: [String: Int] = [:]
-    private var chunksExpected: [String: Int] = [:]
+    private var chunksCompleted: [UUID: Int] = [:]
+    private var chunksExpected: [UUID: Int] = [:]
     private var observers: [UUID: @Sendable @MainActor (WatchTransferEvent) -> Void] = [:]
-    private var smilObserverId: UUID?
-    private var cachedChapters: [RemoteChapter] = []
+    private var smilObserverID: UUID?
 
     public override init() {
         super.init()
@@ -82,8 +68,8 @@ public actor AppleWatchActor: NSObject {
 
         let wcSession = WCSession.default
         wcSession.delegate = self
-        wcSession.activate()
         session = wcSession
+        wcSession.activate()
         debugLog("[AppleWatchActor] WCSession activation requested")
     }
 
@@ -110,24 +96,22 @@ public actor AppleWatchActor: NSObject {
 
     public func isWatchPaired() -> Bool {
         #if os(iOS)
-        guard let session else { return false }
-        return session.isPaired
+        session?.isPaired == true
         #else
-        return true
+        true
         #endif
     }
 
     public func isWatchReachable() -> Bool {
-        guard let session else { return false }
-        return session.isReachable
+        session?.isReachable == true && connectedWatchContext() != nil
     }
 
     public func getPendingTransfers() -> [WatchTransferItem] {
-        Array(pendingTransfers.values).sorted { $0.startedAt < $1.startedAt }
+        pendingTransfers.values.sorted { $0.startedAt < $1.startedAt }
     }
 
     public func getCompletedTransfers() -> [WatchTransferItem] {
-        Array(completedTransfers.values).sorted {
+        completedTransfers.values.sorted {
             ($0.completedAt ?? $0.startedAt) > ($1.completedAt ?? $1.startedAt)
         }
     }
@@ -141,19 +125,37 @@ public actor AppleWatchActor: NSObject {
         category: LocalMediaCategory,
         sourceURL: URL,
     ) async throws {
-        let transferId = "\(book.uuid)-\(category.rawValue)"
-
-        if pendingTransfers[transferId] != nil {
-            debugLog("[AppleWatchActor] Transfer already queued: \(transferId)")
+        guard let session, session.activationState == .activated else {
+            throw WatchTransferError.sessionNotActive
+        }
+        #if os(iOS)
+        guard session.isPaired else {
+            throw WatchTransferError.watchNotPaired
+        }
+        #endif
+        guard let context = connectedWatchContext() else {
+            throw WatchTransferError.watchUpdateRequired
+        }
+        guard context.sourceIDs.contains(book.id.sourceID) else {
+            throw WatchTransferError.sourceNotAvailable
+        }
+        reconcileOutstandingFileTransfers()
+        if pendingTransfers.values.contains(where: {
+            $0.bookID == book.id && $0.category == category
+        }) {
             return
         }
 
-        let fileSize =
-            try FileManager.default.attributesOfItem(atPath: sourceURL.path)[.size] as? Int64 ?? 0
+        let attributes = try FileManager.default.attributesOfItem(atPath: sourceURL.path)
+        let fileSize = attributes[.size] as? Int64 ?? 0
+        guard fileSize > 0 else {
+            throw WatchTransferError.transferFailed("File is empty")
+        }
 
-        let item = WatchTransferItem(
-            id: transferId,
-            bookUUID: book.uuid,
+        let transferID = UUID()
+        var item = WatchTransferItem(
+            id: transferID,
+            bookID: book.id,
             bookTitle: book.title,
             category: category,
             state: .queued,
@@ -161,65 +163,46 @@ public actor AppleWatchActor: NSObject {
             transferredBytes: 0,
             startedAt: Date(),
         )
-
-        pendingTransfers[transferId] = item
-        chunksCompleted[transferId] = 0
+        pendingTransfers[transferID] = item
+        chunksCompleted[transferID] = 0
         notifyObservers(.stateChanged(item: item))
         notifyObservers(.transfersUpdated(items: getPendingTransfers()))
 
-        await processTransfer(
-            transferId: transferId,
-            book: book,
-            category: category,
-            sourceURL: sourceURL,
-        )
-    }
-
-    private func processTransfer(
-        transferId: String,
-        book: BookMetadata,
-        category: LocalMediaCategory,
-        sourceURL: URL,
-    ) async {
-        guard var item = pendingTransfers[transferId] else { return }
-
+        item = updateItem(item, state: .transferring(progress: 0))
         do {
-            let fileSize =
-                try FileManager.default.attributesOfItem(atPath: sourceURL.path)[.size] as? Int64
-                ?? 0
-            item = updateItem(item, state: .transferring(progress: 0), totalBytes: fileSize)
-
-            try await sendFileInChunks(
+            try sendFileInChunks(
                 sourceURL: sourceURL,
                 book: book,
                 category: category,
-                transferId: transferId,
+                transferID: transferID,
             )
-
         } catch {
-            debugLog("[AppleWatchActor] Transfer failed: \(error)")
-            let failedItem = updateItem(item, state: .failed(message: error.localizedDescription))
-            pendingTransfers[transferId] = failedItem
-            notifyObservers(.stateChanged(item: failedItem))
+            cancelOutstandingFiles(transferID: transferID)
+            queueTransferCancellation(transferID: transferID)
+            chunksCompleted.removeValue(forKey: transferID)
+            chunksExpected.removeValue(forKey: transferID)
+            removeTransferFiles(transferID: transferID)
+            _ = updateItem(item, state: .failed(message: error.localizedDescription))
+            throw error
         }
     }
 
     private func updateItem(
         _ item: WatchTransferItem,
         state: WatchTransferState,
-        totalBytes: Int64? = nil,
         transferredBytes: Int64? = nil,
+        completedAt: Date? = nil,
     ) -> WatchTransferItem {
         let updated = WatchTransferItem(
             id: item.id,
-            bookUUID: item.bookUUID,
+            bookID: item.bookID,
             bookTitle: item.bookTitle,
             category: item.category,
             state: state,
-            totalBytes: totalBytes ?? item.totalBytes,
+            totalBytes: item.totalBytes,
             transferredBytes: transferredBytes ?? item.transferredBytes,
             startedAt: item.startedAt,
-            completedAt: item.completedAt,
+            completedAt: completedAt ?? item.completedAt,
         )
         pendingTransfers[item.id] = updated
         notifyObservers(.stateChanged(item: updated))
@@ -230,134 +213,91 @@ public actor AppleWatchActor: NSObject {
         sourceURL: URL,
         book: BookMetadata,
         category: LocalMediaCategory,
-        transferId: String,
-    ) async throws {
+        transferID: UUID,
+    ) throws {
         guard let session, session.activationState == .activated else {
             throw WatchTransferError.sessionNotActive
         }
-
-        #if os(iOS)
-        guard session.isPaired else {
-            throw WatchTransferError.watchNotPaired
-        }
-        #endif
-
-        let fm = FileManager.default
-        guard fm.fileExists(atPath: sourceURL.path) else {
+        guard FileManager.default.fileExists(atPath: sourceURL.path) else {
             throw WatchTransferError.fileNotFound(sourceURL.path)
         }
 
-        // Cancel any previous transfers for this same transferId
-        var cancelledCount = 0
-        for transfer in session.outstandingFileTransfers {
-            if let tid = transfer.file.metadata?["transferId"] as? String, tid == transferId {
-                transfer.cancel()
-                cancelledCount += 1
-            }
-        }
-        if cancelledCount > 0 {
-            debugLog(
-                "[AppleWatchActor] Cancelled \(cancelledCount) previous transfers for \(transferId)"
-            )
-        }
-
-        let attrs = try fm.attributesOfItem(atPath: sourceURL.path)
-        let totalSize = attrs[.size] as? Int64 ?? 0
-
+        let totalSize =
+            try FileManager.default.attributesOfItem(atPath: sourceURL.path)[.size] as? Int64 ?? 0
         guard totalSize > 0 else {
             throw WatchTransferError.transferFailed("File is empty")
         }
 
-        let chunkSize = (totalSize + Int64(kChunkCount) - 1) / Int64(kChunkCount)
+        let chunkSize = (totalSize + Int64(watchChunkCount) - 1) / Int64(watchChunkCount)
         let actualChunkCount = Int((totalSize + chunkSize - 1) / chunkSize)
-
-        debugLog(
-            "[AppleWatchActor] Starting chunked transfer: \(sourceURL.lastPathComponent), size: \(totalSize) bytes, chunkSize: \(chunkSize), chunks: \(actualChunkCount)"
-        )
-
-        let tempDir = fm.temporaryDirectory.appendingPathComponent(
-            "watch_chunks_\(transferId)",
+        let tempDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "watch_chunks_\(transferID.uuidString)",
             isDirectory: true,
         )
-        try? fm.removeItem(at: tempDir)
-        try fm.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        try? FileManager.default.removeItem(at: tempDirectory)
+        try FileManager.default.createDirectory(
+            at: tempDirectory,
+            withIntermediateDirectories: true,
+        )
 
         let fileExtension = sourceURL.pathExtension
-
         let fileHandle = try FileHandle(forReadingFrom: sourceURL)
         defer { try? fileHandle.close() }
-
-        chunksExpected[transferId] = actualChunkCount
+        chunksExpected[transferID] = actualChunkCount
 
         for chunkIndex in 0..<actualChunkCount {
-            let startOffset = Int64(chunkIndex) * chunkSize
+            guard connectedWatchContext()?.sourceIDs.contains(book.id.sourceID) == true else {
+                throw WatchTransferError.sourceNotAvailable
+            }
 
+            let startOffset = Int64(chunkIndex) * chunkSize
             try fileHandle.seek(toOffset: UInt64(startOffset))
             let bytesToRead = min(Int(chunkSize), Int(totalSize - startOffset))
             guard let chunkData = try fileHandle.read(upToCount: bytesToRead), !chunkData.isEmpty
             else {
-                debugLog("[AppleWatchActor] Failed to read chunk \(chunkIndex)")
-                continue
+                throw WatchTransferError.transferFailed("Could not read transfer chunk")
             }
 
-            let chunkFileName = "chunk_\(String(format: "%03d", chunkIndex)).\(fileExtension)"
-            let chunkURL = tempDir.appendingPathComponent(chunkFileName)
-
+            let chunkURL = tempDirectory.appendingPathComponent(
+                "chunk_\(String(format: "%03d", chunkIndex)).\(fileExtension)"
+            )
             try chunkData.write(to: chunkURL)
 
-            let chunkMetadata = ChunkTransferMetadata(
-                uuid: book.uuid,
-                title: book.title,
-                authors: book.authors?.compactMap { $0.name } ?? [],
-                sourceID: book.sourceID,
-                category: category.rawValue,
+            let payload = WatchChunkTransferPayload(
+                transferID: transferID,
+                bookID: book.id,
+                category: category,
                 chunkIndex: chunkIndex,
                 totalChunks: actualChunkCount,
                 totalFileSize: totalSize,
                 fileExtension: fileExtension,
-                bookMetadata: chunkIndex == 0 ? book : nil,
+                title: book.title,
+                authors: book.authors?.compactMap(\.name) ?? [],
+                bookMetadata: book,
             )
-            let metadataData = try JSONEncoder().encode(chunkMetadata)
-
-            let fileMetadata: [String: Any] = [
-                "transferId": transferId,
-                "chunkMetadata": metadataData,
-            ]
-
-            let transfer = session.transferFile(chunkURL, metadata: fileMetadata)
+            let metadata = try WatchProtocolMessage.chunkTransfer(payload).encode()
+            let transfer = session.transferFile(chunkURL, metadata: metadata)
             debugLog(
                 "[AppleWatchActor] Queued chunk \(chunkIndex + 1)/\(actualChunkCount), isTransferring: \(transfer.isTransferring)"
             )
         }
-
-        debugLog(
-            "[AppleWatchActor] Finished queueing \(actualChunkCount) chunks, outstanding: \(session.outstandingFileTransfers.count)"
-        )
     }
 
-    public func cancelTransfer(transferId: String) {
-        guard let item = pendingTransfers[transferId] else { return }
+    public func cancelTransfer(transferID: UUID) {
+        cancelTransfer(transferID: transferID, notifyWatch: true)
+    }
 
-        if let session {
-            for transfer in session.outstandingFileTransfers {
-                if let tid = transfer.file.metadata?["transferId"] as? String, tid == transferId {
-                    transfer.cancel()
-                }
-            }
+    private func cancelTransfer(transferID: UUID, notifyWatch: Bool) {
+        guard let item = pendingTransfers[transferID] else { return }
 
-            if session.isReachable {
-                let message: [String: Any] = [
-                    "type": "cancelTransfer",
-                    "uuid": item.bookUUID,
-                    "category": item.category.rawValue,
-                ]
-                session.sendMessage(message, replyHandler: nil, errorHandler: nil)
-            }
+        cancelOutstandingFiles(transferID: transferID)
+        if notifyWatch {
+            queueTransferCancellation(transferID: transferID)
         }
 
-        let cancelledItem = WatchTransferItem(
+        let cancelled = WatchTransferItem(
             id: item.id,
-            bookUUID: item.bookUUID,
+            bookID: item.bookID,
             bookTitle: item.bookTitle,
             category: item.category,
             state: .failed(message: "Cancelled"),
@@ -366,32 +306,32 @@ public actor AppleWatchActor: NSObject {
             startedAt: item.startedAt,
             completedAt: Date(),
         )
-
-        pendingTransfers.removeValue(forKey: transferId)
-        chunksCompleted.removeValue(forKey: transferId)
-        chunksExpected.removeValue(forKey: transferId)
-        notifyObservers(.stateChanged(item: cancelledItem))
+        pendingTransfers.removeValue(forKey: transferID)
+        chunksCompleted.removeValue(forKey: transferID)
+        chunksExpected.removeValue(forKey: transferID)
+        removeTransferFiles(transferID: transferID)
+        notifyObservers(.stateChanged(item: cancelled))
         notifyObservers(.transfersUpdated(items: getPendingTransfers()))
     }
 
-    public func removeCompletedTransfer(transferId: String) {
-        completedTransfers.removeValue(forKey: transferId)
+    public func removeCompletedTransfer(transferID: UUID) {
+        completedTransfers.removeValue(forKey: transferID)
         notifyObservers(.transfersUpdated(items: getPendingTransfers()))
     }
 
     public func requestWatchLibrary() {
-        guard let session, session.activationState == .activated, session.isReachable else {
-            debugLog("[AppleWatchActor] Cannot request library - watch not reachable")
-            return
-        }
+        guard let session,
+            session.activationState == .activated,
+            session.isReachable,
+            connectedWatchContext() != nil,
+            let request = try? WatchProtocolMessage.watchLibraryRequest.encode()
+        else { return }
 
-        let message: [String: Any] = ["type": "requestLibrary"]
         session.sendMessage(
-            message,
+            request,
             replyHandler: { [weak self] response in
-                guard let self else { return }
-                let booksData = response["books"] as? Data
-                self.processLibraryResponse(booksData: booksData)
+                guard let message = try? WatchProtocolMessage.decode(from: response) else { return }
+                Task { await self?.handleWatchLibrary(message) }
             },
             errorHandler: { error in
                 debugLog("[AppleWatchActor] Failed to request library: \(error)")
@@ -399,193 +339,241 @@ public actor AppleWatchActor: NSObject {
         )
     }
 
-    nonisolated private func processLibraryResponse(booksData: Data?) {
-        Task {
-            await handleLibraryResponse(booksData: booksData)
-        }
-    }
+    public func deleteBookFromWatch(bookID: BookID, category: LocalMediaCategory) {
+        guard session?.activationState == .activated,
+            session?.isReachable == true,
+            connectedWatchContext()?.sourceIDs.contains(bookID.sourceID) == true
+        else { return }
 
-    private func handleLibraryResponse(booksData: Data?) {
-        guard let data = booksData else { return }
-
-        do {
-            let books = try JSONDecoder().decode([WatchBookInfo].self, from: data)
-            watchBooks = books
-            notifyObservers(.watchBooksUpdated(books: books))
-            debugLog("[AppleWatchActor] Received \(books.count) books from watch")
-        } catch {
-            debugLog("[AppleWatchActor] Failed to decode watch library: \(error)")
-        }
-    }
-
-    public func deleteBookFromWatch(bookUUID: String, category: LocalMediaCategory) {
-        guard let session, session.activationState == .activated else { return }
-
-        let message: [String: Any] = [
-            "type": "deleteBook",
-            "uuid": bookUUID,
-            "category": category.rawValue,
-        ]
-
-        session.sendMessage(
+        let message = WatchProtocolMessage.deleteBook(
+            WatchDeleteBookPayload(bookID: bookID, category: category)
+        )
+        send(
             message,
-            replyHandler: { [weak self] _ in
-                self?.triggerLibraryRefresh()
-            },
-            errorHandler: { error in
-                debugLog("[AppleWatchActor] Failed to delete book from watch: \(error)")
+            replyHandler: { [weak self] response in
+                guard case .acknowledgement = try? WatchProtocolMessage.decode(from: response)
+                else { return }
+                Task { await self?.requestWatchLibrary() }
             },
         )
     }
 
-    nonisolated private func triggerLibraryRefresh() {
-        Task {
-            await requestWatchLibrary()
-        }
+    private func handleWatchLibrary(_ message: WatchProtocolMessage) {
+        guard case .watchLibrary(let library) = message,
+            let context = connectedWatchContext(),
+            library.books.allSatisfy({ context.sourceIDs.contains($0.bookID.sourceID) })
+        else { return }
+
+        watchBooks = library.books
+        notifyObservers(.watchBooksUpdated(books: library.books))
     }
 
-    private func handleTransferComplete(transferId: String) {
-        guard var item = pendingTransfers.removeValue(forKey: transferId) else { return }
+    private func handleTransferComplete(transferID: UUID) {
+        guard let current = pendingTransfers.removeValue(forKey: transferID) else { return }
 
-        chunksCompleted.removeValue(forKey: transferId)
-        chunksExpected.removeValue(forKey: transferId)
-
-        item = WatchTransferItem(
-            id: item.id,
-            bookUUID: item.bookUUID,
-            bookTitle: item.bookTitle,
-            category: item.category,
+        chunksCompleted.removeValue(forKey: transferID)
+        chunksExpected.removeValue(forKey: transferID)
+        let completed = WatchTransferItem(
+            id: current.id,
+            bookID: current.bookID,
+            bookTitle: current.bookTitle,
+            category: current.category,
             state: .completed,
-            totalBytes: item.totalBytes,
-            transferredBytes: item.totalBytes,
-            startedAt: item.startedAt,
+            totalBytes: current.totalBytes,
+            transferredBytes: current.totalBytes,
+            startedAt: current.startedAt,
             completedAt: Date(),
         )
-
-        completedTransfers[transferId] = item
-        notifyObservers(.stateChanged(item: item))
+        completedTransfers[transferID] = completed
+        removeTransferFiles(transferID: transferID)
+        notifyObservers(.stateChanged(item: completed))
         notifyObservers(.transfersUpdated(items: getPendingTransfers()))
-
-        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(
-            "watch_chunks_\(transferId)",
-            isDirectory: true,
-        )
-        try? FileManager.default.removeItem(at: tempDir)
-
         requestWatchLibrary()
     }
 
-    private func handleChunkSent(transferId: String) {
-        guard var item = pendingTransfers[transferId] else { return }
+    private func handleChunkSent(transferID: UUID) {
+        guard let item = pendingTransfers[transferID],
+            let expected = chunksExpected[transferID]
+        else { return }
 
-        let completed = (chunksCompleted[transferId] ?? 0) + 1
-        chunksCompleted[transferId] = completed
+        let completed = (chunksCompleted[transferID] ?? 0) + 1
+        chunksCompleted[transferID] = completed
+        let progress = min(Double(completed) / Double(expected), 1)
+        _ = updateItem(
+            item,
+            state: .transferring(progress: progress),
+            transferredBytes: Int64(Double(item.totalBytes) * progress),
+        )
+    }
 
-        let expected = chunksExpected[transferId] ?? kChunkCount
-        let progress = Double(completed) / Double(expected)
-        let transferred = Int64(Double(item.totalBytes) * progress)
-
-        debugLog("[AppleWatchActor] Chunk sent: \(completed)/\(expected) for \(transferId)")
-
-        if completed >= expected {
-            handleTransferComplete(transferId: transferId)
+    private func handleFileTransferResult(transferID: UUID, errorMessage: String?) {
+        if let errorMessage {
+            cancelOutstandingFiles(transferID: transferID)
+            queueTransferCancellation(transferID: transferID)
+            chunksCompleted.removeValue(forKey: transferID)
+            chunksExpected.removeValue(forKey: transferID)
+            removeTransferFiles(transferID: transferID)
+            guard let item = pendingTransfers[transferID] else { return }
+            _ = updateItem(item, state: .failed(message: errorMessage))
         } else {
-            item = WatchTransferItem(
-                id: item.id,
-                bookUUID: item.bookUUID,
-                bookTitle: item.bookTitle,
-                category: item.category,
-                state: .transferring(progress: progress),
-                totalBytes: item.totalBytes,
-                transferredBytes: transferred,
-                startedAt: item.startedAt,
-                completedAt: nil,
-            )
-
-            pendingTransfers[transferId] = item
-            notifyObservers(.stateChanged(item: item))
+            handleChunkSent(transferID: transferID)
         }
+    }
+
+    private func cancelOutstandingFiles(transferID: UUID) {
+        guard let session else { return }
+        for transfer in session.outstandingFileTransfers {
+            guard let metadata = transfer.file.metadata,
+                case .chunkTransfer(let payload) = try? WatchProtocolMessage.decode(from: metadata),
+                payload.transferID == transferID
+            else { continue }
+            transfer.cancel()
+        }
+    }
+
+    private func reconcileOutstandingFileTransfers() {
+        guard let session else { return }
+        let activeTransferIDs = Set(pendingTransfers.keys)
+        var orphanedTransferIDs: Set<UUID> = []
+
+        for transfer in session.outstandingFileTransfers {
+            guard let metadata = transfer.file.metadata,
+                case .chunkTransfer(let payload) = try? WatchProtocolMessage.decode(from: metadata)
+            else {
+                transfer.cancel()
+                continue
+            }
+            guard !activeTransferIDs.contains(payload.transferID) else { continue }
+            transfer.cancel()
+            orphanedTransferIDs.insert(payload.transferID)
+        }
+
+        for transferID in orphanedTransferIDs {
+            chunksCompleted.removeValue(forKey: transferID)
+            chunksExpected.removeValue(forKey: transferID)
+            removeTransferFiles(transferID: transferID)
+            queueTransferCancellation(transferID: transferID)
+        }
+    }
+
+    private func queueTransferCancellation(transferID: UUID) {
+        guard let session else { return }
+        let alreadyQueued = session.outstandingUserInfoTransfers.contains { transfer in
+            guard case .cancelTransfer(let reference) = try? WatchProtocolMessage.decode(
+                from: transfer.userInfo
+            ) else { return false }
+            return reference.transferID == transferID
+        }
+        guard !alreadyQueued,
+            let envelope = try? WatchProtocolMessage.cancelTransfer(
+                WatchTransferReference(transferID: transferID)
+            ).encode()
+        else { return }
+        session.transferUserInfo(envelope)
+    }
+
+    private func removeTransferFiles(transferID: UUID) {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "watch_chunks_\(transferID.uuidString)",
+            isDirectory: true,
+        )
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    private func connectedWatchContext() -> WatchProtocolContext? {
+        guard let session,
+            case .context(let context) = try? WatchProtocolMessage.decode(
+                from: session.receivedApplicationContext
+            )
+        else { return nil }
+        return context
+    }
+
+    private func publishApplicationContext() async {
+        guard let session, session.activationState == .activated else { return }
+        let sourceIDs = await BookServiceActor.shared.bookSources
+            .filter { $0.kind == .storyteller }
+            .map(\.id)
+            .sorted()
+        do {
+            try session.updateApplicationContext(
+                WatchProtocolMessage.context(
+                    WatchProtocolContext(sourceIDs: sourceIDs)
+                ).encode()
+            )
+        } catch {
+            debugLog("[AppleWatchActor] Failed to publish application context: \(error)")
+        }
+    }
+
+    private func send(
+        _ message: WatchProtocolMessage,
+        replyHandler: (([String: Any]) -> Void)? = nil,
+    ) {
+        guard let session, let encoded = try? message.encode() else { return }
+        session.sendMessage(
+            encoded,
+            replyHandler: replyHandler,
+            errorHandler: { error in
+                debugLog("[AppleWatchActor] Failed to send \(message.kind.rawValue): \(error)")
+            },
+        )
     }
 
     // MARK: - Remote Playback Control
 
     public func startObservingSMILPlayer() {
-        guard smilObserverId == nil else { return }
-
-        let observerId = UUID()
-        smilObserverId = observerId
-
+        guard smilObserverID == nil else { return }
+        let observerID = UUID()
+        smilObserverID = observerID
         Task {
-            await SMILPlayerActor.shared.addStateObserver(id: observerId) { [weak self] state in
-                Task {
-                    await self?.handleSMILStateChange(state)
-                }
+            await SMILPlayerActor.shared.addStateObserver(id: observerID) { [weak self] _ in
+                Task { await self?.sendPlaybackStateToWatch() }
             }
         }
-        debugLog("[AppleWatchActor] Started observing SMIL player state")
     }
 
     public func stopObservingSMILPlayer() {
-        guard let observerId = smilObserverId else { return }
-        smilObserverId = nil
-
+        guard let observerID = smilObserverID else { return }
+        smilObserverID = nil
         Task {
-            await SMILPlayerActor.shared.removeStateObserver(id: observerId)
+            await SMILPlayerActor.shared.removeStateObserver(id: observerID)
         }
-        debugLog("[AppleWatchActor] Stopped observing SMIL player state")
-    }
-
-    @MainActor
-    private func handleSMILStateChange(_ state: SMILPlaybackState) async {
-        await sendPlaybackStateToWatch()
     }
 
     public func sendPlaybackStateToWatch() async {
-        guard let session, session.isReachable else { return }
-
-        let stateData = await buildRemotePlaybackState()
-
-        var message: [String: Any] = ["type": "playbackState"]
-        if let data = stateData {
-            message["state"] = data
+        guard session?.isReachable == true, connectedWatchContext() != nil else { return }
+        guard let state = await buildRemotePlaybackState() else {
+            send(.noPlaybackState)
+            return
         }
-
-        session.sendMessage(
-            message,
-            replyHandler: nil,
-            errorHandler: { error in
-                debugLog("[AppleWatchActor] Failed to send playback state: \(error)")
-            },
-        )
+        guard connectedWatchContext()?.sourceIDs.contains(state.bookID.sourceID) == true else {
+            return
+        }
+        send(.playbackState(state))
     }
 
-    private func buildRemotePlaybackState() async -> Data? {
+    private func buildRemotePlaybackState() async -> RemotePlaybackState? {
         guard let smilState = await SMILPlayerActor.shared.getCurrentState(),
             let bookID = smilState.bookID
         else { return nil }
 
-        let structure = await SMILPlayerActor.shared.getBookStructure()
-        let bookTitle = await SMILPlayerActor.shared.getLoadedBookTitle() ?? "Unknown"
-
-        let chapters =
-            structure
+        let chapters = await SMILPlayerActor.shared.getBookStructure()
             .filter { !$0.mediaOverlay.isEmpty }
             .enumerated()
-            .map { (idx, section) in
+            .map { index, section in
                 RemoteChapter(
-                    index: idx,
-                    title: section.label ?? "Chapter \(idx + 1)",
+                    index: index,
+                    title: section.label ?? "Chapter \(index + 1)",
                     sectionIndex: section.index,
                 )
             }
-        cachedChapters = chapters
-
         let currentChapterIndex =
             chapters.firstIndex { $0.sectionIndex == smilState.currentSectionIndex } ?? 0
 
-        let remoteState = RemotePlaybackState(
-            bookTitle: bookTitle,
-            bookId: bookID.uuid,
+        return RemotePlaybackState(
+            bookTitle: await SMILPlayerActor.shared.getLoadedBookTitle() ?? "Unknown",
+            bookID: bookID,
             chapterTitle: smilState.chapterLabel ?? "Chapter \(currentChapterIndex + 1)",
             currentChapterIndex: currentChapterIndex,
             chapters: chapters,
@@ -597,50 +585,234 @@ public actor AppleWatchActor: NSObject {
             playbackRate: smilState.playbackRate,
             volume: smilState.volume,
         )
-
-        return try? JSONEncoder().encode(remoteState)
     }
 
-    private func handlePlaybackControlCommand(
-        command: String,
-        intValue: Int?,
-        doubleValue: Double?,
-    )
-        async
-    {
+    private func handlePlaybackCommand(_ command: RemotePlaybackCommand) async {
         do {
             switch command {
-                case "togglePlayPause":
+                case .togglePlayPause:
                     try await SMILPlayerActor.shared.togglePlayPause()
-                case "skipForward":
+                case .skipForward:
                     await SMILPlayerActor.shared.skipForward(seconds: 30)
-                case "skipBackward":
+                case .skipBackward:
                     await SMILPlayerActor.shared.skipBackward(seconds: 30)
-                case "seekToChapter":
-                    if let sectionIndex = intValue {
-                        try await SMILPlayerActor.shared.seekToEntry(
-                            sectionIndex: sectionIndex,
-                            entryIndex: 0,
-                        )
-                    }
-                case "setPlaybackRate":
-                    if let rate = doubleValue {
-                        await SMILPlayerActor.shared.setPlaybackRate(rate)
-                    } else if let rate = intValue {
-                        await SMILPlayerActor.shared.setPlaybackRate(Double(rate))
-                    }
-                case "setVolume":
-                    if let volume = doubleValue {
-                        await SMILPlayerActor.shared.setVolume(volume)
-                    } else if let volume = intValue {
-                        await SMILPlayerActor.shared.setVolume(Double(volume))
-                    }
-                default:
-                    debugLog("[AppleWatchActor] Unknown playback command: \(command)")
+                case .seekToChapter(let sectionIndex):
+                    try await SMILPlayerActor.shared.seekToEntry(
+                        sectionIndex: sectionIndex,
+                        entryIndex: 0,
+                    )
+                case .setPlaybackRate(let rate):
+                    await SMILPlayerActor.shared.setPlaybackRate(rate)
+                case .setVolume(let volume):
+                    await SMILPlayerActor.shared.setVolume(volume)
             }
         } catch {
             debugLog("[AppleWatchActor] Playback command failed: \(error)")
         }
+    }
+
+    private func handleIncomingMessage(_ message: WatchProtocolMessage) async {
+        switch message {
+            case .progress(let payload):
+                await handleRelayedProgress(payload)
+            case .transferComplete(let reference):
+                guard pendingTransfers[reference.transferID] != nil else { return }
+                handleTransferComplete(transferID: reference.transferID)
+            case .cancelTransfer(let reference):
+                guard pendingTransfers[reference.transferID] != nil else { return }
+                cancelTransfer(transferID: reference.transferID, notifyWatch: false)
+            case .watchLibrary:
+                handleWatchLibrary(message)
+            case .playbackCommand(let command):
+                await handlePlaybackCommand(command)
+            case .playbackStateRequest:
+                await sendPlaybackStateToWatch()
+            default:
+                break
+        }
+    }
+
+    private func handleRequest(
+        _ message: WatchProtocolMessage,
+        replyHandler: SendableReplyHandler,
+    ) async {
+        switch message {
+            case .ping:
+                replyHandler.reply(.pong)
+            case .playbackStateRequest:
+                guard let context = connectedWatchContext(),
+                    let state = await buildRemotePlaybackState(),
+                    context.sourceIDs.contains(state.bookID.sourceID)
+                else {
+                    replyHandler.reply(.noPlaybackState)
+                    return
+                }
+                replyHandler.reply(.playbackState(state))
+            case .playbackCommand(let command):
+                await handlePlaybackCommand(command)
+                replyHandler.reply(.acknowledgement)
+            case .sourceCatalogRequest:
+                await publishApplicationContext()
+                replyHandler.reply(.sourceCatalog(await sourceCatalog()))
+            case .credentialRequest(let request):
+                guard let reply = await credentialReply(sourceID: request.sourceID) else {
+                    replyHandler.reply(
+                        .failure(WatchFailure(message: "No credentials configured"))
+                    )
+                    return
+                }
+                replyHandler.reply(.credentialReply(reply))
+            case .libraryMetadataRequest:
+                guard let context = connectedWatchContext() else {
+                    replyHandler.reply(
+                        .failure(WatchFailure(message: "Watch context unavailable"))
+                    )
+                    return
+                }
+                let allowedSourceIDs = Set(context.sourceIDs)
+                let books = await BookServiceActor.shared.librarySnapshot(policy: .cachedOnly).books
+                    .filter { allowedSourceIDs.contains($0.id.sourceID) }
+                replyHandler.reply(
+                    .libraryMetadataResponse(WatchLibraryMetadataResponse(books: books))
+                )
+            default:
+                replyHandler.reply(.failure(WatchFailure(message: "Unhandled request")))
+        }
+    }
+
+    private func sourceCatalog() async -> WatchSourceCatalog {
+        let sourceRecords = await BookServiceActor.shared.bookSources
+            .filter { $0.kind == .storyteller }
+        var sources: [WatchCredentialSourceInfo] = []
+        for record in sourceRecords {
+            guard let credentials = try? await AuthenticationActor.shared.loadCredentials(
+                sourceID: record.id
+            ) else { continue }
+            sources.append(
+                WatchCredentialSourceInfo(
+                    sourceID: record.id,
+                    name: record.name,
+                    url: credentials.url,
+                    username: credentials.username,
+                )
+            )
+        }
+        return WatchSourceCatalog(
+            sources: sources.sorted {
+                let comparison = $0.name.localizedCaseInsensitiveCompare($1.name)
+                return comparison == .orderedSame
+                    ? $0.sourceID < $1.sourceID : comparison == .orderedAscending
+            }
+        )
+    }
+
+    private func credentialReply(sourceID: BookSourceID) async -> WatchCredentialReply? {
+        guard let source = await BookServiceActor.shared.bookSources.first(where: {
+            $0.id == sourceID && $0.kind == .storyteller
+        }),
+            let credentials = try? await AuthenticationActor.shared.loadCredentials(
+                sourceID: sourceID
+            )
+        else { return nil }
+
+        return WatchCredentialReply(
+            sourceID: sourceID,
+            name: source.name,
+            url: credentials.url,
+            username: credentials.username,
+            password: credentials.password,
+        )
+    }
+
+    private func handleRelayedProgress(_ payload: WatchProgressPayload) async {
+        #if os(iOS)
+        let backgroundTask = await beginRelayBackgroundTask()
+        #endif
+
+        let sourceExists = await BookServiceActor.shared.bookSources.contains {
+            $0.id == payload.bookID.sourceID && $0.kind == .storyteller
+        }
+        if sourceExists {
+            _ = await ProgressSyncActor.shared.syncProgress(
+                bookID: payload.bookID,
+                locator: payload.locator,
+                timestamp: payload.timestamp,
+                reason: .relayedFromWatch,
+                sourceIdentifier: "Watch Relay",
+            )
+            #if os(iOS)
+            await ProgressUploadManager.shared.enqueuePendingUploads()
+            #endif
+        }
+
+        #if os(iOS)
+        await endRelayBackgroundTask(backgroundTask)
+        #endif
+    }
+
+    #if os(iOS)
+    private func beginRelayBackgroundTask() async -> UIBackgroundTaskIdentifier {
+        await MainActor.run {
+            var taskID: UIBackgroundTaskIdentifier = .invalid
+            taskID = UIApplication.shared.beginBackgroundTask(withName: "WatchProgressRelay") {
+                if taskID != .invalid {
+                    UIApplication.shared.endBackgroundTask(taskID)
+                    taskID = .invalid
+                }
+            }
+            return taskID
+        }
+    }
+
+    private func endRelayBackgroundTask(_ taskID: UIBackgroundTaskIdentifier) async {
+        await MainActor.run {
+            if taskID != .invalid {
+                UIApplication.shared.endBackgroundTask(taskID)
+            }
+        }
+    }
+    #endif
+
+    private func handleActivationComplete(
+        activationState: WCSessionActivationState,
+        error: Error?,
+    ) async {
+        if let error {
+            debugLog("[AppleWatchActor] Activation failed: \(error)")
+            return
+        }
+        guard activationState == .activated else { return }
+        reconcileOutstandingFileTransfers()
+        await publishApplicationContext()
+        guard connectedWatchContext() != nil else {
+            stopObservingSMILPlayer()
+            return
+        }
+        requestWatchLibrary()
+        if session?.isReachable == true {
+            startObservingSMILPlayer()
+        }
+    }
+
+    private func handleReachabilityChange(isReachable: Bool) async {
+        await publishApplicationContext()
+        let isCompatibleAndReachable = isReachable && connectedWatchContext() != nil
+        notifyObservers(.watchReachabilityChanged(isReachable: isCompatibleAndReachable))
+        if isCompatibleAndReachable {
+            requestWatchLibrary()
+            startObservingSMILPlayer()
+        } else {
+            stopObservingSMILPlayer()
+        }
+    }
+
+    private func handleApplicationContext(_: WatchProtocolContext) async {
+        await publishApplicationContext()
+        let isCompatibleAndReachable = session?.isReachable == true
+        notifyObservers(.watchReachabilityChanged(isReachable: isCompatibleAndReachable))
+        guard isCompatibleAndReachable else { return }
+        requestWatchLibrary()
+        startObservingSMILPlayer()
     }
 }
 
@@ -651,54 +823,29 @@ extension AppleWatchActor: WCSessionDelegate {
         error: Error?,
     ) {
         Task {
-            await self.handleActivationComplete(activationState: activationState, error: error)
+            await self.handleActivationComplete(
+                activationState: activationState,
+                error: error,
+            )
         }
     }
 
     #if os(iOS)
-    nonisolated public func sessionDidBecomeInactive(_ session: WCSession) {
-        debugLog("[AppleWatchActor] Session became inactive")
-    }
+    nonisolated public func sessionDidBecomeInactive(_ session: WCSession) {}
 
     nonisolated public func sessionDidDeactivate(_ session: WCSession) {
-        debugLog("[AppleWatchActor] Session deactivated")
-        Task {
-            await self.activate()
-        }
+        Task { await self.activate() }
     }
     #endif
 
     nonisolated public func sessionReachabilityDidChange(_ session: WCSession) {
         let isReachable = session.isReachable
-        Task {
-            await self.handleReachabilityChange(isReachable: isReachable)
-        }
+        Task { await self.handleReachabilityChange(isReachable: isReachable) }
     }
 
-    nonisolated public func session(_ session: WCSession, didReceiveMessage message: [String: Any])
-    {
-        let messageType = message["type"] as? String
-
-        if messageType == "playbackControl" {
-            if let command = message["command"] as? String {
-                let intValue = message["value"] as? Int
-                let doubleValue = message["value"] as? Double
-                Task {
-                    await self.handlePlaybackControlCommand(
-                        command: command,
-                        intValue: intValue,
-                        doubleValue: doubleValue,
-                    )
-                }
-            }
-            return
-        }
-
-        let uuid = message["uuid"] as? String
-        let category = message["category"] as? String
-        Task {
-            await self.handleMessage(type: messageType, uuid: uuid, category: category)
-        }
+    nonisolated public func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
+        guard let decoded = try? WatchProtocolMessage.decode(from: message) else { return }
+        Task { await self.handleIncomingMessage(decoded) }
     }
 
     nonisolated public func session(
@@ -706,89 +853,32 @@ extension AppleWatchActor: WCSessionDelegate {
         didReceiveMessage message: [String: Any],
         replyHandler: @escaping ([String: Any]) -> Void,
     ) {
-        let messageType = message["type"] as? String
-        switch messageType {
-            case "ping":
-                replyHandler(["status": "ok"])
-            case "requestPlaybackState":
-                let sendableReply = SendableReplyHandler(replyHandler)
-                Task {
-                    let stateData = await self.buildRemotePlaybackState()
-                    let response: [String: Any]
-                    if let data = stateData {
-                        response = ["state": data]
-                    } else {
-                        response = ["state": NSNull()]
-                    }
-                    sendableReply.reply(response)
-                }
-            case "playbackControl":
-                if let command = message["command"] as? String {
-                    let intValue = message["value"] as? Int
-                    let doubleValue = message["value"] as? Double
-                    Task {
-                        await self.handlePlaybackControlCommand(
-                            command: command,
-                            intValue: intValue,
-                            doubleValue: doubleValue,
-                        )
-                    }
-                }
-                replyHandler(["status": "ok"])
-            case "requestCredentials":
-                let sendableReply = SendableReplyHandler(replyHandler)
-                let sourceID = message["sourceID"] as? BookSourceID
-                Task {
-                    do {
-                        if let resolvedSourceID = await self.storytellerSourceID(for: sourceID),
-                            let credentials = try await AuthenticationActor.shared.loadCredentials(
-                                sourceID: resolvedSourceID
-                            )
-                        {
-                            sendableReply.reply([
-                                "sourceID": resolvedSourceID,
-                                "url": credentials.url,
-                                "username": credentials.username,
-                                "password": credentials.password,
-                            ])
-                        } else {
-                            sendableReply.reply(["error": "No credentials configured"])
-                        }
-                    } catch {
-                        sendableReply.reply(["error": "Failed to load credentials"])
-                    }
-                }
-            case "requestLibraryMetadata":
-                let sendableReply = SendableReplyHandler(replyHandler)
-                Task {
-                    let metadata = await BookServiceActor.shared.librarySnapshot(
-                        policy: .cachedOnly
-                    ).books
-                    if metadata.isEmpty {
-                        sendableReply.reply(["error": "No library metadata available"])
-                    } else if let data = try? JSONEncoder().encode(metadata) {
-                        sendableReply.reply(["metadata": data])
-                    } else {
-                        sendableReply.reply(["error": "Failed to encode metadata"])
-                    }
-                }
-            default:
-                replyHandler(["error": "Unhandled message type"])
+        let sendableReply = SendableReplyHandler(replyHandler)
+        guard let decoded = try? WatchProtocolMessage.decode(from: message) else {
+            sendableReply.reply(
+                .failure(WatchFailure(message: "Incompatible watch protocol"))
+            )
+            return
         }
+        Task { await self.handleRequest(decoded, replyHandler: sendableReply) }
     }
 
-    private func storytellerSourceID(for sourceID: BookSourceID?) async -> BookSourceID? {
-        let storytellerSources = await BookServiceActor.shared.bookSources
-            .filter { $0.kind == .storyteller }
-        if let sourceID,
-            storytellerSources.contains(where: { $0.id == sourceID })
-        {
-            return sourceID
-        }
-        guard storytellerSources.count == 1 else {
-            return nil
-        }
-        return storytellerSources.first?.id
+    nonisolated public func session(
+        _ session: WCSession,
+        didReceiveUserInfo userInfo: [String: Any] = [:],
+    ) {
+        guard let decoded = try? WatchProtocolMessage.decode(from: userInfo) else { return }
+        Task { await self.handleIncomingMessage(decoded) }
+    }
+
+    nonisolated public func session(
+        _ session: WCSession,
+        didReceiveApplicationContext applicationContext: [String: Any],
+    ) {
+        guard case .context(let context) = try? WatchProtocolMessage.decode(
+            from: applicationContext
+        ) else { return }
+        Task { await self.handleApplicationContext(context) }
     }
 
     nonisolated public func session(
@@ -796,217 +886,18 @@ extension AppleWatchActor: WCSessionDelegate {
         didFinish fileTransfer: WCSessionFileTransfer,
         error: Error?,
     ) {
-        let transferId = fileTransfer.file.metadata?["transferId"] as? String
+        guard let metadata = fileTransfer.file.metadata,
+            case .chunkTransfer(let payload) = try? WatchProtocolMessage.decode(from: metadata),
+            payload.bookMetadata.id == payload.bookID
+        else { return }
         let errorMessage = error?.localizedDescription
-        debugLog(
-            "[AppleWatchActor] didFinish called - transferId: \(transferId ?? "nil"), error: \(errorMessage ?? "none")"
-        )
         Task {
-            await self.handleFileTransferComplete(
-                transferId: transferId,
+            await self.handleFileTransferResult(
+                transferID: payload.transferID,
                 errorMessage: errorMessage,
             )
         }
     }
-
-    nonisolated public func session(
-        _ session: WCSession,
-        didReceiveUserInfo userInfo: [String: Any] = [:],
-    ) {
-        let messageType = userInfo["type"] as? String
-        debugLog("[AppleWatchActor] didReceiveUserInfo - type: \(messageType ?? "nil")")
-
-        if messageType == WatchProgressRelayMessage.type,
-            let payloadData = userInfo[WatchProgressRelayMessage.payloadKey] as? Data
-        {
-            Task {
-                await self.handleRelayedProgress(payloadData)
-            }
-            return
-        }
-
-        let uuid = userInfo["uuid"] as? String
-        let category = userInfo["category"] as? String
-        Task {
-            await self.handleMessage(type: messageType, uuid: uuid, category: category)
-        }
-    }
-
-    private func handleActivationComplete(activationState: WCSessionActivationState, error: Error?)
-    {
-        isActivated = activationState == .activated
-        if let error {
-            debugLog("[AppleWatchActor] Activation failed: \(error)")
-        } else {
-            debugLog("[AppleWatchActor] Session activated: \(activationState.rawValue)")
-
-            // Clear any stuck transfers from previous sessions
-            if let session {
-                let stuckCount = session.outstandingFileTransfers.count
-                if stuckCount > 0 {
-                    debugLog(
-                        "[AppleWatchActor] Clearing \(stuckCount) stuck transfers from previous session"
-                    )
-                    for transfer in session.outstandingFileTransfers {
-                        transfer.cancel()
-                    }
-                }
-            }
-
-            requestWatchLibrary()
-            if session?.isReachable == true {
-                startObservingSMILPlayer()
-            }
-        }
-    }
-
-    private func handleReachabilityChange(isReachable: Bool) {
-        notifyObservers(.watchReachabilityChanged(isReachable: isReachable))
-        if isReachable {
-            requestWatchLibrary()
-            startObservingSMILPlayer()
-        } else {
-            stopObservingSMILPlayer()
-        }
-    }
-
-    private func handleFileTransferComplete(transferId: String?, errorMessage: String?) {
-        guard let transferId else {
-            debugLog("[AppleWatchActor] File transfer completed without transfer ID")
-            return
-        }
-
-        if let errorMessage {
-            debugLog("[AppleWatchActor] Chunk transfer failed: \(errorMessage)")
-            if var item = pendingTransfers[transferId] {
-                item = updateItem(item, state: .failed(message: errorMessage))
-                _ = item
-            }
-            chunksCompleted.removeValue(forKey: transferId)
-        } else {
-            handleChunkSent(transferId: transferId)
-        }
-    }
-
-    private func handleRelayedProgress(_ payloadData: Data) async {
-        // The app may have been background-launched solely for this WC delivery;
-        // buy time for the decode + server POST before the system suspends us.
-        #if os(iOS)
-        let backgroundTask = await beginRelayBackgroundTask()
-        #endif
-
-        await processRelayedProgress(payloadData)
-
-        #if os(iOS)
-        await endRelayBackgroundTask(backgroundTask)
-        #endif
-    }
-
-    private func processRelayedProgress(_ payloadData: Data) async {
-        let payload: WatchProgressRelayPayload
-        do {
-            payload = try JSONDecoder().decode(WatchProgressRelayPayload.self, from: payloadData)
-        } catch {
-            debugLog("[AppleWatchActor] Failed to decode relayed progress: \(error)")
-            return
-        }
-
-        let sourceID = await resolveRelayedSourceID(
-            bookId: payload.bookId,
-            advisory: payload.sourceID,
-        )
-        guard let sourceID else {
-            debugLog("[AppleWatchActor] Rejected relayed progress with unresolved source")
-            return
-        }
-        let bookID = BookID(sourceID: sourceID, uuid: payload.bookId)
-        debugLog(
-            "[AppleWatchActor] Relayed progress for \(bookID) ts=\(payload.timestamp)"
-        )
-
-        _ = await ProgressSyncActor.shared.syncProgress(
-            bookID: bookID,
-            locator: payload.locator,
-            timestamp: payload.timestamp,
-            reason: .relayedFromWatch,
-            sourceIdentifier: "Watch Relay",
-        )
-
-        // Kick the uploader regardless of this relay's outcome: a duplicate or
-        // older relay still signals that unsent queue entries may exist (e.g. a
-        // prior enqueue failed), and the manager dedupes against in-flight tasks
-        #if os(iOS)
-        await ProgressUploadManager.shared.enqueuePendingUploads()
-        #endif
-    }
-
-    private func resolveRelayedSourceID(
-        bookId: String,
-        advisory: BookSourceID?,
-    ) async -> BookSourceID? {
-        // Source ids are per-device random UUIDs, so the sender's sourceID may not
-        // exist here; prefer this device's own record of the book.
-        let books = await BookServiceActor.shared.librarySnapshot(policy: .cachedOnly).books
-        if let sourceID = books.first(where: { $0.uuid == bookId })?.sourceID {
-            return sourceID
-        }
-        return await storytellerSourceID(for: advisory)
-    }
-
-    #if os(iOS)
-    private func beginRelayBackgroundTask() async -> UIBackgroundTaskIdentifier {
-        await MainActor.run {
-            var taskId: UIBackgroundTaskIdentifier = .invalid
-            taskId = UIApplication.shared.beginBackgroundTask(withName: "WatchProgressRelay") {
-                if taskId != .invalid {
-                    UIApplication.shared.endBackgroundTask(taskId)
-                    taskId = .invalid
-                }
-            }
-            return taskId
-        }
-    }
-
-    private func endRelayBackgroundTask(_ taskId: UIBackgroundTaskIdentifier) async {
-        await MainActor.run {
-            if taskId != .invalid {
-                UIApplication.shared.endBackgroundTask(taskId)
-            }
-        }
-    }
-    #endif
-
-    private func handleMessage(type: String?, uuid: String?, category: String?) {
-        guard let type else { return }
-
-        switch type {
-            case "transferComplete":
-                if let uuid, let category {
-                    let transferId = "\(uuid)-\(category)"
-                    debugLog(
-                        "[AppleWatchActor] Watch confirmed all chunks received for: \(transferId)"
-                    )
-                    handleTransferComplete(transferId: transferId)
-                }
-            case "cancelTransfer":
-                if let uuid, let category, let cat = LocalMediaCategory(rawValue: category) {
-                    debugLog(
-                        "[AppleWatchActor] Watch requested transfer cancellation: \(uuid) \(category)"
-                    )
-                    for (transferId, item) in pendingTransfers {
-                        if item.bookUUID == uuid && item.category == cat {
-                            cancelTransfer(transferId: transferId)
-                            break
-                        }
-                    }
-                }
-            case "libraryUpdated":
-                requestWatchLibrary()
-            default:
-                debugLog("[AppleWatchActor] Unknown message type: \(type)")
-        }
-    }
-
 }
 
 struct SendableReplyHandler: @unchecked Sendable {
@@ -1016,44 +907,9 @@ struct SendableReplyHandler: @unchecked Sendable {
         self.handler = handler
     }
 
-    func reply(_ response: [String: Any]) {
-        handler(response)
-    }
-}
-
-public struct ChunkTransferMetadata: Codable, Sendable {
-    public let uuid: String
-    public let title: String
-    public let authors: [String]
-    public let sourceID: BookSourceID?
-    public let category: String
-    public let chunkIndex: Int
-    public let totalChunks: Int
-    public let totalFileSize: Int64
-    public let fileExtension: String
-    public let bookMetadata: BookMetadata?
-}
-
-enum WatchTransferError: Error, LocalizedError {
-    case sessionNotActive
-    case watchNotPaired
-    case failedToOpenArchive(String)
-    case transferFailed(String)
-    case fileNotFound(String)
-
-    var errorDescription: String? {
-        switch self {
-            case .sessionNotActive:
-                return "Watch session is not active"
-            case .watchNotPaired:
-                return "No Apple Watch is paired"
-            case .failedToOpenArchive(let path):
-                return "Failed to open archive: \(path)"
-            case .transferFailed(let reason):
-                return "Transfer failed: \(reason)"
-            case .fileNotFound(let path):
-                return "File not found: \(path)"
-        }
+    func reply(_ message: WatchProtocolMessage) {
+        guard let encoded = try? message.encode() else { return }
+        handler(encoded)
     }
 }
 
@@ -1076,7 +932,6 @@ public actor AppleWatchActor {
     }
 
     public func removeObserver(_ id: UUID) {}
-
     public func isWatchPaired() -> Bool { false }
     public func isWatchReachable() -> Bool { false }
     public func getPendingTransfers() -> [WatchTransferItem] { [] }
@@ -1089,18 +944,39 @@ public actor AppleWatchActor {
         throw WatchTransferError.notSupported
     }
 
-    public func cancelTransfer(transferId: String) {}
-    public func removeCompletedTransfer(transferId: String) {}
+    public func cancelTransfer(transferID: UUID) {}
+    public func removeCompletedTransfer(transferID: UUID) {}
     public func requestWatchLibrary() {}
-    public func deleteBookFromWatch(bookUUID: String, category: LocalMediaCategory) {}
-}
-
-enum WatchTransferError: Error, LocalizedError {
-    case notSupported
-
-    var errorDescription: String? {
-        "Apple Watch transfers not supported on this platform"
-    }
+    public func deleteBookFromWatch(bookID: BookID, category: LocalMediaCategory) {}
 }
 
 #endif
+
+enum WatchTransferError: Error, LocalizedError {
+    case sessionNotActive
+    case watchNotPaired
+    case watchUpdateRequired
+    case sourceNotAvailable
+    case transferFailed(String)
+    case fileNotFound(String)
+    case notSupported
+
+    var errorDescription: String? {
+        switch self {
+            case .sessionNotActive:
+                "Watch session is not active"
+            case .watchNotPaired:
+                "No Apple Watch is paired"
+            case .watchUpdateRequired:
+                "Update Silveran Reader on Apple Watch before sending books."
+            case .sourceNotAvailable:
+                "This book's source is not configured on Apple Watch."
+            case .transferFailed(let reason):
+                "Transfer failed: \(reason)"
+            case .fileNotFound(let path):
+                "File not found: \(path)"
+            case .notSupported:
+                "Apple Watch transfers not supported on this platform"
+        }
+    }
+}

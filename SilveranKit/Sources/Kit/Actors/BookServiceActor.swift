@@ -203,15 +203,23 @@ public actor BookServiceActor {
         -> BookSourceRecord?
     {
         await ensureSourceRegistryLoaded()
-
-        let now = SilveranDate.isoTimestamp(from: Date())
         let sourceID = await sourceIDForNewSource(
             kind: configuration.kind,
             configuredPath: configuration.storagePath,
         )
-        if sourceRecords.contains(where: { $0.id == sourceID }) {
+        return await createBookSource(id: sourceID, configuration: configuration)
+    }
+
+    public func createBookSource(
+        id sourceID: BookSourceID,
+        configuration: BookSourceConfiguration,
+    ) async -> BookSourceRecord? {
+        await ensureSourceRegistryLoaded()
+
+        if sourceID.isEmpty || sourceRecords.contains(where: { $0.id == sourceID }) {
             return nil
         }
+        let now = SilveranDate.isoTimestamp(from: Date())
         let storageURL = await storageURLForNewSource(
             kind: configuration.kind,
             sourceID: sourceID,

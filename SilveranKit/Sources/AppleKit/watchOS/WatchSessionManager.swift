@@ -7,36 +7,24 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
     public static let shared = WatchSessionManager()
 
     private var session: WCSession?
-    nonisolated(unsafe) private var cachedBookInfos: [WatchBookInfoResponse] = []
+    nonisolated(unsafe) private var cachedBookInfos: [WatchBookInfo] = []
 
     nonisolated(unsafe) var onTransferProgress: ((String, Int, Int) -> Void)?
-    nonisolated(unsafe) var onTransferComplete: ((String, String) -> Void)?  // (uuid, title)
-    nonisolated(unsafe) var onImportComplete: ((Bool) -> Void)?  // success
+    nonisolated(unsafe) var onTransferComplete: ((BookID, String) -> Void)?
+    nonisolated(unsafe) var onImportComplete: ((Bool) -> Void)?
     nonisolated(unsafe) var onBookDeleted: (() -> Void)?
     nonisolated(unsafe) var onPlaybackStateReceived: ((RemotePlaybackState?) -> Void)?
-    nonisolated(unsafe) var onCredentialsReceived: ((String, String, String) -> Void)?
+    nonisolated(unsafe) var onCredentialSourcesReceived:
+        (([WatchCredentialSourceInfo]) -> Void)?
+    nonisolated(unsafe) var onCredentialsReceived: ((WatchCredentialReply) -> Void)?
 
     private override init() {
         super.init()
     }
 
-    public func refreshCachedBooks() {
-        Task {
-            let books = await BookServiceActor.shared.librarySnapshot(policy: .cachedOnly).books
-            cachedBookInfos = books.map { book in
-                WatchBookInfoResponse(
-                    id: book.uuid,
-                    title: book.title,
-                    authorNames: book.authors?.compactMap { $0.name } ?? [],
-                    category: "synced",
-                    sizeBytes: 0,
-                )
-            }
-        }
-    }
-
     public var isPhoneReachable: Bool {
-        session?.isReachable ?? false
+        guard let session, session.isReachable else { return false }
+        return protocolContext(from: session.receivedApplicationContext) != nil
     }
 
     public func activate() {
@@ -45,11 +33,52 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
         wcSession.delegate = self
         wcSession.activate()
         session = wcSession
+
         refreshCachedBooks()
         Task {
             _ = await ProgressSyncActor.shared.addObserver {
                 Task { await WatchSessionManager.shared.relayPendingProgress() }
             }
+        }
+    }
+
+    public func refreshCachedBooks() {
+        Task {
+            let snapshot = await BookServiceActor.shared.librarySnapshot(policy: .cachedOnly)
+            cachedBookInfos = snapshot.books.flatMap { book -> [WatchBookInfo] in
+                guard let paths = snapshot.cachedMediaPaths[book.id] else { return [] }
+                let categories: [LocalMediaCategory] = [
+                    paths.ebookPath == nil ? nil : .ebook,
+                    paths.audioPath == nil ? nil : .audio,
+                    paths.syncedPath == nil ? nil : .synced,
+                ].compactMap { $0 }
+                return categories.map { category in
+                    WatchBookInfo(
+                        bookID: book.id,
+                        title: book.title,
+                        authorNames: book.authors?.compactMap(\.name) ?? [],
+                        category: category,
+                        sizeBytes: 0,
+                    )
+                }
+            }
+        }
+    }
+
+    public func publishProtocolContext() async {
+        guard let session else { return }
+        let sourceIDs = await BookServiceActor.shared.bookSources
+            .filter { $0.kind == .storyteller }
+            .map(\.id)
+            .sorted()
+        do {
+            try session.updateApplicationContext(
+                try WatchProtocolMessage.context(
+                    WatchProtocolContext(sourceIDs: sourceIDs)
+                ).encode()
+            )
+        } catch {
+            print("[WatchSessionManager] Failed to publish protocol context: \(error)")
         }
     }
 
@@ -60,13 +89,24 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
     ) {
         if let error {
             print("[WatchSessionManager] Activation error: \(error)")
-        } else {
-            print("[WatchSessionManager] Session activated: \(activationState.rawValue)")
+            return
+        }
+        guard activationState == .activated else { return }
+        Task { await publishProtocolContext() }
+    }
+
+    public func session(
+        _ session: WCSession,
+        didReceiveApplicationContext applicationContext: [String: Any],
+    ) {
+        guard protocolContext(from: applicationContext) != nil else {
+            print("[WatchSessionManager] Ignored non-v2 application context")
+            return
         }
     }
 
     public func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
-        handleMessage(message, replyHandler: nil)
+        handleEnvelope(message, replyHandler: nil)
     }
 
     public func session(
@@ -74,415 +114,372 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
         didReceiveMessage message: [String: Any],
         replyHandler: @escaping ([String: Any]) -> Void,
     ) {
-        handleMessage(message, replyHandler: replyHandler)
+        handleEnvelope(message, replyHandler: replyHandler)
     }
 
-    private func handleMessage(_ message: [String: Any], replyHandler: (([String: Any]) -> Void)?) {
-        guard let type = message["type"] as? String else {
-            replyHandler?(["error": "Unknown message type"])
+    public func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any] = [:]) {
+        handleEnvelope(userInfo, replyHandler: nil)
+    }
+
+    private func handleEnvelope(
+        _ envelope: [String: Any],
+        replyHandler: (([String: Any]) -> Void)?,
+    ) {
+        let message: WatchProtocolMessage
+        do {
+            message = try WatchProtocolMessage.decode(from: envelope)
+        } catch {
+            reply(.failure(WatchFailure(message: "Watch protocol v2 required")), to: replyHandler)
             return
         }
 
-        switch type {
-            case "deleteBook":
-                handleDeleteBook(message, replyHandler: replyHandler)
-            case "requestLibrary":
-                handleLibraryRequest(replyHandler: replyHandler)
-            case "cancelTransfer":
-                handleCancelTransfer(message, replyHandler: replyHandler)
-            case "playbackState":
-                handlePlaybackState(message)
-                replyHandler?(["status": "ok"])
-            default:
-                replyHandler?(["error": "Unhandled message type: \(type)"])
+        if case .cancelTransfer(let reference) = message {
+            WatchStorageManager.shared.cancelChunkedTransfer(
+                transferID: reference.transferID
+            )
+            reply(.acknowledgement, to: replyHandler)
+            return
         }
-    }
 
-    private func handlePlaybackState(_ message: [String: Any]) {
-        if let stateData = message["state"] as? Data {
-            do {
-                let state = try JSONDecoder().decode(RemotePlaybackState.self, from: stateData)
+        guard canSendToPhone else {
+            reply(.failure(WatchFailure(message: "Watch protocol v2 required")), to: replyHandler)
+            return
+        }
+
+        switch message {
+            case .deleteBook(let payload):
+                handleDeleteBook(payload, replyHandler: replyHandler)
+            case .cancelTransfer:
+                return
+            case .watchLibraryRequest:
+                reply(
+                    .watchLibrary(WatchLibrary(books: cachedBookInfos)),
+                    to: replyHandler,
+                )
+            case .playbackState(let state):
                 onPlaybackStateReceived?(state)
-            } catch {
-                print("[WatchSessionManager] Failed to decode playback state: \(error)")
+                reply(.acknowledgement, to: replyHandler)
+            case .noPlaybackState:
                 onPlaybackStateReceived?(nil)
-            }
-        } else {
-            onPlaybackStateReceived?(nil)
+                reply(.acknowledgement, to: replyHandler)
+            case .ping:
+                reply(.pong, to: replyHandler)
+            default:
+                reply(
+                    .failure(WatchFailure(message: "Unsupported watch message")),
+                    to: replyHandler,
+                )
         }
     }
 
     private func handleDeleteBook(
-        _ message: [String: Any],
+        _ payload: WatchDeleteBookPayload,
         replyHandler: (([String: Any]) -> Void)?,
     ) {
-        guard let uuid = message["uuid"] as? String,
-            let sourceID = message["sourceID"] as? BookSourceID,
-            let categoryString = message["category"] as? String
-        else {
-            replyHandler?(["error": "Missing book identity or category"])
-            return
-        }
-
-        let category: LocalMediaCategory = categoryString == "synced" ? .synced : .ebook
-
+        let sendableReply = replyHandler.map(SendableWatchReplyHandler.init)
         Task {
-            try? await BookServiceActor.shared.deleteCachedMedia(
-                for: BookID(sourceID: sourceID, uuid: uuid),
-                category: category,
+            let sourceIDs = Set(
+                await BookServiceActor.shared.bookSources
+                    .filter { $0.kind == .storyteller }
+                    .map(\.id)
             )
-            refreshCachedBooks()
-            await MainActor.run {
-                onBookDeleted?()
+            guard sourceIDs.contains(payload.bookID.sourceID) else {
+                sendableReply?.reply(
+                    try? WatchProtocolMessage.failure(
+                        WatchFailure(message: "Unknown book source")
+                    ).encode()
+                )
+                return
+            }
+
+            do {
+                try await BookServiceActor.shared.deleteCachedMedia(
+                    for: payload.bookID,
+                    category: payload.category,
+                )
+                refreshCachedBooks()
+                await MainActor.run { onBookDeleted?() }
+                sendableReply?.reply(try? WatchProtocolMessage.acknowledgement.encode())
+            } catch {
+                sendableReply?.reply(
+                    try? WatchProtocolMessage.failure(
+                        WatchFailure(message: error.localizedDescription)
+                    ).encode()
+                )
             }
         }
-        replyHandler?(["status": "ok"])
     }
 
-    private func handleCancelTransfer(
-        _ message: [String: Any],
-        replyHandler: (([String: Any]) -> Void)?,
-    ) {
-        guard let uuid = message["uuid"] as? String,
-            let category = message["category"] as? String
-        else {
-            replyHandler?(["error": "Missing uuid or category"])
-            return
+    public func requestCredentialSourcesFromPhone() {
+        sendRequest(.sourceCatalogRequest) { [weak self] response in
+            guard case .sourceCatalog(let catalog) = response, let self else {
+                self?.deliverCredentialSources([])
+                return
+            }
+            let sourceIDs = catalog.sources.map(\.sourceID)
+            guard sourceIDs.allSatisfy({ !$0.isEmpty }), Set(sourceIDs).count == sourceIDs.count
+            else {
+                self.deliverCredentialSources([])
+                return
+            }
+            self.deliverCredentialSources(catalog.sources)
+        } onError: { [weak self] error in
+            print("[WatchSessionManager] Source catalog request failed: \(error)")
+            self?.deliverCredentialSources([])
         }
-
-        WatchStorageManager.shared.cancelChunkedTransfer(uuid: uuid, category: category)
-        replyHandler?(["status": "ok"])
     }
 
-    public func requestCredentialsFromPhone(sourceID: BookSourceID?) {
-        guard let session, session.isReachable else {
-            print("[WatchSessionManager] iPhone not reachable for credentials request")
-            return
+    public func requestCredentialsFromPhone(sourceID: BookSourceID) {
+        sendRequest(
+            .credentialRequest(WatchCredentialRequest(sourceID: sourceID))
+        ) { [weak self] response in
+            guard case .credentialReply(let credentials) = response,
+                credentials.sourceID == sourceID
+            else {
+                print("[WatchSessionManager] Invalid credential reply")
+                return
+            }
+            let callback = self?.onCredentialsReceived
+            Task { @MainActor in callback?(credentials) }
+        } onError: { error in
+            print("[WatchSessionManager] Credential request failed: \(error)")
         }
-
-        var message: [String: Any] = ["type": "requestCredentials"]
-        if let sourceID {
-            message["sourceID"] = sourceID
-        }
-        session.sendMessage(
-            message,
-            replyHandler: { [weak self] reply in
-                guard let url = reply["url"] as? String,
-                    let username = reply["username"] as? String,
-                    let password = reply["password"] as? String
-                else {
-                    print("[WatchSessionManager] Invalid credentials reply from iPhone")
-                    return
-                }
-
-                let callback = self?.onCredentialsReceived
-                Task { @MainActor in
-                    callback?(url, username, password)
-                }
-            },
-            errorHandler: { error in
-                print("[WatchSessionManager] Failed to request credentials: \(error)")
-            },
-        )
     }
 
-    private func handleLibraryRequest(replyHandler: (([String: Any]) -> Void)?) {
-        do {
-            let data = try JSONEncoder().encode(cachedBookInfos)
-            replyHandler?(["books": data])
-        } catch {
-            replyHandler?(["error": "Failed to encode library"])
-        }
+    private func deliverCredentialSources(_ sources: [WatchCredentialSourceInfo]) {
+        let callback = onCredentialSourcesReceived
+        Task { @MainActor in callback?(sources) }
     }
 
     public func session(_ session: WCSession, didReceive file: WCSessionFile) {
-        print(
-            "[WatchSessionManager] didReceive file called! URL: \(file.fileURL.lastPathComponent)"
-        )
-        print(
-            "[WatchSessionManager] metadata keys: \(file.metadata?.keys.joined(separator: ", ") ?? "none")"
-        )
-
-        guard let fileMetadata = file.metadata,
-            let metadataData = fileMetadata["chunkMetadata"] as? Data
+        guard let envelope = file.metadata,
+            let message = try? WatchProtocolMessage.decode(from: envelope),
+            case .chunkTransfer(let payload) = message,
+            validIncomingChunk(payload)
         else {
-            print("[WatchSessionManager] Received file with no chunk metadata")
+            print("[WatchSessionManager] Rejected non-v2 or invalid file transfer")
             return
         }
 
-        let chunkMetadata: ChunkTransferMetadata
+        let quarantineDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("watch-incoming", isDirectory: true)
+        let quarantinedURL = quarantineDirectory.appendingPathComponent(UUID().uuidString)
         do {
-            chunkMetadata = try JSONDecoder().decode(
-                ChunkTransferMetadata.self,
-                from: metadataData,
+            try FileManager.default.createDirectory(
+                at: quarantineDirectory,
+                withIntermediateDirectories: true,
             )
+            try FileManager.default.moveItem(at: file.fileURL, to: quarantinedURL)
         } catch {
-            print("[WatchSessionManager] Failed to decode chunk metadata: \(error)")
+            print("[WatchSessionManager] Failed to retain received chunk: \(error)")
             return
         }
 
-        print(
-            "[WatchSessionManager] Received chunk \(chunkMetadata.chunkIndex + 1)/\(chunkMetadata.totalChunks) for: \(chunkMetadata.title) [\(chunkMetadata.category)]"
-        )
-
-        let result = WatchStorageManager.shared.receiveChunk(
-            from: file.fileURL,
-            metadata: chunkMetadata,
-        )
-
-        onTransferProgress?(
-            chunkMetadata.title,
-            chunkMetadata.chunkIndex + 1,
-            chunkMetadata.totalChunks,
-        )
-
-        if result.isComplete, let manifest = result.manifest {
-            print(
-                "[WatchSessionManager] All chunks received for: \(chunkMetadata.title) [\(chunkMetadata.category)]"
-            )
-
-            onTransferComplete?(chunkMetadata.uuid, chunkMetadata.title)
-
-            Task {
-                let success = await importTransferredBook(manifest: manifest)
-                await MainActor.run {
-                    onImportComplete?(success)
-                }
-            }
-
-            notifyPhone(bookUUID: chunkMetadata.uuid, category: chunkMetadata.category)
+        Task {
+            await processReceivedChunk(at: quarantinedURL, payload: payload)
         }
     }
 
-    private func importTransferredBook(manifest: TransferManifest) async -> Bool {
-        guard let tempURL = WatchStorageManager.shared.assembleChunksToTempFile(manifest: manifest)
+    private func validIncomingChunk(_ payload: WatchChunkTransferPayload) -> Bool {
+        payload.bookMetadata.id == payload.bookID
+            && payload.totalChunks > 0
+            && payload.chunkIndex >= 0
+            && payload.chunkIndex < payload.totalChunks
+            && payload.totalFileSize >= 0
+            && !payload.fileExtension.isEmpty
+    }
+
+    private func processReceivedChunk(
+        at quarantinedURL: URL,
+        payload: WatchChunkTransferPayload,
+    ) async {
+        let sourceIDs = Set(
+            await BookServiceActor.shared.bookSources
+                .filter { $0.kind == .storyteller }
+                .map(\.id)
+        )
+        guard sourceIDs.contains(payload.bookID.sourceID), validIncomingChunk(payload)
         else {
-            print("[WatchSessionManager] Failed to assemble chunks")
-            return false
+            try? FileManager.default.removeItem(at: quarantinedURL)
+            return
         }
 
-        let category: LocalMediaCategory = manifest.category == "synced" ? .synced : .ebook
-
-        let bookMetadata: BookMetadata
-        if let transferredMetadata = manifest.bookMetadata {
-            bookMetadata = transferredMetadata
-        } else {
-            guard let sourceID = manifest.sourceID else {
-                try? FileManager.default.removeItem(at: tempURL)
-                return false
-            }
-            let authors: [BookCreator] = manifest.authors.map { name in
-                BookCreator(
-                    uuid: nil,
-                    id: nil,
-                    name: name,
-                    fileAs: nil,
-                    role: nil,
-                    createdAt: nil,
-                    updatedAt: nil,
-                )
-            }
-            bookMetadata = BookMetadata(
-                bookID: BookID(sourceID: sourceID, uuid: manifest.uuid),
-                title: manifest.title,
-                subtitle: nil,
-                description: nil,
-                language: nil,
-                createdAt: nil,
-                updatedAt: nil,
-                publicationDate: nil,
-                authors: authors,
-                narrators: nil,
-                creators: nil,
-                series: nil,
-                tags: nil,
-                collections: nil,
-                ebook: nil,
-                audiobook: nil,
-                readaloud: nil,
-                status: nil,
-                position: nil,
-                rating: nil,
-            )
+        let result = WatchStorageManager.shared.receiveChunk(
+            from: quarantinedURL,
+            payload: payload,
+        )
+        guard result.accepted else {
+            try? FileManager.default.removeItem(at: quarantinedURL)
+            return
         }
+
+        onTransferProgress?(
+            payload.title,
+            payload.chunkIndex + 1,
+            payload.totalChunks,
+        )
+
+        guard result.isComplete, let manifest = result.manifest else { return }
+        onTransferComplete?(manifest.bookID, manifest.title)
+
+        let success = await importTransferredBook(manifest)
+        await MainActor.run { onImportComplete?(success) }
+        guard success else { return }
+        notifyPhoneTransferComplete(transferID: manifest.transferID)
+    }
+
+    private func importTransferredBook(_ manifest: WatchTransferManifest) async -> Bool {
+        let sourceIDs = Set(
+            await BookServiceActor.shared.bookSources
+                .filter { $0.kind == .storyteller }
+                .map(\.id)
+        )
+        guard sourceIDs.contains(manifest.bookID.sourceID),
+            manifest.bookMetadata.id == manifest.bookID,
+            let tempURL = WatchStorageManager.shared.assembleChunksToTempFile(manifest: manifest)
+        else { return false }
 
         do {
-            await mergeBookMetadataIntoLMA(bookMetadata)
-
+            try await mergeBookMetadataIntoLibrary(manifest.bookMetadata)
             try await BookServiceActor.shared.importDownloadedFileToCache(
                 from: tempURL,
-                metadata: bookMetadata,
-                category: category,
+                metadata: manifest.bookMetadata,
+                category: manifest.category,
                 filename: "book.\(manifest.fileExtension)",
             )
-            print("[WatchSessionManager] Imported book to LMA: \(manifest.title)")
             refreshCachedBooks()
             return true
         } catch {
-            print("[WatchSessionManager] Failed to import book to LMA: \(error)")
             try? FileManager.default.removeItem(at: tempURL)
+            print("[WatchSessionManager] Failed to import transfer: \(error)")
             return false
         }
     }
 
-    private func mergeBookMetadataIntoLMA(_ book: BookMetadata) async {
-        var current = await BookServiceActor.shared.librarySnapshot(policy: .cachedOnly).books
+    private func mergeBookMetadataIntoLibrary(_ book: BookMetadata) async throws {
+        var sourceBooks = await BookServiceActor.shared
+            .librarySnapshot(policy: .cachedOnly).books
             .filter { $0.sourceID == book.sourceID }
 
-        if let idx = current.firstIndex(where: { $0.id == book.id }) {
-            if isNewer(book, than: current[idx]) {
-                current[idx] = book
+        if let index = sourceBooks.firstIndex(where: { $0.id == book.id }) {
+            if isNewer(book, than: sourceBooks[index]) {
+                sourceBooks[index] = book
             }
         } else {
-            current.append(book)
+            sourceBooks.append(book)
         }
 
-        try? await BookServiceActor.shared.updateLibraryCacheMetadata(
-            current,
+        try await BookServiceActor.shared.updateLibraryCacheMetadata(
+            sourceBooks,
             replacingSourceID: book.sourceID,
         )
     }
 
-    private func isNewer(_ newBook: BookMetadata, than existingBook: BookMetadata) -> Bool {
-        // Prioritize position timestamp comparison for reading progress
-        let newPositionTimestamp = newBook.position?.timestamp ?? 0
-        let existingPositionTimestamp = existingBook.position?.timestamp ?? 0
-
-        if newPositionTimestamp != 0 || existingPositionTimestamp != 0 {
-            return newPositionTimestamp > existingPositionTimestamp
+    private func isNewer(_ incoming: BookMetadata, than current: BookMetadata) -> Bool {
+        let incomingPositionTimestamp = incoming.position?.timestamp ?? 0
+        let currentPositionTimestamp = current.position?.timestamp ?? 0
+        if incomingPositionTimestamp != 0 || currentPositionTimestamp != 0 {
+            return incomingPositionTimestamp > currentPositionTimestamp
         }
-
-        // Fallback to book metadata updatedAt for non-position data
-        guard let newDateStr = newBook.updatedAt else { return false }
-        guard let existingDateStr = existingBook.updatedAt else { return true }
-        return newDateStr > existingDateStr
+        guard let incomingUpdatedAt = incoming.updatedAt else { return false }
+        guard let currentUpdatedAt = current.updatedAt else { return true }
+        return incomingUpdatedAt > currentUpdatedAt
     }
 
     public func requestLibraryMetadataFromPhone() async -> Bool {
-        guard let session, session.isReachable else {
-            print("[WatchSessionManager] iPhone not reachable for library metadata request")
+        guard canSendToPhone else { return false }
+
+        return await withCheckedContinuation { continuation in
+            sendRequest(.libraryMetadataRequest) { [weak self] response in
+                guard case .libraryMetadataResponse(let metadata) = response,
+                    let self
+                else {
+                    continuation.resume(returning: false)
+                    return
+                }
+                Task {
+                    let result = await self.mergePhoneMetadata(metadata.books)
+                    continuation.resume(returning: result)
+                }
+            } onError: { error in
+                print("[WatchSessionManager] Library metadata request failed: \(error)")
+                continuation.resume(returning: false)
+            }
+        }
+    }
+
+    private func mergePhoneMetadata(_ phoneBooks: [BookMetadata]) async -> Bool {
+        let configured = Set(
+            await BookServiceActor.shared.bookSources
+                .filter { $0.kind == .storyteller }
+                .map(\.id)
+        )
+        guard phoneBooks.allSatisfy({ configured.contains($0.sourceID) }) else {
+            print("[WatchSessionManager] Rejected metadata for an unknown source")
             return false
         }
 
-        return await withCheckedContinuation { continuation in
-            let message: [String: Any] = ["type": "requestLibraryMetadata"]
-            session.sendMessage(
-                message,
-                replyHandler: { [weak self] reply in
-                    guard let self else {
-                        continuation.resume(returning: false)
-                        return
-                    }
-                    self.handleLibraryMetadataReply(reply, continuation: continuation)
-                },
-                errorHandler: { error in
-                    print("[WatchSessionManager] Failed to request library metadata: \(error)")
-                    continuation.resume(returning: false)
-                },
-            )
-        }
-    }
-
-    private func handleLibraryMetadataReply(
-        _ reply: [String: Any],
-        continuation: CheckedContinuation<Bool, Never>,
-    ) {
-        guard let metadataData = reply["metadata"] as? Data else {
-            print("[WatchSessionManager] No metadata in phone reply")
-            continuation.resume(returning: false)
-            return
-        }
-
-        do {
-            let phoneMetadata = try JSONDecoder().decode([BookMetadata].self, from: metadataData)
-            Task {
-                await self.mergePhoneMetadataIntoLMA(phoneMetadata)
-                print("[WatchSessionManager] Merged \(phoneMetadata.count) books from iPhone")
-                continuation.resume(returning: true)
-            }
-        } catch {
-            print("[WatchSessionManager] Failed to decode phone metadata: \(error)")
-            continuation.resume(returning: false)
-        }
-    }
-
-    private func mergePhoneMetadataIntoLMA(_ phoneBooks: [BookMetadata]) async {
         let cached = await BookServiceActor.shared.librarySnapshot(policy: .cachedOnly).books
-
-        for (sourceID, incoming) in Dictionary(grouping: phoneBooks, by: \.sourceID) {
-            var current = cached.filter { $0.sourceID == sourceID }
-            for phoneBook in incoming {
-                if let idx = current.firstIndex(where: { $0.id == phoneBook.id }) {
-                    if isNewer(phoneBook, than: current[idx]) {
-                        current[idx] = phoneBook
+        do {
+            for (sourceID, incomingBooks) in Dictionary(grouping: phoneBooks, by: \.sourceID) {
+                var sourceBooks = cached.filter { $0.sourceID == sourceID }
+                for incoming in incomingBooks {
+                    if let index = sourceBooks.firstIndex(where: { $0.id == incoming.id }) {
+                        if isNewer(incoming, than: sourceBooks[index]) {
+                            sourceBooks[index] = incoming
+                        }
+                    } else {
+                        sourceBooks.append(incoming)
                     }
-                } else {
-                    current.append(phoneBook)
                 }
+                try await BookServiceActor.shared.updateLibraryCacheMetadata(
+                    sourceBooks,
+                    replacingSourceID: sourceID,
+                )
             }
-            try? await BookServiceActor.shared.updateLibraryCacheMetadata(
-                current,
-                replacingSourceID: sourceID,
-            )
+            refreshCachedBooks()
+            return true
+        } catch {
+            print("[WatchSessionManager] Failed to merge phone metadata: \(error)")
+            return false
         }
     }
 
     public func relayPendingProgress() async {
-        guard let session, session.activationState == .activated else { return }
-
+        guard let session, canSendToPhone else { return }
+        let advertisedSources = phoneSourceIDs
+        let outstanding = session.outstandingUserInfoTransfers
         let pending = await ProgressSyncActor.shared.getPendingProgressSyncs()
             .filter { !$0.syncedToStoryteller }
-        guard !pending.isEmpty else { return }
 
-        let outstanding = session.outstandingUserInfoTransfers
-
-        for item in pending {
+        for item in pending where advertisedSources.contains(item.bookID.sourceID) {
             var alreadyQueued = false
             for transfer in outstanding {
-                guard
-                    transfer.userInfo[WatchProgressRelayMessage.typeKey] as? String
-                        == WatchProgressRelayMessage.type,
-                    let queuedData = transfer.userInfo[WatchProgressRelayMessage.payloadKey]
-                        as? Data,
-                    let queued = try? JSONDecoder().decode(
-                        WatchProgressRelayPayload.self,
-                        from: queuedData,
-                    ),
-                    queued.bookId == item.bookID.uuid,
-                    queued.sourceID == item.bookID.sourceID
+                guard let message = try? WatchProtocolMessage.decode(from: transfer.userInfo),
+                    case .progress(let queued) = message,
+                    queued.bookID == item.bookID
                 else { continue }
-                let queuedTimestamp =
-                    transfer.userInfo[WatchProgressRelayMessage.timestampKey] as? Double ?? 0
-                if queuedTimestamp >= item.timestamp {
+
+                if queued.timestamp >= item.timestamp {
                     alreadyQueued = true
                 } else {
                     transfer.cancel()
                 }
             }
-            if alreadyQueued { continue }
+            guard !alreadyQueued else { continue }
 
-            let payload = WatchProgressRelayPayload(
-                bookId: item.bookID.uuid,
-                sourceID: item.bookID.sourceID,
-                locator: item.locator,
-                timestamp: item.timestamp,
-            )
-            guard let payloadData = try? JSONEncoder().encode(payload) else {
-                print("[WatchSessionManager] Failed to encode progress relay for \(item.bookID)")
-                continue
+            do {
+                let envelope = try WatchProtocolMessage.progress(
+                    WatchProgressPayload(
+                        bookID: item.bookID,
+                        locator: item.locator,
+                        timestamp: item.timestamp,
+                    )
+                ).encode()
+                session.transferUserInfo(envelope)
+            } catch {
+                print("[WatchSessionManager] Failed to queue progress: \(error)")
             }
-
-            // transferUserInfo queues persistently and delivers in the background
-            // when the phone is in range, even if both apps are terminated
-            session.transferUserInfo([
-                WatchProgressRelayMessage.typeKey: WatchProgressRelayMessage.type,
-                WatchProgressRelayMessage.bookIdKey: item.bookID.uuid,
-                WatchProgressRelayMessage.timestampKey: item.timestamp,
-                WatchProgressRelayMessage.payloadKey: payloadData,
-            ])
-            print(
-                "[WatchSessionManager] Queued progress relay for \(item.bookID) ts=\(item.timestamp)"
-            )
         }
     }
 
@@ -492,104 +489,126 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
         error: Error?,
     ) {
         guard let error else { return }
-        let type = userInfoTransfer.userInfo[WatchProgressRelayMessage.typeKey] as? String
-        print(
-            "[WatchSessionManager] userInfo transfer failed (type: \(type ?? "unknown")): \(error)"
-        )
+        let kind = try? WatchProtocolMessage.decode(from: userInfoTransfer.userInfo).kind
+        print("[WatchSessionManager] \(kind?.rawValue ?? "invalid") transfer failed: \(error)")
     }
 
-    private func notifyPhone(bookUUID: String, category: String) {
-        guard let session else { return }
-        let message: [String: Any] = [
-            "type": "transferComplete",
-            "uuid": bookUUID,
-            "category": category,
-        ]
-        // Use transferUserInfo instead of sendMessage - it queues for background
-        // delivery even when the phone is asleep, whereas sendMessage requires
-        // active reachability and silently fails otherwise
-        session.transferUserInfo(message)
-        print("[WatchSessionManager] Queued transferComplete via transferUserInfo for \(bookUUID)")
+    private func notifyPhoneTransferComplete(transferID: UUID) {
+        guard let session, session.activationState == .activated else { return }
+        do {
+            session.transferUserInfo(
+                try WatchProtocolMessage.transferComplete(
+                    WatchTransferReference(transferID: transferID)
+                ).encode()
+            )
+        } catch {
+            print("[WatchSessionManager] Failed to report completed transfer: \(error)")
+        }
     }
-
-    // MARK: - Remote Playback Control
 
     public func requestPlaybackState() {
-        guard let session, session.isReachable else {
-            print("[WatchSessionManager] iPhone not reachable for playback state request")
-            onPlaybackStateReceived?(nil)
-            return
+        sendRequest(.playbackStateRequest) { [weak self] response in
+            switch response {
+                case .playbackState(let state): self?.onPlaybackStateReceived?(state)
+                case .noPlaybackState: self?.onPlaybackStateReceived?(nil)
+                default: self?.onPlaybackStateReceived?(nil)
+            }
+        } onError: { [weak self] error in
+            print("[WatchSessionManager] Playback state request failed: \(error)")
+            self?.onPlaybackStateReceived?(nil)
         }
-
-        let message: [String: Any] = ["type": "requestPlaybackState"]
-        session.sendMessage(
-            message,
-            replyHandler: { [weak self] reply in
-                if let stateData = reply["state"] as? Data {
-                    do {
-                        let state = try JSONDecoder().decode(
-                            RemotePlaybackState.self,
-                            from: stateData,
-                        )
-                        self?.onPlaybackStateReceived?(state)
-                    } catch {
-                        print(
-                            "[WatchSessionManager] Failed to decode playback state reply: \(error)"
-                        )
-                        self?.onPlaybackStateReceived?(nil)
-                    }
-                } else {
-                    self?.onPlaybackStateReceived?(nil)
-                }
-            },
-            errorHandler: { error in
-                print("[WatchSessionManager] Failed to request playback state: \(error)")
-                self.onPlaybackStateReceived?(nil)
-            },
-        )
     }
 
     public func sendPlaybackCommand(_ command: RemotePlaybackCommand) {
-        guard let session, session.isReachable else {
-            print("[WatchSessionManager] iPhone not reachable for playback command")
+        send(.playbackCommand(command))
+    }
+
+    private var canSendToPhone: Bool {
+        guard let session,
+            session.activationState == .activated,
+            protocolContext(from: session.receivedApplicationContext) != nil
+        else { return false }
+        return true
+    }
+
+    private var phoneSourceIDs: Set<BookSourceID> {
+        guard let session,
+            let context = protocolContext(from: session.receivedApplicationContext)
+        else { return [] }
+        return Set(context.sourceIDs)
+    }
+
+    private func protocolContext(from envelope: [String: Any]) -> WatchProtocolContext? {
+        guard let message = try? WatchProtocolMessage.decode(from: envelope),
+            case .context(let context) = message
+        else { return nil }
+        return context
+    }
+
+    private func send(_ message: WatchProtocolMessage) {
+        guard let session, session.isReachable, canSendToPhone else { return }
+        do {
+            session.sendMessage(
+                try message.encode(),
+                replyHandler: nil,
+                errorHandler: { error in
+                    print("[WatchSessionManager] Send failed: \(error)")
+                },
+            )
+        } catch {
+            print("[WatchSessionManager] Failed to encode message: \(error)")
+        }
+    }
+
+    private func sendRequest(
+        _ message: WatchProtocolMessage,
+        onReply: @escaping @Sendable (WatchProtocolMessage) -> Void,
+        onError: @escaping @Sendable (Error) -> Void,
+    ) {
+        guard let session, session.isReachable, canSendToPhone else {
+            onError(WatchSessionError.phoneUnavailable)
             return
         }
-
-        var message: [String: Any] = ["type": "playbackControl"]
-
-        switch command {
-            case .togglePlayPause:
-                message["command"] = "togglePlayPause"
-            case .skipForward:
-                message["command"] = "skipForward"
-            case .skipBackward:
-                message["command"] = "skipBackward"
-            case .seekToChapter(let sectionIndex):
-                message["command"] = "seekToChapter"
-                message["value"] = sectionIndex
-            case .setPlaybackRate(let rate):
-                message["command"] = "setPlaybackRate"
-                message["value"] = rate
-            case .setVolume(let volume):
-                message["command"] = "setVolume"
-                message["value"] = volume
+        do {
+            session.sendMessage(
+                try message.encode(),
+                replyHandler: { envelope in
+                    do {
+                        onReply(try WatchProtocolMessage.decode(from: envelope))
+                    } catch {
+                        onError(error)
+                    }
+                },
+                errorHandler: onError,
+            )
+        } catch {
+            onError(error)
         }
+    }
 
-        session.sendMessage(
-            message,
-            replyHandler: nil,
-            errorHandler: { error in
-                print("[WatchSessionManager] Failed to send playback command: \(error)")
-            },
-        )
+    private func reply(
+        _ message: WatchProtocolMessage,
+        to replyHandler: (([String: Any]) -> Void)?,
+    ) {
+        guard let replyHandler, let envelope = try? message.encode() else { return }
+        replyHandler(envelope)
     }
 }
 
-private struct WatchBookInfoResponse: Codable {
-    let id: String
-    let title: String
-    let authorNames: [String]
-    let category: String
-    let sizeBytes: Int64
+private struct SendableWatchReplyHandler: @unchecked Sendable {
+    let handler: ([String: Any]) -> Void
+
+    init(_ handler: @escaping ([String: Any]) -> Void) {
+        self.handler = handler
+    }
+
+    func reply(_ response: [String: Any]?) {
+        guard let response else { return }
+        handler(response)
+    }
+}
+
+private enum WatchSessionError: Error {
+    case phoneUnavailable
 }
 #endif

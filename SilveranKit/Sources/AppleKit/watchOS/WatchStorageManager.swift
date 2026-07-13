@@ -2,171 +2,247 @@
 import Foundation
 import SilveranKit
 
-public final class WatchStorageManager: Sendable {
+public final class WatchStorageManager: @unchecked Sendable {
     public static let shared = WatchStorageManager()
 
+    private let transferLock = NSLock()
+    private var cancelledTransferIDs: Set<UUID> = []
     private var fileManager: FileManager { FileManager.default }
 
     private var chunksDirectory: URL {
-        let docs = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!
-        return docs.appendingPathComponent("chunks", isDirectory: true)
+        SilveranPlatform.applicationSupportDirectory()
+            .appendingPathComponent("WatchTransfersV2", isDirectory: true)
     }
 
     private init() {
-        ensureDirectoriesExist()
-    }
-
-    private func ensureDirectoriesExist() {
-        try? fileManager.createDirectory(at: chunksDirectory, withIntermediateDirectories: true)
-    }
-
-    private func getChunkDirectory(uuid: String, category: String) -> URL {
-        chunksDirectory.appendingPathComponent("\(uuid)_\(category)", isDirectory: true)
-    }
-
-    private func getChunkManifestURL(uuid: String, category: String) -> URL {
-        getChunkDirectory(uuid: uuid, category: category).appendingPathComponent("manifest.json")
-    }
-
-    public struct ChunkResult {
-        public let isComplete: Bool
-        public let manifest: TransferManifest?
-    }
-
-    public func receiveChunk(from sourceURL: URL, metadata: ChunkTransferMetadata) -> ChunkResult {
-        let chunkDir = getChunkDirectory(uuid: metadata.uuid, category: metadata.category)
-
-        do {
-            try fileManager.createDirectory(at: chunkDir, withIntermediateDirectories: true)
-
-            let chunkFileName = "chunk_\(String(format: "%03d", metadata.chunkIndex))"
-            let destURL = chunkDir.appendingPathComponent(chunkFileName)
-
-            if fileManager.fileExists(atPath: destURL.path) {
-                try fileManager.removeItem(at: destURL)
-            }
-            try fileManager.moveItem(at: sourceURL, to: destURL)
-
-            var manifest = loadOrCreateManifest(
-                uuid: metadata.uuid,
-                category: metadata.category,
-                metadata: metadata,
-            )
-            manifest.receivedChunks.insert(metadata.chunkIndex)
-            saveManifest(manifest, uuid: metadata.uuid, category: metadata.category)
-
-            print(
-                "[WatchStorageManager] Saved chunk \(metadata.chunkIndex + 1)/\(metadata.totalChunks)"
-            )
-
-            if manifest.receivedChunks.count == metadata.totalChunks {
-                return ChunkResult(isComplete: true, manifest: manifest)
-            }
-
-            return ChunkResult(isComplete: false, manifest: nil)
-
-        } catch {
-            print("[WatchStorageManager] Failed to save chunk: \(error)")
-            return ChunkResult(isComplete: false, manifest: nil)
-        }
-    }
-
-    private func loadOrCreateManifest(
-        uuid: String,
-        category: String,
-        metadata: ChunkTransferMetadata,
-    ) -> TransferManifest {
-        let manifestURL = getChunkManifestURL(uuid: uuid, category: category)
-
-        if fileManager.fileExists(atPath: manifestURL.path),
-            let data = try? Data(contentsOf: manifestURL),
-            var manifest = try? JSONDecoder().decode(TransferManifest.self, from: data)
-        {
-            if manifest.bookMetadata == nil, let bookMeta = metadata.bookMetadata {
-                manifest.bookMetadata = bookMeta
-            }
-            if manifest.sourceID == nil, let sourceID = metadata.sourceID {
-                manifest.sourceID = sourceID
-            }
-            return manifest
-        }
-
-        return TransferManifest(
-            uuid: metadata.uuid,
-            title: metadata.title,
-            authors: metadata.authors,
-            sourceID: metadata.sourceID,
-            category: metadata.category,
-            totalChunks: metadata.totalChunks,
-            totalFileSize: metadata.totalFileSize,
-            fileExtension: metadata.fileExtension,
-            receivedChunks: [],
-            bookMetadata: metadata.bookMetadata,
+        try? fileManager.createDirectory(
+            at: chunksDirectory,
+            withIntermediateDirectories: true,
         )
     }
 
-    private func saveManifest(_ manifest: TransferManifest, uuid: String, category: String) {
-        let manifestURL = getChunkManifestURL(uuid: uuid, category: category)
-        if let data = try? JSONEncoder().encode(manifest) {
-            try? data.write(to: manifestURL)
+    public struct ChunkResult {
+        public let accepted: Bool
+        public let isComplete: Bool
+        public let manifest: WatchTransferManifest?
+    }
+
+    public func receiveChunk(
+        from sourceURL: URL,
+        payload: WatchChunkTransferPayload,
+    ) -> ChunkResult {
+        transferLock.lock()
+        defer { transferLock.unlock() }
+
+        do {
+            guard !cancelledTransferIDs.contains(payload.transferID) else {
+                throw WatchStorageError.cancelledTransfer
+            }
+            try validate(payload)
+
+            let chunkDirectory = chunkDirectory(for: payload.transferID)
+            try fileManager.createDirectory(
+                at: chunkDirectory,
+                withIntermediateDirectories: true,
+            )
+
+            var manifest = try loadOrCreateManifest(for: payload)
+            guard manifest.matches(payload) else {
+                throw WatchStorageError.transferMetadataChanged
+            }
+
+            let destination = chunkURL(
+                transferID: payload.transferID,
+                chunkIndex: payload.chunkIndex,
+            )
+            if fileManager.fileExists(atPath: destination.path) {
+                try fileManager.removeItem(at: destination)
+            }
+            try fileManager.moveItem(at: sourceURL, to: destination)
+
+            manifest.receivedChunks.insert(payload.chunkIndex)
+            try saveManifest(manifest)
+
+            let complete = manifest.receivedChunks.count == manifest.totalChunks
+            return ChunkResult(
+                accepted: true,
+                isComplete: complete,
+                manifest: complete ? manifest : nil,
+            )
+        } catch {
+            print("[WatchStorageManager] Rejected chunk: \(error)")
+            return ChunkResult(accepted: false, isComplete: false, manifest: nil)
         }
     }
 
-    public func assembleChunksToTempFile(manifest: TransferManifest) -> URL? {
-        let chunkDir = getChunkDirectory(uuid: manifest.uuid, category: manifest.category)
-        let tempDir = fileManager.temporaryDirectory
-        let fileName = "book.\(manifest.fileExtension)"
-        let destURL = tempDir.appendingPathComponent("\(manifest.uuid)_\(fileName)")
+    public func assembleChunksToTempFile(manifest: WatchTransferManifest) -> URL? {
+        transferLock.lock()
+        defer { transferLock.unlock() }
 
         do {
-            if fileManager.fileExists(atPath: destURL.path) {
-                try fileManager.removeItem(at: destURL)
+            try validate(manifest)
+
+            let destination = fileManager.temporaryDirectory
+                .appendingPathComponent(manifest.transferID.uuidString)
+                .appendingPathExtension(manifest.fileExtension)
+            if fileManager.fileExists(atPath: destination.path) {
+                try fileManager.removeItem(at: destination)
             }
 
-            fileManager.createFile(atPath: destURL.path, contents: nil)
-            let outputHandle = try FileHandle(forWritingTo: destURL)
-            defer { try? outputHandle.close() }
+            guard fileManager.createFile(atPath: destination.path, contents: nil) else {
+                throw WatchStorageError.couldNotCreateOutput
+            }
+            let output = try FileHandle(forWritingTo: destination)
+            defer { try? output.close() }
 
-            var totalWritten: Int64 = 0
+            var bytesWritten: Int64 = 0
             for chunkIndex in 0..<manifest.totalChunks {
-                let chunkFileName = "chunk_\(String(format: "%03d", chunkIndex))"
-                let chunkURL = chunkDir.appendingPathComponent(chunkFileName)
-
-                let chunkData = try Data(contentsOf: chunkURL)
-                try outputHandle.write(contentsOf: chunkData)
-                totalWritten += Int64(chunkData.count)
+                let data = try Data(
+                    contentsOf: chunkURL(
+                        transferID: manifest.transferID,
+                        chunkIndex: chunkIndex,
+                    )
+                )
+                try output.write(contentsOf: data)
+                bytesWritten += Int64(data.count)
             }
 
-            print("[WatchStorageManager] Assembled file: \(fileName), size: \(totalWritten) bytes")
+            guard bytesWritten == manifest.totalFileSize else {
+                try? fileManager.removeItem(at: destination)
+                throw WatchStorageError.fileSizeMismatch
+            }
 
-            try? fileManager.removeItem(at: chunkDir)
-
-            return destURL
-
+            try fileManager.removeItem(at: chunkDirectory(for: manifest.transferID))
+            return destination
         } catch {
-            print("[WatchStorageManager] Failed to assemble chunks: \(error)")
+            print("[WatchStorageManager] Failed to assemble transfer: \(error)")
             return nil
         }
     }
 
-    public func cancelChunkedTransfer(uuid: String, category: String) {
-        let chunkDir = getChunkDirectory(uuid: uuid, category: category)
-        try? fileManager.removeItem(at: chunkDir)
-        print("[WatchStorageManager] Cancelled transfer for \(uuid)_\(category)")
+    public func cancelChunkedTransfer(transferID: UUID) {
+        transferLock.lock()
+        defer { transferLock.unlock() }
+
+        cancelledTransferIDs.insert(transferID)
+        try? fileManager.removeItem(at: chunkDirectory(for: transferID))
+    }
+
+    private func loadOrCreateManifest(
+        for payload: WatchChunkTransferPayload
+    ) throws -> WatchTransferManifest {
+        let url = manifestURL(for: payload.transferID)
+        if fileManager.fileExists(atPath: url.path) {
+            let manifest = try JSONDecoder().decode(
+                WatchTransferManifest.self,
+                from: Data(contentsOf: url),
+            )
+            try validatePartial(manifest)
+            return manifest
+        }
+
+        return WatchTransferManifest(
+            transferID: payload.transferID,
+            bookID: payload.bookID,
+            category: payload.category,
+            title: payload.title,
+            authors: payload.authors,
+            totalChunks: payload.totalChunks,
+            totalFileSize: payload.totalFileSize,
+            fileExtension: payload.fileExtension,
+            bookMetadata: payload.bookMetadata,
+            receivedChunks: [],
+        )
+    }
+
+    private func saveManifest(_ manifest: WatchTransferManifest) throws {
+        let data = try JSONEncoder().encode(manifest)
+        try data.write(to: manifestURL(for: manifest.transferID), options: .atomic)
+    }
+
+    private func validate(_ payload: WatchChunkTransferPayload) throws {
+        guard payload.bookMetadata.id == payload.bookID else {
+            throw WatchStorageError.bookIdentityMismatch
+        }
+        guard payload.totalChunks > 0,
+            payload.chunkIndex >= 0,
+            payload.chunkIndex < payload.totalChunks,
+            payload.totalFileSize >= 0,
+            !payload.fileExtension.isEmpty
+        else {
+            throw WatchStorageError.invalidTransferMetadata
+        }
+    }
+
+    private func validate(_ manifest: WatchTransferManifest) throws {
+        try validatePartial(manifest)
+        guard manifest.receivedChunks == Set(0..<manifest.totalChunks) else {
+            throw WatchStorageError.incompleteTransfer
+        }
+    }
+
+    private func validatePartial(_ manifest: WatchTransferManifest) throws {
+        guard manifest.bookMetadata.id == manifest.bookID else {
+            throw WatchStorageError.bookIdentityMismatch
+        }
+        guard manifest.totalChunks > 0,
+            manifest.totalFileSize >= 0,
+            !manifest.fileExtension.isEmpty,
+            manifest.receivedChunks.allSatisfy({
+                $0 >= 0 && $0 < manifest.totalChunks
+            })
+        else {
+            throw WatchStorageError.invalidTransferMetadata
+        }
+    }
+
+    private func chunkDirectory(for transferID: UUID) -> URL {
+        chunksDirectory.appendingPathComponent(transferID.uuidString, isDirectory: true)
+    }
+
+    private func manifestURL(for transferID: UUID) -> URL {
+        chunkDirectory(for: transferID).appendingPathComponent("manifest.json")
+    }
+
+    private func chunkURL(transferID: UUID, chunkIndex: Int) -> URL {
+        chunkDirectory(for: transferID)
+            .appendingPathComponent("chunk_\(String(format: "%03d", chunkIndex))")
     }
 }
 
-public struct TransferManifest: Codable {
-    public let uuid: String
+public struct WatchTransferManifest: Codable, Sendable {
+    public let transferID: UUID
+    public let bookID: BookID
+    public let category: LocalMediaCategory
     public let title: String
     public let authors: [String]
-    public var sourceID: BookSourceID?
-    public let category: String
     public let totalChunks: Int
     public let totalFileSize: Int64
     public let fileExtension: String
+    public let bookMetadata: BookMetadata
     public var receivedChunks: Set<Int>
-    public var bookMetadata: BookMetadata?
+
+    fileprivate func matches(_ payload: WatchChunkTransferPayload) -> Bool {
+        transferID == payload.transferID
+            && bookID == payload.bookID
+            && category == payload.category
+            && title == payload.title
+            && authors == payload.authors
+            && totalChunks == payload.totalChunks
+            && totalFileSize == payload.totalFileSize
+            && fileExtension == payload.fileExtension
+            && bookMetadata == payload.bookMetadata
+            && payload.bookMetadata.id == payload.bookID
+    }
 }
 
+private enum WatchStorageError: Error {
+    case cancelledTransfer
+    case bookIdentityMismatch
+    case invalidTransferMetadata
+    case transferMetadataChanged
+    case incompleteTransfer
+    case fileSizeMismatch
+    case couldNotCreateOutput
+}
 #endif
