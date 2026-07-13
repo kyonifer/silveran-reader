@@ -92,7 +92,7 @@ public func librarySnapshotJSON(refresh: Bool) async throws -> String {
                 sourceID: sourceID,
                 title: book.title,
                 authors: book.authors?.compactMap(\.name).joined(separator: ", ") ?? "",
-                description: book.description,
+                description: book.description.map { BookDescriptionText.plain(from: $0) },
                 coverVersion: book.updatedAt ?? "",
                 hasEbook: book.hasAvailableEbook,
                 hasAudio: book.hasAnyAudiobookAsset,
