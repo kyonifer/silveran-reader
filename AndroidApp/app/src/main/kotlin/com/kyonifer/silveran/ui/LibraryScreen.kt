@@ -2,6 +2,7 @@ package com.kyonifer.silveran.ui
 
 import android.graphics.Bitmap
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -35,6 +36,7 @@ internal fun LibraryScreen(
     state: SilveranUiState,
     modifier: Modifier,
     configure: () -> Unit,
+    select: (Book) -> Unit,
     coverRevision: Int,
     cover: suspend (Book, Int, Int) -> Bitmap?,
 ) {
@@ -71,7 +73,7 @@ internal fun LibraryScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 items(state.books, key = Book::key) { book ->
-                    Column {
+                    Column(Modifier.clickable { select(book) }) {
                         BookCover(
                             book = book,
                             width = 320,

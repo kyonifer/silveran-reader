@@ -46,6 +46,14 @@ class SilveranBridgeClient(context: Context) {
         return withContext(Dispatchers.Default) { parseLibrary(json) }
     }
 
+    suspend fun download(book: Book, category: String) {
+        SilveranAndroidBridge.downloadBook(book.id, book.sourceID, category).awaitResult()
+    }
+
+    suspend fun cancelDownload(book: Book, category: String) {
+        SilveranAndroidBridge.cancelBookDownload(book.id, category).awaitResult()
+    }
+
     suspend fun cover(book: Book, width: Int, height: Int): Bitmap? {
         val cacheKey = "${book.key}:${book.coverVersion}:$width:$height"
         coverCache.get(cacheKey)?.let { return it }
@@ -102,7 +110,16 @@ class SilveranBridgeClient(context: Context) {
                 sourceID = item.getString("sourceID"),
                 title = item.getString("title"),
                 authors = item.optString("authors"),
+                description = item.optionalString("description"),
                 coverVersion = item.optString("coverVersion"),
+                hasEbook = item.getBoolean("hasEbook"),
+                hasAudio = item.getBoolean("hasAudio"),
+                ebookDownloaded = item.getBoolean("ebookDownloaded"),
+                audioDownloaded = item.getBoolean("audioDownloaded"),
+                ebookDownloadState = item.optionalString("ebookDownloadState"),
+                audioDownloadState = item.optionalString("audioDownloadState"),
+                ebookDownloadProgress = item.optionalDouble("ebookDownloadProgress"),
+                audioDownloadProgress = item.optionalDouble("audioDownloadProgress"),
             )
         }
         return LibrarySnapshot(
@@ -115,6 +132,9 @@ class SilveranBridgeClient(context: Context) {
 
 private fun JSONObject.optionalString(name: String): String? =
     if (isNull(name)) null else optString(name).takeIf(String::isNotBlank)
+
+private fun JSONObject.optionalDouble(name: String): Double? =
+    if (isNull(name) || !has(name)) null else getDouble(name)
 
 private fun decodeSampledBitmap(bytes: ByteArray, requestedWidth: Int, requestedHeight: Int): Bitmap? {
     if (requestedWidth <= 0 || requestedHeight <= 0) return null

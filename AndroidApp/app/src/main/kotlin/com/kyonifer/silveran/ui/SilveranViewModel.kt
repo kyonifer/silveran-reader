@@ -27,6 +27,7 @@ data class SilveranUiState(
     val sourceMessage: String? = null,
     val refreshingLibrary: Boolean = false,
     val savingSettings: Boolean = false,
+    val pendingDownloads: Set<String> = emptySet(),
     val successfulSettingsSaves: Int = 0,
     val error: String? = null,
 )
@@ -95,6 +96,36 @@ class SilveranViewModel private constructor(
                 mutableState.value = mutableState.value.copy(savingSettings = false)
                 showError(error)
             }
+        }
+    }
+
+    fun download(book: Book, category: String) {
+        val operation = "${book.key}:$category"
+        mutableState.value = mutableState.value.copy(
+            pendingDownloads = mutableState.value.pendingDownloads + operation,
+            error = null,
+        )
+        viewModelScope.launch {
+            runCatching {
+                client.download(book, category)
+                refreshLibraryNow(refresh = false)
+            }.onFailure(::showError)
+            mutableState.value = mutableState.value.copy(
+                pendingDownloads = mutableState.value.pendingDownloads - operation,
+            )
+        }
+    }
+
+    fun cancelDownload(book: Book, category: String) {
+        val operation = "${book.key}:$category"
+        viewModelScope.launch {
+            runCatching {
+                client.cancelDownload(book, category)
+                mutableState.value = mutableState.value.copy(
+                    pendingDownloads = mutableState.value.pendingDownloads - operation,
+                )
+                refreshLibraryNow(refresh = false)
+            }.onFailure(::showError)
         }
     }
 

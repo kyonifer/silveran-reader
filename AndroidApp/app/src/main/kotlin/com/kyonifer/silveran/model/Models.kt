@@ -5,7 +5,16 @@ data class Book(
     val sourceID: String,
     val title: String,
     val authors: String,
+    val description: String?,
     val coverVersion: String,
+    val hasEbook: Boolean,
+    val hasAudio: Boolean,
+    val ebookDownloaded: Boolean,
+    val audioDownloaded: Boolean,
+    val ebookDownloadState: String?,
+    val audioDownloadState: String?,
+    val ebookDownloadProgress: Double?,
+    val audioDownloadProgress: Double?,
 ) {
     val key: String = "$sourceID:$id"
 }

@@ -28,6 +28,8 @@ import androidx.compose.ui.Modifier
 private enum class Screen {
     Library,
     Settings,
+    Details,
+    Reader,
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -36,11 +38,18 @@ fun SilveranApp(viewModel: SilveranViewModel) {
     val state by viewModel.state.collectAsState()
     val snackbar = remember { SnackbarHostState() }
     var screenName by rememberSaveable { mutableStateOf(Screen.Library.name) }
+    var selectedBookKey by rememberSaveable { mutableStateOf<String?>(null) }
+    var readerMode by rememberSaveable { mutableStateOf("ebook") }
     var settingsSavePending by remember { mutableStateOf(false) }
     val screen = Screen.valueOf(screenName)
-    val canNavigateBack = screen == Screen.Settings && state.settings.configured
+    val selectedBook = state.books.firstOrNull { it.key == selectedBookKey }
+    val canNavigateBack = screen == Screen.Details || screen == Screen.Reader ||
+        (screen == Screen.Settings && state.settings.configured)
     val navigateBack = {
-        screenName = Screen.Library.name
+        screenName = when (screen) {
+            Screen.Reader -> Screen.Details.name
+            else -> Screen.Library.name
+        }
     }
 
     LaunchedEffect(state.settingsLoaded, state.settings.configured) {
@@ -52,6 +61,14 @@ fun SilveranApp(viewModel: SilveranViewModel) {
         state.error?.let {
             snackbar.showSnackbar(it)
             viewModel.clearError()
+        }
+    }
+    LaunchedEffect(screen, selectedBook, state.libraryLoaded) {
+        if (state.libraryLoaded &&
+            (screen == Screen.Details || screen == Screen.Reader) &&
+            selectedBook == null
+        ) {
+            screenName = Screen.Library.name
         }
     }
     LaunchedEffect(state.successfulSettingsSaves) {
@@ -72,6 +89,8 @@ fun SilveranApp(viewModel: SilveranViewModel) {
                             when (screen) {
                                 Screen.Library -> "Library"
                                 Screen.Settings -> "Server settings"
+                                Screen.Details -> selectedBook?.title ?: "Book"
+                                Screen.Reader -> if (readerMode == "audio") "Player" else "Reader"
                             },
                             maxLines = 1,
                         )
@@ -113,6 +132,10 @@ fun SilveranApp(viewModel: SilveranViewModel) {
                     state = state,
                     modifier = Modifier.padding(padding),
                     configure = { screenName = Screen.Settings.name },
+                    select = { book ->
+                        selectedBookKey = book.key
+                        screenName = Screen.Details.name
+                    },
                     coverRevision = state.coverRevision,
                     cover = viewModel::cover,
                 )
@@ -126,6 +149,30 @@ fun SilveranApp(viewModel: SilveranViewModel) {
                         viewModel.saveSettings(serverURL, username, password)
                     },
                 )
+                Screen.Details -> selectedBook?.let { book ->
+                    BookDetailsScreen(
+                        book = book,
+                        pendingDownloads = state.pendingDownloads,
+                        coverRevision = state.coverRevision,
+                        modifier = Modifier.padding(padding),
+                        cover = viewModel::cover,
+                        download = { category -> viewModel.download(book, category) },
+                        cancelDownload = { category ->
+                            viewModel.cancelDownload(book, category)
+                        },
+                        open = { mode ->
+                            readerMode = mode
+                            screenName = Screen.Reader.name
+                        },
+                    )
+                }
+                Screen.Reader -> selectedBook?.let { book ->
+                    ReaderPlaceholderScreen(
+                        book = book,
+                        mode = readerMode,
+                        modifier = Modifier.padding(padding),
+                    )
+                }
             }
         }
     }

@@ -68,18 +68,40 @@ public func librarySnapshotJSON(refresh: Bool) async throws -> String {
     let snapshot = await BookServiceActor.shared.librarySnapshot(
         policy: refresh ? .refresh : .cachedOnly
     )
+    let downloads = await DownloadManager.shared.incompleteDownloads
+    let downloadsByID = Dictionary(uniqueKeysWithValues: downloads.map { ($0.id, $0) })
     var books: [AndroidBook] = []
     books.reserveCapacity(snapshot.books.count)
 
     for book in snapshot.books {
         guard let sourceID = book.sourceID else { continue }
+
+        let ebookDownloadRecord = downloadsByID[
+            downloadID(bookID: book.uuid, category: .ebook)
+        ]
+        let audioCategory: LocalMediaCategory =
+            book.hasAvailableAudiobook ? .audio : .synced
+        let audioDownloadRecord = downloadsByID[
+            downloadID(bookID: book.uuid, category: audioCategory)
+        ]
+        let paths = snapshot.mediaPaths[book.uuid]
+
         books.append(
             AndroidBook(
                 id: book.uuid,
                 sourceID: sourceID,
                 title: book.title,
                 authors: book.authors?.compactMap(\.name).joined(separator: ", ") ?? "",
+                description: book.description,
                 coverVersion: book.updatedAt ?? "",
+                hasEbook: book.hasAvailableEbook,
+                hasAudio: book.hasAnyAudiobookAsset,
+                ebookDownloaded: paths?.ebookPath != nil,
+                audioDownloaded: paths?.audioPath != nil || paths?.syncedPath != nil,
+                ebookDownloadState: downloadStateName(ebookDownloadRecord?.state),
+                audioDownloadState: downloadStateName(audioDownloadRecord?.state),
+                ebookDownloadProgress: downloadProgress(ebookDownloadRecord),
+                audioDownloadProgress: downloadProgress(audioDownloadRecord),
             )
         )
     }
@@ -127,11 +149,66 @@ public func coverBase64(
     }
 }
 
+public func downloadBook(
+    bookID: String,
+    sourceID: String,
+    category: String,
+) async throws {
+    try requireAndroidBootstrap()
+
+    guard
+        category == LocalMediaCategory.ebook.rawValue
+            || category == LocalMediaCategory.audio.rawValue
+    else {
+        throw AndroidBridgeError.invalidMediaCategory(category)
+    }
+
+    let snapshot = await BookServiceActor.shared.librarySnapshot(policy: .cachedOnly)
+    guard
+        let book = snapshot.books.first(where: {
+            $0.uuid == bookID && $0.sourceID == sourceID
+        })
+    else {
+        throw AndroidBridgeError.bookNotFound(bookID)
+    }
+    let mediaCategory: LocalMediaCategory
+    if category == LocalMediaCategory.ebook.rawValue {
+        mediaCategory = .ebook
+    } else if book.hasAvailableAudiobook {
+        mediaCategory = .audio
+    } else {
+        mediaCategory = .synced
+    }
+    guard mediaCategory == .ebook ? book.hasAvailableEbook : book.hasAnyAudiobookAsset else {
+        throw AndroidBridgeError.mediaUnavailable(category: category, bookID: bookID)
+    }
+
+    await DownloadManager.shared.startDownload(for: book, category: mediaCategory)
+}
+
+public func cancelBookDownload(bookID: String, category: String) async throws {
+    try requireAndroidBootstrap()
+
+    switch category {
+        case LocalMediaCategory.ebook.rawValue:
+            await DownloadManager.shared.cancelDownload(for: bookID, category: .ebook)
+        case LocalMediaCategory.audio.rawValue:
+            // The Android "audio" action also represents readaloud media.
+            await DownloadManager.shared.cancelDownload(for: bookID, category: .audio)
+            await DownloadManager.shared.cancelDownload(for: bookID, category: .synced)
+        default:
+            throw AndroidBridgeError.invalidMediaCategory(category)
+    }
+}
+
 public func startLibraryObservation() async throws {
     try requireAndroidBootstrap()
     guard androidObserverStore.claimInstallation() else { return }
 
     _ = await BookServiceActor.shared.addLibraryCacheObserver {
+        notifyAndroidLibrarySnapshotDidChange()
+    }
+    _ = await DownloadManager.shared.addObserver { _ in
         notifyAndroidLibrarySnapshotDidChange()
     }
     await installAndroidConnectionObserver()
@@ -142,7 +219,16 @@ private struct AndroidBook: Encodable {
     let sourceID: String
     let title: String
     let authors: String
+    let description: String?
     let coverVersion: String
+    let hasEbook: Bool
+    let hasAudio: Bool
+    let ebookDownloaded: Bool
+    let audioDownloaded: Bool
+    let ebookDownloadState: String?
+    let audioDownloadState: String?
+    let ebookDownloadProgress: Double?
+    let audioDownloadProgress: Double?
 }
 
 private struct AndroidLibrary: Encodable {
@@ -247,6 +333,27 @@ private func connectionFields(_ connection: ConnectionStatus) -> (
     }
 }
 
+private func downloadStateName(_ state: DownloadState?) -> String? {
+    switch state {
+        case .queued: return "queued"
+        case .downloading: return "downloading"
+        case .paused: return "paused"
+        case .failed: return "failed"
+        case .importing: return "importing"
+        case .completed: return "completed"
+        case nil: return nil
+    }
+}
+
+private func downloadProgress(_ record: DownloadRecord?) -> Double? {
+    guard let record, record.isActive else { return nil }
+    return record.progressFraction
+}
+
+private func downloadID(bookID: String, category: LocalMediaCategory) -> String {
+    "\(bookID)-\(category.rawValue)"
+}
+
 private func encodeJSON<T: Encodable>(_ value: T) throws -> String {
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.sortedKeys]
@@ -261,6 +368,9 @@ enum AndroidBridgeError: Error, LocalizedError, CustomStringConvertible {
     case missingPassword
     case couldNotSaveStorytellerSettings
     case invalidCoverSize
+    case invalidMediaCategory(String)
+    case bookNotFound(String)
+    case mediaUnavailable(category: String, bookID: String)
     case secureStorageFailure(String)
 
     var errorDescription: String? {
@@ -279,6 +389,12 @@ enum AndroidBridgeError: Error, LocalizedError, CustomStringConvertible {
                 return "Could not save the Storyteller server settings."
             case .invalidCoverSize:
                 return "Cover width and height must be greater than zero."
+            case .invalidMediaCategory(let category):
+                return "Unsupported media category: \(category)"
+            case .bookNotFound(let bookID):
+                return "Book \(bookID) is no longer in the library."
+            case .mediaUnavailable(let category, let bookID):
+                return "Book \(bookID) has no \(category) available to download."
             case .secureStorageFailure(let account):
                 return "Android secure storage failed for account \(account)."
         }
