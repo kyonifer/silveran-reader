@@ -120,6 +120,7 @@ public func coverBase64(
     bookID: String,
     sourceID: String,
     version: String,
+    audio: Bool,
     width: Int32,
     height: Int32,
 ) async throws -> String {
@@ -131,7 +132,7 @@ public func coverBase64(
     let response = await BookServiceActor.shared.loadCover(
         for: bookID,
         sourceID: sourceID,
-        audio: false,
+        audio: audio,
         width: Int(width),
         height: Int(height),
         version: version.isEmpty ? nil : version,

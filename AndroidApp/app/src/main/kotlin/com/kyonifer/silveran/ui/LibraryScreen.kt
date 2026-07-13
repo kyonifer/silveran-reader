@@ -31,6 +31,12 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import com.kyonifer.silveran.model.Book
 
+private sealed interface CoverLoadState {
+    data object Loading : CoverLoadState
+    data object Missing : CoverLoadState
+    data class Loaded(val bitmap: Bitmap) : CoverLoadState
+}
+
 @Composable
 internal fun LibraryScreen(
     state: SilveranUiState,
@@ -124,31 +130,45 @@ internal fun BookCover(
     load: suspend (Book, Int, Int) -> Bitmap?,
     modifier: Modifier,
 ) {
-    val bitmap by produceState<Bitmap?>(
-        null,
+    val state by produceState<CoverLoadState>(
+        CoverLoadState.Loading,
         book.key,
         book.coverVersion,
+        book.hasEbook,
+        book.hasAudio,
         width,
         height,
         revision,
     ) {
+        value = CoverLoadState.Loading
         value = runCatching { load(book, width, height) }.getOrNull()
+            ?.let(CoverLoadState::Loaded)
+            ?: CoverLoadState.Missing
     }
+    val bitmap = (state as? CoverLoadState.Loaded)?.bitmap
     val imageBitmap = remember(bitmap) {
         bitmap?.asImageBitmap()
     }
     Surface(modifier, shape = RoundedCornerShape(6.dp), tonalElevation = 2.dp) {
-        if (imageBitmap == null) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("No cover", style = MaterialTheme.typography.bodySmall)
+        when {
+            state == CoverLoadState.Loading -> {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
             }
-        } else {
-            Image(
-                bitmap = imageBitmap!!,
-                contentDescription = book.title,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
-            )
+            imageBitmap == null -> {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("No cover", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            else -> {
+                Image(
+                    bitmap = imageBitmap,
+                    contentDescription = book.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
         }
     }
 }

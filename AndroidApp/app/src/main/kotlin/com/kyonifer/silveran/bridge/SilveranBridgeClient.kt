@@ -55,13 +55,15 @@ class SilveranBridgeClient(context: Context) {
     }
 
     suspend fun cover(book: Book, width: Int, height: Int): Bitmap? {
-        val cacheKey = "${book.key}:${book.coverVersion}:$width:$height"
+        val audio = !book.hasEbook && book.hasAudio
+        val cacheKey = "${book.key}:${book.coverVersion}:$audio:$width:$height"
         coverCache.get(cacheKey)?.let { return it }
 
         val encoded = SilveranAndroidBridge.coverBase64(
             book.id,
             book.sourceID,
             book.coverVersion,
+            audio,
             width,
             height,
         ).awaitResult()
