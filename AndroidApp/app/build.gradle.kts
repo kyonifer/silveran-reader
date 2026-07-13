@@ -1,3 +1,11 @@
+import com.android.ide.common.vectordrawable.Svg2Vector
+import org.gradle.api.DefaultTask
+import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.tasks.InputFile
+import org.gradle.api.tasks.OutputDirectory
+import org.gradle.api.tasks.TaskAction
+
 plugins {
     id("com.android.application") version "8.11.1"
     id("org.jetbrains.kotlin.android") version "2.2.0"
@@ -39,6 +47,41 @@ android {
                 "../swift/.build/plugins/outputs/swift/SilveranAndroidBridge/destination/JExtractSwiftPlugin/src/generated/java",
             )
         }
+    }
+}
+
+abstract class GenerateReadaloudVector : DefaultTask() {
+    @get:InputFile
+    abstract val sourceFile: RegularFileProperty
+
+    @get:OutputDirectory
+    abstract val outputDirectory: DirectoryProperty
+
+    @TaskAction
+    fun generate() {
+        val output = outputDirectory.file("drawable/ic_readaloud.xml").get().asFile
+        output.parentFile.mkdirs()
+        output.outputStream().use { stream ->
+            val errors = Svg2Vector.parseSvgToXml(sourceFile.get().asFile.toPath(), stream)
+            check(errors.isBlank()) { errors }
+        }
+    }
+}
+
+val generateReadaloudVector = tasks.register<GenerateReadaloudVector>("generateReadaloudVector") {
+    sourceFile.set(
+        rootProject.layout.projectDirectory.file(
+            "../XCodeApps/Assets.xcassets/readalong.imageset/readaloud.svg"
+        )
+    )
+}
+
+androidComponents {
+    onVariants { variant ->
+        variant.sources.res?.addGeneratedSourceDirectory(
+            generateReadaloudVector,
+            GenerateReadaloudVector::outputDirectory,
+        )
     }
 }
 

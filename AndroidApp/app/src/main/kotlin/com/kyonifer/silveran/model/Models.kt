@@ -9,6 +9,7 @@ data class Book(
     val coverVersion: String,
     val hasEbook: Boolean,
     val hasAudio: Boolean,
+    val hasReadaloud: Boolean,
     val ebookDownloaded: Boolean,
     val audioDownloaded: Boolean,
     val ebookDownloadState: String?,

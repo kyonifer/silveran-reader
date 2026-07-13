@@ -129,8 +129,8 @@ class SilveranViewModel private constructor(
         }
     }
 
-    suspend fun cover(book: Book, width: Int, height: Int): Bitmap? =
-        client.cover(book, width, height)
+    suspend fun cover(book: Book, audio: Boolean, width: Int, height: Int): Bitmap? =
+        client.cover(book, audio, width, height)
 
     fun clearError() {
         mutableState.value = mutableState.value.copy(error = null)

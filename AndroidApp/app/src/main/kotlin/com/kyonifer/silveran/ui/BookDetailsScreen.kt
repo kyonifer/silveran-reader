@@ -3,9 +3,9 @@ package com.kyonifer.silveran.ui
 import android.graphics.Bitmap
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -33,7 +33,7 @@ internal fun BookDetailsScreen(
     pendingDownloads: Set<String>,
     coverRevision: Int,
     modifier: Modifier,
-    cover: suspend (Book, Int, Int) -> Bitmap?,
+    cover: suspend (Book, Boolean, Int, Int) -> Bitmap?,
     download: (String) -> Unit,
     cancelDownload: (String) -> Unit,
     open: (String) -> Unit,
@@ -51,7 +51,7 @@ internal fun BookDetailsScreen(
                 height = 960,
                 revision = coverRevision,
                 load = cover,
-                modifier = Modifier.width(280.dp).height(420.dp),
+                modifier = Modifier.width(280.dp).aspectRatio(COVER_PANEL_ASPECT_RATIO),
             )
         }
         Text(book.title, style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(top = 20.dp))

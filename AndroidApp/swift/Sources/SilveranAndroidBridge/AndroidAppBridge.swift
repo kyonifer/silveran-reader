@@ -96,6 +96,7 @@ public func librarySnapshotJSON(refresh: Bool) async throws -> String {
                 coverVersion: book.updatedAt ?? "",
                 hasEbook: book.hasAvailableEbook,
                 hasAudio: book.hasAnyAudiobookAsset,
+                hasReadaloud: book.hasAvailableReadaloud,
                 ebookDownloaded: paths?.ebookPath != nil,
                 audioDownloaded: paths?.audioPath != nil || paths?.syncedPath != nil,
                 ebookDownloadState: downloadStateName(ebookDownloadRecord?.state),
@@ -116,13 +117,14 @@ public func librarySnapshotJSON(refresh: Bool) async throws -> String {
     )
 }
 
-public func coverBase64(
+public func coverResponseJSON(
     bookID: String,
     sourceID: String,
     version: String,
     audio: Bool,
     width: Int32,
     height: Int32,
+    refresh: Bool,
 ) async throws -> String {
     try requireAndroidBootstrap()
     guard width > 0, height > 0 else {
@@ -137,17 +139,51 @@ public func coverBase64(
         height: Int(height),
         version: version.isEmpty ? nil : version,
         allowNetwork: true,
-        policy: .forceRefresh,
+        policy: refresh ? .forceRefresh : .cachedThenFetch,
     )
 
     switch response {
         case .cached(let data):
-            return data.base64EncodedString()
+            return try encodeJSON(
+                AndroidCoverResponse(
+                    dataBase64: data.base64EncodedString(),
+                    shouldPersist: false,
+                )
+            )
         case .fetched(let cover):
-            return cover.data.base64EncodedString()
+            return try encodeJSON(
+                AndroidCoverResponse(
+                    dataBase64: cover.data.base64EncodedString(),
+                    shouldPersist: true,
+                )
+            )
         case .missing, .skippedOffline:
-            return ""
+            return try encodeJSON(
+                AndroidCoverResponse(dataBase64: "", shouldPersist: false)
+            )
     }
+}
+
+public func persistCoverBase64(bookID: String, audio: Bool, dataBase64: String) async throws {
+    try requireAndroidBootstrap()
+    guard let data = Data(base64Encoded: dataBase64) else {
+        throw AndroidBridgeError.invalidCoverData
+    }
+    await BookServiceActor.shared.persistCachedCover(
+        bookID: bookID,
+        audio: audio,
+        data: data,
+    )
+}
+
+public func coverSurfaceColorARGB(rgbaBase64: String, dark: Bool) throws -> Int32 {
+    guard let data = Data(base64Encoded: rgbaBase64) else {
+        throw AndroidBridgeError.invalidCoverPixels
+    }
+    let color = CoverColorAverager.surfaceColor(rgbaPixels: Array(data), dark: dark)
+    let argb = 0xFF00_0000 | UInt32(color.red) << 16 | UInt32(color.green) << 8
+        | UInt32(color.blue)
+    return Int32(bitPattern: argb)
 }
 
 public func downloadBook(
@@ -224,12 +260,18 @@ private struct AndroidBook: Encodable {
     let coverVersion: String
     let hasEbook: Bool
     let hasAudio: Bool
+    let hasReadaloud: Bool
     let ebookDownloaded: Bool
     let audioDownloaded: Bool
     let ebookDownloadState: String?
     let audioDownloadState: String?
     let ebookDownloadProgress: Double?
     let audioDownloadProgress: Double?
+}
+
+private struct AndroidCoverResponse: Encodable {
+    let dataBase64: String
+    let shouldPersist: Bool
 }
 
 private struct AndroidLibrary: Encodable {
@@ -369,6 +411,8 @@ enum AndroidBridgeError: Error, LocalizedError, CustomStringConvertible {
     case missingPassword
     case couldNotSaveStorytellerSettings
     case invalidCoverSize
+    case invalidCoverData
+    case invalidCoverPixels
     case invalidMediaCategory(String)
     case bookNotFound(String)
     case mediaUnavailable(category: String, bookID: String)
@@ -390,6 +434,10 @@ enum AndroidBridgeError: Error, LocalizedError, CustomStringConvertible {
                 return "Could not save the Storyteller server settings."
             case .invalidCoverSize:
                 return "Cover width and height must be greater than zero."
+            case .invalidCoverData:
+                return "Cover data must be base64 encoded."
+            case .invalidCoverPixels:
+                return "Cover pixels must be base64-encoded RGBA bytes."
             case .invalidMediaCategory(let category):
                 return "Unsupported media category: \(category)"
             case .bookNotFound(let bookID):

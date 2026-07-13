@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Base64
+import android.util.LruCache
 import com.kyonifer.silveran.model.Book
 import com.kyonifer.silveran.model.LibrarySnapshot
 import com.kyonifer.silveran.model.StorytellerSettings
@@ -11,16 +12,24 @@ import com.kyonifer.silveran.platform.AndroidSecureStore
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import org.json.JSONObject
 
 class SilveranBridgeClient(context: Context) {
     private val applicationContext = context.applicationContext
     private val filesDirectory = context.filesDir.absolutePath
-    // The client is ViewModel-owned, so loaded covers remain available for
-    // the full UI session even when lazy-grid items leave composition.
-    private val coverCache = ConcurrentHashMap<String, Bitmap>()
+    // The Swift core owns persistent cover bytes. This cache only bounds
+    // decoded Android bitmaps used by the currently active UI session.
+    private val coverBitmaps = object : LruCache<String, Bitmap>(bitmapCacheSizeKilobytes()) {
+        override fun sizeOf(key: String, value: Bitmap): Int =
+            maxOf(1, value.allocationByteCount / 1024)
+    }
+    private val missingCovers = ConcurrentHashMap.newKeySet<String>()
+    private val coverRequests = Semaphore(4)
 
     fun bootstrap() {
         AndroidSecureStore.initialize(applicationContext)
@@ -42,6 +51,7 @@ class SilveranBridgeClient(context: Context) {
     }
 
     suspend fun librarySnapshot(refresh: Boolean): LibrarySnapshot {
+        if (refresh) missingCovers.clear()
         val json = SilveranAndroidBridge.librarySnapshotJSON(refresh).awaitResult()
         return withContext(Dispatchers.Default) { parseLibrary(json) }
     }
@@ -54,28 +64,85 @@ class SilveranBridgeClient(context: Context) {
         SilveranAndroidBridge.cancelBookDownload(book.id, category).awaitResult()
     }
 
-    suspend fun cover(book: Book, width: Int, height: Int): Bitmap? {
-        val audio = !book.hasEbook && book.hasAudio
+    suspend fun cover(book: Book, audio: Boolean, width: Int, height: Int): Bitmap? {
         val cacheKey = "${book.key}:${book.coverVersion}:$audio:$width:$height"
-        coverCache.get(cacheKey)?.let { return it }
+        val missingKey = "${book.key}:${book.coverVersion}:$audio"
+        coverBitmaps.get(cacheKey)?.let { return it }
+        if (missingKey in missingCovers) return null
 
-        val encoded = SilveranAndroidBridge.coverBase64(
+        return coverRequests.withPermit {
+            // Once a Swift request starts, let it finish and populate the cache.
+            // Cancellation only prevents offscreen requests that are still queued.
+            withContext(NonCancellable) {
+                coverBitmaps.get(cacheKey)
+                    ?: loadCover(book, audio, width, height, cacheKey, missingKey)
+            }
+        }
+    }
+
+    private suspend fun loadCover(
+        book: Book,
+        audio: Boolean,
+        width: Int,
+        height: Int,
+        cacheKey: String,
+        missingKey: String,
+    ): Bitmap? {
+        if (missingKey in missingCovers) return null
+
+        var response = loadCoverResponse(book, audio, width, height, refresh = false)
+        var decoded = decodeCover(response.dataBase64, width, height)
+        if (decoded == null && response.dataBase64.isNotBlank()) {
+            response = loadCoverResponse(book, audio, width, height, refresh = true)
+            decoded = decodeCover(response.dataBase64, width, height)
+        }
+        if (decoded == null) {
+            missingCovers.add(missingKey)
+        } else {
+            if (response.shouldPersist) {
+                SilveranAndroidBridge.persistCoverBase64(
+                    book.id,
+                    audio,
+                    response.dataBase64,
+                ).awaitResult()
+            }
+            coverBitmaps.put(cacheKey, decoded)
+        }
+        return decoded
+    }
+
+    private suspend fun loadCoverResponse(
+        book: Book,
+        audio: Boolean,
+        width: Int,
+        height: Int,
+        refresh: Boolean,
+    ): CoverResponse {
+        val json = SilveranAndroidBridge.coverResponseJSON(
             book.id,
             book.sourceID,
             book.coverVersion,
             audio,
             width,
             height,
+            refresh,
         ).awaitResult()
-        val decoded = withContext(Dispatchers.Default) {
+        return withContext(Dispatchers.Default) {
+            val response = JSONObject(json)
+            CoverResponse(
+                dataBase64 = response.getString("dataBase64"),
+                shouldPersist = response.getBoolean("shouldPersist"),
+            )
+        }
+    }
+
+    private suspend fun decodeCover(encoded: String, width: Int, height: Int): Bitmap? =
+        withContext(Dispatchers.Default) {
             val bytes = encoded.takeIf(String::isNotBlank)
                 ?.let { Base64.decode(it, Base64.DEFAULT) }
                 ?: return@withContext null
             decodeSampledBitmap(bytes, width, height)
         }
-        decoded?.let { coverCache.put(cacheKey, it) }
-        return decoded
-    }
 
     suspend fun saveStorytellerSettings(
         serverURL: String,
@@ -116,6 +183,7 @@ class SilveranBridgeClient(context: Context) {
                 coverVersion = item.optString("coverVersion"),
                 hasEbook = item.getBoolean("hasEbook"),
                 hasAudio = item.getBoolean("hasAudio"),
+                hasReadaloud = item.getBoolean("hasReadaloud"),
                 ebookDownloaded = item.getBoolean("ebookDownloaded"),
                 audioDownloaded = item.getBoolean("audioDownloaded"),
                 ebookDownloadState = item.optionalString("ebookDownloadState"),
@@ -132,11 +200,19 @@ class SilveranBridgeClient(context: Context) {
     }
 }
 
+private data class CoverResponse(
+    val dataBase64: String,
+    val shouldPersist: Boolean,
+)
+
 private fun JSONObject.optionalString(name: String): String? =
     if (isNull(name)) null else optString(name).takeIf(String::isNotBlank)
 
 private fun JSONObject.optionalDouble(name: String): Double? =
     if (isNull(name) || !has(name)) null else getDouble(name)
+
+private fun bitmapCacheSizeKilobytes(): Int =
+    maxOf(1, (Runtime.getRuntime().maxMemory() / 8 / 1024).toInt())
 
 private fun decodeSampledBitmap(bytes: ByteArray, requestedWidth: Int, requestedHeight: Int): Bitmap? {
     if (requestedWidth <= 0 || requestedHeight <= 0) return null
