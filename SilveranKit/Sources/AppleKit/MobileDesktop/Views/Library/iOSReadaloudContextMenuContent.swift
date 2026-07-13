@@ -104,8 +104,7 @@ struct iOSReadaloudContextMenuContent: View {
     private func startServerAlignment(_ restart: AlignmentRestartMode) {
         Task {
             _ = await BookServiceActor.shared.startAlignment(
-                for: item.uuid,
-                sourceID: item.sourceID,
+                for: item.id,
                 restart: restart,
             )
             await BookServiceActor.shared.fetchLibraryInformation()
@@ -114,10 +113,7 @@ struct iOSReadaloudContextMenuContent: View {
 
     private func cancelAlignment() {
         Task {
-            _ = await BookServiceActor.shared.cancelAlignment(
-                for: item.uuid,
-                sourceID: item.sourceID,
-            )
+            _ = await BookServiceActor.shared.cancelAlignment(for: item.id)
             await BookServiceActor.shared.fetchLibraryInformation()
         }
     }

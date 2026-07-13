@@ -112,7 +112,9 @@ final class UnifiedMetadataImportViewModel {
     }
 
     func searchAudnexus() async { await audnexus.search() }
-    func selectAudnexus(_ result: AudnexusSearchResult) async { await audnexus.selectResult(result) }
+    func selectAudnexus(_ result: AudnexusSearchResult) async {
+        await audnexus.selectResult(result)
+    }
     func searchHardcover() async { await hardcover.search() }
 
     func saveHardcoverToken() async {

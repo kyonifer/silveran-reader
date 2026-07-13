@@ -9,7 +9,7 @@ struct MediaTableRowView: View {
     let isSelected: Bool
     let onSelect: (BookMetadata) -> Void
     let onInfo: (BookMetadata) -> Void
-    var onEditMetadata: (([String]) -> Void)? = nil
+    var onEditMetadata: (([BookID]) -> Void)? = nil
     @Environment(MediaViewModel.self) private var mediaViewModel
     #if os(macOS)
     @State private var hoveredMediaType: MediaType?
@@ -58,7 +58,7 @@ struct MediaTableRowView: View {
 
         if let editMetadataAction {
             Button {
-                editMetadataAction([item.uuid])
+                editMetadataAction([item.id])
             } label: {
                 Label("Edit Metadata...", systemImage: "pencil")
             }

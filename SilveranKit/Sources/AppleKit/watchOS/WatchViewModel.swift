@@ -13,13 +13,18 @@ public final class WatchViewModel {
     var savingBook: (uuid: String, title: String)?
     var remotePlaybackState: RemotePlaybackState?
     private var metadataRefreshTask: Task<Void, Never>?
+    private var started = false
 
     var transferProgress: Double {
         guard totalChunks > 0 else { return 0 }
         return Double(receivedChunks) / Double(totalChunks)
     }
 
-    init() {
+    init() {}
+
+    func start() {
+        guard !started else { return }
+        started = true
         loadBooks()
         setupObservers()
         startMetadataRefreshTask()
@@ -85,7 +90,7 @@ public final class WatchViewModel {
         Task {
             let snapshot = await BookServiceActor.shared.librarySnapshot(policy: .cachedOnly)
             let booksWithFiles = snapshot.books.filter { book in
-                snapshot.mediaPaths[book.uuid]?.syncedPath != nil
+                snapshot.mediaPaths[book.id]?.syncedPath != nil
             }
             await MainActor.run {
                 self.books = booksWithFiles
@@ -101,8 +106,7 @@ public final class WatchViewModel {
     func deleteBook(_ book: BookMetadata, category: LocalMediaCategory) {
         Task {
             try? await BookServiceActor.shared.deleteCachedMedia(
-                for: book.uuid,
-                sourceID: book.sourceID,
+                for: book.id,
                 category: category,
             )
         }

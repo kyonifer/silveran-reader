@@ -23,7 +23,7 @@ internal fun ReaderPlaceholderScreen(book: Book, mode: String, modifier: Modifie
         "synced" -> "Readaloud reader"
         else -> "Ebook reader"
     }
-    val html = remember(book.key, mode) {
+    val html = remember(book.id, mode) {
         """
         <!doctype html>
         <html>

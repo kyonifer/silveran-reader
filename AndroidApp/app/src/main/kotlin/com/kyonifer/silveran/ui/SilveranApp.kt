@@ -25,6 +25,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import com.kyonifer.silveran.model.BookID
 
 private enum class Screen {
     Library,
@@ -39,14 +40,14 @@ fun SilveranApp(viewModel: SilveranViewModel) {
     val state by viewModel.state.collectAsState()
     val snackbar = remember { SnackbarHostState() }
     var screenName by rememberSaveable { mutableStateOf(Screen.Library.name) }
-    var selectedBookKey by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedBookID by rememberSaveable { mutableStateOf<BookID?>(null) }
     var readerMode by rememberSaveable { mutableStateOf("ebook") }
     var libraryTabName by rememberSaveable { mutableStateOf(LibraryTab.Home.name) }
     var librarySearchText by rememberSaveable { mutableStateOf("") }
     var settingsSavePending by remember { mutableStateOf(false) }
     val screen = Screen.valueOf(screenName)
     val libraryTab = LibraryTab.valueOf(libraryTabName)
-    val selectedBook = state.books.firstOrNull { it.key == selectedBookKey }
+    val selectedBook = state.books.firstOrNull { it.id == selectedBookID }
     val canNavigateBack = screen == Screen.Details || screen == Screen.Reader ||
         (screen == Screen.Settings && state.settings.configured)
     val navigateBack = {
@@ -135,7 +136,7 @@ fun SilveranApp(viewModel: SilveranViewModel) {
                     modifier = Modifier.padding(padding),
                     configure = { screenName = Screen.Settings.name },
                     select = { book ->
-                        selectedBookKey = book.key
+                        selectedBookID = book.id
                         screenName = Screen.Details.name
                     },
                     coverRevision = state.coverRevision,

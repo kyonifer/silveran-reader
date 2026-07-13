@@ -14,27 +14,29 @@ public struct ProgressUploadRequest: Sendable {
     }
 }
 
-private struct ProgressUploadDescriptor {
-    let bookId: String
+private struct ProgressUploadDescriptor: Codable {
+    let bookID: BookID
     let timestampMillis: Int64
-    let sourceID: BookSourceID
 
-    var taskDescription: String { "\(bookId)|\(timestampMillis)|\(sourceID)" }
+    var taskDescription: String? {
+        guard let data = try? JSONEncoder().encode(self) else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
     var spoolToken: String { String(timestampMillis) }
 
-    init(bookId: String, timestamp: Double, sourceID: BookSourceID) {
-        self.bookId = bookId
+    init(bookID: BookID, timestamp: Double) {
+        self.bookID = bookID
         self.timestampMillis = Int64(timestamp)
-        self.sourceID = sourceID
     }
 
     init?(taskDescription: String?) {
-        guard let taskDescription else { return nil }
-        let parts = taskDescription.split(separator: "|", maxSplits: 2)
-        guard parts.count == 3, let millis = Int64(parts[1]) else { return nil }
-        bookId = String(parts[0])
-        timestampMillis = millis
-        sourceID = String(parts[2])
+        guard let taskDescription,
+            let descriptor = try? JSONDecoder().decode(
+                Self.self,
+                from: Data(taskDescription.utf8),
+            )
+        else { return nil }
+        self = descriptor
     }
 }
 
@@ -88,19 +90,16 @@ public actor ProgressUploadManager {
     }
 
     public func enqueuePendingUploads() async {
-        await ProgressSyncActor.shared.resolveMissingSourceIDs()
         let pending = await ProgressSyncActor.shared.getPendingProgressSyncs()
-            .filter { !$0.syncedToStoryteller && $0.sourceID != nil }
+            .filter { !$0.syncedToStoryteller }
         guard !pending.isEmpty else { return }
 
         let outstanding = await outstandingTasks()
 
         for item in pending {
-            guard let sourceID = item.sourceID else { continue }
             let descriptor = ProgressUploadDescriptor(
-                bookId: item.bookId,
+                bookID: item.bookID,
                 timestamp: item.timestamp,
-                sourceID: sourceID,
             )
 
             // Keep at most one in-flight upload per book, newest position wins,
@@ -111,7 +110,7 @@ public actor ProgressUploadManager {
                     let existing = ProgressUploadDescriptor(
                         taskDescription: task.taskDescription
                     ),
-                    existing.bookId == descriptor.bookId
+                    existing.bookID == descriptor.bookID
                 else { continue }
                 if existing.timestampMillis >= descriptor.timestampMillis {
                     alreadyInFlight = true
@@ -123,33 +122,38 @@ public actor ProgressUploadManager {
 
             guard
                 let upload = await BookServiceActor.shared.createAuthenticatedPositionUploadRequest(
-                    bookId: item.bookId,
-                    sourceID: sourceID,
+                    bookID: item.bookID,
                     locator: item.locator,
                     timestamp: item.timestamp,
                 )
             else {
                 debugLog(
-                    "[ProgressUploadManager] No upload request for \(item.bookId) (non-storyteller source or auth unavailable)"
+                    "[ProgressUploadManager] No upload request for \(item.bookID) (non-storyteller source or auth unavailable)"
+                )
+                continue
+            }
+            guard let taskDescription = descriptor.taskDescription else {
+                debugLog(
+                    "[ProgressUploadManager] Failed to encode upload descriptor for \(item.bookID)"
                 )
                 continue
             }
 
             do {
                 let fileURL = try await FilesystemActor.shared.writeProgressUploadSpoolFile(
-                    bookId: item.bookId,
+                    bookID: item.bookID,
                     token: descriptor.spoolToken,
                     data: upload.body,
                 )
                 let task = uploadSession.uploadTask(with: upload.request, fromFile: fileURL)
-                task.taskDescription = descriptor.taskDescription
+                task.taskDescription = taskDescription
                 task.resume()
                 debugLog(
-                    "[ProgressUploadManager] Enqueued upload for \(item.bookId) ts=\(descriptor.timestampMillis)"
+                    "[ProgressUploadManager] Enqueued upload for \(item.bookID) ts=\(descriptor.timestampMillis)"
                 )
             } catch {
                 debugLog(
-                    "[ProgressUploadManager] Failed to spool upload for \(item.bookId): \(error)"
+                    "[ProgressUploadManager] Failed to spool upload for \(item.bookID): \(error)"
                 )
             }
         }
@@ -170,18 +174,18 @@ public actor ProgressUploadManager {
         }
 
         await FilesystemActor.shared.removeProgressUploadSpoolFile(
-            bookId: descriptor.bookId,
+            bookID: descriptor.bookID,
             token: descriptor.spoolToken,
         )
 
         if let error {
             if (error as NSError).code == NSURLErrorCancelled {
                 debugLog(
-                    "[ProgressUploadManager] Upload superseded for \(descriptor.bookId)"
+                    "[ProgressUploadManager] Upload superseded for \(descriptor.bookID)"
                 )
             } else {
                 debugLog(
-                    "[ProgressUploadManager] Upload failed for \(descriptor.bookId), leaving queued: \(error)"
+                    "[ProgressUploadManager] Upload failed for \(descriptor.bookID), leaving queued: \(error)"
                 )
                 await scheduleBackstop()
             }
@@ -191,13 +195,13 @@ public actor ProgressUploadManager {
         switch statusCode {
             case 204:
                 await ProgressSyncActor.shared.confirmBackgroundUpload(
-                    bookId: descriptor.bookId,
+                    bookID: descriptor.bookID,
                     timestamp: Double(descriptor.timestampMillis),
                 )
-                debugLog("[ProgressUploadManager] Upload confirmed for \(descriptor.bookId)")
+                debugLog("[ProgressUploadManager] Upload confirmed for \(descriptor.bookID)")
             case 401:
                 debugLog(
-                    "[ProgressUploadManager] Upload unauthorized for \(descriptor.bookId); next enqueue re-authenticates"
+                    "[ProgressUploadManager] Upload unauthorized for \(descriptor.bookID); next enqueue re-authenticates"
                 )
                 await scheduleBackstop()
             case 404, 409:
@@ -205,11 +209,11 @@ public actor ProgressUploadManager {
                 // entry stays and foreground reconciliation against server positions
                 // resolves it. No backstop: a retry cannot change a permanent rejection.
                 debugLog(
-                    "[ProgressUploadManager] Upload rejected (\(statusCode ?? 0)) for \(descriptor.bookId)"
+                    "[ProgressUploadManager] Upload rejected (\(statusCode ?? 0)) for \(descriptor.bookID)"
                 )
             default:
                 debugLog(
-                    "[ProgressUploadManager] Upload for \(descriptor.bookId) completed with status \(statusCode.map(String.init) ?? "unknown")"
+                    "[ProgressUploadManager] Upload for \(descriptor.bookID) completed with status \(statusCode.map(String.init) ?? "unknown")"
                 )
                 await scheduleBackstop()
         }

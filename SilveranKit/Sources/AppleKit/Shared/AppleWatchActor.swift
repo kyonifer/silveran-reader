@@ -561,7 +561,7 @@ public actor AppleWatchActor: NSObject {
 
     private func buildRemotePlaybackState() async -> Data? {
         guard let smilState = await SMILPlayerActor.shared.getCurrentState(),
-            let bookId = smilState.bookId
+            let bookID = smilState.bookID
         else { return nil }
 
         let structure = await SMILPlayerActor.shared.getBookStructure()
@@ -585,7 +585,7 @@ public actor AppleWatchActor: NSObject {
 
         let remoteState = RemotePlaybackState(
             bookTitle: bookTitle,
-            bookId: bookId,
+            bookId: bookID.uuid,
             chapterTitle: smilState.chapterLabel ?? "Chapter \(currentChapterIndex + 1)",
             currentChapterIndex: currentChapterIndex,
             chapters: chapters,
@@ -915,13 +915,17 @@ extension AppleWatchActor: WCSessionDelegate {
             bookId: payload.bookId,
             advisory: payload.sourceID,
         )
+        guard let sourceID else {
+            debugLog("[AppleWatchActor] Rejected relayed progress with unresolved source")
+            return
+        }
+        let bookID = BookID(sourceID: sourceID, uuid: payload.bookId)
         debugLog(
-            "[AppleWatchActor] Relayed progress for \(payload.bookId) ts=\(payload.timestamp) source=\(sourceID ?? "unresolved")"
+            "[AppleWatchActor] Relayed progress for \(bookID) ts=\(payload.timestamp)"
         )
 
         _ = await ProgressSyncActor.shared.syncProgress(
-            bookId: payload.bookId,
-            sourceID: sourceID,
+            bookID: bookID,
             locator: payload.locator,
             timestamp: payload.timestamp,
             reason: .relayedFromWatch,

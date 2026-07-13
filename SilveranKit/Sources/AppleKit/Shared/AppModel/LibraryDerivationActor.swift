@@ -374,10 +374,10 @@ public struct LibraryDerivationInput: Sendable {
     public var generation: Int
     public var deriveGroups: Bool
     public var metadata: [BookMetadata]
-    public var paths: [String: MediaPaths]
-    public var folderSourceBookIds: Set<String>
-    public var storytellerBookIds: Set<String>
-    public var progress: [String: BookProgress]
+    public var paths: [BookID: MediaPaths]
+    public var folderSourceBookIds: Set<BookID>
+    public var storytellerBookIds: Set<BookID>
+    public var progress: [BookID: BookProgress]
     public var smartShelves: [SmartShelf]
     public var sidebarContents: [SidebarContentKind]
     public var incompleteDownloadCount: Int
@@ -386,10 +386,10 @@ public struct LibraryDerivationInput: Sendable {
         generation: Int,
         deriveGroups: Bool = false,
         metadata: [BookMetadata],
-        paths: [String: MediaPaths],
-        folderSourceBookIds: Set<String>,
-        storytellerBookIds: Set<String>,
-        progress: [String: BookProgress],
+        paths: [BookID: MediaPaths],
+        folderSourceBookIds: Set<BookID>,
+        storytellerBookIds: Set<BookID>,
+        progress: [BookID: BookProgress],
         smartShelves: [SmartShelf],
         sidebarContents: [SidebarContentKind],
         incompleteDownloadCount: Int = 0,
@@ -409,15 +409,15 @@ public struct LibraryDerivationInput: Sendable {
 
 public struct SmartShelfBooksInput: Sendable {
     public var metadata: [BookMetadata]
-    public var paths: [String: MediaPaths]
-    public var folderSourceBookIds: Set<String>
-    public var progress: [String: BookProgress]
+    public var paths: [BookID: MediaPaths]
+    public var folderSourceBookIds: Set<BookID>
+    public var progress: [BookID: BookProgress]
 
     public init(
         metadata: [BookMetadata],
-        paths: [String: MediaPaths],
-        folderSourceBookIds: Set<String>,
-        progress: [String: BookProgress],
+        paths: [BookID: MediaPaths],
+        folderSourceBookIds: Set<BookID>,
+        progress: [BookID: BookProgress],
     ) {
         self.metadata = metadata
         self.paths = paths
@@ -539,14 +539,14 @@ public struct MediaGridContextFilters: Sendable, Equatable {
 public struct MediaGridRenderInput: Sendable {
     public var request: MediaGridRenderRequest
     public var metadata: [BookMetadata]
-    public var paths: [String: MediaPaths]
-    public var folderSourceBookIds: Set<String>
+    public var paths: [BookID: MediaPaths]
+    public var folderSourceBookIds: Set<BookID>
 
     public init(
         request: MediaGridRenderRequest,
         metadata: [BookMetadata],
-        paths: [String: MediaPaths],
-        folderSourceBookIds: Set<String>,
+        paths: [BookID: MediaPaths],
+        folderSourceBookIds: Set<BookID>,
     ) {
         self.request = request
         self.metadata = metadata
@@ -805,30 +805,26 @@ public actor LibraryDerivationActor {
 
     private func locationInfo(
         for items: [BookMetadata],
-        paths: [String: MediaPaths],
-        folderSourceBookIds: Set<String>,
+        paths: [BookID: MediaPaths],
+        folderSourceBookIds: Set<BookID>,
     ) -> [BookMetadata.ID: MediaGridLocationInfo] {
-        var result: [BookMetadata.ID: MediaGridLocationInfo] = [:]
-        result.reserveCapacity(items.count)
-        for item in items {
-            let mediaPaths = paths[item.id]
-            let hasDownloadedContent =
-                mediaPaths?.ebookPath != nil
-                || mediaPaths?.audioPath != nil
-                || mediaPaths?.syncedPath != nil
-            let isLocal = folderSourceBookIds.contains(item.id)
-            if result[item.id] != nil {
-                debugLog(
-                    "[LibraryDerivationActor] Duplicate book id '\(item.id)' (\(item.title)) in media grid items; keeping the first"
+        Dictionary(uniqueKeysWithValues:
+            items.map { item in
+                let mediaPaths = paths[item.id]
+                let hasDownloadedContent =
+                    mediaPaths?.ebookPath != nil
+                    || mediaPaths?.audioPath != nil
+                    || mediaPaths?.syncedPath != nil
+                let isLocal = folderSourceBookIds.contains(item.id)
+                return (
+                    item.id,
+                    MediaGridLocationInfo(
+                        isDownloaded: hasDownloadedContent && !isLocal,
+                        isLocalStandalone: isLocal,
+                    ),
                 )
-                continue
             }
-            result[item.id] = MediaGridLocationInfo(
-                isDownloaded: hasDownloadedContent && !isLocal,
-                isLocalStandalone: isLocal,
-            )
-        }
-        return result
+        )
     }
 
     private func displayItems(

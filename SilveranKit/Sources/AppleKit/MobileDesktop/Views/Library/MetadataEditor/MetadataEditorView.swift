@@ -6,7 +6,7 @@ import AppKit
 #endif
 
 public struct MetadataEditorView: View {
-    public let initialBookIds: [String]
+    public let initialBookIds: [BookID]
     private let hasUnsavedChanges: Binding<Bool>?
     @Environment(MediaViewModel.self) private var mediaViewModel
     @State private var viewModel = MetadataEditorViewModel()
@@ -19,13 +19,13 @@ public struct MetadataEditorView: View {
     @State private var showCoverImportSheet = false
     @State private var showHardcoverDataDump = false
     @State private var showErrorDetail = false
-    @State private var pendingRevertBookId: String?
-    @State private var pendingSaveBookId: String?
-    @State private var selectedSidebarBookIds: Set<String> = []
-    @State private var sidebarSelectionAnchorId: String?
-    @State private var selectedSidebarListBookId: String?
+    @State private var pendingRevertBookId: BookID?
+    @State private var pendingSaveBookId: BookID?
+    @State private var selectedSidebarBookIds: Set<BookID> = []
+    @State private var sidebarSelectionAnchorId: BookID?
+    @State private var selectedSidebarListBookId: BookID?
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
-    @State private var iOSNavigationPath: [String] = []
+    @State private var iOSNavigationPath: [BookID] = []
     @FocusState private var isSidebarFocused: Bool
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
@@ -37,7 +37,7 @@ public struct MetadataEditorView: View {
         #endif
     }
 
-    public init(initialBookIds: [String], hasUnsavedChanges: Binding<Bool>? = nil) {
+    public init(initialBookIds: [BookID], hasUnsavedChanges: Binding<Bool>? = nil) {
         self.initialBookIds = initialBookIds
         self.hasUnsavedChanges = hasUnsavedChanges
     }
@@ -115,7 +115,6 @@ public struct MetadataEditorView: View {
         .onAppear {
             columnVisibility = .all
             viewModel.addBooks(ids: initialBookIds, from: mediaViewModel.library)
-            viewModel.availableStatuses = mediaViewModel.availableStatuses
             if let selectedBookId = viewModel.selectedBookId {
                 selectedSidebarBookIds = [selectedBookId]
             }
@@ -123,7 +122,6 @@ public struct MetadataEditorView: View {
             #if os(macOS)
             MetadataEditorWindowRegistry.register { bookIds in
                 viewModel.addBooks(ids: bookIds, from: mediaViewModel.library)
-                viewModel.availableStatuses = mediaViewModel.availableStatuses
                 if let firstBookId = bookIds.first {
                     viewModel.selectedBookId = firstBookId
                     selectedSidebarBookIds = [firstBookId]
@@ -131,7 +129,7 @@ public struct MetadataEditorView: View {
             }
             #endif
         }
-        .task {
+        .task(id: viewModel.selectedBookId?.sourceID) {
             await loadAvailableStatusesIfNeeded()
         }
         .onChange(of: viewModel.hasAnyDirtyBooks) { _, isDirty in
@@ -374,7 +372,7 @@ public struct MetadataEditorView: View {
         #endif
     }
 
-    private func selectSidebarBook(id: String) {
+    private func selectSidebarBook(id: BookID) {
         isSidebarFocused = true
         #if os(macOS)
         let isMultiSelect = NSEvent.modifierFlags.contains(.command)
@@ -416,7 +414,7 @@ public struct MetadataEditorView: View {
         sidebarSelectionAnchorId = viewModel.selectedBookId ?? viewModel.books.first?.id
     }
 
-    private func sidebarBookIdRange(from anchorId: String?, to id: String) -> Set<String>? {
+    private func sidebarBookIdRange(from anchorId: BookID?, to id: BookID) -> Set<BookID>? {
         let ids = viewModel.books.map(\.id)
         guard let anchorId, let start = ids.firstIndex(of: anchorId),
             let end = ids.firstIndex(of: id)
@@ -427,12 +425,12 @@ public struct MetadataEditorView: View {
         return Set(range.map { ids[$0] })
     }
 
-    private func removeSidebarBook(id: String) {
+    private func removeSidebarBook(id: BookID) {
         let ids = selectedSidebarBookIds.contains(id) ? selectedSidebarBookIds : [id]
         removeSidebarBooks(ids)
     }
 
-    private func removeSidebarBooks(_ ids: Set<String>) {
+    private func removeSidebarBooks(_ ids: Set<BookID>) {
         viewModel.removeBooks(ids: ids)
         if let selectedBookId = viewModel.selectedBookId {
             selectedSidebarBookIds = [selectedBookId]
@@ -463,18 +461,9 @@ public struct MetadataEditorView: View {
     }
 
     private func loadAvailableStatusesIfNeeded() async {
-        if let sourceID = viewModel.selectedBook?.originalMetadata.sourceID {
-            viewModel.availableStatuses = await BookServiceActor.shared.getAvailableStatuses(
-                sourceID: sourceID
-            )
-            return
-        }
-
-        if !mediaViewModel.availableStatuses.isEmpty {
-            viewModel.availableStatuses = mediaViewModel.availableStatuses
-            return
-        }
-        viewModel.availableStatuses = await BookServiceActor.shared.getAvailableStatuses()
+        guard let sourceID = viewModel.selectedBookId?.sourceID else { return }
+        let statuses = await BookServiceActor.shared.getAvailableStatuses(sourceID: sourceID)
+        viewModel.setAvailableStatuses(statuses, sourceID: sourceID)
     }
 
     private func resetEditorSession() {
@@ -707,7 +696,8 @@ public struct MetadataEditorView: View {
                 viewModel.isSaving || viewModel.selectedBookId == nil
                     || !(viewModel.books.first { $0.id == viewModel.selectedBookId }?.hasDirtyFields
                         ?? false)
-                    || viewModel.hasValidationErrors(for: viewModel.selectedBookId ?? "")
+                    || viewModel.selectedBookId.map { viewModel.hasValidationErrors(for: $0) }
+                        ?? true
             )
             .keyboardShortcut("s", modifiers: .command)
 
@@ -753,7 +743,9 @@ public struct MetadataEditorView: View {
                         || !(viewModel.books.first { $0.id == viewModel.selectedBookId }?
                             .hasDirtyFields
                             ?? false)
-                        || viewModel.hasValidationErrors(for: viewModel.selectedBookId ?? "")
+                        || (viewModel.selectedBookId.map {
+                            viewModel.hasValidationErrors(for: $0)
+                        } ?? true)
                 )
             }
         }
@@ -846,7 +838,8 @@ public struct MetadataEditorView: View {
                 viewModel.isSaving || viewModel.selectedBookId == nil
                     || !(viewModel.books.first { $0.id == viewModel.selectedBookId }?.hasDirtyFields
                         ?? false)
-                    || viewModel.hasValidationErrors(for: viewModel.selectedBookId ?? "")
+                    || viewModel.selectedBookId.map { viewModel.hasValidationErrors(for: $0) }
+                        ?? true
             )
 
             iOSBottomBarButton("Save All", systemImage: "tray.full") {

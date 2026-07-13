@@ -657,7 +657,9 @@ private struct ReadaloudGeneratorForm: View {
     }
 
     private var sourceWorkflowBook: BookMetadata? {
-        guard let bookID = viewModel.sourceOutputBookID else { return nil }
+        guard let bookID = initialData?.bookID,
+            viewModel.sourceOutputBookID == bookID
+        else { return nil }
         return mediaViewModel.library.bookMetaData.first { $0.id == bookID }
     }
 
@@ -1309,7 +1311,6 @@ extension ReadaloudGeneratorData {
         ReadaloudGeneratorInput(
             bookID: bookID,
             bookTitle: bookTitle,
-            sourceID: sourceID,
             sourceName: sourceName,
             sourceKind: sourceKind,
             destination: destination == .source ? .source : .file,

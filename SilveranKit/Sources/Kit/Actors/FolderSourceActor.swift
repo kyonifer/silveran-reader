@@ -227,8 +227,7 @@ public actor FolderSourceActor: BookSourceActor {
             return nil
         }
         return ResolvedLocalMedia(
-            bookID: bookID,
-            sourceID: sourceRecordValue.id,
+            bookID: BookID(sourceID: sourceRecordValue.id, uuid: bookID),
             category: category,
             url: url,
             kind: .source,
@@ -745,7 +744,7 @@ public actor FolderSourceActor: BookSourceActor {
         let role: FolderSourceMediaRole
         let urls: [URL]
         let relativePaths: [String]
-        let extractedMetadata: BookMetadata?
+        let extractedMetadata: FolderSourceExtractedMetadata?
         let groupingDirectory: String
         let groupingStem: String
     }
@@ -877,13 +876,14 @@ public actor FolderSourceActor: BookSourceActor {
                         let metadata = try? await localLibrary.extractMetadata(
                             from: groupURLs[0],
                             category: role.localMediaCategory,
+                            sourceID: sourceRecordValue.id,
                         )
                         candidates.append(
                             FolderMediaCandidate(
                                 role: role,
                                 urls: groupURLs,
                                 relativePaths: groupURLs.map { relativePath(for: $0, root: root) },
-                                extractedMetadata: metadata,
+                                extractedMetadata: metadata.map(FolderSourceExtractedMetadata.init),
                                 groupingDirectory: directory,
                                 groupingStem: key,
                             )
@@ -1049,8 +1049,8 @@ public actor FolderSourceActor: BookSourceActor {
             let ebook = mediaByID[work.mediaIDs[.ebook] ?? ""]
             let readaloud = mediaByID[work.mediaIDs[.readaloud] ?? ""]
             let audio = mediaByID[work.mediaIDs[.audio] ?? ""]
-            var book = BookMetadata(
-                uuid: work.uuid,
+            let book = BookMetadata(
+                bookID: BookID(sourceID: sourceRecordValue.id, uuid: work.uuid),
                 title: work.title,
                 subtitle: work.subtitle,
                 description: work.description,
@@ -1070,9 +1070,8 @@ public actor FolderSourceActor: BookSourceActor {
                 status: work.status,
                 position: work.position,
                 rating: work.rating,
+                source: sourceRecordValue.name,
             )
-            book.sourceID = sourceRecordValue.id
-            book.source = sourceRecordValue.name
             metadata.append(book)
 
             var mediaPaths = MediaPaths()
@@ -1472,12 +1471,13 @@ public actor FolderSourceActor: BookSourceActor {
             return try await localLibrary.extractMetadata(
                 from: sourceFileURL,
                 category: category,
+                sourceID: sourceRecordValue.id,
             )
         }
 
         let bookUUID = UUID().uuidString
         return BookMetadata(
-            uuid: bookUUID,
+            bookID: BookID(sourceID: sourceRecordValue.id, uuid: bookUUID),
             title: sourceFileURL.lastPathComponent,
             subtitle: nil,
             description: nil,
@@ -1503,6 +1503,7 @@ public actor FolderSourceActor: BookSourceActor {
             status: nil,
             position: nil,
             rating: nil,
+            source: sourceRecordValue.name,
         )
     }
 
@@ -1835,7 +1836,6 @@ public actor FolderSourceActor: BookSourceActor {
         url: URL,
         didStartAccessing: Bool
     ) {
-        await SilveranMigrations.ensureMigrationsRan()
         if let resolved = bookmarkedFolderURL() {
             try await filesystem.ensureDirectoryExists(at: resolved.url)
             return resolved
@@ -1904,8 +1904,8 @@ public actor FolderSourceActor: BookSourceActor {
         status: BookStatus? = nil,
         position: BookReadingPosition? = nil,
     ) -> BookMetadata {
-        var updated = BookMetadata(
-            uuid: existing.uuid,
+        BookMetadata(
+            bookID: existing.id,
             title: existing.title,
             subtitle: existing.subtitle,
             description: existing.description,
@@ -1925,13 +1925,13 @@ public actor FolderSourceActor: BookSourceActor {
             status: status ?? existing.status,
             position: position ?? existing.position,
             rating: existing.rating,
+            pageCount: existing.pageCount,
+            duration: existing.duration,
+            alignedAt: existing.alignedAt,
+            alignedByStorytellerVersion: existing.alignedByStorytellerVersion,
+            alignedWith: existing.alignedWith,
+            source: sourceRecordValue.name,
         )
-        updated.alignedAt = existing.alignedAt
-        updated.alignedByStorytellerVersion = existing.alignedByStorytellerVersion
-        updated.alignedWith = existing.alignedWith
-        updated.sourceID = sourceRecordValue.id
-        updated.source = sourceRecordValue.name
-        return updated
     }
 
     private func mergedBookMetadata(
@@ -1940,7 +1940,7 @@ public actor FolderSourceActor: BookSourceActor {
         position: BookReadingPosition? = nil,
     ) -> BookMetadata {
         BookMetadata(
-            uuid: saved.uuid,
+            bookID: BookID(sourceID: sourceRecordValue.id, uuid: saved.uuid),
             title: scanned.title,
             subtitle: scanned.subtitle,
             description: scanned.description,
@@ -1989,6 +1989,13 @@ public actor FolderSourceActor: BookSourceActor {
             status: saved.status,
             position: position ?? saved.position,
             rating: saved.rating,
+            pageCount: scanned.pageCount ?? saved.pageCount,
+            duration: scanned.duration ?? saved.duration,
+            alignedAt: scanned.alignedAt ?? saved.alignedAt,
+            alignedByStorytellerVersion: scanned.alignedByStorytellerVersion
+                ?? saved.alignedByStorytellerVersion,
+            alignedWith: scanned.alignedWith ?? saved.alignedWith,
+            source: sourceRecordValue.name,
         )
     }
 }

@@ -88,7 +88,9 @@ public struct UploadNewBookView: View {
                 } header: {
                     Text("Select Files")
                 } footer: {
-                    Text("Selected formats are added together as one book in the destination source.")
+                    Text(
+                        "Selected formats are added together as one book in the destination source."
+                    )
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 }
@@ -464,8 +466,7 @@ public struct UploadNewBookView: View {
 
             let uploadBookUUID = UUID().uuidString
             let success = await BookServiceActor.shared.uploadBookAssets(
-                bookUUID: uploadBookUUID,
-                sourceID: sourceID,
+                bookID: BookID(sourceID: sourceID, uuid: uploadBookUUID),
                 ebook: ebookAsset,
                 audiobooks: audiobookAssets,
                 readaloud: readaloudAsset,

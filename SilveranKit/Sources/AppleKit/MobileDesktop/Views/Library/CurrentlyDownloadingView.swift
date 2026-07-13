@@ -91,7 +91,7 @@ struct CurrentlyDownloadingView: View {
                         Button {
                             Task {
                                 await DownloadManager.shared.resumeDownload(
-                                    for: record.bookId,
+                                    for: record.bookID,
                                     category: record.category,
                                 )
                             }
@@ -114,7 +114,7 @@ struct CurrentlyDownloadingView: View {
                     Button {
                         Task {
                             await DownloadManager.shared.cancelDownload(
-                                for: record.bookId,
+                                for: record.bookID,
                                 category: record.category,
                             )
                         }
@@ -284,7 +284,7 @@ private struct DownloadRecordRow: View {
                     Button {
                         Task {
                             await DownloadManager.shared.resumeDownload(
-                                for: record.bookId,
+                                for: record.bookID,
                                 category: record.category,
                             )
                         }
@@ -310,7 +310,7 @@ private struct DownloadRecordRow: View {
             Button(role: .destructive) {
                 Task {
                     await DownloadManager.shared.cancelDownload(
-                        for: record.bookId,
+                        for: record.bookID,
                         category: record.category,
                     )
                 }

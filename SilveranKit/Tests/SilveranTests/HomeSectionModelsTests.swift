@@ -42,14 +42,14 @@ import Testing
             "Currently Reading", "Start Reading", "Recently Added", "Completed",
         ]
     )
-    #expect(sections[0].books.map(\.id) == ["reading-new", "reading-old"])
-    #expect(sections[1].books.map(\.id) == ["start"])
+    #expect(sections[0].books.map(\.uuid) == ["reading-new", "reading-old"])
+    #expect(sections[1].books.map(\.uuid) == ["start"])
     #expect(
-        sections[2].books.map(\.id) == [
+        sections[2].books.map(\.uuid) == [
             "completed", "start", "reading-new", "reading-old",
         ]
     )
-    #expect(sections[3].books.map(\.id) == ["completed"])
+    #expect(sections[3].books.map(\.uuid) == ["completed"])
 }
 
 @Test func homeSectionSearchMatchesTitleAndAuthorAfterApplyingLimit() {
@@ -77,7 +77,7 @@ import Testing
         searchText: "Le Guin",
     )
 
-    #expect(sections[0].books.map(\.id) == ["match"])
+    #expect(sections[0].books.map(\.uuid) == ["match"])
 }
 
 @Test func homeSectionsPreserveDuplicateConfiguredKinds() {
@@ -95,7 +95,7 @@ import Testing
     )
 
     #expect(sections.map(\.kind) == [.currentlyReading, .currentlyReading])
-    #expect(sections.allSatisfy { $0.books.map(\.id) == ["book"] })
+    #expect(sections.allSatisfy { $0.books.map(\.uuid) == ["book"] })
 }
 
 private func homeBook(
@@ -106,7 +106,7 @@ private func homeBook(
     authors: [BookCreator]? = nil,
 ) -> BookMetadata {
     BookMetadata(
-        uuid: id,
+        bookID: BookID(sourceID: "test-source", uuid: id),
         title: title,
         subtitle: nil,
         description: nil,

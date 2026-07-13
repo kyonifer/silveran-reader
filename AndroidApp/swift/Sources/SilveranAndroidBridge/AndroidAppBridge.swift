@@ -2,8 +2,9 @@
 import Foundation
 import SilveranKit
 
-public func bootstrapAndroid(filesDirectory: String) throws {
+public func bootstrapAndroid(filesDirectory: String) async throws {
     try AndroidPlatformBootstrap.bootstrap(filesDirectory: filesDirectory)
+    await SilveranRuntime.start()
 }
 
 public func storytellerSettingsJSON(requestID: String) async throws {
@@ -93,39 +94,39 @@ private func makeLibrarySnapshotJSON(refresh: Bool) async throws -> String {
     )
     let progress = await ProgressSyncActor.shared.getAllBookProgress()
     let downloads = await DownloadManager.shared.incompleteDownloads
-    let downloadsByID = Dictionary(uniqueKeysWithValues: downloads.map { ($0.id, $0) })
+    let downloadsByBookID = Dictionary(grouping: downloads, by: \.bookID)
     var books: [AndroidBook] = []
     books.reserveCapacity(snapshot.books.count)
 
     for book in snapshot.books {
-        guard let sourceID = book.sourceID else { continue }
+        let sourceID = book.sourceID
 
-        let paths = snapshot.mediaPaths[book.uuid]
-        let cachedPaths = snapshot.cachedMediaPaths[book.uuid]
+        let paths = snapshot.mediaPaths[book.id]
+        let cachedPaths = snapshot.cachedMediaPaths[book.id]
         let media = [
             androidMedia(
-                bookID: book.uuid,
+                bookID: book.id,
                 category: .ebook,
                 available: book.hasAvailableEbook,
                 paths: paths,
                 cachedPaths: cachedPaths,
-                downloadsByID: downloadsByID,
+                downloadsByBookID: downloadsByBookID,
             ),
             androidMedia(
-                bookID: book.uuid,
+                bookID: book.id,
                 category: .audio,
                 available: book.hasAvailableAudiobook,
                 paths: paths,
                 cachedPaths: cachedPaths,
-                downloadsByID: downloadsByID,
+                downloadsByBookID: downloadsByBookID,
             ),
             androidMedia(
-                bookID: book.uuid,
+                bookID: book.id,
                 category: .synced,
                 available: book.hasAvailableReadaloud,
                 paths: paths,
                 cachedPaths: cachedPaths,
-                downloadsByID: downloadsByID,
+                downloadsByBookID: downloadsByBookID,
             ),
         ].compactMap { $0 }
 
@@ -151,9 +152,7 @@ private func makeLibrarySnapshotJSON(refresh: Bool) async throws -> String {
         AndroidHomeSection(
             kind: section.kind.rawValue,
             title: section.kind.title,
-            bookKeys: section.books.compactMap { book in
-                book.sourceID.map { "\($0):\(book.uuid)" }
-            },
+            bookIDs: section.books.map(\.id),
         )
     }
     return try encodeJSON(
@@ -176,10 +175,10 @@ public func coverResponseJSON(
     height: Int32,
     refresh: Bool,
 ) async throws {
+    let bookID = BookID(sourceID: sourceID, uuid: bookID)
     try await deliverAndroidBridgePayload(requestID: requestID) {
         try await makeCoverResponseJSON(
             bookID: bookID,
-            sourceID: sourceID,
             version: version,
             audio: audio,
             width: width,
@@ -190,8 +189,7 @@ public func coverResponseJSON(
 }
 
 private func makeCoverResponseJSON(
-    bookID: String,
-    sourceID: String,
+    bookID: BookID,
     version: String,
     audio: Bool,
     width: Int32,
@@ -205,7 +203,6 @@ private func makeCoverResponseJSON(
 
     let response = await BookServiceActor.shared.loadCover(
         for: bookID,
-        sourceID: sourceID,
         audio: audio,
         width: Int(width),
         height: Int(height),
@@ -236,8 +233,14 @@ private func makeCoverResponseJSON(
     }
 }
 
-public func persistCoverBase64(bookID: String, audio: Bool, dataBase64: String) async throws {
+public func persistCoverBase64(
+    bookID: String,
+    sourceID: String,
+    audio: Bool,
+    dataBase64: String,
+) async throws {
     try requireAndroidBootstrap()
+    let bookID = BookID(sourceID: sourceID, uuid: bookID)
     guard let data = Data(base64Encoded: dataBase64) else {
         throw AndroidBridgeError.invalidCoverData
     }
@@ -264,18 +267,15 @@ public func downloadBook(
     category: String,
 ) async throws {
     try requireAndroidBootstrap()
+    let bookID = BookID(sourceID: sourceID, uuid: bookID)
 
     guard let mediaCategory = LocalMediaCategory(rawValue: category) else {
         throw AndroidBridgeError.invalidMediaCategory(category)
     }
 
     let snapshot = await BookServiceActor.shared.librarySnapshot(policy: .cachedOnly)
-    guard
-        let book = snapshot.books.first(where: {
-            $0.uuid == bookID && $0.sourceID == sourceID
-        })
-    else {
-        throw AndroidBridgeError.bookNotFound(bookID)
+    guard let book = snapshot.books.first(where: { $0.id == bookID }) else {
+        throw AndroidBridgeError.bookNotFound(bookID.uuid)
     }
     let available = switch mediaCategory {
         case .ebook: book.hasAvailableEbook
@@ -283,14 +283,19 @@ public func downloadBook(
         case .synced: book.hasAvailableReadaloud
     }
     guard available else {
-        throw AndroidBridgeError.mediaUnavailable(category: category, bookID: bookID)
+        throw AndroidBridgeError.mediaUnavailable(category: category, bookID: bookID.uuid)
     }
 
     await DownloadManager.shared.startDownload(for: book, category: mediaCategory)
 }
 
-public func cancelBookDownload(bookID: String, category: String) async throws {
+public func cancelBookDownload(
+    bookID: String,
+    sourceID: String,
+    category: String,
+) async throws {
     try requireAndroidBootstrap()
+    let bookID = BookID(sourceID: sourceID, uuid: bookID)
 
     guard let mediaCategory = LocalMediaCategory(rawValue: category) else {
         throw AndroidBridgeError.invalidMediaCategory(category)
@@ -304,13 +309,13 @@ public func deleteBookDownload(
     category: String,
 ) async throws {
     try requireAndroidBootstrap()
+    let bookID = BookID(sourceID: sourceID, uuid: bookID)
 
     guard let mediaCategory = LocalMediaCategory(rawValue: category) else {
         throw AndroidBridgeError.invalidMediaCategory(category)
     }
     try await BookServiceActor.shared.deleteCachedMedia(
         for: bookID,
-        sourceID: sourceID,
         category: mediaCategory,
     )
 }
@@ -355,7 +360,7 @@ private struct AndroidCoverResponse: Encodable {
 private struct AndroidHomeSection: Encodable {
     let kind: String
     let title: String
-    let bookKeys: [String]
+    let bookIDs: [BookID]
 }
 
 private struct AndroidLibrary: Encodable {
@@ -479,15 +484,15 @@ private func downloadProgress(_ record: DownloadRecord?) -> Double? {
 }
 
 private func androidMedia(
-    bookID: String,
+    bookID: BookID,
     category: LocalMediaCategory,
     available: Bool,
     paths: MediaPaths?,
     cachedPaths: MediaPaths?,
-    downloadsByID: [String: DownloadRecord],
+    downloadsByBookID: [BookID: [DownloadRecord]],
 ) -> AndroidMedia? {
     guard available else { return nil }
-    let record = downloadsByID[downloadID(bookID: bookID, category: category)]
+    let record = downloadsByBookID[bookID]?.first { $0.category == category }
     return AndroidMedia(
         category: category.rawValue,
         downloaded: paths?.path(for: category) != nil,
@@ -495,10 +500,6 @@ private func androidMedia(
         downloadState: downloadStateName(record?.state),
         downloadProgress: downloadProgress(record),
     )
-}
-
-private func downloadID(bookID: String, category: LocalMediaCategory) -> String {
-    "\(bookID)-\(category.rawValue)"
 }
 
 private func encodeJSON<T: Encodable>(_ value: T) throws -> String {

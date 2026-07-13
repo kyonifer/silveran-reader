@@ -49,7 +49,7 @@ public enum HomeSectionDeriver {
     public static func sections(
         kinds: [HomeSectionKind] = HomeSectionKind.allCases,
         books: [BookMetadata],
-        progress: [String: BookProgress],
+        progress: [BookID: BookProgress],
         searchText: String = "",
         limit: Int = 12,
     ) -> [HomeSectionSnapshot] {
@@ -80,7 +80,7 @@ public enum HomeSectionDeriver {
     private static func sectionBooks(
         kind: HomeSectionKind,
         books: [BookMetadata],
-        progress: [String: BookProgress],
+        progress: [BookID: BookProgress],
         searchText: String,
         limit: Int,
     ) -> [BookMetadata] {

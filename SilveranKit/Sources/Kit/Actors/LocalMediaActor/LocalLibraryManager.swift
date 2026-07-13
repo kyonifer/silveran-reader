@@ -24,17 +24,20 @@ public final class LocalLibraryManager: Sendable {
         }
     }
 
-    public func extractMetadata(from fileURL: URL, category: LocalMediaCategory) async throws
-        -> BookMetadata
+    public func extractMetadata(
+        from fileURL: URL,
+        category: LocalMediaCategory,
+        sourceID: BookSourceID,
+    ) async throws -> BookMetadata
     {
         switch category {
             case .ebook, .synced:
                 if fileURL.pathExtension.lowercased() == "cbz" {
-                    return try extractComicMetadata(from: fileURL)
+                    return try extractComicMetadata(from: fileURL, sourceID: sourceID)
                 }
-                return try await extractEpubMetadata(from: fileURL)
+                return try await extractEpubMetadata(from: fileURL, sourceID: sourceID)
             case .audio:
-                return try await extractAudioMetadata(from: fileURL)
+                return try await extractAudioMetadata(from: fileURL, sourceID: sourceID)
         }
     }
 
@@ -45,7 +48,7 @@ public final class LocalLibraryManager: Sendable {
 
     public func scanLocalMedia(
         folderURL localDir: URL,
-        sourceID _: BookSourceID,
+        sourceID: BookSourceID,
     ) async throws -> ScanResult {
         let fm = FileManager.default
 
@@ -110,6 +113,7 @@ public final class LocalLibraryManager: Sendable {
                         let extracted = try await extractMetadata(
                             from: fileURL,
                             category: category,
+                            sourceID: sourceID,
                         )
                         let metadata = metadata(extracted, withUUID: bookUUID)
                         scannedFiles.append(
@@ -176,8 +180,8 @@ public final class LocalLibraryManager: Sendable {
         }
 
         let existing = metadataList[index]
-        var merged = BookMetadata(
-            uuid: existing.uuid,
+        let merged = BookMetadata(
+            bookID: existing.id,
             title: existing.title,
             subtitle: existing.subtitle ?? metadata.subtitle,
             description: existing.description ?? metadata.description,
@@ -197,13 +201,14 @@ public final class LocalLibraryManager: Sendable {
             status: existing.status ?? metadata.status,
             position: existing.position ?? metadata.position,
             rating: existing.rating ?? metadata.rating,
+            pageCount: existing.pageCount ?? metadata.pageCount,
+            duration: existing.duration ?? metadata.duration,
+            alignedAt: existing.alignedAt ?? metadata.alignedAt,
+            alignedByStorytellerVersion: existing.alignedByStorytellerVersion
+                ?? metadata.alignedByStorytellerVersion,
+            alignedWith: existing.alignedWith ?? metadata.alignedWith,
+            source: existing.source ?? metadata.source,
         )
-        merged.alignedAt = existing.alignedAt ?? metadata.alignedAt
-        merged.alignedByStorytellerVersion =
-            existing.alignedByStorytellerVersion ?? metadata.alignedByStorytellerVersion
-        merged.alignedWith = existing.alignedWith ?? metadata.alignedWith
-        merged.sourceID = existing.sourceID ?? metadata.sourceID
-        merged.source = existing.source ?? metadata.source
         metadataList[index] = merged
     }
 
@@ -274,8 +279,8 @@ public final class LocalLibraryManager: Sendable {
     }
 
     private func metadata(_ metadata: BookMetadata, withUUID uuid: String) -> BookMetadata {
-        var stamped = BookMetadata(
-            uuid: uuid,
+        BookMetadata(
+            bookID: BookID(sourceID: metadata.sourceID, uuid: uuid),
             title: metadata.title,
             subtitle: metadata.subtitle,
             description: metadata.description,
@@ -328,13 +333,13 @@ public final class LocalLibraryManager: Sendable {
             status: metadata.status,
             position: metadata.position,
             rating: metadata.rating,
+            pageCount: metadata.pageCount,
+            duration: metadata.duration,
+            alignedAt: metadata.alignedAt,
+            alignedByStorytellerVersion: metadata.alignedByStorytellerVersion,
+            alignedWith: metadata.alignedWith,
+            source: metadata.source,
         )
-        stamped.alignedAt = metadata.alignedAt
-        stamped.alignedByStorytellerVersion = metadata.alignedByStorytellerVersion
-        stamped.alignedWith = metadata.alignedWith
-        stamped.sourceID = metadata.sourceID
-        stamped.source = metadata.source
-        return stamped
     }
 
     public func isReadaloudEpub(at epubURL: URL) -> Bool {
@@ -353,7 +358,10 @@ public final class LocalLibraryManager: Sendable {
         return false
     }
 
-    private func extractEpubMetadata(from epubURL: URL) async throws -> BookMetadata {
+    private func extractEpubMetadata(
+        from epubURL: URL,
+        sourceID: BookSourceID,
+    ) async throws -> BookMetadata {
         let archive: Archive
         do {
             archive = try Archive(url: epubURL, accessMode: .read)
@@ -418,7 +426,7 @@ public final class LocalLibraryManager: Sendable {
         }
 
         return BookMetadata(
-            uuid: bookUUID,
+            bookID: BookID(sourceID: sourceID, uuid: bookUUID),
             title: title,
             subtitle: nil,
             description: parsed.description,
@@ -457,7 +465,10 @@ public final class LocalLibraryManager: Sendable {
         return paths.sorted()
     }
 
-    private func extractComicMetadata(from comicURL: URL) throws -> BookMetadata {
+    private func extractComicMetadata(
+        from comicURL: URL,
+        sourceID: BookSourceID,
+    ) throws -> BookMetadata {
         let archive: Archive
         do {
             archive = try Archive(url: comicURL, accessMode: .read)
@@ -469,7 +480,7 @@ public final class LocalLibraryManager: Sendable {
         let bookUUID = UUID().uuidString
 
         return BookMetadata(
-            uuid: bookUUID,
+            bookID: BookID(sourceID: sourceID, uuid: bookUUID),
             title: comicURL.deletingPathExtension().lastPathComponent,
             subtitle: nil,
             description: nil,
@@ -517,9 +528,12 @@ public final class LocalLibraryManager: Sendable {
         return try? extractFile(archive: archive, path: firstPage)
     }
 
-    private func extractAudioMetadata(from audioURL: URL) async throws -> BookMetadata {
+    private func extractAudioMetadata(
+        from audioURL: URL,
+        sourceID: BookSourceID,
+    ) async throws -> BookMetadata {
         if audioURL.lastPathComponent == "manifest.json" {
-            return try extractManifestAudioMetadata(from: audioURL)
+            return try extractManifestAudioMetadata(from: audioURL, sourceID: sourceID)
         }
 
         let bookUUID = UUID().uuidString
@@ -571,7 +585,7 @@ public final class LocalLibraryManager: Sendable {
         )
 
         return BookMetadata(
-            uuid: bookUUID,
+            bookID: BookID(sourceID: sourceID, uuid: bookUUID),
             title: title,
             subtitle: nil,
             description: nil,
@@ -603,7 +617,10 @@ public final class LocalLibraryManager: Sendable {
         }
     }
 
-    private func extractManifestAudioMetadata(from manifestURL: URL) throws -> BookMetadata {
+    private func extractManifestAudioMetadata(
+        from manifestURL: URL,
+        sourceID: BookSourceID,
+    ) throws -> BookMetadata {
         let bookUUID = UUID().uuidString
         let data = try Data(contentsOf: manifestURL)
         let manifest = try JSONDecoder().decode(AudiobookManifestMetadata.self, from: data)
@@ -620,7 +637,7 @@ public final class LocalLibraryManager: Sendable {
         )
 
         return BookMetadata(
-            uuid: bookUUID,
+            bookID: BookID(sourceID: sourceID, uuid: bookUUID),
             title: title,
             subtitle: nil,
             description: nil,

@@ -10,12 +10,11 @@ struct BookStatusSection: View {
     @State private var showOfflineError = false
 
     private var currentItem: BookMetadata {
-        mediaViewModel.library.bookMetaData.first { $0.uuid == item.uuid } ?? item
+        mediaViewModel.library.bookMetaData.first { $0.id == item.id } ?? item
     }
 
     private var sortedStatuses: [BookStatus] {
-        guard let sourceID = currentItem.sourceID else { return [] }
-        return mediaViewModel.availableStatusesBySourceID[sourceID] ?? []
+        mediaViewModel.availableStatusesBySourceID[currentItem.sourceID] ?? []
     }
 
     var body: some View {
@@ -82,8 +81,7 @@ struct BookStatusSection: View {
         defer { isUpdating = false }
 
         let success = await BookServiceActor.shared.updateStatus(
-            forBooks: [item.uuid],
-            sourceID: sourceID,
+            forBooks: [item.id],
             toStatusNamed: statusName,
         )
 

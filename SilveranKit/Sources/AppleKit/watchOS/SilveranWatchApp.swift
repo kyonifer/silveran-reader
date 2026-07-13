@@ -10,6 +10,7 @@ class SilveranWatchAppDelegate: NSObject, WKApplicationDelegate {
             if let urlTask = task as? WKURLSessionRefreshBackgroundTask {
                 if urlTask.sessionIdentifier == "com.kyonifer.silveran.watch.downloads" {
                     Task {
+                        await SilveranRuntime.start()
                         await DownloadManager.shared.handleBackgroundSessionEvents {
                             urlTask.setTaskCompletedWithSnapshot(false)
                         }
@@ -27,24 +28,31 @@ class SilveranWatchAppDelegate: NSObject, WKApplicationDelegate {
 struct SilveranWatchApp: App {
     @WKApplicationDelegateAdaptor(SilveranWatchAppDelegate.self) var appDelegate
     @State private var watchViewModel = WatchViewModel()
+    @State private var runtimeReady = false
     @Environment(\.scenePhase) private var scenePhase
-
-    init() {
-        WatchSessionManager.shared.activate()
-    }
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
-                .environment(AppLaunchContext.environment)
-                .environment(watchViewModel)
-                .task {
-                    await BookServiceActor.shared.setActive(true, source: .watch)
-                    await initializeBookSources()
-                    // Start DownloadManager init + retry loop. On iOS/macOS/tvOS this
-                    // happens via MediaViewModel.setupDownloadManagerObserver() instead.
-                    _ = await DownloadManager.shared.incompleteDownloads
+            Group {
+                if runtimeReady {
+                    ContentView()
+                        .environment(AppLaunchContext.environment)
+                        .environment(watchViewModel)
+                } else {
+                    ProgressView()
                 }
+            }
+            .task {
+                await SilveranRuntime.start()
+                WatchSessionManager.shared.activate()
+                watchViewModel.start()
+                await BookServiceActor.shared.setActive(true, source: .watch)
+                await initializeBookSources()
+                // Start DownloadManager init + retry loop. On iOS/macOS/tvOS this
+                // happens via MediaViewModel.setupDownloadManagerObserver() instead.
+                _ = await DownloadManager.shared.incompleteDownloads
+                runtimeReady = true
+            }
         }
         .onChange(of: scenePhase) { _, newPhase in
             handleScenePhaseChange(newPhase)
@@ -56,6 +64,7 @@ struct SilveranWatchApp: App {
             case .background:
                 debugLog("[WatchApp] App entering background")
                 Task {
+                    await SilveranRuntime.start()
                     await BookServiceActor.shared.setActive(false, source: .watch)
                     await WatchSessionManager.shared.relayPendingProgress()
                 }
@@ -63,6 +72,7 @@ struct SilveranWatchApp: App {
             case .active:
                 debugLog("[WatchApp] App becoming active")
                 Task {
+                    await SilveranRuntime.start()
                     await BookServiceActor.shared.setActive(true, source: .watch)
                 }
 
@@ -75,8 +85,6 @@ struct SilveranWatchApp: App {
     }
 
     private func initializeBookSources() async {
-        await SilveranMigrations.runMigrations()
-        await BookServiceActor.shared.reloadSourceRegistry()
         await syncOnLaunch()
     }
 
@@ -86,7 +94,6 @@ struct SilveranWatchApp: App {
         await WatchSessionManager.shared.relayPendingProgress()
 
         if let library = await BookServiceActor.shared.fetchLibraryInformation() {
-            try? await BookServiceActor.shared.updateLibraryCacheMetadata(library)
             debugLog("[WatchApp] Library metadata updated: \(library.count) books")
         }
     }

@@ -3,7 +3,7 @@ import SilveranKit
 import SwiftUI
 
 struct WatchDownloadProgressView: View {
-    let bookId: String
+    let bookId: BookID
     let bookTitle: String
     let category: LocalMediaCategory
     let onDismiss: () -> Void
@@ -11,11 +11,12 @@ struct WatchDownloadProgressView: View {
     private let bookMetadata: BookMetadata?
 
     init(record: DownloadRecord, onDismiss: @escaping () -> Void) {
-        self.bookId = record.bookId
+        self.bookId = record.bookID
         self.bookTitle = record.bookTitle
         self.category = record.category
         self.bookMetadata = nil
         self.onDismiss = onDismiss
+        self.recordId = record.id
     }
 
     @Environment(\.scenePhase) private var scenePhase
@@ -30,9 +31,7 @@ struct WatchDownloadProgressView: View {
     @State private var didFail = false
     @State private var isDownloading = false
 
-    private var downloadId: String {
-        "\(bookId)-\(category.rawValue)"
-    }
+    private let recordId: UUID
 
     var body: some View {
         VStack(spacing: 12) {
@@ -213,9 +212,9 @@ struct WatchDownloadProgressView: View {
             await DownloadManager.shared.resumeDownload(for: bookId, category: category)
         }
 
-        let _ = await DownloadManager.shared.addObserver { [downloadId] records in
+        let _ = await DownloadManager.shared.addObserver { [recordId] records in
             Task { @MainActor in
-                guard let record = records.first(where: { $0.id == downloadId }) else {
+                guard let record = records.first(where: { $0.id == recordId }) else {
                     if isDownloading || bytesDownloaded > 0 {
                         progress = 1.0
                         isComplete = true

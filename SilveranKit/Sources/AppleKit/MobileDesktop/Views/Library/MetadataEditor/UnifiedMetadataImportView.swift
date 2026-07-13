@@ -114,7 +114,9 @@ struct UnifiedMetadataImportView: View {
             Divider()
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
-                    if let error = viewModel.audnexus.error, viewModel.audnexus.searchResults.isEmpty {
+                    if let error = viewModel.audnexus.error,
+                        viewModel.audnexus.searchResults.isEmpty
+                    {
                         pickerMessage(error)
                     }
                     ForEach(viewModel.audnexus.searchResults) { result in
@@ -199,7 +201,9 @@ struct UnifiedMetadataImportView: View {
             SecureField("Hardcover token", text: $viewModel.hardcover.tokenInput)
                 .textFieldStyle(.roundedBorder)
             Button("Save Token") { Task { await viewModel.saveHardcoverToken() } }
-                .disabled(viewModel.hardcover.tokenInput.trimmingCharacters(in: .whitespaces).isEmpty)
+                .disabled(
+                    viewModel.hardcover.tokenInput.trimmingCharacters(in: .whitespaces).isEmpty
+                )
             if let error = viewModel.hardcover.error {
                 Text(error).font(.caption).foregroundStyle(.orange)
             }
@@ -586,11 +590,16 @@ struct UnifiedMetadataImportView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: 6)
-                    .fill(isSelected ? Color.accentColor.opacity(0.10) : Color.secondary.opacity(0.05))
+                    .fill(
+                        isSelected ? Color.accentColor.opacity(0.10) : Color.secondary.opacity(0.05)
+                    )
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 6)
-                    .stroke(isSelected ? Color.accentColor.opacity(0.5) : Color.clear, lineWidth: 1)
+                    .stroke(
+                        isSelected ? Color.accentColor.opacity(0.5) : Color.clear,
+                        lineWidth: 1,
+                    )
             )
             .contentShape(Rectangle())
         }
@@ -634,7 +643,9 @@ struct UnifiedMetadataImportView: View {
                         Button {
                             viewModel.toggleTag(tag)
                         } label: {
-                            Text(tag).metadataImportTagPill(isSelected: viewModel.isTagSelected(tag))
+                            Text(tag).metadataImportTagPill(
+                                isSelected: viewModel.isTagSelected(tag)
+                            )
                         }
                         .buttonStyle(.plain)
                     }

@@ -217,7 +217,7 @@ struct WatchIncompleteDownloadsView: View {
                         Button(role: .destructive) {
                             Task {
                                 await DownloadManager.shared.cancelDownload(
-                                    for: record.bookId,
+                                    for: record.bookID,
                                     category: record.category,
                                 )
                             }

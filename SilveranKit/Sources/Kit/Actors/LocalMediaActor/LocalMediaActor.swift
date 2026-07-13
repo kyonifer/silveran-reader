@@ -50,7 +50,7 @@ public struct DownloadedMediaRecord: Codable, Sendable, Equatable {
 public actor LocalMediaActor: GlobalActor {
     public static let shared = LocalMediaActor()
     private var sourceCacheMetadata: [BookMetadata] = []
-    private(set) public var sourceCacheBookPaths: [String: MediaPaths] = [:]
+    private(set) public var sourceCacheBookPaths: [BookID: MediaPaths] = [:]
     private var downloadedMediaBySource: [BookSourceID: [String: DownloadedMediaRecord]] = [:]
     private var reconcileTask: Task<Void, Never>?
     private var activeMutationCount = 0
@@ -62,6 +62,7 @@ public actor LocalMediaActor: GlobalActor {
     private var observers: [UUID: @Sendable () -> Void] = [:]
     private var sourceCacheLoaded = false
     private var ledgerBootstrapNeeded = false
+    private var started = false
 
     public init(
         filesystem: FilesystemActor = .shared,
@@ -69,13 +70,15 @@ public actor LocalMediaActor: GlobalActor {
     ) {
         self.filesystem = filesystem
         self.localLibrary = localLibrary
-        Task { [weak self] in
-            await SilveranMigrations.ensureMigrationsRan()
-            try? await filesystem.ensureLocalStorageDirectories()
-            try? await self?.loadSourceCache()
-            await self?.scheduleBootstrapReconcileIfNeeded()
-            await self?.startPeriodicScan()
-        }
+    }
+
+    func start() async {
+        guard !started else { return }
+        started = true
+        try? await filesystem.ensureLocalStorageDirectories()
+        try? await loadSourceCache()
+        scheduleBootstrapReconcileIfNeeded()
+        startPeriodicScan()
     }
 
     private func startPeriodicScan() {
@@ -109,17 +112,6 @@ public actor LocalMediaActor: GlobalActor {
         debugLogVerbose("[LMA] notifyObservers: notifying \(observers.count) observers")
         for (_, callback) in observers {
             callback()
-        }
-    }
-
-    private func metadata(
-        _ metadata: [BookMetadata],
-        stampedWith sourceID: BookSourceID,
-    ) -> [BookMetadata] {
-        metadata.map { book in
-            var stamped = book
-            stamped.sourceID = stamped.sourceID ?? sourceID
-            return stamped
         }
     }
 
@@ -172,9 +164,10 @@ public actor LocalMediaActor: GlobalActor {
     }
 
     private func rebuildPathProjection() async {
-        var projection: [String: MediaPaths] = [:]
+        var projection: [BookID: MediaPaths] = [:]
         for (sourceID, ledger) in downloadedMediaBySource {
-            for (bookID, record) in ledger {
+            for (bookUUID, record) in ledger {
+                let bookID = BookID(sourceID: sourceID, uuid: bookUUID)
                 projection[bookID] = await mediaPaths(from: record, sourceID: sourceID)
             }
         }
@@ -197,14 +190,15 @@ public actor LocalMediaActor: GlobalActor {
     ) async {
         let record = await downloadRecord(from: paths, sourceID: sourceID)
         let existing = downloadedMediaBySource[sourceID]?[bookID]
+        let scopedID = BookID(sourceID: sourceID, uuid: bookID)
         if record.isEmpty {
             guard existing != nil else { return }
             downloadedMediaBySource[sourceID]?.removeValue(forKey: bookID)
-            sourceCacheBookPaths.removeValue(forKey: bookID)
+            sourceCacheBookPaths.removeValue(forKey: scopedID)
         } else {
             guard existing != record else { return }
             downloadedMediaBySource[sourceID, default: [:]][bookID] = record
-            sourceCacheBookPaths[bookID] = await mediaPaths(from: record, sourceID: sourceID)
+            sourceCacheBookPaths[scopedID] = await mediaPaths(from: record, sourceID: sourceID)
         }
         await persistLedger(forSourceID: sourceID)
     }
@@ -215,7 +209,8 @@ public actor LocalMediaActor: GlobalActor {
         category: LocalMediaCategory,
         url: URL?,
     ) async {
-        var paths = sourceCacheBookPaths[bookID] ?? MediaPaths()
+        let scopedID = BookID(sourceID: sourceID, uuid: bookID)
+        var paths = sourceCacheBookPaths[scopedID] ?? MediaPaths()
         switch category {
             case .ebook: paths.ebookPath = url
             case .audio: paths.audioPath = url
@@ -226,34 +221,14 @@ public actor LocalMediaActor: GlobalActor {
 
     public func updateSourceCacheMetadata(
         _ metadata: [BookMetadata],
-        replacingSourceID sourceID: BookSourceID? = nil,
+        replacingSourceID sourceID: BookSourceID,
     ) async throws {
-        await SilveranMigrations.ensureMigrationsRan()
-        _ = try await filesystem.loadOrCreateBookSources()
-        let nextMetadata: [BookMetadata]
-        if let sourceID {
-            let stampedMetadata = self.metadata(
-                metadata,
-                stampedWith: sourceID,
-            )
-            let preserved = sourceCacheMetadata.filter {
-                $0.sourceID != sourceID
-            }
-            nextMetadata = preserved + stampedMetadata
-        } else {
-            let incomingBySourceID = metadataBySourceID(metadata)
-            guard !incomingBySourceID.isEmpty else { return }
-            let replacedSourceIDs = Set(incomingBySourceID.keys)
-            let preserved = sourceCacheMetadata.filter { book in
-                guard let sourceID = book.sourceID else { return false }
-                return !replacedSourceIDs.contains(sourceID)
-            }
-            nextMetadata = preserved + incomingBySourceID.values.flatMap { $0 }
-        }
+        let preserved = sourceCacheMetadata.filter { $0.sourceID != sourceID }
+        let nextMetadata = preserved + metadata
         sourceCacheMetadata = nextMetadata
         sourceCacheLoaded = true
         let grouped = metadataBySourceID(nextMetadata)
-        if let sourceID, grouped[sourceID] == nil {
+        if grouped[sourceID] == nil {
             try await filesystem.saveSourceCacheLibraryMetadata([], sourceID: sourceID)
         }
         for (groupSourceID, groupMetadata) in grouped {
@@ -264,11 +239,13 @@ public actor LocalMediaActor: GlobalActor {
         }
 
         let positions = Dictionary(
-            uniqueKeysWithValues: nextMetadata.compactMap {
-                book -> (String, BookReadingPosition)? in
+            nextMetadata.compactMap { book -> (BookID, BookReadingPosition)? in
                 guard let pos = book.position else { return nil }
-                return (book.uuid, pos)
-            }
+                return (book.id, pos)
+            },
+            uniquingKeysWith: { first, second in
+                (second.timestamp ?? 0) > (first.timestamp ?? 0) ? second : first
+            },
         )
         await ProgressSyncActor.shared.updateServerPositions(positions)
 
@@ -276,30 +253,22 @@ public actor LocalMediaActor: GlobalActor {
     }
 
     public func updateSourceCacheBookMetadata(
-        _ metadata: BookMetadata,
-        sourceID: BookSourceID,
+        _ metadata: BookMetadata
     ) async throws {
-        await SilveranMigrations.ensureMigrationsRan()
-        _ = try await filesystem.loadOrCreateBookSources()
         await ensureSourceCacheLoaded()
 
-        var stamped = metadata
-        stamped.sourceID = stamped.sourceID ?? sourceID
-
-        sourceCacheMetadata.removeAll {
-            $0.uuid == stamped.uuid && $0.sourceID == sourceID
-        }
-        sourceCacheMetadata.append(stamped)
+        sourceCacheMetadata.removeAll { $0.id == metadata.id }
+        sourceCacheMetadata.append(metadata)
         sourceCacheLoaded = true
 
         let grouped = metadataBySourceID(sourceCacheMetadata)
-        if let sourceMetadata = grouped[sourceID] {
+        if let sourceMetadata = grouped[metadata.sourceID] {
             try await filesystem.saveSourceCacheLibraryMetadata(
                 sourceMetadata,
-                sourceID: sourceID,
+                sourceID: metadata.sourceID,
             )
         } else {
-            try await filesystem.saveSourceCacheLibraryMetadata([], sourceID: sourceID)
+            try await filesystem.saveSourceCacheLibraryMetadata([], sourceID: metadata.sourceID)
         }
 
         await notifyObservers()
@@ -311,7 +280,6 @@ public actor LocalMediaActor: GlobalActor {
     }
 
     private func ensureSourceCacheLoaded() async {
-        await SilveranMigrations.ensureMigrationsRan()
         guard !sourceCacheLoaded else { return }
         do {
             try await loadSourceCache()
@@ -325,18 +293,17 @@ public actor LocalMediaActor: GlobalActor {
     {
         var grouped: [BookSourceID: [BookMetadata]] = [:]
         for book in metadata {
-            guard let sourceID = book.sourceID else { continue }
-            grouped[sourceID, default: []].append(book)
+            grouped[book.sourceID, default: []].append(book)
         }
         return grouped
     }
 
-    public func updateBookProgress(bookId: String, locator: BookLocator, timestamp: Double) async {
-        debugLog("[LocalMediaActor] updateBookProgress: bookId=\(bookId), timestamp=\(timestamp)")
+    public func updateBookProgress(bookID: BookID, locator: BookLocator, timestamp: Double) async {
+        debugLog("[LocalMediaActor] updateBookProgress: bookID=\(bookID), timestamp=\(timestamp)")
 
         let updatedAtString = Date(timeIntervalSince1970: timestamp / 1000).ISO8601Format()
 
-        if let index = sourceCacheMetadata.firstIndex(where: { $0.uuid == bookId }) {
+        if let index = sourceCacheMetadata.firstIndex(where: { $0.id == bookID }) {
             let existing = sourceCacheMetadata[index]
             let existingTimestamp = existing.position?.timestamp ?? 0
 
@@ -352,8 +319,8 @@ public actor LocalMediaActor: GlobalActor {
                     createdAt: existing.position?.createdAt,
                     updatedAt: updatedAtString,
                 )
-                var updatedMetadata = BookMetadata(
-                    uuid: existing.uuid,
+                let updatedMetadata = BookMetadata(
+                    bookID: existing.id,
                     title: existing.title,
                     subtitle: existing.subtitle,
                     description: existing.description,
@@ -373,27 +340,30 @@ public actor LocalMediaActor: GlobalActor {
                     status: existing.status,
                     position: newPosition,
                     rating: existing.rating,
+                    pageCount: existing.pageCount,
+                    duration: existing.duration,
+                    alignedAt: existing.alignedAt,
+                    alignedByStorytellerVersion: existing.alignedByStorytellerVersion,
+                    alignedWith: existing.alignedWith,
+                    source: existing.source,
                 )
-                updatedMetadata.sourceID =
-                    existing.sourceID
-                updatedMetadata.source = existing.source
                 sourceCacheMetadata[index] = updatedMetadata
                 debugLog("[LocalMediaActor] updateBookProgress: updated source-cache metadata")
-                if let sourceID = updatedMetadata.sourceID {
-                    let sourceMetadata = sourceCacheMetadata.filter { $0.sourceID == sourceID }
-                    do {
-                        try await filesystem.saveSourceCacheLibraryMetadata(
-                            sourceMetadata,
-                            sourceID: sourceID,
-                        )
-                        debugLog(
-                            "[LocalMediaActor] updateBookProgress: persisted source-cache metadata"
-                        )
-                    } catch {
-                        debugLog(
-                            "[LocalMediaActor] updateBookProgress: failed to persist source-cache metadata: \(error)"
-                        )
-                    }
+                let sourceMetadata = sourceCacheMetadata.filter {
+                    $0.sourceID == updatedMetadata.sourceID
+                }
+                do {
+                    try await filesystem.saveSourceCacheLibraryMetadata(
+                        sourceMetadata,
+                        sourceID: updatedMetadata.sourceID,
+                    )
+                    debugLog(
+                        "[LocalMediaActor] updateBookProgress: persisted source-cache metadata"
+                    )
+                } catch {
+                    debugLog(
+                        "[LocalMediaActor] updateBookProgress: failed to persist source-cache metadata: \(error)"
+                    )
                 }
             }
         }
@@ -403,7 +373,6 @@ public actor LocalMediaActor: GlobalActor {
     }
 
     private func loadSourceCache() async throws {
-        await SilveranMigrations.ensureMigrationsRan()
         try await filesystem.ensureLocalStorageDirectories()
         let bookSources = try await filesystem.loadOrCreateBookSources()
 
@@ -416,14 +385,7 @@ public actor LocalMediaActor: GlobalActor {
                     sourceID: source.id
                 )
             else { continue }
-            let stampedMetadata = metadata(loadedMetadata, stampedWith: source.id)
-            cachedMetadata.append(contentsOf: stampedMetadata)
-            if stampedMetadata != loadedMetadata {
-                try await filesystem.saveSourceCacheLibraryMetadata(
-                    stampedMetadata,
-                    sourceID: source.id,
-                )
-            }
+            cachedMetadata.append(contentsOf: loadedMetadata)
             if let ledger = try? await filesystem.loadDownloadedMediaLedger(sourceID: source.id) {
                 ledgers[source.id] = ledger
             } else {
@@ -436,10 +398,12 @@ public actor LocalMediaActor: GlobalActor {
         await rebuildPathProjection()
         sourceCacheLoaded = true
 
-        var allPositions: [String: BookReadingPosition] = [:]
+        var allPositions: [BookID: BookReadingPosition] = [:]
         for book in cachedMetadata {
-            if let pos = book.position {
-                allPositions[book.uuid] = pos
+            if let pos = book.position,
+                (pos.timestamp ?? 0) >= (allPositions[book.id]?.timestamp ?? 0)
+            {
+                allPositions[book.id] = pos
             }
         }
         await ProgressSyncActor.shared.updateServerPositions(allPositions)
@@ -472,11 +436,10 @@ public actor LocalMediaActor: GlobalActor {
         var rebuilt: [BookSourceID: [String: DownloadedMediaRecord]] = [:]
         for book in sourceCacheMetadata {
             guard !reconcileInvalidated else { return }
-            guard let sourceID = book.sourceID else { continue }
-            let paths = await scanBookPaths(for: book.uuid, sourceID: sourceID)
-            let record = await downloadRecord(from: paths, sourceID: sourceID)
+            let paths = await scanBookPaths(for: book.uuid, sourceID: book.sourceID)
+            let record = await downloadRecord(from: paths, sourceID: book.sourceID)
             if !record.isEmpty {
-                rebuilt[sourceID, default: [:]][book.uuid] = record
+                rebuilt[book.sourceID, default: [:]][book.uuid] = record
             }
         }
 
@@ -547,47 +510,37 @@ public actor LocalMediaActor: GlobalActor {
         return paths
     }
 
-    public func cachedMediaPaths(for metadata: [BookMetadata]) async -> [String: MediaPaths] {
+    public func cachedMediaPaths(for metadata: [BookMetadata]) async -> [BookID: MediaPaths] {
         await ensureSourceCacheLoaded()
         return sourceCacheBookPaths
     }
 
     public func mediaFilePath(
-        for uuid: String,
+        for bookID: BookID,
         category: LocalMediaCategory,
-        sourceID _: BookSourceID? = nil,
     ) async -> URL? {
-        return sourceCacheBookPaths[uuid]?.path(for: category)
+        return sourceCacheBookPaths[bookID]?.path(for: category)
     }
 
     // Validates the recorded file still exists; on a miss, rescans this one book and re-syncs the
     // ledger (records a found file, or clears a stale entry).
     public func resolveAndRecordBookPath(
-        for uuid: String,
+        for bookID: BookID,
         category: LocalMediaCategory,
-        sourceID: BookSourceID,
     ) async -> URL? {
-        if let cached = sourceCacheBookPaths[uuid]?.path(for: category),
+        if let cached = sourceCacheBookPaths[bookID]?
+            .path(for: category),
             FileManager.default.fileExists(atPath: cached.path)
         {
             return cached
         }
-        let scanned = await scanBookPaths(for: uuid, sourceID: sourceID)
-        await updateLedgerEntry(bookID: uuid, sourceID: sourceID, paths: scanned)
+        let scanned = await scanBookPaths(for: bookID.uuid, sourceID: bookID.sourceID)
+        await updateLedgerEntry(
+            bookID: bookID.uuid,
+            sourceID: bookID.sourceID,
+            paths: scanned,
+        )
         return scanned.path(for: category)
-    }
-
-    private func cacheSourceID(
-        for uuid: String,
-        explicitSourceID: BookSourceID?,
-    ) async -> BookSourceID? {
-        if let explicitSourceID {
-            return explicitSourceID
-        }
-        if let metadataSourceID = sourceCacheMetadata.first(where: { $0.uuid == uuid })?.sourceID {
-            return metadataSourceID
-        }
-        return nil
     }
 
     private func firstMediaFile(in contents: [URL], matchingExtensions extensions: Set<String>)
@@ -615,37 +568,43 @@ public actor LocalMediaActor: GlobalActor {
     }
 
     public func deleteMedia(
-        for uuid: String,
+        for bookID: BookID,
         category: LocalMediaCategory,
-        sourceID explicitSourceID: BookSourceID? = nil,
     ) async throws {
         beginMutation()
         defer { endMutation() }
-        guard let sourceID = await cacheSourceID(for: uuid, explicitSourceID: explicitSourceID)
-        else { return }
         try await filesystem.deleteMedia(
-            for: uuid,
+            for: bookID.uuid,
             category: category,
-            sourceID: sourceID,
+            sourceID: bookID.sourceID,
         )
 
-        await setLedgerPath(bookID: uuid, sourceID: sourceID, category: category, url: nil)
+        await setLedgerPath(
+            bookID: bookID.uuid,
+            sourceID: bookID.sourceID,
+            category: category,
+            url: nil,
+        )
         await notifyObservers()
     }
 
     /// Removes every downloaded category for a book in one mutation. Tolerates categories that were
     /// never downloaded. Used when a book is deleted from its source so no stranded files remain.
-    public func removeAllMedia(
-        for uuid: String,
-        sourceID explicitSourceID: BookSourceID? = nil,
-    ) async {
+    public func removeAllMedia(for bookID: BookID) async {
         beginMutation()
         defer { endMutation() }
-        guard let sourceID = await cacheSourceID(for: uuid, explicitSourceID: explicitSourceID)
-        else { return }
         for category in LocalMediaCategory.allCases {
-            try? await filesystem.deleteMedia(for: uuid, category: category, sourceID: sourceID)
-            await setLedgerPath(bookID: uuid, sourceID: sourceID, category: category, url: nil)
+            try? await filesystem.deleteMedia(
+                for: bookID.uuid,
+                category: category,
+                sourceID: bookID.sourceID,
+            )
+            await setLedgerPath(
+                bookID: bookID.uuid,
+                sourceID: bookID.sourceID,
+                category: category,
+                url: nil,
+            )
         }
         await notifyObservers()
     }
@@ -670,12 +629,7 @@ public actor LocalMediaActor: GlobalActor {
         }
 
         try await filesystem.ensureLocalStorageDirectories()
-        let cacheSourceID: BookSourceID
-        if let sourceID = metadata.sourceID {
-            cacheSourceID = sourceID
-        } else {
-            throw LocalMediaError.importFailed("Book source is not configured")
-        }
+        let cacheSourceID = metadata.sourceID
 
         let destinationDirectory = await filesystem.getMediaDirectory(
             category: category,

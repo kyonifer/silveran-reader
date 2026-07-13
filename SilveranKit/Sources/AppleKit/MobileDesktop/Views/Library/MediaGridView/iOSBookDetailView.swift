@@ -16,7 +16,7 @@ struct iOSBookDetailView: View {
     @AppStorage("showEbookCoverInAudioView") private var showEbookCover = false
 
     private var currentItem: BookMetadata {
-        mediaViewModel.library.bookMetaData.first { $0.uuid == item.uuid } ?? item
+        mediaViewModel.library.bookMetaData.first { $0.id == item.id } ?? item
     }
 
     private var mediaOptions: [MediaDownloadOption] {
@@ -79,7 +79,7 @@ struct iOSBookDetailView: View {
             .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $showingSyncHistory) {
-            SyncHistorySheet(bookId: item.uuid, bookTitle: item.title)
+            SyncHistorySheet(bookId: item.id, bookTitle: item.title)
         }
         .task {
             await loadCurrentChapter()
@@ -117,7 +117,7 @@ struct iOSBookDetailView: View {
     }
 
     private func loadCurrentChapter() async {
-        let history = await ProgressSyncActor.shared.getSyncHistory(for: item.uuid)
+        let history = await ProgressSyncActor.shared.getSyncHistory(for: item.id)
         if let entry = history.last(where: {
             !$0.locationDescription.isEmpty
                 && !$0.locationDescription.lowercased().contains("unknown")
@@ -140,8 +140,7 @@ struct iOSBookDetailView: View {
     }
 
     private var sortedStatuses: [BookStatus] {
-        guard let sourceID = currentItem.sourceID else { return [] }
-        return mediaViewModel.availableStatusesBySourceID[sourceID] ?? []
+        mediaViewModel.availableStatusesBySourceID[currentItem.sourceID] ?? []
     }
 
     private func updateStatus(to statusName: String) async {
@@ -158,8 +157,7 @@ struct iOSBookDetailView: View {
         defer { isUpdatingStatus = false }
 
         let success = await BookServiceActor.shared.updateStatus(
-            forBooks: [item.uuid],
-            sourceID: sourceID,
+            forBooks: [item.id],
             toStatusNamed: statusName,
         )
 
@@ -878,8 +876,7 @@ private struct iOSCreateReadaloudButton: View {
         Task {
             isStartingAlignment = true
             _ = await BookServiceActor.shared.startAlignment(
-                for: item.uuid,
-                sourceID: item.sourceID,
+                for: item.id,
                 restart: isErrorOrStopped ? .full : .none,
             )
             await BookServiceActor.shared.fetchLibraryInformation()
@@ -901,8 +898,7 @@ private struct iOSCreateReadaloudButton: View {
             Task {
                 isCancelingAlignment = true
                 _ = await BookServiceActor.shared.cancelAlignment(
-                    for: item.uuid,
-                    sourceID: item.sourceID,
+                    for: item.id,
                 )
                 await BookServiceActor.shared.fetchLibraryInformation()
                 isCancelingAlignment = false
@@ -947,12 +943,11 @@ private struct CompactStatusPicker: View {
     @State private var showOfflineError = false
 
     private var currentItem: BookMetadata {
-        mediaViewModel.library.bookMetaData.first { $0.uuid == item.uuid } ?? item
+        mediaViewModel.library.bookMetaData.first { $0.id == item.id } ?? item
     }
 
     private var sortedStatuses: [BookStatus] {
-        guard let sourceID = currentItem.sourceID else { return [] }
-        return mediaViewModel.availableStatusesBySourceID[sourceID] ?? []
+        mediaViewModel.availableStatusesBySourceID[currentItem.sourceID] ?? []
     }
 
     var body: some View {
@@ -1025,8 +1020,7 @@ private struct CompactStatusPicker: View {
         defer { isUpdating = false }
 
         let success = await BookServiceActor.shared.updateStatus(
-            forBooks: [item.uuid],
-            sourceID: sourceID,
+            forBooks: [item.id],
             toStatusNamed: statusName,
         )
 
@@ -1048,7 +1042,7 @@ private struct BookOptionsSheet: View {
     @State private var showDeleteConfirmation = false
 
     private var currentItem: BookMetadata {
-        mediaViewModel.library.bookMetaData.first { $0.uuid == item.uuid } ?? item
+        mediaViewModel.library.bookMetaData.first { $0.id == item.id } ?? item
     }
 
     private var sortedStatuses: [BookStatus] {
@@ -1087,7 +1081,7 @@ private struct BookOptionsSheet: View {
                         dismiss()
                         Task { @MainActor in
                             await Task.yield()
-                            editMetadataAction([item.uuid])
+                            editMetadataAction([item.id])
                         }
                     } label: {
                         Label("Edit Metadata...", systemImage: "pencil")
@@ -1191,8 +1185,7 @@ private struct StatusPickerView: View {
         defer { isUpdatingStatus = false }
 
         let success = await BookServiceActor.shared.updateStatus(
-            forBooks: [item.uuid],
-            sourceID: sourceID,
+            forBooks: [item.id],
             toStatusNamed: statusName,
         )
 

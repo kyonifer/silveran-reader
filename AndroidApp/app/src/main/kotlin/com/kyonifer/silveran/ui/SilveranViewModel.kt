@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.kyonifer.silveran.bridge.SilveranBridgeClient
 import com.kyonifer.silveran.model.Book
+import com.kyonifer.silveran.model.DownloadOperation
 import com.kyonifer.silveran.model.HomeSection
 import com.kyonifer.silveran.model.StorytellerSettings
 import kotlinx.coroutines.channels.Channel
@@ -29,7 +30,7 @@ data class SilveranUiState(
     val sourceMessage: String? = null,
     val refreshingLibrary: Boolean = false,
     val savingSettings: Boolean = false,
-    val pendingDownloads: Set<String> = emptySet(),
+    val pendingDownloads: Set<DownloadOperation> = emptySet(),
     val successfulSettingsSaves: Int = 0,
     val error: String? = null,
 )
@@ -66,9 +67,7 @@ class SilveranViewModel private constructor(
                 mutableState.value = mutableState.value.copy(settingsLoaded = true)
                 showError(error)
             }
-            // BookServiceActor owns its startup network refresh. Render the
-            // persisted snapshot now; its observer delivers the fresh result.
-            runCatching { refreshLibraryNow(refresh = false) }.onFailure { error ->
+            runCatching { refreshLibraryNow(refresh = true) }.onFailure { error ->
                 mutableState.value = mutableState.value.copy(libraryLoaded = true)
                 showError(error)
             }
@@ -102,7 +101,7 @@ class SilveranViewModel private constructor(
     }
 
     fun download(book: Book, category: String) {
-        val operation = "${book.key}:$category"
+        val operation = DownloadOperation(book.id, category)
         mutableState.value = mutableState.value.copy(
             pendingDownloads = mutableState.value.pendingDownloads + operation,
             error = null,
@@ -119,7 +118,7 @@ class SilveranViewModel private constructor(
     }
 
     fun cancelDownload(book: Book, category: String) {
-        val operation = "${book.key}:$category"
+        val operation = DownloadOperation(book.id, category)
         viewModelScope.launch {
             runCatching {
                 client.cancelDownload(book, category)
@@ -174,7 +173,7 @@ class SilveranViewModel private constructor(
                 val settings = current.settings
                 val refreshCovers = refresh || !current.libraryLoaded ||
                     current.sourceStatus != snapshot.sourceStatus ||
-                    current.books.map(Book::key) != snapshot.books.map(Book::key)
+                    current.books.map(Book::id) != snapshot.books.map(Book::id)
                 mutableState.value = current.copy(
                     books = snapshot.books,
                     homeSections = snapshot.homeSections,

@@ -1,5 +1,6 @@
 #if os(macOS)
 import AppKit
+import SilveranAppleWidgets
 import SwiftUI
 
 extension Scene {
@@ -19,13 +20,13 @@ struct SilveranReaderApp: App {
     @Environment(\.openWindow) private var openWindow
     @Environment(\.scenePhase) private var scenePhase
     @State private var didOpenSecondaryWindows = false
+    @State private var runtimeReady = false
 
     init() {
         StorytellerFontRegistration.registerBundledFonts()
         SidebarSelectionColor.install()
         Task {
-            await SilveranMigrations.runMigrations()
-            await BookServiceActor.shared.reloadSourceRegistry()
+            await SilveranRuntime.start()
 
             do {
                 let webResourcesURL = try AppleKitResources.webResourcesDirectory()
@@ -66,11 +67,13 @@ struct SilveranReaderApp: App {
             case .background:
                 debugLog("[macApp] App entering background")
                 Task {
+                    await SilveranRuntime.start()
                     await BookServiceActor.shared.setActive(false, source: .mac)
                 }
             case .active:
                 debugLog("[macApp] App becoming active")
                 Task {
+                    await SilveranRuntime.start()
                     await BookServiceActor.shared.setActive(true, source: .mac)
                 }
             case .inactive:
@@ -103,8 +106,9 @@ struct SilveranReaderApp: App {
         }
     }
 
-    private var libraryViewContent: some View {
-        LibraryView()
+    @ViewBuilder private var libraryViewContent: some View {
+        if runtimeReady {
+            LibraryView()
             .environment(AppLaunchContext.environment)
             .environment(mediaViewModel)
             #if os(macOS)
@@ -113,6 +117,8 @@ struct SilveranReaderApp: App {
         .background(Color(uiColor: .systemBackground))
             #endif
             .task {
+                await SilveranRuntime.start()
+                await mediaViewModel.start()
                 await BookServiceActor.shared.setActive(true, source: .mac)
                 guard !didOpenSecondaryWindows else { return }
                 didOpenSecondaryWindows = true
@@ -126,33 +132,34 @@ struct SilveranReaderApp: App {
             .onChange(of: mediaViewModel.library.bookMetaData.count) { _, _ in
                 openPendingBookIfReady()
             }
-    }
-
-    private func handleOpenURL(_ url: URL) {
-        guard url.scheme == "silveran" else { return }
-        switch url.host() {
-            case "book":
-                let bookID = url.pathComponents.dropFirst().joined(separator: "/")
-                guard !bookID.isEmpty else { return }
-                mediaViewModel.pendingOpenBookID = bookID
-            default:
-                break
+        } else {
+            ProgressView("Loading...")
+                .task {
+                    await SilveranRuntime.start()
+                    await mediaViewModel.start()
+                    runtimeReady = true
+                }
         }
     }
 
+    private func handleOpenURL(_ url: URL) {
+        guard let bookID = SilveranBookLink.bookID(from: url) else { return }
+        mediaViewModel.pendingOpenBookID = bookID
+    }
+
     private func openPendingBookIfReady() {
-        guard let bookID = mediaViewModel.pendingOpenBookID,
+        guard let target = mediaViewModel.pendingOpenBookID,
             !mediaViewModel.library.bookMetaData.isEmpty
         else { return }
         mediaViewModel.pendingOpenBookID = nil
 
-        guard let book = mediaViewModel.library.bookMetaData.first(where: { $0.id == bookID })
+        guard let book = mediaViewModel.library.bookMetaData.first(where: { $0.id == target })
         else {
-            debugLog("[macApp] Dropping deep link for unknown book \(bookID)")
+            debugLog("[macApp] Dropping unknown deep link for book \(target)")
             return
         }
         guard let category = mediaViewModel.preferredDownloadedCategory(for: book) else {
-            debugLog("[macApp] Book \(bookID) not downloaded; showing details in library")
+            debugLog("[macApp] Book \(book.id) not downloaded; showing details in library")
             mediaViewModel.pendingInfoBookID = book.id
             return
         }

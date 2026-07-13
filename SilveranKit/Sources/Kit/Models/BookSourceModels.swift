@@ -118,21 +118,20 @@ public enum LocalMediaLocationKind: String, Sendable, Codable, Hashable {
 }
 
 public struct ResolvedLocalMedia: Sendable, Hashable {
-    public let bookID: String
-    public let sourceID: BookSourceID
+    public let bookID: BookID
     public let category: LocalMediaCategory
     public let url: URL
     public let kind: LocalMediaLocationKind
 
+    public var sourceID: BookSourceID { bookID.sourceID }
+
     public init(
-        bookID: String,
-        sourceID: BookSourceID,
+        bookID: BookID,
         category: LocalMediaCategory,
         url: URL,
         kind: LocalMediaLocationKind,
     ) {
         self.bookID = bookID
-        self.sourceID = sourceID
         self.category = category
         self.url = url
         self.kind = kind
@@ -149,23 +148,22 @@ public enum EbookFileFormat: String, Sendable, Hashable {
 }
 
 public struct PreparedEbookMedia: Sendable, Hashable {
-    public let bookID: String
-    public let sourceID: BookSourceID
+    public let bookID: BookID
     public let category: LocalMediaCategory
     public let originalURL: URL
     public let readerURL: URL
     public let locationKind: LocalMediaLocationKind
 
+    public var sourceID: BookSourceID { bookID.sourceID }
+
     public init(
-        bookID: String,
-        sourceID: BookSourceID,
+        bookID: BookID,
         category: LocalMediaCategory,
         originalURL: URL,
         readerURL: URL,
         locationKind: LocalMediaLocationKind,
     ) {
         self.bookID = bookID
-        self.sourceID = sourceID
         self.category = category
         self.originalURL = originalURL
         self.readerURL = readerURL
@@ -231,14 +229,14 @@ public struct BookRefreshResult: Sendable, Hashable {
 
 public struct BookServiceLibrarySnapshot: Sendable {
     public let books: [BookMetadata]
-    public let mediaPaths: [String: MediaPaths]
-    public let cachedMediaPaths: [String: MediaPaths]
+    public let mediaPaths: [BookID: MediaPaths]
+    public let cachedMediaPaths: [BookID: MediaPaths]
     public let sources: [BookSourceRecord]
 
     public init(
         books: [BookMetadata],
-        mediaPaths: [String: MediaPaths],
-        cachedMediaPaths: [String: MediaPaths],
+        mediaPaths: [BookID: MediaPaths],
+        cachedMediaPaths: [BookID: MediaPaths],
         sources: [BookSourceRecord],
     ) {
         self.books = books

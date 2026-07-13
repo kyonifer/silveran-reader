@@ -1,5 +1,6 @@
 #if os(iOS)
 import BackgroundTasks
+import SilveranAppleWidgets
 import SilveranKit
 import SwiftUI
 import UIKit
@@ -27,6 +28,7 @@ class SilveranAppDelegate: NSObject, UIApplicationDelegate {
     private static func handleProgressSyncRefresh(_ task: BGAppRefreshTask) {
         debugLog("[SilveranAppDelegate] Progress sync background refresh fired")
         let work = Task {
+            await SilveranRuntime.start()
             _ = await ProgressSyncActor.shared.syncPendingQueue()
             await ProgressUploadManager.shared.enqueuePendingUploads()
             await Self.scheduleProgressSyncRefreshIfNeeded()
@@ -39,6 +41,7 @@ class SilveranAppDelegate: NSObject, UIApplicationDelegate {
     }
 
     static func scheduleProgressSyncRefreshIfNeeded() async {
+        await SilveranRuntime.start()
         let hasPending = await ProgressSyncActor.shared.getPendingProgressSyncs()
             .contains { !$0.syncedToStoryteller }
         guard hasPending else { return }
@@ -63,6 +66,7 @@ class SilveranAppDelegate: NSObject, UIApplicationDelegate {
         if identifier == "com.kyonifer.silveran.downloads" {
             nonisolated(unsafe) let handler = completionHandler
             Task {
+                await SilveranRuntime.start()
                 await DownloadManager.shared.handleBackgroundSessionEvents {
                     handler()
                 }
@@ -70,6 +74,7 @@ class SilveranAppDelegate: NSObject, UIApplicationDelegate {
         } else if identifier == ProgressUploadManager.sessionIdentifier {
             nonisolated(unsafe) let handler = completionHandler
             Task {
+                await SilveranRuntime.start()
                 await ProgressUploadManager.shared.handleBackgroundSessionEvents {
                     handler()
                 }
@@ -104,17 +109,6 @@ struct SilveranReaderApp: App {
     init() {
         StorytellerFontRegistration.registerBundledFonts()
 
-        // Activate WCSession immediately rather than at the end of startup: a queued
-        // watch transfer can background-launch the app with very little runtime, and
-        // the system holds delivery until a delegate is set and activated.
-        Task { await AppleWatchActor.shared.activate() }
-
-        Task {
-            await ProgressUploadManager.shared.setBackstopScheduler {
-                await SilveranAppDelegate.scheduleProgressSyncRefreshIfNeeded()
-            }
-        }
-
         let vm = MediaViewModel()
         _mediaViewModel = State(initialValue: vm)
 
@@ -123,7 +117,12 @@ struct SilveranReaderApp: App {
         // the slow network library refresh never sits on the restore critical path.
         let prerequisites = Task {
             let started = CFAbsoluteTimeGetCurrent()
-            await SilveranMigrations.runMigrations()
+            await SilveranRuntime.start()
+            await vm.start()
+            await AppleWatchActor.shared.activate()
+            await ProgressUploadManager.shared.setBackstopScheduler {
+                await SilveranAppDelegate.scheduleProgressSyncRefreshIfNeeded()
+            }
             do {
                 let webResourcesURL = try AppleKitResources.webResourcesDirectory()
                 try await FilesystemActor.shared.copyWebResources(from: webResourcesURL)
@@ -201,6 +200,7 @@ struct SilveranReaderApp: App {
         )
         NotificationCenter.default.post(name: .appWillResignActive, object: nil)
         Task {
+            await SilveranRuntime.start()
             await BookServiceActor.shared.setActive(false, source: .app)
         }
 
@@ -212,6 +212,7 @@ struct SilveranReaderApp: App {
             }
         }
         Task {
+            await SilveranRuntime.start()
             // Give players reacting to appWillResignActive a moment to queue their
             // final positions before spooling them into background upload tasks
             try? await Task.sleep(for: .seconds(2))
@@ -228,6 +229,7 @@ struct SilveranReaderApp: App {
     private func handleDidBecomeActive() {
         debugLog("[SilveranReaderApp] App becoming active")
         Task {
+            await SilveranRuntime.start()
             await BookServiceActor.shared.setActive(true, source: .app)
         }
     }
@@ -236,14 +238,14 @@ struct SilveranReaderApp: App {
 private struct iOSRootView: View {
     let restorePrerequisitesTask: Task<Void, Never>
     @Environment(MediaViewModel.self) private var mediaViewModel
-    @State private var restoreStartupFinished = !LastOpenBookStore.hasSavedRoute
+    @State private var restoreStartupFinished = false
     @State private var restoredPlayer: PlayerBookData?
     @State private var readaloudGeneratorData: ReadaloudGeneratorData?
 
     var body: some View {
         Group {
             if !restoreStartupFinished {
-                ProgressView("Loading book...")
+                ProgressView(LastOpenBookStore.hasSavedRoute ? "Loading book..." : "Loading...")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let restoredPlayer {
                 NavigationStack {
@@ -275,7 +277,6 @@ private struct iOSRootView: View {
             handleOpenURL(url)
         }
         .task {
-            guard !restoreStartupFinished else { return }
             let restoreStarted = CFAbsoluteTimeGetCurrent()
             await restorePrerequisitesTask.value
             let afterStartup = CFAbsoluteTimeGetCurrent()
@@ -296,17 +297,10 @@ private struct iOSRootView: View {
     }
 
     private func handleOpenURL(_ url: URL) {
-        guard url.scheme == "silveran" else { return }
-        switch url.host() {
-            case "book":
-                let bookID = url.pathComponents.dropFirst().joined(separator: "/")
-                guard !bookID.isEmpty else { return }
-                mediaViewModel.pendingOpenBookID = bookID
-                // The tapped book supersedes whatever the restore flow brought back.
-                restoredPlayer = nil
-            default:
-                break
-        }
+        guard let bookID = SilveranBookLink.bookID(from: url) else { return }
+        mediaViewModel.pendingOpenBookID = bookID
+        // The tapped book supersedes whatever the restore flow brought back.
+        restoredPlayer = nil
     }
 
     @ViewBuilder

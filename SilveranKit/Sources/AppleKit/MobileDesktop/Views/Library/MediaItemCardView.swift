@@ -81,7 +81,7 @@ struct MediaItemCardView: View {
     var sortOption: MediaGridSortOption = .titleAZ
     let onSelect: (BookMetadata) -> Void
     let onInfo: (BookMetadata) -> Void
-    var onEditMetadata: (([String]) -> Void)? = nil
+    var onEditMetadata: (([BookID]) -> Void)? = nil
     var debugContext: String? = nil
     @Environment(MediaViewModel.self) private var mediaViewModel
     #if os(macOS)
@@ -151,7 +151,7 @@ struct MediaItemCardView: View {
 
         if let editMetadataAction {
             Button {
-                editMetadataAction([item.uuid])
+                editMetadataAction([item.id])
             } label: {
                 Label("Edit Metadata...", systemImage: "pencil")
             }
@@ -226,12 +226,11 @@ struct MediaItemCardView: View {
     }
 
     private var iOSCurrentItem: BookMetadata {
-        mediaViewModel.library.bookMetaData.first { $0.uuid == item.uuid } ?? item
+        mediaViewModel.library.bookMetaData.first { $0.id == item.id } ?? item
     }
 
     private var iOSStatusOptions: [BookStatus] {
-        guard let sourceID = iOSCurrentItem.sourceID else { return [] }
-        return mediaViewModel.availableStatusesBySourceID[sourceID] ?? []
+        mediaViewModel.availableStatusesBySourceID[iOSCurrentItem.sourceID] ?? []
     }
 
     @ViewBuilder
@@ -260,8 +259,7 @@ struct MediaItemCardView: View {
         guard name != iOSCurrentItem.status?.name else { return }
         Task {
             let success = await BookServiceActor.shared.updateStatus(
-                forBooks: [item.uuid],
-                sourceID: iOSCurrentItem.sourceID,
+                forBooks: [iOSCurrentItem.id],
                 toStatusNamed: name,
             )
             if !success {
@@ -1091,17 +1089,24 @@ struct DoubleCoverView: View {
     }
 
     #if os(macOS)
-    private static let audioFrontKey = "doubleCoverAudioFront"
+    private static let audioFrontKey = "doubleCoverAudioFront.v2"
 
     private var persistedAudioFront: Bool {
-        let ids = UserDefaults.standard.stringArray(forKey: Self.audioFrontKey) ?? []
-        return ids.contains("\(item.id)")
+        persistedAudioFrontBookIDs.contains(item.id)
     }
 
     private func persistAudioFront(_ front: Bool) {
-        var ids = Set(UserDefaults.standard.stringArray(forKey: Self.audioFrontKey) ?? [])
-        if front { ids.insert("\(item.id)") } else { ids.remove("\(item.id)") }
-        UserDefaults.standard.set(Array(ids), forKey: Self.audioFrontKey)
+        var bookIDs = persistedAudioFrontBookIDs
+        if front { bookIDs.insert(item.id) } else { bookIDs.remove(item.id) }
+        guard let data = try? JSONEncoder().encode(bookIDs.sorted()) else { return }
+        UserDefaults.standard.set(data, forKey: Self.audioFrontKey)
+    }
+
+    private var persistedAudioFrontBookIDs: Set<BookID> {
+        guard let data = UserDefaults.standard.data(forKey: Self.audioFrontKey),
+            let bookIDs = try? JSONDecoder().decode([BookID].self, from: data)
+        else { return [] }
+        return Set(bookIDs)
     }
 
     private func toggleSwap() {

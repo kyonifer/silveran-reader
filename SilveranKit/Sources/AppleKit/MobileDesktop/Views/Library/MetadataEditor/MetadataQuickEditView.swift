@@ -49,7 +49,7 @@ enum MetadataQuickEditField: Equatable {
 
 struct MetadataQuickEditTarget: Identifiable {
     let id = UUID()
-    let bookId: String
+    let bookId: BookID
     let field: MetadataQuickEditField
 }
 
@@ -57,7 +57,7 @@ struct MetadataQuickEditTarget: Identifiable {
 /// library table. Reuses ``MetadataEditorViewModel`` (dirty tracking, validation, payload build, save)
 /// and the same per-field editor controls as the full metadata editor.
 struct MetadataQuickEditView: View {
-    let bookId: String
+    let bookId: BookID
     let field: MetadataQuickEditField
     let onClose: () -> Void
 
@@ -186,9 +186,11 @@ struct MetadataQuickEditView: View {
             case .collections:
                 CollectionsExpandedEditor(
                     collectionUuids: collectionsBinding,
-                    choices: viewModel.libraryCollectionChoices,
-                    namesByUuid: viewModel.libraryCollectionNamesByUuid,
-                    createCollection: { await viewModel.createCollection(named: $0, for: bookId) != nil },
+                    choices: viewModel.libraryCollectionChoices(for: bookId),
+                    namesByUuid: viewModel.libraryCollectionNamesByUuid(for: bookId),
+                    createCollection: {
+                        await viewModel.createCollection(named: $0, for: bookId) != nil
+                    },
                     deleteCollection: { await viewModel.deleteCollection(uuid: $0, for: bookId) },
                     refreshCollections: {
                         await viewModel.refreshLibraryCollectionsFromServer(for: bookId)
@@ -226,7 +228,7 @@ struct MetadataQuickEditView: View {
                     set: { noDate in
                         setPublicationDate(noDate ? "" : SilveranDate.isoDay(from: Date()))
                     },
-                )
+                ),
             )
             .toggleStyle(.checkbox)
         }
@@ -291,15 +293,10 @@ struct MetadataQuickEditView: View {
         viewModel.selectedBookId = bookId
 
         if case .status = field {
-            if let sourceID = book?.originalMetadata.sourceID {
-                viewModel.availableStatuses = await BookServiceActor.shared.getAvailableStatuses(
-                    sourceID: sourceID
-                )
-            } else if !mediaViewModel.availableStatuses.isEmpty {
-                viewModel.availableStatuses = mediaViewModel.availableStatuses
-            } else {
-                viewModel.availableStatuses = await BookServiceActor.shared.getAvailableStatuses()
-            }
+            let statuses = await BookServiceActor.shared.getAvailableStatuses(
+                sourceID: bookId.sourceID
+            )
+            viewModel.setAvailableStatuses(statuses, sourceID: bookId.sourceID)
         }
 
         // Mirror the full importer's marketplace choice so a quick lookup queries the same Audible
@@ -630,7 +627,9 @@ struct MetadataQuickEditView: View {
                     return
                 }
                 viewModel.books[index].statusUuid = newValue
-                if let status = viewModel.availableStatuses.first(where: { $0.uuid == newValue }) {
+                if let status = viewModel.availableStatuses(for: bookId).first(where: {
+                    $0.uuid == newValue
+                }) {
                     viewModel.books[index].status = status.name
                 }
                 viewModel.markDirty(field: "status", for: bookId)
@@ -639,7 +638,7 @@ struct MetadataQuickEditView: View {
     }
 
     private var statusOptions: [BookStatus] {
-        var statuses = viewModel.availableStatuses
+        var statuses = viewModel.availableStatuses(for: bookId)
             .filter {
                 !($0.uuid ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                     && !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty

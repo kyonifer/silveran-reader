@@ -46,11 +46,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.kyonifer.silveran.model.Book
+import com.kyonifer.silveran.model.DownloadOperation
 
 @Composable
 internal fun BookDetailsScreen(
     book: Book,
-    pendingDownloads: Set<String>,
+    pendingDownloads: Set<DownloadOperation>,
     coverRevision: Int,
     modifier: Modifier,
     cover: suspend (Book, Boolean, Int, Int) -> Bitmap?,
@@ -98,7 +99,7 @@ internal fun BookDetailsScreen(
 @Composable
 private fun MediaActions(
     book: Book,
-    pendingDownloads: Set<String>,
+    pendingDownloads: Set<DownloadOperation>,
     modifier: Modifier = Modifier,
     download: (String) -> Unit,
     cancelDownload: (String) -> Unit,
@@ -132,7 +133,7 @@ private fun MediaActions(
         options.forEach { option ->
             MediaAction(
                 option = option,
-                pending = "${book.key}:${option.category}" in pendingDownloads,
+                pending = DownloadOperation(book.id, option.category) in pendingDownloads,
                 modifier = Modifier.weight(1f),
                 download = { download(option.category) },
                 cancelDownload = { cancelDownload(option.category) },

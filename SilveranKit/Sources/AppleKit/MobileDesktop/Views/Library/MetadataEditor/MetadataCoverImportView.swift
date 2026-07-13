@@ -45,7 +45,7 @@ private enum MetadataCoverSort: String, CaseIterable, Identifiable {
 }
 
 struct MetadataCoverImportView: View {
-    let bookId: String
+    let bookId: BookID
     @Bindable var viewModel: MetadataEditorViewModel
     @Environment(MediaViewModel.self) private var mediaViewModel
     @Environment(\.dismiss) private var dismiss

@@ -152,8 +152,7 @@ public final class ReadaloudEngine: ReadaloudAligning {
     public private(set) var sourceWorkflowName: String?
     public private(set) var sourceWorkflowKind: BookSourceKind?
     public private(set) var uploadSources: [BookSourceRecord] = []
-    public private(set) var sourceOutputBookID: String?
-    public private(set) var sourceWorkflowSourceID: BookSourceID?
+    public private(set) var sourceOutputBookID: BookID?
     public private(set) var isLoadingSourceInputs = false
     public var selectedTranscriber: ReadaloudTranscriber
     public var selectedModelSize: ReadaloudModelSize = .tiny
@@ -189,7 +188,11 @@ public final class ReadaloudEngine: ReadaloudAligning {
             $0.capabilities.canUploadBooks
         }
         uploadSources = sources
-        selectedUploadSourceID = selectedUploadSourceID ?? sources.first?.id
+        if let sourceOutputBookID {
+            selectedUploadSourceID = sourceOutputBookID.sourceID
+        } else {
+            selectedUploadSourceID = selectedUploadSourceID ?? sources.first?.id
+        }
     }
 
     public func configure(with input: ReadaloudGeneratorInput?) async {
@@ -203,9 +206,9 @@ public final class ReadaloudEngine: ReadaloudAligning {
 
         sourceOutputBookID = nil
         sourceWorkflowBookTitle = nil
-        sourceWorkflowSourceID = nil
         sourceWorkflowName = nil
         sourceWorkflowKind = nil
+        selectedUploadSourceID = nil
         uploadAllToServer = false
         epubURL = nil
         audioURLs = []
@@ -217,8 +220,7 @@ public final class ReadaloudEngine: ReadaloudAligning {
         guard let input else { return }
         sourceOutputBookID = input.bookID
         sourceWorkflowBookTitle = input.bookTitle
-        sourceWorkflowSourceID = input.sourceID
-        selectedUploadSourceID = input.sourceID
+        selectedUploadSourceID = input.bookID.sourceID
         sourceWorkflowName = input.sourceName
         sourceWorkflowKind = input.sourceKind
         uploadAllToServer = input.destination == .source
@@ -242,12 +244,10 @@ public final class ReadaloudEngine: ReadaloudAligning {
 
         async let ebookMedia = BookServiceActor.shared.resolveLocalMedia(
             for: bookID,
-            sourceID: sourceWorkflowSourceID,
             category: .ebook,
         )
         async let audioMedia = BookServiceActor.shared.resolveLocalMedia(
             for: bookID,
-            sourceID: sourceWorkflowSourceID,
             category: .audio,
         )
 
@@ -266,7 +266,9 @@ public final class ReadaloudEngine: ReadaloudAligning {
 
     public var canStart: Bool {
         epubURL != nil && !audioURLs.isEmpty
-            && (uploadAllToServer ? selectedUploadSourceID != nil : outputURL != nil)
+            && (uploadAllToServer
+                ? (sourceOutputBookID != nil || selectedUploadSourceID != nil)
+                : outputURL != nil)
             && state != .processing
             && !isLoadingSourceInputs
     }
@@ -527,11 +529,16 @@ public final class ReadaloudEngine: ReadaloudAligning {
                     success = try await replaceGeneratedReadaloud(
                         readaloudURL: result.alignedEpubURL,
                         bookID: sourceOutputBookID,
-                        sourceID: selectedUploadSourceID,
                         filename: readaloudFilename(for: epubURL),
                         onProgress: onUploadProgress,
                     )
                 } else {
+                    guard let selectedUploadSourceID else {
+                        await MainActor.run {
+                            self.state = .error("Select a destination source before uploading.")
+                        }
+                        return
+                    }
                     success = try await uploadGeneratedBook(
                         epubURL: epubURL,
                         audioURLs: audioURLs,
@@ -554,8 +561,8 @@ public final class ReadaloudEngine: ReadaloudAligning {
                 }
                 await MainActor.run {
                     self.logMessages = messages
-                    if let selectedUploadSourceID, sourceOutputBookID != nil {
-                        self.state = .completed(.replaced(selectedUploadSourceID))
+                    if let sourceOutputBookID {
+                        self.state = .completed(.replaced(sourceOutputBookID.sourceID))
                     } else {
                         self.state = .completed(.uploaded)
                     }
@@ -595,7 +602,7 @@ public final class ReadaloudEngine: ReadaloudAligning {
         epubURL: URL,
         audioURLs: [URL],
         readaloudURL: URL,
-        sourceID: BookSourceID?,
+        sourceID: BookSourceID,
         onProgress: (@Sendable (Double) -> Void)? = nil,
     ) async throws -> Bool {
         let ebookData = try Data(contentsOf: epubURL)
@@ -611,8 +618,7 @@ public final class ReadaloudEngine: ReadaloudAligning {
         }
 
         return await BookServiceActor.shared.uploadBookAssets(
-            bookUUID: UUID().uuidString,
-            sourceID: sourceID,
+            bookID: BookID(sourceID: sourceID, uuid: UUID().uuidString),
             ebook: StorytellerUploadAsset(
                 format: .ebook,
                 filename: epubURL.lastPathComponent,
@@ -653,13 +659,11 @@ public final class ReadaloudEngine: ReadaloudAligning {
 
     private nonisolated func replaceGeneratedReadaloud(
         readaloudURL: URL,
-        bookID: String,
-        sourceID: BookSourceID?,
+        bookID: BookID,
         filename: String,
         onProgress: (@Sendable (Double) -> Void)? = nil,
     ) async throws -> Bool {
-        guard let sourceID else { return false }
-        let status = await BookServiceActor.shared.connectionStatus(sourceID: sourceID)
+        let status = await BookServiceActor.shared.connectionStatus(sourceID: bookID.sourceID)
         guard status == .connected else { return false }
 
         let result = await BookServiceActor.shared.replaceBookAsset(
@@ -670,8 +674,7 @@ public final class ReadaloudEngine: ReadaloudAligning {
                 contentType: "application/epub+zip",
                 relativePath: nil,
             ),
-            bookUUID: bookID,
-            sourceID: sourceID,
+            bookID: bookID,
             replaceMetadata: false,
             onProgress: onProgress,
         )

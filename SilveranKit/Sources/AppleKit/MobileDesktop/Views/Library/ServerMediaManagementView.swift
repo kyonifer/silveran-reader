@@ -4,15 +4,15 @@ import AppKit
 import UniformTypeIdentifiers
 
 public struct ServerMediaManagementData: Codable, Hashable {
-    public let bookId: String
+    public let bookId: BookID
 
-    public init(bookId: String) {
+    public init(bookId: BookID) {
         self.bookId = bookId
     }
 }
 
 public struct ServerMediaManagementView: View {
-    let bookId: String
+    let bookId: BookID
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openWindow) private var openWindow
     @Environment(MediaViewModel.self) private var mediaViewModel
@@ -29,7 +29,7 @@ public struct ServerMediaManagementView: View {
     @State private var errorMessage: String?
     @State private var hoveredDownloadCategory: LocalMediaCategory?
 
-    public init(bookId: String) {
+    public init(bookId: BookID) {
         self.bookId = bookId
     }
 
@@ -757,8 +757,7 @@ public struct ServerMediaManagementView: View {
 
             let result = await BookServiceActor.shared.replaceBookAsset(
                 asset,
-                bookUUID: item.uuid,
-                sourceID: item.sourceID,
+                bookID: item.id,
                 replaceMetadata: false,
             )
             switch result {
@@ -784,8 +783,7 @@ public struct ServerMediaManagementView: View {
         errorMessage = nil
 
         let success = await BookServiceActor.shared.startAlignment(
-            for: item.uuid,
-            sourceID: item.sourceID,
+            for: item.id,
             restart: restart,
         )
         if !success {
@@ -801,8 +799,7 @@ public struct ServerMediaManagementView: View {
         errorMessage = nil
 
         let success = await BookServiceActor.shared.cancelAlignment(
-            for: item.uuid,
-            sourceID: item.sourceID,
+            for: item.id,
         )
         if !success {
             errorMessage = "Failed to cancel alignment"
@@ -817,8 +814,7 @@ public struct ServerMediaManagementView: View {
         errorMessage = nil
 
         let result = await BookServiceActor.shared.deleteBookAsset(
-            item.uuid,
-            sourceID: item.sourceID,
+            item.id,
             type: format,
         )
         switch result {
@@ -837,10 +833,7 @@ public struct ServerMediaManagementView: View {
         isDeleting = true
         errorMessage = nil
 
-        let success = await BookServiceActor.shared.deleteBook(
-            item.uuid,
-            sourceID: item.sourceID,
-        )
+        let success = await BookServiceActor.shared.deleteBook(item.id)
         await refreshBookMetadata()
 
         if success {

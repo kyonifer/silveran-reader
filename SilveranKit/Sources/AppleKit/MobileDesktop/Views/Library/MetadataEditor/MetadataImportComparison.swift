@@ -57,7 +57,7 @@ struct PillFlowLayout: Layout {
 
         return (
             items,
-            CGSize(width: maxWidth > 0 ? maxWidth : usedWidth, height: origin.y + rowHeight)
+            CGSize(width: maxWidth > 0 ? maxWidth : usedWidth, height: origin.y + rowHeight),
         )
     }
 }
@@ -71,7 +71,9 @@ extension View {
             .padding(.vertical, 4)
             .background {
                 Capsule()
-                    .fill(isSelected ? Color.accentColor.opacity(0.88) : Color.secondary.opacity(0.10))
+                    .fill(
+                        isSelected ? Color.accentColor.opacity(0.88) : Color.secondary.opacity(0.10)
+                    )
             }
             .overlay {
                 Capsule()

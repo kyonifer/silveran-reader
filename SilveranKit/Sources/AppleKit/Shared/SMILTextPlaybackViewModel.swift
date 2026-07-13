@@ -44,7 +44,7 @@ public final class SMILTextPlaybackViewModel: NSObject {
     private var stateObserverId: UUID?
     private var bookStructure: [SectionInfo] = []
     private var epubURL: URL?
-    private var currentBookId: String?
+    private var currentBookID: BookID?
     private var lastSyncTime: Date = .distantPast
     private let syncDebounceInterval: TimeInterval = 10
     private var hasRestoredPosition = false
@@ -59,7 +59,6 @@ public final class SMILTextPlaybackViewModel: NSObject {
     public var pendingServerPosition: IncomingServerPosition? = nil
     private var incomingPositionObserverId: UUID? = nil
     private var positionObserverRegistrationTask: Task<Void, Never>? = nil
-    private var currentSourceID: BookSourceID? = nil
 
     #if os(tvOS)
     private let logPrefix = "TVPlayerViewModel"
@@ -202,8 +201,9 @@ public final class SMILTextPlaybackViewModel: NSObject {
     // MARK: - Book Loading
 
     public func loadBook(_ book: BookMetadata) async {
-        let loadedBookId = await SMILPlayerActor.shared.getLoadedBookId()
-        if loadedBookId == book.uuid {
+        let bookID = book.id
+        let loadedBookID = await SMILPlayerActor.shared.getLoadedBookID()
+        if loadedBookID == bookID {
             if let state = await SMILPlayerActor.shared.getCurrentState(), state.isPlaying {
                 debugLog("[\(logPrefix)] Book already playing, skipping reload")
                 return
@@ -215,15 +215,13 @@ public final class SMILTextPlaybackViewModel: NSObject {
         #endif
 
         bookTitle = book.title
-        currentBookId = book.uuid
-        currentSourceID = book.sourceID
+        currentBookID = bookID
         hasRestoredPosition = false
         hasUserProgress = false
         isLoadingPosition = true
 
         let preparedMedia = try? await BookServiceActor.shared.prepareEbookForReading(
-            bookID: book.uuid,
-            sourceID: book.sourceID,
+            bookID: book.id,
             category: .synced,
         )
         epubURL = preparedMedia?.originalURL
@@ -237,7 +235,7 @@ public final class SMILTextPlaybackViewModel: NSObject {
         do {
             try await SMILPlayerActor.shared.loadBook(
                 epubPath: url,
-                bookId: book.uuid,
+                bookID: bookID,
                 title: book.title,
                 author: book.creators?.first?.name ?? book.authors?.first?.name,
             )
@@ -262,7 +260,7 @@ public final class SMILTextPlaybackViewModel: NSObject {
                 updateChapterDuration()
             }
 
-            registerIncomingPositionObserver(bookId: book.uuid)
+            registerIncomingPositionObserver(bookId: book.id)
             restorePosition(book)
             isLoadingPosition = false
             await loadCurrentSectionHTML()
@@ -785,7 +783,7 @@ public final class SMILTextPlaybackViewModel: NSObject {
         Task {
             var locatorToUse: BookLocator? = nil
 
-            if let psaProgress = await ProgressSyncActor.shared.getBookProgress(for: book.uuid),
+            if let psaProgress = await ProgressSyncActor.shared.getBookProgress(for: book.id),
                 let psaLocator = psaProgress.locator
             {
                 debugLog("[\(logPrefix)] Got position from PSA (source: \(psaProgress.source))")
@@ -808,7 +806,9 @@ public final class SMILTextPlaybackViewModel: NSObject {
     }
 
     private func syncProgress() {
-        guard let bookId = currentBookId, hasRestoredPosition, hasUserProgress else { return }
+        guard let bookID = currentBookID, hasRestoredPosition,
+            hasUserProgress
+        else { return }
 
         lastSyncTime = Date()
         let progression = bookDuration > 0 ? bookElapsed / bookDuration : 0
@@ -840,8 +840,7 @@ public final class SMILTextPlaybackViewModel: NSObject {
 
         Task {
             let _ = await ProgressSyncActor.shared.syncProgress(
-                bookId: bookId,
-                sourceID: currentSourceID,
+                bookID: bookID,
                 locator: locator,
                 timestamp: timestamp,
                 reason: .userPausedPlayback,
@@ -870,7 +869,7 @@ public final class SMILTextPlaybackViewModel: NSObject {
             "Another device has synced a more recent reading position\(locationStr). Would you like to go to that location?"
     }
 
-    private func registerIncomingPositionObserver(bookId: String) {
+    private func registerIncomingPositionObserver(bookId: BookID) {
         positionObserverRegistrationTask = Task {
             let observerId = await ProgressSyncActor.shared.addIncomingPositionObserver(
                 for: bookId

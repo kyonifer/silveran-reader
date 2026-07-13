@@ -1,8 +1,14 @@
 package com.kyonifer.silveran.model
 
-data class Book(
-    val id: String,
+import java.io.Serializable
+
+data class BookID(
     val sourceID: String,
+    val uuid: String,
+) : Serializable
+
+data class Book(
+    val id: BookID,
     val title: String,
     val authors: String,
     val description: String?,
@@ -10,7 +16,6 @@ data class Book(
     val coverVersion: String,
     val media: List<BookMedia>,
 ) {
-    val key: String = "$sourceID:$id"
     val hasEbook: Boolean get() = media.any { it.category == "ebook" }
     val hasAudio: Boolean get() = media.any { it.category == "audio" }
     val hasReadaloud: Boolean get() = media.any { it.category == "synced" }
@@ -35,7 +40,12 @@ data class LibrarySnapshot(
 data class HomeSection(
     val kind: String,
     val title: String,
-    val bookKeys: List<String>,
+    val bookIDs: List<BookID>,
+)
+
+data class DownloadOperation(
+    val bookID: BookID,
+    val category: String,
 )
 
 data class StorytellerSettings(

@@ -36,7 +36,7 @@ enum MetadataEditorScope: String, CaseIterable, Identifiable {
 }
 
 struct WorkMetadataLayout: View {
-    let bookId: String
+    let bookId: BookID
     @Bindable var viewModel: MetadataEditorViewModel
     let openHardcoverImport: () -> Void
     @Environment(MediaViewModel.self) private var mediaViewModel
@@ -319,7 +319,7 @@ struct WorkMetadataLayout: View {
     }
 
     private var statusOptions: [BookStatus] {
-        var statuses = viewModel.availableStatuses
+        var statuses = viewModel.availableStatuses(for: bookId)
             .filter {
                 !($0.uuid ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                     && !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -379,7 +379,8 @@ struct WorkMetadataLayout: View {
 
     private var matchingSmartShelfNames: [String] {
         guard
-            let libraryBook = mediaViewModel.library.bookMetaData.first(where: { $0.id == bookId })
+            let libraryBook = mediaViewModel.library.bookMetaData.first(where: { $0.id == bookId }
+            )
         else {
             return []
         }
@@ -409,7 +410,9 @@ struct WorkMetadataLayout: View {
                     return
                 }
                 viewModel.books[index].statusUuid = newValue
-                if let status = viewModel.availableStatuses.first(where: { $0.uuid == newValue }) {
+                if let status = viewModel.availableStatuses(for: bookId).first(where: {
+                    $0.uuid == newValue
+                }) {
                     viewModel.books[index].status = status.name
                 }
                 viewModel.markDirty(field: "status", for: bookId)
@@ -668,8 +671,8 @@ struct WorkMetadataLayout: View {
                         viewModel.books[index].collectionUuids = newValue
                     },
                 ),
-                choices: viewModel.libraryCollectionChoices,
-                namesByUuid: viewModel.libraryCollectionNamesByUuid,
+                choices: viewModel.libraryCollectionChoices(for: bookId),
+                namesByUuid: viewModel.libraryCollectionNamesByUuid(for: bookId),
                 createCollection: { name in
                     await viewModel.createCollection(named: name, for: bookId) != nil
                 },
@@ -707,7 +710,7 @@ struct EditionMetadataLayout: View {
         }
     }
 
-    let bookId: String
+    let bookId: BookID
     @Bindable var viewModel: MetadataEditorViewModel
     let scope: EditionScope
     @Binding var selectedCoverScope: MetadataCoverScope
@@ -1349,7 +1352,7 @@ struct EditionMetadataLayout: View {
 }
 
 struct CoversMetadataLayout: View {
-    let bookId: String
+    let bookId: BookID
     @Bindable var viewModel: MetadataEditorViewModel
     @Environment(MediaViewModel.self) private var mediaViewModel
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -1431,7 +1434,7 @@ struct CoversMetadataLayout: View {
 }
 
 private struct CoverEditPanel: View {
-    let bookId: String
+    let bookId: BookID
     @Bindable var viewModel: MetadataEditorViewModel
     let coverScope: MetadataCoverScope
     @Environment(MediaViewModel.self) private var mediaViewModel

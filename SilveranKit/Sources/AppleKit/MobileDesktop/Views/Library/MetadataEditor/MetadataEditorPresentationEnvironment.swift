@@ -1,7 +1,7 @@
 #if os(iOS) || os(macOS)
 import SwiftUI
 
-typealias MetadataEditorAction = @MainActor @Sendable ([String]) -> Void
+typealias MetadataEditorAction = @MainActor @Sendable ([BookID]) -> Void
 
 private struct MetadataEditorActionKey: EnvironmentKey {
     static let defaultValue: MetadataEditorAction? = nil

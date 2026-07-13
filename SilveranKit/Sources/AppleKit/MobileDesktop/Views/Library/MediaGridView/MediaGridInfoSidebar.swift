@@ -196,7 +196,7 @@ struct MediaGridInfoSidebar: View {
         .padding(.horizontal, 20)
         .padding(.bottom, 24)
         .sheet(isPresented: $showingSyncHistory) {
-            SyncHistorySheet(bookId: item.uuid, bookTitle: item.title)
+            SyncHistorySheet(bookId: item.id, bookTitle: item.title)
         }
     }
 

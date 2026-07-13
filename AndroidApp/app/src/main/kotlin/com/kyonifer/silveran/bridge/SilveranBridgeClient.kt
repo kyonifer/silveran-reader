@@ -6,6 +6,7 @@ import android.graphics.BitmapFactory
 import android.util.Base64
 import android.util.LruCache
 import com.kyonifer.silveran.model.Book
+import com.kyonifer.silveran.model.BookID
 import com.kyonifer.silveran.model.BookMedia
 import com.kyonifer.silveran.model.HomeSection
 import com.kyonifer.silveran.model.LibrarySnapshot
@@ -26,16 +27,16 @@ class SilveranBridgeClient(context: Context) {
     private val filesDirectory = context.filesDir.absolutePath
     // The Swift core owns persistent cover bytes. This cache only bounds
     // decoded Android bitmaps used by the currently active UI session.
-    private val coverBitmaps = object : LruCache<String, Bitmap>(bitmapCacheSizeKilobytes()) {
-        override fun sizeOf(key: String, value: Bitmap): Int =
+    private val coverBitmaps = object : LruCache<CoverCacheKey, Bitmap>(bitmapCacheSizeKilobytes()) {
+        override fun sizeOf(key: CoverCacheKey, value: Bitmap): Int =
             maxOf(1, value.allocationByteCount / 1024)
     }
-    private val missingCovers = ConcurrentHashMap.newKeySet<String>()
+    private val missingCovers = ConcurrentHashMap.newKeySet<MissingCoverKey>()
     private val coverRequests = Semaphore(4)
 
-    fun bootstrap() {
+    suspend fun bootstrap() {
         AndroidSecureStore.initialize(applicationContext)
-        SilveranAndroidBridge.bootstrapAndroid(filesDirectory)
+        SilveranAndroidBridge.bootstrapAndroid(filesDirectory).awaitResult()
     }
 
     suspend fun observeLibraryChanges(onChange: () -> Unit) {
@@ -63,24 +64,32 @@ class SilveranBridgeClient(context: Context) {
     }
 
     suspend fun download(book: Book, category: String) {
-        SilveranAndroidBridge.downloadBook(book.id, book.sourceID, category).awaitResult()
+        SilveranAndroidBridge.downloadBook(
+            book.id.uuid,
+            book.id.sourceID,
+            category,
+        ).awaitResult()
     }
 
     suspend fun cancelDownload(book: Book, category: String) {
-        SilveranAndroidBridge.cancelBookDownload(book.id, category).awaitResult()
+        SilveranAndroidBridge.cancelBookDownload(
+            book.id.uuid,
+            book.id.sourceID,
+            category,
+        ).awaitResult()
     }
 
     suspend fun deleteDownload(book: Book, category: String) {
         SilveranAndroidBridge.deleteBookDownload(
-            book.id,
-            book.sourceID,
+            book.id.uuid,
+            book.id.sourceID,
             category,
         ).awaitResult()
     }
 
     suspend fun cover(book: Book, audio: Boolean, width: Int, height: Int): Bitmap? {
-        val cacheKey = "${book.key}:${book.coverVersion}:$audio:$width:$height"
-        val missingKey = "${book.key}:${book.coverVersion}:$audio"
+        val cacheKey = CoverCacheKey(book.id, book.coverVersion, audio, width, height)
+        val missingKey = MissingCoverKey(book.id, book.coverVersion, audio)
         coverBitmaps.get(cacheKey)?.let { return it }
         if (missingKey in missingCovers) return null
 
@@ -99,8 +108,8 @@ class SilveranBridgeClient(context: Context) {
         audio: Boolean,
         width: Int,
         height: Int,
-        cacheKey: String,
-        missingKey: String,
+        cacheKey: CoverCacheKey,
+        missingKey: MissingCoverKey,
     ): Bitmap? {
         if (missingKey in missingCovers) return null
 
@@ -115,7 +124,8 @@ class SilveranBridgeClient(context: Context) {
         } else {
             if (response.shouldPersist) {
                 SilveranAndroidBridge.persistCoverBase64(
-                    book.id,
+                    book.id.uuid,
+                    book.id.sourceID,
                     audio,
                     response.dataBase64,
                 ).awaitResult()
@@ -135,8 +145,8 @@ class SilveranBridgeClient(context: Context) {
         val json = AndroidBridgeCallbacks.requestPayload { requestID ->
             SilveranAndroidBridge.coverResponseJSON(
                 requestID,
-                book.id,
-                book.sourceID,
+                book.id.uuid,
+                book.id.sourceID,
                 book.coverVersion,
                 audio,
                 width,
@@ -196,8 +206,10 @@ class SilveranBridgeClient(context: Context) {
             val item = items.getJSONObject(index)
             val mediaItems = item.getJSONArray("media")
             Book(
-                id = item.getString("id"),
-                sourceID = item.getString("sourceID"),
+                id = BookID(
+                    sourceID = item.getString("sourceID"),
+                    uuid = item.getString("id"),
+                ),
                 title = item.getString("title"),
                 authors = item.optString("authors"),
                 description = item.optionalString("description"),
@@ -220,11 +232,17 @@ class SilveranBridgeClient(context: Context) {
             homeSections = root.getJSONArray("homeSections").let { sections ->
                 List(sections.length()) { index ->
                     val section = sections.getJSONObject(index)
-                    val bookKeys = section.getJSONArray("bookKeys")
+                    val bookIDs = section.getJSONArray("bookIDs")
                     HomeSection(
                         kind = section.getString("kind"),
                         title = section.getString("title"),
-                        bookKeys = List(bookKeys.length(), bookKeys::getString),
+                        bookIDs = List(bookIDs.length()) { bookIndex ->
+                            val bookID = bookIDs.getJSONObject(bookIndex)
+                            BookID(
+                                sourceID = bookID.getString("sourceID"),
+                                uuid = bookID.getString("uuid"),
+                            )
+                        },
                     )
                 }
             },
@@ -233,6 +251,20 @@ class SilveranBridgeClient(context: Context) {
         )
     }
 }
+
+private data class CoverCacheKey(
+    val bookID: BookID,
+    val coverVersion: String,
+    val audio: Boolean,
+    val width: Int,
+    val height: Int,
+)
+
+private data class MissingCoverKey(
+    val bookID: BookID,
+    val coverVersion: String,
+    val audio: Boolean,
+)
 
 private data class CoverResponse(
     val dataBase64: String,

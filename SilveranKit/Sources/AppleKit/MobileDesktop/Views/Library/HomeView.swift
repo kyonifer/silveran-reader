@@ -500,7 +500,7 @@ struct HomeView: View {
     }
 
     #if os(macOS)
-    private func handleEditMetadata(bookIds: [String]) {
+    private func handleEditMetadata(bookIds: [BookID]) {
         if bookIds.contains(where: { mediaViewModel.isLocalStandaloneBook($0) }) {
             permissionErrorMessage = "Editing metadata for local books is not supported yet."
             showPermissionError = true
@@ -532,8 +532,7 @@ struct HomeView: View {
     private func checkMetadataEditPermission(sourceIDs: [BookSourceID]) async
         -> StorytellerActor.PermissionCheckResult
     {
-        let idsToCheck: [BookSourceID?] = sourceIDs.isEmpty ? [nil] : sourceIDs.map { $0 }
-        for sourceID in idsToCheck {
+        for sourceID in sourceIDs {
             let result = await BookServiceActor.shared.checkBookUpdatePermission(
                 sourceID: sourceID
             )
@@ -1087,7 +1086,7 @@ private struct HomeSectionRow: View {
     let coverSize: CGFloat
     #if os(macOS)
     @Binding var cardTapInProgress: Bool
-    let onEditMetadata: ([String]) -> Void
+    let onEditMetadata: ([BookID]) -> Void
     #endif
     let onNavigateToSection: (HomeView.HomeSection) -> Void
 
@@ -1225,7 +1224,7 @@ private struct HomeSectionRow: View {
         )
     }
 
-    private var editMetadataHandler: (([String]) -> Void)? {
+    private var editMetadataHandler: (([BookID]) -> Void)? {
         #if os(macOS)
         onEditMetadata
         #else

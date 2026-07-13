@@ -43,9 +43,9 @@ public actor DownloadManager {
         )
     }()
 
-    private var downloads: [String: DownloadRecord] = [:]
-    private var activeTasks: [String: URLSessionDownloadTask] = [:]
-    private var bookMetadataCache: [String: BookMetadata] = [:]
+    private var downloads: [UUID: DownloadRecord] = [:]
+    private var activeTasks: [UUID: URLSessionDownloadTask] = [:]
+    private var bookMetadataCache: [BookID: BookMetadata] = [:]
     private var observers: [UUID: @Sendable ([DownloadRecord]) -> Void] = [:]
     private var backgroundCompletionHandler: (@Sendable () -> Void)?
     private var initialized = false
@@ -57,14 +57,12 @@ public actor DownloadManager {
 
     private func ensureInitialized() async {
         guard !initialized else { return }
+        let persisted = await loadPersistedState()
         initialized = true
 
-        let persisted = await loadPersistedState()
         for record in persisted {
-            if let sourceID = record.sourceID,
-                await BookServiceActor.shared.resolveLocalMedia(
-                    for: record.bookId,
-                    sourceID: sourceID,
+            if await BookServiceActor.shared.resolveLocalMedia(
+                    for: record.bookID,
                     category: record.category,
                 ) != nil
             {
@@ -87,19 +85,21 @@ public actor DownloadManager {
         }
 
         for task in tasks {
-            guard let downloadId = task.taskDescription else {
+            guard let description = task.taskDescription,
+                let downloadID = UUID(uuidString: description)
+            else {
                 task.cancel()
                 continue
             }
 
-            if let record = downloads[downloadId] {
-                activeTasks[downloadId] = task
-                delegate.registerTask(task, downloadId: downloadId)
+            if let record = downloads[downloadID] {
+                activeTasks[downloadID] = task
+                delegate.registerTask(task, downloadId: description)
 
                 var updated = record
                 updated.state = .downloading(progress: record.progressFraction)
                 updated.lastUpdatedAt = Date()
-                downloads[downloadId] = updated
+                downloads[downloadID] = updated
             } else {
                 task.cancel()
             }
@@ -162,18 +162,25 @@ public actor DownloadManager {
 
     // MARK: - Public Operations
 
+    private func recordID(for bookID: BookID, category: LocalMediaCategory) -> UUID? {
+        downloads.values.first {
+            $0.bookID == bookID && $0.category == category
+        }?.id
+    }
+
     public func startDownload(for book: BookMetadata, category: LocalMediaCategory) async {
         await ensureInitialized()
+        let bookID = book.id
 
-        let id = "\(book.id)-\(category.rawValue)"
-
-        if let existing = downloads[id] {
+        if let existingID = recordID(for: bookID, category: category),
+            let existing = downloads[existingID]
+        {
             if existing.isActive {
-                debugLog("[DownloadManager] Download already active: \(id)")
+                debugLog("[DownloadManager] Download already active: \(existingID)")
                 return
             }
-            bookMetadataCache[book.id] = book
-            await resumeDownload(for: book.id, category: category)
+            bookMetadataCache[bookID] = book
+            await resumeDownload(for: bookID, category: category)
             return
         }
 
@@ -182,30 +189,25 @@ public actor DownloadManager {
             debugLog("[DownloadManager] No available format for \(book.title) / \(category)")
             return
         }
-        guard let sourceID = book.sourceID else {
-            debugLog("[DownloadManager] Cannot download \(book.title): missing source ID")
-            return
-        }
-
         let record = DownloadRecord(
-            bookId: book.id,
-            sourceID: sourceID,
+            bookID: bookID,
             category: category,
             bookTitle: book.title,
             format: format,
         )
 
         downloads[record.id] = record
-        bookMetadataCache[book.id] = book
+        bookMetadataCache[bookID] = book
 
         await beginDownloadTask(for: record, book: book)
     }
 
-    public func pauseDownload(for bookId: String, category: LocalMediaCategory) async {
+    public func pauseDownload(for bookID: BookID, category: LocalMediaCategory) async {
         await ensureInitialized()
 
-        let id = "\(bookId)-\(category.rawValue)"
-        guard let task = activeTasks.removeValue(forKey: id) else { return }
+        guard let id = recordID(for: bookID, category: category),
+            let task = activeTasks.removeValue(forKey: id)
+        else { return }
 
         let resumeData = await withCheckedContinuation {
             (continuation: CheckedContinuation<Data?, Never>) in
@@ -228,11 +230,12 @@ public actor DownloadManager {
         notifyObservers()
     }
 
-    public func resumeDownload(for bookId: String, category: LocalMediaCategory) async {
+    public func resumeDownload(for bookID: BookID, category: LocalMediaCategory) async {
         await ensureInitialized()
 
-        let id = "\(bookId)-\(category.rawValue)"
-        guard var record = downloads[id] else { return }
+        guard let id = recordID(for: bookID, category: category),
+            var record = downloads[id]
+        else { return }
 
         // A manual resume restores the auto-retry budget.
         record.retryCount = 0
@@ -241,9 +244,8 @@ public actor DownloadManager {
         await performResume(downloadId: id)
     }
 
-    private func performResume(downloadId id: String) async {
+    private func performResume(downloadId id: UUID) async {
         guard var record = downloads[id] else { return }
-        let bookId = record.bookId
 
         if record.isActive && activeTasks[id] != nil {
             debugLog("[DownloadManager] Download already active, skipping resume: \(id)")
@@ -252,23 +254,22 @@ public actor DownloadManager {
 
         let hasResume = await hasResumeData(for: id)
 
-        var book = bookMetadataCache[bookId]
+        var book = bookMetadataCache[record.bookID]
         if book == nil && !hasResume {
             book = await BookServiceActor.shared.fetchBookDetails(
-                for: bookId,
-                sourceID: record.sourceID,
+                for: record.bookID,
             )
         }
 
         if book == nil && !hasResume {
             debugLog(
-                "[DownloadManager] Cannot resume: no metadata and no resume data for \(bookId)"
+                "[DownloadManager] Cannot resume: no metadata and no resume data for \(record.bookID)"
             )
             return
         }
 
         if let book {
-            bookMetadataCache[bookId] = book
+            bookMetadataCache[record.bookID] = book
         }
 
         record.state = .queued
@@ -279,10 +280,10 @@ public actor DownloadManager {
         await beginDownloadTask(for: record, book: book)
     }
 
-    public func cancelDownload(for bookId: String, category: LocalMediaCategory) async {
+    public func cancelDownload(for bookID: BookID, category: LocalMediaCategory) async {
         await ensureInitialized()
 
-        let id = "\(bookId)-\(category.rawValue)"
+        guard let id = recordID(for: bookID, category: category) else { return }
 
         if let task = activeTasks.removeValue(forKey: id) {
             task.cancel()
@@ -306,19 +307,20 @@ public actor DownloadManager {
         }
     }
 
-    public func downloadState(for bookId: String, category: LocalMediaCategory) async
+    public func downloadState(for bookID: BookID, category: LocalMediaCategory) async
         -> DownloadRecord?
     {
         await ensureInitialized()
-        let id = "\(bookId)-\(category.rawValue)"
+        guard let id = recordID(for: bookID, category: category) else { return nil }
         return downloads[id]
     }
 
-    public func downloadProgress(for bookId: String, category: LocalMediaCategory) async -> Double?
+    public func downloadProgress(for bookID: BookID, category: LocalMediaCategory) async -> Double?
     {
         await ensureInitialized()
-        let id = "\(bookId)-\(category.rawValue)"
-        guard let record = downloads[id], record.isActive else { return nil }
+        guard let id = recordID(for: bookID, category: category),
+            let record = downloads[id], record.isActive
+        else { return nil }
         return record.progressFraction
     }
 
@@ -373,48 +375,53 @@ public actor DownloadManager {
         expectedBytes: Int64?,
         progress: Double,
     ) {
-        guard var record = downloads[downloadId] else { return }
+        guard let downloadID = UUID(uuidString: downloadId),
+            var record = downloads[downloadID]
+        else { return }
         record.state = .downloading(progress: progress)
         record.receivedBytes = receivedBytes
         if let expectedBytes {
             record.expectedBytes = expectedBytes
         }
         record.lastUpdatedAt = Date()
-        downloads[downloadId] = record
+        downloads[downloadID] = record
         notifyObservers()
     }
 
     func handleFileDownloaded(downloadId: String, tempURL: URL) async {
-        activeTasks.removeValue(forKey: downloadId)
-        guard var record = downloads[downloadId] else {
+        guard let downloadID = UUID(uuidString: downloadId) else {
+            try? FileManager.default.removeItem(at: tempURL)
+            return
+        }
+        activeTasks.removeValue(forKey: downloadID)
+        guard var record = downloads[downloadID] else {
             try? FileManager.default.removeItem(at: tempURL)
             return
         }
 
         record.state = .importing
         record.lastUpdatedAt = Date()
-        downloads[downloadId] = record
+        downloads[downloadID] = record
         notifyObservers()
 
-        var book = bookMetadataCache[record.bookId]
+        var book = bookMetadataCache[record.bookID]
         if book == nil {
             book = await BookServiceActor.shared.fetchBookDetails(
-                for: record.bookId,
-                sourceID: record.sourceID,
+                for: record.bookID,
             )
         }
 
         guard let book else {
-            debugLog("[DownloadManager] No metadata for import: \(record.bookId)")
+            debugLog("[DownloadManager] No metadata for import: \(record.bookID)")
             record.state = .failed(error: "Missing book metadata", hasResumeData: false)
             record.lastUpdatedAt = Date()
-            downloads[downloadId] = record
+            downloads[downloadID] = record
             await persistState()
             notifyObservers()
             return
         }
 
-        let filename = fallbackFilename(bookId: record.bookId, format: record.format)
+        let filename = fallbackFilename(bookId: record.bookID.uuid, format: record.format)
 
         do {
             try await LocalMediaActor.shared.importDownloadedFile(
@@ -429,10 +436,10 @@ public actor DownloadManager {
             if let expected = record.expectedBytes {
                 record.receivedBytes = expected
             }
-            downloads[downloadId] = record
+            downloads[downloadID] = record
 
-            downloads.removeValue(forKey: downloadId)
-            await deleteResumeData(for: downloadId)
+            downloads.removeValue(forKey: downloadID)
+            await deleteResumeData(for: downloadID)
         } catch {
             debugLog("[DownloadManager] Import failed for \(record.bookTitle): \(error)")
             record.state = .failed(error: error.localizedDescription, hasResumeData: false)
@@ -440,7 +447,7 @@ public actor DownloadManager {
             // Exhaust the auto-retry budget; the user can still retry manually.
             record.retryCount = Self.maxAutoRetries
             record.lastUpdatedAt = Date()
-            downloads[downloadId] = record
+            downloads[downloadID] = record
         }
 
         await persistState()
@@ -448,17 +455,19 @@ public actor DownloadManager {
     }
 
     func handleFailure(downloadId: String, error: Error, resumeData: Data?) async {
-        guard var record = downloads[downloadId] else { return }
+        guard let downloadID = UUID(uuidString: downloadId),
+            var record = downloads[downloadID]
+        else { return }
 
-        activeTasks.removeValue(forKey: downloadId)
+        activeTasks.removeValue(forKey: downloadID)
 
         if let resumeData {
-            await saveResumeData(resumeData, for: downloadId)
+            await saveResumeData(resumeData, for: downloadID)
         }
 
         var hasResume = resumeData != nil
         if !hasResume {
-            hasResume = await hasResumeData(for: downloadId)
+            hasResume = await hasResumeData(for: downloadID)
         }
 
         // System-cancelled downloads (-999) are interruptions, not real failures
@@ -469,36 +478,37 @@ public actor DownloadManager {
         }
 
         record.lastUpdatedAt = Date()
-        downloads[downloadId] = record
+        downloads[downloadID] = record
 
         await persistState()
         notifyObservers()
     }
 
     func handleHTTPError(downloadId: String, statusCode: Int) async {
-        guard var record = downloads[downloadId] else { return }
+        guard let downloadID = UUID(uuidString: downloadId),
+            var record = downloads[downloadID]
+        else { return }
 
-        activeTasks.removeValue(forKey: downloadId)
-        await deleteResumeData(for: downloadId)
+        activeTasks.removeValue(forKey: downloadID)
+        await deleteResumeData(for: downloadID)
 
         if statusCode == 401 || statusCode == 403 {
             debugLog(
                 "[DownloadManager] Auth expired for \(record.bookTitle), retrying with fresh credentials"
             )
 
-            var book = bookMetadataCache[record.bookId]
+            var book = bookMetadataCache[record.bookID]
             if book == nil {
                 book = await BookServiceActor.shared.fetchBookDetails(
-                    for: record.bookId,
-                    sourceID: record.sourceID,
+                    for: record.bookID,
                 )
             }
 
             if let book {
-                bookMetadataCache[record.bookId] = book
+                bookMetadataCache[record.bookID] = book
                 record.state = .queued
                 record.lastUpdatedAt = Date()
-                downloads[downloadId] = record
+                downloads[downloadID] = record
                 notifyObservers()
                 await beginDownloadTask(for: record, book: book)
                 return
@@ -507,7 +517,7 @@ public actor DownloadManager {
 
         record.state = .failed(error: "Server error (\(statusCode))", hasResumeData: false)
         record.lastUpdatedAt = Date()
-        downloads[downloadId] = record
+        downloads[downloadID] = record
         await persistState()
         notifyObservers()
     }
@@ -521,7 +531,7 @@ public actor DownloadManager {
 
         let sourceRecords = await BookServiceActor.shared.bookSources
         let sourceRecord = sourceRecords.first {
-            $0.id == record.sourceID
+            $0.id == record.bookID.sourceID
         }
 
         if sourceRecord?.kind == .localFolder {
@@ -551,8 +561,7 @@ public actor DownloadManager {
 
             guard
                 let request = await BookServiceActor.shared.createAuthenticatedDownloadRequest(
-                    for: record.bookId,
-                    sourceID: record.sourceID,
+                    for: record.bookID,
                     format: record.format,
                 )
             else {
@@ -569,8 +578,9 @@ public actor DownloadManager {
             task = downloadSession.downloadTask(with: request)
         }
 
-        task.taskDescription = record.id
-        delegate.registerTask(task, downloadId: record.id)
+        let taskDescription = record.id.uuidString
+        task.taskDescription = taskDescription
+        delegate.registerTask(task, downloadId: taskDescription)
         activeTasks[record.id] = task
 
         var updated = record
@@ -592,8 +602,7 @@ public actor DownloadManager {
         notifyObservers()
 
         if await BookServiceActor.shared.resolveLocalMedia(
-            for: record.bookId,
-            sourceID: record.sourceID,
+            for: record.bookID,
             category: record.category,
         ) != nil {
             downloads.removeValue(forKey: record.id)
@@ -649,34 +658,39 @@ public actor DownloadManager {
         do {
             return try await FilesystemActor.shared.loadDownloadState()
         } catch {
-            debugLog("[DownloadManager] Failed to load persisted state: \(error)")
+            debugLog("[DownloadManager] Discarding unreadable persisted state: \(error)")
+            do {
+                try await FilesystemActor.shared.saveDownloadState([])
+            } catch {
+                debugLog("[DownloadManager] Failed to reset persisted state: \(error)")
+            }
             return []
         }
     }
 
-    private func saveResumeData(_ data: Data, for id: String) async {
+    private func saveResumeData(_ data: Data, for id: UUID) async {
         do {
-            try await FilesystemActor.shared.saveResumeData(data, for: id)
+            try await FilesystemActor.shared.saveResumeData(data, for: id.uuidString)
         } catch {
             debugLog("[DownloadManager] Failed to save resume data: \(error)")
         }
     }
 
-    private func loadResumeData(for id: String) async -> Data? {
+    private func loadResumeData(for id: UUID) async -> Data? {
         do {
-            return try await FilesystemActor.shared.loadResumeData(for: id)
+            return try await FilesystemActor.shared.loadResumeData(for: id.uuidString)
         } catch {
             return nil
         }
     }
 
-    private func hasResumeData(for id: String) async -> Bool {
-        await FilesystemActor.shared.hasResumeData(for: id)
+    private func hasResumeData(for id: UUID) async -> Bool {
+        await FilesystemActor.shared.hasResumeData(for: id.uuidString)
     }
 
-    private func deleteResumeData(for id: String) async {
+    private func deleteResumeData(for id: UUID) async {
         do {
-            try await FilesystemActor.shared.deleteResumeData(for: id)
+            try await FilesystemActor.shared.deleteResumeData(for: id.uuidString)
         } catch {
             debugLog("[DownloadManager] Failed to delete resume data: \(error)")
         }

@@ -20,7 +20,7 @@ public protocol ReadaloudAligning: AnyObject, Observable {
     var sourceWorkflowBookTitle: String? { get }
     var sourceWorkflowName: String? { get }
     var sourceWorkflowKind: BookSourceKind? { get }
-    var sourceOutputBookID: String? { get }
+    var sourceOutputBookID: BookID? { get }
     var isLoadingSourceInputs: Bool { get }
     var isMissingSourceWorkflowMedia: Bool { get }
 
@@ -190,9 +190,8 @@ public struct ReadaloudGeneratorInput: Equatable, Sendable {
         case source
     }
 
-    public let bookID: String
+    public let bookID: BookID
     public let bookTitle: String
-    public let sourceID: BookSourceID?
     public let sourceName: String
     public let sourceKind: BookSourceKind?
     public let destination: Destination
@@ -200,9 +199,8 @@ public struct ReadaloudGeneratorInput: Equatable, Sendable {
     public let audioURLs: [URL]
 
     public init(
-        bookID: String,
+        bookID: BookID,
         bookTitle: String,
-        sourceID: BookSourceID?,
         sourceName: String,
         sourceKind: BookSourceKind?,
         destination: Destination,
@@ -211,7 +209,6 @@ public struct ReadaloudGeneratorInput: Equatable, Sendable {
     ) {
         self.bookID = bookID
         self.bookTitle = bookTitle
-        self.sourceID = sourceID
         self.sourceName = sourceName
         self.sourceKind = sourceKind
         self.destination = destination

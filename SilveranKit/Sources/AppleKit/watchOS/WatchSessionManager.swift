@@ -117,9 +117,10 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
         replyHandler: (([String: Any]) -> Void)?,
     ) {
         guard let uuid = message["uuid"] as? String,
+            let sourceID = message["sourceID"] as? BookSourceID,
             let categoryString = message["category"] as? String
         else {
-            replyHandler?(["error": "Missing uuid or category"])
+            replyHandler?(["error": "Missing book identity or category"])
             return
         }
 
@@ -127,8 +128,7 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
 
         Task {
             try? await BookServiceActor.shared.deleteCachedMedia(
-                for: uuid,
-                sourceID: nil,
+                for: BookID(sourceID: sourceID, uuid: uuid),
                 category: category,
             )
             refreshCachedBooks()
@@ -263,10 +263,14 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
 
         let category: LocalMediaCategory = manifest.category == "synced" ? .synced : .ebook
 
-        var bookMetadata: BookMetadata
+        let bookMetadata: BookMetadata
         if let transferredMetadata = manifest.bookMetadata {
             bookMetadata = transferredMetadata
         } else {
+            guard let sourceID = manifest.sourceID else {
+                try? FileManager.default.removeItem(at: tempURL)
+                return false
+            }
             let authors: [BookCreator] = manifest.authors.map { name in
                 BookCreator(
                     uuid: nil,
@@ -279,7 +283,7 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
                 )
             }
             bookMetadata = BookMetadata(
-                uuid: manifest.uuid,
+                bookID: BookID(sourceID: sourceID, uuid: manifest.uuid),
                 title: manifest.title,
                 subtitle: nil,
                 description: nil,
@@ -303,20 +307,6 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
         }
 
         do {
-            guard
-                let sourceAwareMetadata = await metadataWithResolvedSourceID(
-                    bookMetadata,
-                    manifestSourceID: manifest.sourceID,
-                )
-            else {
-                print(
-                    "[WatchSessionManager] Refusing transferred book without sourceID: \(manifest.title)"
-                )
-                try? FileManager.default.removeItem(at: tempURL)
-                return false
-            }
-            bookMetadata = sourceAwareMetadata
-
             await mergeBookMetadataIntoLMA(bookMetadata)
 
             try await BookServiceActor.shared.importDownloadedFileToCache(
@@ -336,21 +326,21 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
     }
 
     private func mergeBookMetadataIntoLMA(_ book: BookMetadata) async {
-        guard let resolvedBook = await metadataWithResolvedSourceID(book) else {
-            print("[WatchSessionManager] Skipping source-less metadata merge for \(book.title)")
-            return
-        }
         var current = await BookServiceActor.shared.librarySnapshot(policy: .cachedOnly).books
+            .filter { $0.sourceID == book.sourceID }
 
-        if let idx = current.firstIndex(where: { $0.uuid == resolvedBook.uuid }) {
-            if isNewer(resolvedBook, than: current[idx]) {
-                current[idx] = resolvedBook
+        if let idx = current.firstIndex(where: { $0.id == book.id }) {
+            if isNewer(book, than: current[idx]) {
+                current[idx] = book
             }
         } else {
-            current.append(resolvedBook)
+            current.append(book)
         }
 
-        try? await BookServiceActor.shared.updateLibraryCacheMetadata(current)
+        try? await BookServiceActor.shared.updateLibraryCacheMetadata(
+            current,
+            replacingSourceID: book.sourceID,
+        )
     }
 
     private func isNewer(_ newBook: BookMetadata, than existingBook: BookMetadata) -> Bool {
@@ -417,60 +407,24 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
     }
 
     private func mergePhoneMetadataIntoLMA(_ phoneBooks: [BookMetadata]) async {
-        var current = await BookServiceActor.shared.librarySnapshot(policy: .cachedOnly).books
+        let cached = await BookServiceActor.shared.librarySnapshot(policy: .cachedOnly).books
 
-        for phoneBook in phoneBooks {
-            guard
-                let resolvedPhoneBook = await metadataWithResolvedSourceID(
-                    phoneBook,
-                    existingMetadata: current,
-                )
-            else {
-                print(
-                    "[WatchSessionManager] Skipping source-less phone metadata for \(phoneBook.title)"
-                )
-                continue
-            }
-            if let idx = current.firstIndex(where: { $0.uuid == resolvedPhoneBook.uuid }) {
-                if isNewer(resolvedPhoneBook, than: current[idx]) {
-                    current[idx] = resolvedPhoneBook
+        for (sourceID, incoming) in Dictionary(grouping: phoneBooks, by: \.sourceID) {
+            var current = cached.filter { $0.sourceID == sourceID }
+            for phoneBook in incoming {
+                if let idx = current.firstIndex(where: { $0.id == phoneBook.id }) {
+                    if isNewer(phoneBook, than: current[idx]) {
+                        current[idx] = phoneBook
+                    }
+                } else {
+                    current.append(phoneBook)
                 }
-            } else {
-                current.append(resolvedPhoneBook)
             }
+            try? await BookServiceActor.shared.updateLibraryCacheMetadata(
+                current,
+                replacingSourceID: sourceID,
+            )
         }
-
-        try? await BookServiceActor.shared.updateLibraryCacheMetadata(current)
-    }
-
-    private func metadataWithResolvedSourceID(
-        _ metadata: BookMetadata,
-        manifestSourceID: BookSourceID? = nil,
-        existingMetadata: [BookMetadata]? = nil,
-    ) async -> BookMetadata? {
-        var resolved = metadata
-        if let sourceID = resolved.sourceID ?? manifestSourceID {
-            resolved.sourceID = sourceID
-            return resolved
-        }
-
-        let current: [BookMetadata]
-        if let existingMetadata {
-            current = existingMetadata
-        } else {
-            current = await BookServiceActor.shared.librarySnapshot(policy: .cachedOnly).books
-        }
-        if let sourceID = current.first(where: { $0.uuid == metadata.uuid })?.sourceID {
-            resolved.sourceID = sourceID
-            return resolved
-        }
-
-        let sources = await BookServiceActor.shared.bookSources
-        guard sources.count == 1, let sourceID = sources.first?.id else {
-            return nil
-        }
-        resolved.sourceID = sourceID
-        return resolved
     }
 
     public func relayPendingProgress() async {
@@ -488,8 +442,14 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
                 guard
                     transfer.userInfo[WatchProgressRelayMessage.typeKey] as? String
                         == WatchProgressRelayMessage.type,
-                    transfer.userInfo[WatchProgressRelayMessage.bookIdKey] as? String
-                        == item.bookId
+                    let queuedData = transfer.userInfo[WatchProgressRelayMessage.payloadKey]
+                        as? Data,
+                    let queued = try? JSONDecoder().decode(
+                        WatchProgressRelayPayload.self,
+                        from: queuedData,
+                    ),
+                    queued.bookId == item.bookID.uuid,
+                    queued.sourceID == item.bookID.sourceID
                 else { continue }
                 let queuedTimestamp =
                     transfer.userInfo[WatchProgressRelayMessage.timestampKey] as? Double ?? 0
@@ -502,13 +462,13 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
             if alreadyQueued { continue }
 
             let payload = WatchProgressRelayPayload(
-                bookId: item.bookId,
-                sourceID: item.sourceID,
+                bookId: item.bookID.uuid,
+                sourceID: item.bookID.sourceID,
                 locator: item.locator,
                 timestamp: item.timestamp,
             )
             guard let payloadData = try? JSONEncoder().encode(payload) else {
-                print("[WatchSessionManager] Failed to encode progress relay for \(item.bookId)")
+                print("[WatchSessionManager] Failed to encode progress relay for \(item.bookID)")
                 continue
             }
 
@@ -516,12 +476,12 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
             // when the phone is in range, even if both apps are terminated
             session.transferUserInfo([
                 WatchProgressRelayMessage.typeKey: WatchProgressRelayMessage.type,
-                WatchProgressRelayMessage.bookIdKey: item.bookId,
+                WatchProgressRelayMessage.bookIdKey: item.bookID.uuid,
                 WatchProgressRelayMessage.timestampKey: item.timestamp,
                 WatchProgressRelayMessage.payloadKey: payloadData,
             ])
             print(
-                "[WatchSessionManager] Queued progress relay for \(item.bookId) ts=\(item.timestamp)"
+                "[WatchSessionManager] Queued progress relay for \(item.bookID) ts=\(item.timestamp)"
             )
         }
     }

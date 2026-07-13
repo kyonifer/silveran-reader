@@ -193,7 +193,7 @@ struct WatchTransferView: View {
     private func handleBookSelected(_ book: BookMetadata, _ category: LocalMediaCategory) {
         showBookSearch = false
 
-        guard let url = mediaViewModel.localMediaPath(for: book.uuid, category: category) else {
+        guard let url = mediaViewModel.localMediaPath(for: book.id, category: category) else {
             debugLog("[WatchTransferView] No file for category \(category): \(book.uuid)")
             return
         }

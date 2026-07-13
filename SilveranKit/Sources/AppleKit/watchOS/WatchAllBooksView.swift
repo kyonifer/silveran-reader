@@ -10,11 +10,11 @@ struct WatchAllBooksView: View {
     @State private var errorMessage: String?
     @State private var needsServerSetup = false
     @State private var showSettingsView = false
-    @State private var downloadRecords: [String: DownloadRecord] = [:]
+    @State private var downloadRecords: [BookID: DownloadRecord] = [:]
     @State private var showDownloads = false
 
-    private func isBookDownloaded(_ uuid: String) -> Bool {
-        viewModel.books.contains { $0.uuid == uuid }
+    private func isBookDownloaded(_ bookID: BookID) -> Bool {
+        viewModel.books.contains { $0.id == bookID }
     }
 
     var body: some View {
@@ -37,9 +37,9 @@ struct WatchAllBooksView: View {
             await loadBooks()
             let _ = await DownloadManager.shared.addObserver { records in
                 Task { @MainActor in
-                    var map: [String: DownloadRecord] = [:]
+                    var map: [BookID: DownloadRecord] = [:]
                     for record in records where record.isIncomplete {
-                        map[record.bookId] = record
+                        map[record.bookID] = record
                     }
                     downloadRecords = map
                 }
@@ -137,9 +137,9 @@ struct WatchAllBooksView: View {
         List {
             ForEach(books) { book in
                 Button {
-                    if let record = downloadRecords[book.uuid], record.isIncomplete {
+                    if let record = downloadRecords[book.id], record.isIncomplete {
                         showDownloads = true
-                    } else if !isBookDownloaded(book.uuid) {
+                    } else if !isBookDownloaded(book.id) {
                         let category: LocalMediaCategory =
                             book.hasAvailableReadaloud ? .synced : .ebook
                         Task {
@@ -165,10 +165,10 @@ struct WatchAllBooksView: View {
 
                         Spacer()
 
-                        if isBookDownloaded(book.uuid) {
+                        if isBookDownloaded(book.id) {
                             Image(systemName: "checkmark.circle.fill")
                                 .foregroundStyle(.green)
-                        } else if let record = downloadRecords[book.uuid], record.isActive {
+                        } else if let record = downloadRecords[book.id], record.isActive {
                             ZStack {
                                 Circle()
                                     .stroke(Color.blue.opacity(0.3), lineWidth: 2.5)
@@ -178,7 +178,7 @@ struct WatchAllBooksView: View {
                                     .rotationEffect(.degrees(-90))
                             }
                             .frame(width: 20, height: 20)
-                        } else if let record = downloadRecords[book.uuid], record.isIncomplete {
+                        } else if let record = downloadRecords[book.id], record.isIncomplete {
                             Image(systemName: "exclamationmark.triangle.fill")
                                 .foregroundStyle(.red)
                         } else {

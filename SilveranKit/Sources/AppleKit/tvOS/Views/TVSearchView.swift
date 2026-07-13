@@ -75,7 +75,7 @@ struct TVSearchView: View {
                 ],
                 spacing: 30,
             ) {
-                ForEach(filteredBooks, id: \.uuid) { book in
+                ForEach(filteredBooks, id: \.id) { book in
                     NavigationLink(value: book) {
                         TVBookCardView(
                             book: book,

@@ -125,7 +125,7 @@ private struct TVHomeSectionView: View {
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 20) {
-                    ForEach(books, id: \.uuid) { book in
+                    ForEach(books, id: \.id) { book in
                         NavigationLink(value: book) {
                             TVBookCardView(
                                 book: book,

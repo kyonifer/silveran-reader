@@ -116,12 +116,12 @@ internal fun LibraryScreen(
         }
     }
     val homeSections = remember(state.books, state.homeSections, query) {
-        val booksByKey = state.books.associateBy(Book::key)
+        val booksByID = state.books.associateBy(Book::id)
         state.homeSections.map { section ->
             VisibleHomeSection(
                 kind = section.kind,
                 title = section.title,
-                books = section.bookKeys.mapNotNull(booksByKey::get).filter { book ->
+                books = section.bookIDs.mapNotNull(booksByID::get).filter { book ->
                     query.isEmpty() || book.matches(query)
                 },
             )
@@ -214,7 +214,7 @@ private fun HomeSections(
                         contentPadding = PaddingValues(horizontal = 12.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        listItems(section.books, key = Book::key) { book ->
+                        listItems(section.books, key = Book::id) { book ->
                             BookTile(
                                 book = book,
                                 select = select,
@@ -243,7 +243,7 @@ private fun BookGrid(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        gridItems(books, key = Book::key) { book ->
+        gridItems(books, key = Book::id) { book ->
             BookTile(
                 book = book,
                 select = select,
@@ -500,7 +500,7 @@ private fun rememberCoverLoadState(
 ): CoverLoadState {
     val state by produceState<CoverLoadState>(
         if (available) CoverLoadState.Loading else CoverLoadState.Missing,
-        book.key,
+        book.id,
         book.coverVersion,
         audio,
         available,

@@ -19,7 +19,7 @@ public enum SilveranWidgetReadingKind: String, Codable, Sendable, Hashable {
 }
 
 public struct SilveranWidgetBookSnapshot: Codable, Sendable, Hashable, Identifiable {
-    public var id: String
+    public let bookID: BookID
     public var title: String
     public var authorLine: String
     public var subtitle: String?
@@ -37,8 +37,10 @@ public struct SilveranWidgetBookSnapshot: Codable, Sendable, Hashable, Identifia
     // Raw server timestamp string; sorts lexically, matching the home view.
     public var createdAt: String?
 
+    public var id: BookID { bookID }
+
     public init(
-        id: String,
+        bookID: BookID,
         title: String,
         authorLine: String,
         subtitle: String?,
@@ -55,7 +57,7 @@ public struct SilveranWidgetBookSnapshot: Codable, Sendable, Hashable, Identifia
         statusName: String?,
         createdAt: String?,
     ) {
-        self.id = id
+        self.bookID = bookID
         self.title = title
         self.authorLine = authorLine
         self.subtitle = subtitle
@@ -158,7 +160,7 @@ public enum SilveranWidgetSnapshotStore {
 
     public static func publishSnapshot(
         metadata: [BookMetadata],
-        progress: [String: BookProgress],
+        progress: [BookID: BookProgress],
         sources: [BookSourceRecord],
     ) async {
         guard let container = sharedContainerURL() else {
@@ -185,7 +187,7 @@ public enum SilveranWidgetSnapshotStore {
 
     public static func makeSnapshot(
         metadata: [BookMetadata],
-        progress: [String: BookProgress],
+        progress: [BookID: BookProgress],
         sources: [BookSourceRecord],
     ) -> SilveranWidgetSnapshot {
         let sourceNames = Dictionary(uniqueKeysWithValues: sources.map { ($0.id, $0.name) })
@@ -198,12 +200,12 @@ public enum SilveranWidgetSnapshotStore {
                 || (statusName != "read" && effectiveProgress > 0 && effectiveProgress < 1)
 
             return SilveranWidgetBookSnapshot(
-                id: book.id,
+                bookID: book.id,
                 title: book.title,
                 authorLine: creatorLine(for: book),
                 subtitle: trimmedNonEmpty(book.subtitle),
                 summary: plainSummary(from: book.description),
-                sourceName: book.source ?? book.sourceID.flatMap { sourceNames[$0] },
+                sourceName: book.source ?? sourceNames[book.sourceID],
                 progress: effectiveProgress,
                 lastReadAt: lastReadDate(for: book, progressInfo: progressInfo),
                 coverFilename: nil,
@@ -235,7 +237,7 @@ public enum SilveranWidgetSnapshotStore {
         try ensureDirectoryExists(at: coversDirectory)
 
         for index in snapshot.books.indices {
-            let bookID = snapshot.books[index].id
+            let bookID = snapshot.books[index].bookID
             snapshot.books[index].coverFilename = try await writeCachedCover(
                 bookID: bookID,
                 audio: false,
@@ -250,7 +252,7 @@ public enum SilveranWidgetSnapshotStore {
     }
 
     private static func writeCachedCover(
-        bookID: String,
+        bookID: BookID,
         audio: Bool,
         coversDirectory: URL,
     ) async throws -> String? {
@@ -259,7 +261,11 @@ public enum SilveranWidgetSnapshotStore {
         // The filename carries a content hash, so a replaced cover gets a new
         // file (the old one is swept by cleanupStaleCovers) and an existing
         // file never needs rewriting.
-        let filename = coverFilename(forBookID: bookID, audio: audio, data: data)
+        let filename = try coverFilename(
+            for: bookID,
+            audio: audio,
+            data: data,
+        )
         let url = coversDirectory.appendingPathComponent(filename, isDirectory: false)
         if !FileManager.default.fileExists(atPath: url.path) {
             try data.write(to: url, options: [.atomic])
@@ -360,18 +366,16 @@ public enum SilveranWidgetSnapshotStore {
         return .audiobook
     }
 
-    private static func coverFilename(forBookID bookID: String, audio: Bool, data: Data) -> String {
-        let token = SHA256.hash(data: data).prefix(8).map { String(format: "%02x", $0) }.joined()
-        return "\(sanitizedPathComponent(bookID))_\(audio ? "audio" : "text")_\(token).dat"
-    }
-
-    private static func sanitizedPathComponent(_ value: String) -> String {
-        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_."))
-        let scalars = value.unicodeScalars.map { scalar in
-            allowed.contains(scalar) ? Character(scalar) : "_"
-        }
-        let result = String(scalars)
-        return result.isEmpty ? "book" : result
+    private static func coverFilename(for bookID: BookID, audio: Bool, data: Data) throws -> String
+    {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let identityData = try encoder.encode(bookID)
+        let identityToken = SHA256.hash(data: identityData).prefix(12)
+            .map { String(format: "%02x", $0) }.joined()
+        let contentToken = SHA256.hash(data: data).prefix(8)
+            .map { String(format: "%02x", $0) }.joined()
+        return "\(identityToken)_\(audio ? "audio" : "text")_\(contentToken).dat"
     }
 
     private static func trimmedNonEmpty(_ value: String?) -> String? {

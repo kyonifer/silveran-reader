@@ -4,7 +4,7 @@ import SwiftUI
 struct SyncNotificationView: View {
     let notification: SyncNotification
     let onDismiss: () -> Void
-    var onIgnore: (([String]) -> Void)?
+    var onIgnore: (([BookID]) -> Void)?
 
     var body: some View {
         HStack(spacing: 12) {
@@ -21,9 +21,9 @@ struct SyncNotificationView: View {
 
             Spacer(minLength: 0)
 
-            if !notification.failedBookIds.isEmpty {
+            if !notification.failedBookIDs.isEmpty {
                 Button {
-                    onIgnore?(notification.failedBookIds)
+                    onIgnore?(notification.failedBookIDs)
                 } label: {
                     Text("Ignore")
                         .font(.system(size: 13, weight: .medium))
