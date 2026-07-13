@@ -1,7 +1,19 @@
 import Foundation
-import Synchronization
 
 enum AppleTemporaryFileCleaner {
+    private final class CleanupState: @unchecked Sendable {
+        private let lock = NSLock()
+        private var didClean = false
+
+        func claimCleanup() -> Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            guard !didClean else { return false }
+            didClean = true
+            return true
+        }
+    }
+
     // URLSession and WatchConnectivity files are intentionally excluded because
     // background work may still need them when the app is relaunched.
     // TODO: Namespace download/model staging before cleaning bare UUIDs, and reconcile
@@ -12,18 +24,13 @@ enum AppleTemporaryFileCleaner {
         "SilveranReadaloudGeneratorInputs",
         "silveran-content-server",
     ]
-    private static let cleanupState = Mutex(false)
+    private static let cleanupState = CleanupState()
 
     static func cleanAbandonedFilesOnce(
         in temporaryDirectory: URL,
         fileManager: FileManager = .default,
     ) {
-        let shouldClean = cleanupState.withLock { didClean in
-            guard !didClean else { return false }
-            didClean = true
-            return true
-        }
-        guard shouldClean else { return }
+        guard cleanupState.claimCleanup() else { return }
         cleanAbandonedFiles(in: temporaryDirectory, fileManager: fileManager)
     }
 
