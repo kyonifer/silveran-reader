@@ -211,7 +211,7 @@ struct WatchCurrentlyReadingView: View {
                 errorMessage = "Cannot connect to book sources"
                 return
             }
-            books = filterAndSortBooks(library)
+            books = await currentlyReadingBooks(in: library)
             isLoading = false
             return
         }
@@ -222,22 +222,21 @@ struct WatchCurrentlyReadingView: View {
             return
         }
 
-        books = filterAndSortBooks(library)
+        books = await currentlyReadingBooks(in: library)
         isLoading = false
     }
 
-    private func filterAndSortBooks(_ library: [BookMetadata]) -> [BookMetadata] {
-        let reading = library.filter { book in
-            book.status?.name == "Reading" && book.hasAvailableReadaloud
-        }
-
-        let sorted = reading.sorted { a, b in
-            let tsA = a.position?.timestamp ?? 0
-            let tsB = b.position?.timestamp ?? 0
-            return tsA > tsB
-        }
-
-        return Array(sorted.prefix(20))
+    private func currentlyReadingBooks(in library: [BookMetadata]) async -> [BookMetadata] {
+        let progress = await ProgressSyncActor.shared.getAllBookProgress()
+        guard
+            let section = HomeSectionDeriver.sections(
+                kinds: [.currentlyReading],
+                books: library,
+                progress: progress,
+                limit: .max,
+            ).first
+        else { return [] }
+        return Array(section.books.lazy.filter(\.hasAvailableReadaloud).prefix(20))
     }
 
     private func isBookDownloaded(_ uuid: String) -> Bool {

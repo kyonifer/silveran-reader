@@ -820,7 +820,8 @@ public final class MediaViewModel {
 
     private func setupPathCacheSync() {
         Task {
-            cachedMediaObserverId = await BookServiceActor.shared.addLibraryCacheObserver { [weak self] in
+            cachedMediaObserverId = await BookServiceActor.shared.addLibraryCacheObserver {
+                [weak self] in
                 Task { @MainActor [weak self] in
                     await self?.syncPathCache()
                     await self?.refreshMetadata(source: "LocalMediaActor.cachedMediaObserver")
@@ -1068,49 +1069,6 @@ public final class MediaViewModel {
             "[PerfTrace][MediaViewModel] items kind=\(kind) narration=\(narrationFilter) tag=\(tagFilter ?? "nil") result=\(base.count) elapsedMs=\(String(format: "%.1f", elapsed))"
         )
         return base
-    }
-
-    public func itemsByStatus(_ statusName: String, sortBy: StatusSortOrder, limit: Int)
-        -> [BookMetadata]
-    {
-        let started = CFAbsoluteTimeGetCurrent()
-        let filtered = library.bookMetaData.filter { metadata in
-            metadata.status?.name == statusName
-        }
-
-        let sorted: [BookMetadata]
-        switch sortBy {
-            case .recentPositionUpdate:
-                sorted = filtered.sorted { a, b in
-                    let tsA = bookProgressCache[a.id]?.timestamp ?? 0
-                    let tsB = bookProgressCache[b.id]?.timestamp ?? 0
-                    return tsA > tsB
-                }
-            case .recentlyAdded:
-                sorted = filtered.sorted { a, b in
-                    (a.createdAt ?? "") > (b.createdAt ?? "")
-                }
-        }
-
-        let result = Array(sorted.prefix(limit))
-        let elapsed = (CFAbsoluteTimeGetCurrent() - started) * 1000
-        debugLog(
-            "[PerfTrace][MediaViewModel] itemsByStatus status='\(statusName)' filtered=\(filtered.count) result=\(result.count) elapsedMs=\(String(format: "%.1f", elapsed))"
-        )
-        return result
-    }
-
-    public func recentlyAddedItems(limit: Int) -> [BookMetadata] {
-        let started = CFAbsoluteTimeGetCurrent()
-        let sorted = library.bookMetaData.sorted { a, b in
-            (a.createdAt ?? "") > (b.createdAt ?? "")
-        }
-        let result = Array(sorted.prefix(limit))
-        let elapsed = (CFAbsoluteTimeGetCurrent() - started) * 1000
-        debugLog(
-            "[PerfTrace][MediaViewModel] recentlyAddedItems total=\(library.bookMetaData.count) result=\(result.count) elapsedMs=\(String(format: "%.1f", elapsed))"
-        )
-        return result
     }
 
     public func booksBySeries(for kind: MediaKind)
@@ -1746,11 +1704,6 @@ public final class MediaViewModel {
         )
         return result
         #endif
-    }
-
-    public enum StatusSortOrder: Sendable {
-        case recentPositionUpdate
-        case recentlyAdded
     }
 
     public func badgeCount(for content: SidebarContentKind) -> Int {
