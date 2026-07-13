@@ -50,28 +50,40 @@ android {
     }
 }
 
-abstract class GenerateReadaloudVector : DefaultTask() {
+abstract class GenerateSharedResources : DefaultTask() {
     @get:InputFile
-    abstract val sourceFile: RegularFileProperty
+    abstract val readaloudIcon: RegularFileProperty
+
+    @get:InputFile
+    abstract val youngSerifFont: RegularFileProperty
 
     @get:OutputDirectory
     abstract val outputDirectory: DirectoryProperty
 
     @TaskAction
     fun generate() {
-        val output = outputDirectory.file("drawable/ic_readaloud.xml").get().asFile
-        output.parentFile.mkdirs()
-        output.outputStream().use { stream ->
-            val errors = Svg2Vector.parseSvgToXml(sourceFile.get().asFile.toPath(), stream)
+        val iconOutput = outputDirectory.file("drawable/ic_readaloud.xml").get().asFile
+        iconOutput.parentFile.mkdirs()
+        iconOutput.outputStream().use { stream ->
+            val errors = Svg2Vector.parseSvgToXml(readaloudIcon.get().asFile.toPath(), stream)
             check(errors.isBlank()) { errors }
         }
+
+        val fontOutput = outputDirectory.file("font/young_serif.ttf").get().asFile
+        fontOutput.parentFile.mkdirs()
+        youngSerifFont.get().asFile.copyTo(fontOutput, overwrite = true)
     }
 }
 
-val generateReadaloudVector = tasks.register<GenerateReadaloudVector>("generateReadaloudVector") {
-    sourceFile.set(
+val generateSharedResources = tasks.register<GenerateSharedResources>("generateSharedResources") {
+    readaloudIcon.set(
         rootProject.layout.projectDirectory.file(
             "../XCodeApps/Assets.xcassets/readalong.imageset/readaloud.svg"
+        )
+    )
+    youngSerifFont.set(
+        rootProject.layout.projectDirectory.file(
+            "../SilveranKit/Sources/AppleKit/Resources/assets/fonts/YoungSerif.ttf"
         )
     )
 }
@@ -79,8 +91,8 @@ val generateReadaloudVector = tasks.register<GenerateReadaloudVector>("generateR
 androidComponents {
     onVariants { variant ->
         variant.sources.res?.addGeneratedSourceDirectory(
-            generateReadaloudVector,
-            GenerateReadaloudVector::outputDirectory,
+            generateSharedResources,
+            GenerateSharedResources::outputDirectory,
         )
     }
 }

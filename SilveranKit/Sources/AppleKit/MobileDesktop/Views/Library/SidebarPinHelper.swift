@@ -9,16 +9,11 @@ struct HomeSectionConfigItem: Codable, Identifiable, Equatable {
 enum HomeSectionConfigHelper {
     private static let key = "home.sectionConfig"
 
-    static let builtInIds: Set<String> = [
-        "currentlyReading", "startReading", "recentlyAdded", "completed",
-    ]
+    static let builtInIds = Set(HomeSectionKind.allCases.map(\.rawValue))
 
-    static let defaultConfig: [HomeSectionConfigItem] = [
-        .init(id: "currentlyReading", visible: true),
-        .init(id: "startReading", visible: true),
-        .init(id: "recentlyAdded", visible: true),
-        .init(id: "completed", visible: true),
-    ]
+    static let defaultConfig = HomeSectionKind.allCases.map {
+        HomeSectionConfigItem(id: $0.rawValue, visible: true)
+    }
 
     static var config: [HomeSectionConfigItem] {
         guard let json = UserDefaults.standard.string(forKey: key),
@@ -61,14 +56,7 @@ enum HomeSectionConfigHelper {
     }
 
     static func displayName(for id: String) -> String {
-        switch id {
-            case "currentlyReading": return "Currently Reading"
-            case "startReading": return "Start Reading"
-            case "recentlyAdded": return "Recently Added"
-            case "completed": return "Completed"
-            default:
-                return pinDisplayName(for: id) ?? id
-        }
+        HomeSectionKind(rawValue: id)?.title ?? pinDisplayName(for: id) ?? id
     }
 
     static func systemImage(for id: String) -> String {

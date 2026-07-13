@@ -27,8 +27,15 @@ data class BookMedia(
 
 data class LibrarySnapshot(
     val books: List<Book>,
+    val homeSections: List<HomeSection>,
     val sourceStatus: String,
     val sourceMessage: String?,
+)
+
+data class HomeSection(
+    val kind: String,
+    val title: String,
+    val bookKeys: List<String>,
 )
 
 data class StorytellerSettings(

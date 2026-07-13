@@ -7,6 +7,7 @@ import android.util.Base64
 import android.util.LruCache
 import com.kyonifer.silveran.model.Book
 import com.kyonifer.silveran.model.BookMedia
+import com.kyonifer.silveran.model.HomeSection
 import com.kyonifer.silveran.model.LibrarySnapshot
 import com.kyonifer.silveran.model.StorytellerSettings
 import com.kyonifer.silveran.platform.AndroidSecureStore
@@ -216,6 +217,17 @@ class SilveranBridgeClient(context: Context) {
         }
         return LibrarySnapshot(
             books = books,
+            homeSections = root.getJSONArray("homeSections").let { sections ->
+                List(sections.length()) { index ->
+                    val section = sections.getJSONObject(index)
+                    val bookKeys = section.getJSONArray("bookKeys")
+                    HomeSection(
+                        kind = section.getString("kind"),
+                        title = section.getString("title"),
+                        bookKeys = List(bookKeys.length(), bookKeys::getString),
+                    )
+                }
+            },
             sourceStatus = root.optString("sourceStatus", "notConfigured"),
             sourceMessage = root.optionalString("sourceMessage"),
         )

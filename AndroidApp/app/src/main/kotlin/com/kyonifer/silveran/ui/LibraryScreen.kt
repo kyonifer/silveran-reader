@@ -18,9 +18,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items as listItems
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -54,7 +57,10 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.kyonifer.silveran.R
 import com.kyonifer.silveran.model.Book
@@ -65,6 +71,7 @@ private const val EBOOK_ASPECT_RATIO = 0.67f
 private const val PANEL_VERTICAL_MARGIN = 0.06f
 internal const val COVER_PANEL_ASPECT_RATIO =
     1f / (COVER_SCALE / EBOOK_ASPECT_RATIO + PANEL_VERTICAL_MARGIN * 2f)
+private val storytellerTitleFont = FontFamily(Font(R.font.young_serif))
 
 internal enum class LibraryTab(val label: String) {
     Home("Home"),
@@ -78,6 +85,12 @@ private sealed interface CoverLoadState {
     data class Loaded(val bitmap: Bitmap) : CoverLoadState
 }
 
+private data class VisibleHomeSection(
+    val kind: String,
+    val title: String,
+    val books: List<Book>,
+)
+
 @Composable
 internal fun LibraryScreen(
     state: SilveranUiState,
@@ -89,22 +102,29 @@ internal fun LibraryScreen(
     coverRevision: Int,
     cover: suspend (Book, Boolean, Int, Int) -> Bitmap?,
 ) {
-    val visibleBooks = remember(state.books, tab, searchText) {
+    val query = searchText.trim()
+    val visibleBooks = remember(state.books, tab, query) {
         val tabBooks = when (tab) {
-            LibraryTab.Home -> state.books.sortedByDescending { it.createdAt.orEmpty() }
+            LibraryTab.Home -> emptyList()
             LibraryTab.Library -> state.books.sortedBy { it.title.lowercase() }
             LibraryTab.Downloaded -> state.books
                 .filter(Book::hasDownloadedMedia)
                 .sortedBy { it.title.lowercase() }
         }
-        val query = searchText.trim()
-        if (query.isEmpty()) {
-            tabBooks
-        } else {
-            tabBooks.filter { book ->
-                book.title.contains(query, ignoreCase = true) ||
-                    book.authors.contains(query, ignoreCase = true)
-            }
+        tabBooks.filter { book ->
+            query.isEmpty() || book.matches(query)
+        }
+    }
+    val homeSections = remember(state.books, state.homeSections, query) {
+        val booksByKey = state.books.associateBy(Book::key)
+        state.homeSections.map { section ->
+            VisibleHomeSection(
+                kind = section.kind,
+                title = section.title,
+                books = section.bookKeys.mapNotNull(booksByKey::get).filter { book ->
+                    query.isEmpty() || book.matches(query)
+                },
+            )
         }
     }
 
@@ -134,7 +154,13 @@ internal fun LibraryScreen(
                 message = connectionText(state.sourceStatus, state.sourceMessage),
                 action = configure,
             )
-            visibleBooks.isEmpty() && searchText.isNotBlank() -> EmptyLibrary(
+            tab == LibraryTab.Home && homeSections.all { it.books.isEmpty() } &&
+                searchText.isNotBlank() -> EmptyLibrary(
+                title = "No matches",
+                message = "Try a different title or author.",
+            )
+            tab != LibraryTab.Home && visibleBooks.isEmpty() && searchText.isNotBlank() ->
+                EmptyLibrary(
                 title = "No matches",
                 message = "Try a different title or author.",
             )
@@ -142,33 +168,59 @@ internal fun LibraryScreen(
                 title = "No downloads",
                 message = "Download a book from Home or Library to find it here.",
             )
-            else -> LazyVerticalGrid(
-                columns = GridCells.Fixed(3),
-                contentPadding = PaddingValues(12.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-                items(visibleBooks, key = Book::key) { book ->
-                    Column(Modifier.clickable { select(book) }) {
-                        BookCover(
-                            book = book,
-                            width = 320,
-                            height = 480,
-                            revision = coverRevision,
-                            load = cover,
-                            modifier = Modifier.fillMaxWidth().aspectRatio(COVER_PANEL_ASPECT_RATIO),
-                        )
-                        Text(
-                            book.title,
-                            style = MaterialTheme.typography.titleSmall,
-                            maxLines = 2,
-                            modifier = Modifier.padding(top = 6.dp),
-                        )
-                        if (book.authors.isNotBlank()) {
-                            Text(
-                                book.authors,
-                                style = MaterialTheme.typography.bodySmall,
-                                maxLines = 1,
+            tab == LibraryTab.Home -> HomeSections(
+                sections = homeSections,
+                select = select,
+                coverRevision = coverRevision,
+                cover = cover,
+            )
+            else -> BookGrid(
+                books = visibleBooks,
+                select = select,
+                coverRevision = coverRevision,
+                cover = cover,
+            )
+        }
+    }
+}
+
+@Composable
+private fun HomeSections(
+    sections: List<VisibleHomeSection>,
+    select: (Book) -> Unit,
+    coverRevision: Int,
+    cover: suspend (Book, Boolean, Int, Int) -> Bitmap?,
+) {
+    LazyColumn(
+        contentPadding = PaddingValues(vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(24.dp),
+    ) {
+        listItems(sections, key = VisibleHomeSection::kind) { section ->
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    section.title,
+                    fontFamily = storytellerTitleFont,
+                    fontSize = 22.sp,
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                )
+                if (section.books.isEmpty()) {
+                    Text(
+                        "No items currently.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 20.dp),
+                    )
+                } else {
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        listItems(section.books, key = Book::key) { book ->
+                            BookTile(
+                                book = book,
+                                select = select,
+                                coverRevision = coverRevision,
+                                cover = cover,
+                                modifier = Modifier.width(112.dp),
                             )
                         }
                     }
@@ -177,6 +229,67 @@ internal fun LibraryScreen(
         }
     }
 }
+
+@Composable
+private fun BookGrid(
+    books: List<Book>,
+    select: (Book) -> Unit,
+    coverRevision: Int,
+    cover: suspend (Book, Boolean, Int, Int) -> Bitmap?,
+) {
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(3),
+        contentPadding = PaddingValues(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        gridItems(books, key = Book::key) { book ->
+            BookTile(
+                book = book,
+                select = select,
+                coverRevision = coverRevision,
+                cover = cover,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    }
+}
+
+@Composable
+private fun BookTile(
+    book: Book,
+    select: (Book) -> Unit,
+    coverRevision: Int,
+    cover: suspend (Book, Boolean, Int, Int) -> Bitmap?,
+    modifier: Modifier,
+) {
+    Column(modifier.clickable { select(book) }) {
+        BookCover(
+            book = book,
+            width = 320,
+            height = 480,
+            revision = coverRevision,
+            load = cover,
+            modifier = Modifier.fillMaxWidth().aspectRatio(COVER_PANEL_ASPECT_RATIO),
+        )
+        Text(
+            book.title,
+            style = MaterialTheme.typography.titleSmall,
+            maxLines = 2,
+            modifier = Modifier.padding(top = 6.dp),
+        )
+        if (book.authors.isNotBlank()) {
+            Text(
+                book.authors,
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 1,
+            )
+        }
+    }
+}
+
+private fun Book.matches(query: String): Boolean =
+    title.contains(query, ignoreCase = true) || authors.contains(query, ignoreCase = true)
 
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)

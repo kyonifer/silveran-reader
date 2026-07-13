@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.kyonifer.silveran.bridge.SilveranBridgeClient
 import com.kyonifer.silveran.model.Book
+import com.kyonifer.silveran.model.HomeSection
 import com.kyonifer.silveran.model.StorytellerSettings
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
@@ -21,6 +22,7 @@ data class SilveranUiState(
     val settingsLoaded: Boolean = false,
     val settings: StorytellerSettings = StorytellerSettings(),
     val books: List<Book> = emptyList(),
+    val homeSections: List<HomeSection> = emptyList(),
     val libraryLoaded: Boolean = false,
     val coverRevision: Int = 0,
     val sourceStatus: String = "notConfigured",
@@ -175,6 +177,7 @@ class SilveranViewModel private constructor(
                     current.books.map(Book::key) != snapshot.books.map(Book::key)
                 mutableState.value = current.copy(
                     books = snapshot.books,
+                    homeSections = snapshot.homeSections,
                     libraryLoaded = true,
                     coverRevision = current.coverRevision + if (refreshCovers) 1 else 0,
                     sourceStatus = snapshot.sourceStatus,

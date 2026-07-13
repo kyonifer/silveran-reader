@@ -28,7 +28,7 @@ struct HomeView: View {
         let destination: String
         let tagFilter: String?
         let statusFilter: String?
-        let sortOrder: MediaViewModel.StatusSortOrder?
+        let sortOrder: HomeSectionSortOrder?
 
         var id: String {
             [
@@ -52,7 +52,7 @@ struct HomeView: View {
         let mediaKind: MediaKind
         let tagFilter: String?
         let statusFilter: String?
-        let sortOrder: MediaViewModel.StatusSortOrder?
+        let sortOrder: HomeSectionSortOrder?
     }
 
     @State private var selection: Selection? = nil
@@ -437,53 +437,27 @@ struct HomeView: View {
         context: MediaViewModel.LibraryRenderContext,
         searchText: String,
     ) -> [HomeSection] {
-        visibleSectionIDs.compactMap { itemID in
-            switch itemID {
-                case "currentlyReading":
-                    return makeStatusSection(
-                        title: "Currently Reading",
-                        statusName: "Reading",
-                        sortBy: .recentPositionUpdate,
-                        limit: 12,
-                        destination: "Currently Reading",
-                        context: context,
-                        searchText: searchText,
-                    )
-                case "startReading":
-                    return makeStatusSection(
-                        title: "Start Reading",
-                        statusName: "To read",
-                        sortBy: .recentlyAdded,
-                        limit: 12,
-                        destination: "Start Reading",
-                        context: context,
-                        searchText: searchText,
-                    )
-                case "recentlyAdded":
-                    return makeRecentlyAddedSection(
-                        title: "Recently Added",
-                        limit: 12,
-                        destination: "Recently Added",
-                        context: context,
-                        searchText: searchText,
-                    )
-                case "completed":
-                    return makeStatusSection(
-                        title: "Completed",
-                        statusName: "Read",
-                        sortBy: .recentPositionUpdate,
-                        limit: 12,
-                        destination: "Completed",
-                        context: context,
-                        searchText: searchText,
-                    )
-                default:
-                    return makePinnedSection(
-                        pinId: itemID,
-                        context: context,
-                        searchText: searchText,
-                    )
+        let builtInKinds = visibleSectionIDs.compactMap(HomeSectionKind.init(rawValue:))
+        let builtInSections = Dictionary(
+            uniqueKeysWithValues: HomeSectionDeriver.sections(
+                kinds: builtInKinds,
+                books: context.metadata,
+                progress: context.progress,
+                searchText: searchText,
+            ).map { ($0.kind, $0) }
+        )
+
+        return visibleSectionIDs.compactMap { itemID in
+            if let kind = HomeSectionKind(rawValue: itemID),
+                let snapshot = builtInSections[kind]
+            {
+                return makeBuiltInSection(snapshot)
             }
+            return makePinnedSection(
+                pinId: itemID,
+                context: context,
+                searchText: searchText,
+            )
         }
     }
 
@@ -656,60 +630,17 @@ struct HomeView: View {
 
     #endif
 
-    private static nonisolated func makeStatusSection(
-        title: String,
-        statusName: String,
-        sortBy: MediaViewModel.StatusSortOrder,
-        limit: Int,
-        destination: String,
-        context: MediaViewModel.LibraryRenderContext,
-        searchText: String,
+    private static nonisolated func makeBuiltInSection(
+        _ snapshot: HomeSectionSnapshot
     ) -> HomeSection {
-        let filtered = context.metadata.filter { $0.status?.name == statusName }
-        let sorted: [BookMetadata]
-        switch sortBy {
-            case .recentPositionUpdate:
-                sorted = filtered.sorted { a, b in
-                    let tsA = context.progress[a.id]?.timestamp ?? 0
-                    let tsB = context.progress[b.id]?.timestamp ?? 0
-                    return tsA > tsB
-                }
-            case .recentlyAdded:
-                sorted = filtered.sorted { ($0.createdAt ?? "") > ($1.createdAt ?? "") }
-        }
-        let searched = Array(sorted.prefix(limit)).filter {
-            matchesSearchText($0, searchText: searchText)
-        }
-        return HomeSection(
-            title: title,
+        HomeSection(
+            title: snapshot.kind.title,
             mediaKind: .ebook,
-            items: searched,
-            destination: destination,
+            items: snapshot.books,
+            destination: snapshot.kind.title,
             tagFilter: nil,
-            statusFilter: statusName,
-            sortOrder: sortBy,
-        )
-    }
-
-    private static nonisolated func makeRecentlyAddedSection(
-        title: String,
-        limit: Int,
-        destination: String,
-        context: MediaViewModel.LibraryRenderContext,
-        searchText: String,
-    ) -> HomeSection {
-        let sorted = context.metadata.sorted { ($0.createdAt ?? "") > ($1.createdAt ?? "") }
-        let searched = Array(sorted.prefix(limit)).filter {
-            matchesSearchText($0, searchText: searchText)
-        }
-        return HomeSection(
-            title: title,
-            mediaKind: .ebook,
-            items: searched,
-            destination: destination,
-            tagFilter: nil,
-            statusFilter: nil,
-            sortOrder: .recentlyAdded,
+            statusFilter: snapshot.kind.statusFilter,
+            sortOrder: snapshot.kind.sortOrder,
         )
     }
 
@@ -797,7 +728,9 @@ struct HomeView: View {
             return nil
         }
 
-        let searched = matched.filter { matchesSearchText($0, searchText: searchText) }
+        let searched = matched.filter {
+            HomeSectionDeriver.matchesSearchText($0, searchText: searchText)
+        }
         return HomeSection(
             title: title,
             mediaKind: .ebook,
@@ -833,19 +766,6 @@ struct HomeView: View {
         guard !context.folderSourceBookIds.contains(book.id) else { return false }
         let paths = context.paths[book.id]
         return paths?.ebookPath != nil || paths?.audioPath != nil || paths?.syncedPath != nil
-    }
-
-    private static nonisolated func matchesSearchText(
-        _ item: BookMetadata,
-        searchText: String,
-    ) -> Bool {
-        guard searchText.count >= 2 else { return true }
-        let terms = searchText.lowercased().split(separator: " ").map(String.init)
-        let title = item.title.lowercased()
-        let authorNames = (item.authors ?? []).compactMap { $0.name?.lowercased() }
-        return terms.allSatisfy { term in
-            title.contains(term) || authorNames.contains { $0.contains(term) }
-        }
     }
 
     private func navigateToSection(_ section: HomeSection) {

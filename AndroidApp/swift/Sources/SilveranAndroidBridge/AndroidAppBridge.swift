@@ -91,6 +91,7 @@ private func makeLibrarySnapshotJSON(refresh: Bool) async throws -> String {
     let snapshot = await BookServiceActor.shared.librarySnapshot(
         policy: refresh ? .refresh : .cachedOnly
     )
+    let progress = await ProgressSyncActor.shared.getAllBookProgress()
     let downloads = await DownloadManager.shared.incompleteDownloads
     let downloadsByID = Dictionary(uniqueKeysWithValues: downloads.map { ($0.id, $0) })
     var books: [AndroidBook] = []
@@ -143,9 +144,22 @@ private func makeLibrarySnapshotJSON(refresh: Bool) async throws -> String {
     }
 
     let status = connectionFields(await BookServiceActor.shared.connectionStatus)
+    let homeSections = HomeSectionDeriver.sections(
+        books: snapshot.books,
+        progress: progress,
+    ).map { section in
+        AndroidHomeSection(
+            kind: section.kind.rawValue,
+            title: section.kind.title,
+            bookKeys: section.books.compactMap { book in
+                book.sourceID.map { "\($0):\(book.uuid)" }
+            },
+        )
+    }
     return try encodeJSON(
         AndroidLibrary(
             books: books,
+            homeSections: homeSections,
             sourceStatus: status.status,
             sourceMessage: status.message,
         )
@@ -338,8 +352,15 @@ private struct AndroidCoverResponse: Encodable {
     let shouldPersist: Bool
 }
 
+private struct AndroidHomeSection: Encodable {
+    let kind: String
+    let title: String
+    let bookKeys: [String]
+}
+
 private struct AndroidLibrary: Encodable {
     let books: [AndroidBook]
+    let homeSections: [AndroidHomeSection]
     let sourceStatus: String
     let sourceMessage: String?
 }
