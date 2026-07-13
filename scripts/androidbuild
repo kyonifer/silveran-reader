@@ -66,9 +66,11 @@ fi
 
 if [[ "${APK_ONLY}" -eq 0 ]]; then
     # jextract does not remove Java sources when an exported Swift declaration
-    # disappears. Clear only its generated-source directory so stale bindings
-    # cannot leak into the next APK; keep the compiled tool/cache outputs.
-    rm -rf "AndroidApp/swift/.build/plugins/outputs/swift/SilveranAndroidBridge/destination/JExtractSwiftPlugin/src/generated/java"
+    # disappears. Its Java output is also not declared to SwiftPM, so remove one
+    # declared thunk as well to ensure the generator reruns after this cleanup.
+    JEXTRACT_OUTPUT="AndroidApp/swift/.build/plugins/outputs/swift/SilveranAndroidBridge/destination/JExtractSwiftPlugin"
+    rm -rf "${JEXTRACT_OUTPUT}/src/generated/java"
+    rm -f "${JEXTRACT_OUTPUT}/Sources/SilveranAndroidBridgeModule+SwiftJava.swift"
 
     (cd AndroidApp/swift && TOOLCHAINS="${TOOLCHAIN}" swift build \
         --disable-sandbox \
