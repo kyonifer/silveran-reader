@@ -439,12 +439,13 @@ struct HomeView: View {
     ) -> [HomeSection] {
         let builtInKinds = visibleSectionIDs.compactMap(HomeSectionKind.init(rawValue:))
         let builtInSections = Dictionary(
-            uniqueKeysWithValues: HomeSectionDeriver.sections(
+            HomeSectionDeriver.sections(
                 kinds: builtInKinds,
                 books: context.metadata,
                 progress: context.progress,
                 searchText: searchText,
-            ).map { ($0.kind, $0) }
+            ).map { ($0.kind, $0) },
+            uniquingKeysWith: { first, _ in first },
         )
 
         return visibleSectionIDs.compactMap { itemID in

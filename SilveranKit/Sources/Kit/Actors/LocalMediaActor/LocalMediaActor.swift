@@ -685,24 +685,33 @@ public actor LocalMediaActor: GlobalActor {
         )
         let bookRoot = destinationDirectory.deletingLastPathComponent()
         try await filesystem.ensureDirectoryExists(at: bookRoot)
-        try await filesystem.ensureDirectoryExists(at: destinationDirectory)
 
         let fm = FileManager.default
         if category == .audio && audioIsPackage {
-            if fm.fileExists(atPath: destinationDirectory.path) {
-                try fm.removeItem(at: destinationDirectory)
+            let stagingDirectory = bookRoot.appendingPathComponent(
+                ".audio.importing",
+                isDirectory: true,
+            )
+            if fm.fileExists(atPath: stagingDirectory.path) {
+                try fm.removeItem(at: stagingDirectory)
             }
-            try await filesystem.ensureDirectoryExists(at: destinationDirectory)
+            try await filesystem.ensureDirectoryExists(at: stagingDirectory)
 
             do {
-                try extractAudiobookPackage(from: tempURL, to: destinationDirectory)
+                try extractAudiobookPackage(from: tempURL, to: stagingDirectory)
                 guard
                     fm.fileExists(
-                        atPath: destinationDirectory.appendingPathComponent("manifest.json").path
+                        atPath: stagingDirectory.appendingPathComponent("manifest.json").path
                     )
                 else {
                     throw LocalMediaError.missingAudiobookManifest
                 }
+
+                if fm.fileExists(atPath: destinationDirectory.path) {
+                    try fm.removeItem(at: destinationDirectory)
+                }
+                // A same-volume rename keeps interrupted extraction out of the live media path.
+                try fm.moveItem(at: stagingDirectory, to: destinationDirectory)
                 debugLog(
                     "[LMA] importDownloadedFile: extracted audiobook package to \(destinationDirectory.path)"
                 )
@@ -715,13 +724,14 @@ public actor LocalMediaActor: GlobalActor {
                 await notifyObservers()
                 return
             } catch {
-                if fm.fileExists(atPath: destinationDirectory.path) {
-                    try? fm.removeItem(at: destinationDirectory)
+                if fm.fileExists(atPath: stagingDirectory.path) {
+                    try? fm.removeItem(at: stagingDirectory)
                 }
                 throw error
             }
         }
 
+        try await filesystem.ensureDirectoryExists(at: destinationDirectory)
         let destinationURL = destinationDirectory.appendingPathComponent(filename)
 
         if fm.fileExists(atPath: destinationURL.path) {

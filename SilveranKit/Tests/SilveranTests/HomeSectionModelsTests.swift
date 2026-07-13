@@ -80,6 +80,24 @@ import Testing
     #expect(sections[0].books.map(\.id) == ["match"])
 }
 
+@Test func homeSectionsPreserveDuplicateConfiguredKinds() {
+    let book = homeBook(
+        id: "book",
+        title: "Book",
+        status: "Reading",
+        createdAt: "2026-07-01",
+    )
+
+    let sections = HomeSectionDeriver.sections(
+        kinds: [.currentlyReading, .currentlyReading],
+        books: [book],
+        progress: [:],
+    )
+
+    #expect(sections.map(\.kind) == [.currentlyReading, .currentlyReading])
+    #expect(sections.allSatisfy { $0.books.map(\.id) == ["book"] })
+}
+
 private func homeBook(
     id: String,
     title: String,
