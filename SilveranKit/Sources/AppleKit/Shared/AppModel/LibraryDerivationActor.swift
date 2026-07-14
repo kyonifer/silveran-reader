@@ -626,10 +626,10 @@ public actor LibraryDerivationActor {
         -> MediaGridRenderSnapshot
     {
         let request = input.request
-        let baseItems = baseItems(for: request, metadata: input.metadata)
+        let baseItems = uniqueItems(baseItems(for: request, metadata: input.metadata))
         let catalog =
             request.includeFilterOptions
-            ? catalogItems(for: request, metadata: input.metadata)
+            ? uniqueItems(catalogItems(for: request, metadata: input.metadata))
             : []
         let locationInfo = locationInfo(
             for: baseItems,
@@ -803,28 +803,39 @@ public actor LibraryDerivationActor {
         return result
     }
 
+    private func uniqueItems(_ items: [BookMetadata]) -> [BookMetadata] {
+        var seen: Set<BookID> = []
+        return items.filter { item in
+            guard seen.insert(item.id).inserted else {
+                debugLog(
+                    "[LibraryDerivationActor] Duplicate book id '\(item.id)' (\(item.title)) in media grid items; keeping the first"
+                )
+                return false
+            }
+            return true
+        }
+    }
+
     private func locationInfo(
         for items: [BookMetadata],
         paths: [BookID: MediaPaths],
         folderSourceBookIds: Set<BookID>,
     ) -> [BookMetadata.ID: MediaGridLocationInfo] {
-        Dictionary(uniqueKeysWithValues:
-            items.map { item in
-                let mediaPaths = paths[item.id]
-                let hasDownloadedContent =
-                    mediaPaths?.ebookPath != nil
-                    || mediaPaths?.audioPath != nil
-                    || mediaPaths?.syncedPath != nil
-                let isLocal = folderSourceBookIds.contains(item.id)
-                return (
-                    item.id,
-                    MediaGridLocationInfo(
-                        isDownloaded: hasDownloadedContent && !isLocal,
-                        isLocalStandalone: isLocal,
-                    ),
-                )
-            }
-        )
+        var result: [BookMetadata.ID: MediaGridLocationInfo] = [:]
+        result.reserveCapacity(items.count)
+        for item in items {
+            let mediaPaths = paths[item.id]
+            let hasDownloadedContent =
+                mediaPaths?.ebookPath != nil
+                || mediaPaths?.audioPath != nil
+                || mediaPaths?.syncedPath != nil
+            let isLocal = folderSourceBookIds.contains(item.id)
+            result[item.id] = MediaGridLocationInfo(
+                isDownloaded: hasDownloadedContent && !isLocal,
+                isLocalStandalone: isLocal,
+            )
+        }
+        return result
     }
 
     private func displayItems(

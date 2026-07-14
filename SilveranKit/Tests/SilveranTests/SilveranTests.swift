@@ -261,6 +261,20 @@ import Testing
     #expect(merged.works.first?.uuid == "work-id")
 }
 
+@Test func legacyLocalProgressAcceptsDuplicateMediaIDs() {
+    var scanned = makeScannedState(title: "Legacy Book", ebookPath: "Legacy Book.epub")
+    scanned.media.append(scanned.media[0])
+    let legacy = makeLegacyLocalBook(
+        title: "Legacy Book",
+        ebookFilename: "Legacy Book.epub",
+        timestamp: 4242,
+    )
+
+    let merged = LegacyLocalProgressMerge.merge(into: scanned, legacy: [legacy])
+    #expect(merged.works.first?.position?.timestamp == 4242)
+    #expect(merged.works.first?.uuid == legacy.uuid)
+}
+
 @Test func audiobookActorLoadsManifestWithAbsoluteFileHrefs() async throws {
     let root = try makeTemporaryFolderSource()
     defer { try? FileManager.default.removeItem(at: root) }

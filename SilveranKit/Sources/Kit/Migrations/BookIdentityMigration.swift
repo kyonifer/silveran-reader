@@ -614,7 +614,10 @@ enum LegacyLocalProgressMerge {
         guard !candidates.isEmpty else { return state }
 
         var state = state
-        let mediaByID = Dictionary(uniqueKeysWithValues: state.media.map { ($0.uuid, $0) })
+        let mediaByID = Dictionary(
+            state.media.map { ($0.uuid, $0) },
+            uniquingKeysWith: { first, _ in first },
+        )
         let index = state.works.enumerated().map { offset, work in
             (
                 offset: offset, names: filenames(of: work, mediaByID: mediaByID),

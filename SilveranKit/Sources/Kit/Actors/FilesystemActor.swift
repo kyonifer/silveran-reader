@@ -399,7 +399,12 @@ public actor FilesystemActor {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         let data = try Data(contentsOf: queueURL)
-        return try decoder.decode([PendingProgressSync].self, from: data)
+        do {
+            return try decoder.decode([PendingProgressSync].self, from: data)
+        } catch is DecodingError {
+            try fm.removeItem(at: queueURL)
+            return []
+        }
     }
 
     public func saveProgressQueue(_ queue: [PendingProgressSync]) async throws {
