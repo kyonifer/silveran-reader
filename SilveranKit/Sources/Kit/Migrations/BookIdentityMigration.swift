@@ -550,7 +550,7 @@ extension FilesystemActor {
         #endif
     }
 
-    private func availableMigrationFolder(
+    func availableMigrationFolder(
         for source: BookSourceRecord,
         scopedFolders: inout [URL],
     ) -> URL? {

@@ -43,6 +43,11 @@ public enum SilveranRuntime {
             try await filesystem.prepareBookIdentityMigrationBeforeStorage(for: sources)
             try await filesystem.runStorageMigrations(for: sources)
             try await filesystem.runBookIdentityMigration(for: sources)
+            do {
+                try await filesystem.runBookHighlightsMigration(for: sources)
+            } catch {
+                debugLog("[SilveranMigrations] Highlight migration deferred: \(error)")
+            }
             return true
         } catch {
             debugLog("[SilveranMigrations] Required startup migration failed: \(error)")

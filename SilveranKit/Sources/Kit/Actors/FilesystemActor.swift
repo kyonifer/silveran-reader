@@ -2,6 +2,14 @@ import Dispatch
 import Foundation
 import ZIPFoundation
 
+func encodedIdentityPathComponent(_ input: String) -> String {
+    let encoded = Data(input.utf8).base64EncodedString()
+        .replacingOccurrences(of: "+", with: "-")
+        .replacingOccurrences(of: "/", with: "_")
+        .replacingOccurrences(of: "=", with: "")
+    return "b64_\(encoded)"
+}
+
 struct PersistedSyncHistory: Codable, Sendable {
     struct Book: Codable, Sendable {
         let bookID: BookID
@@ -744,16 +752,6 @@ public actor FilesystemActor {
         }
 
         return nil
-    }
-
-    /// Lossless, path-safe encoding for persisted identity components. Unlike the
-    /// human-readable sanitizer, this cannot collapse two different source or book IDs.
-    func encodedIdentityPathComponent(_ input: String) -> String {
-        let encoded = Data(input.utf8).base64EncodedString()
-            .replacingOccurrences(of: "+", with: "-")
-            .replacingOccurrences(of: "/", with: "_")
-            .replacingOccurrences(of: "=", with: "")
-        return "b64_\(encoded)"
     }
 
     private func sanitizedPathComponent(from input: String) -> String {
