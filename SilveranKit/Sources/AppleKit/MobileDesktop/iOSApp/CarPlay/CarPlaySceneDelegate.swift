@@ -19,7 +19,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
         self.interfaceController = interfaceController
 
         Task { @MainActor in
-            await SilveranRuntime.start()
+            guard await SilveranRuntime.start() else { return }
             CarPlayCoordinator.shared.isCarPlayConnected = true
             await setupAndShowRootTemplate()
         }
@@ -27,7 +27,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
         configureNowPlayingTemplate()
 
         Task {
-            await SilveranRuntime.start()
+            guard await SilveranRuntime.start() else { return }
             await BookServiceActor.shared.setActive(true, source: .carPlay)
         }
     }
@@ -44,7 +44,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
             CarPlayCoordinator.shared.onChaptersUpdated = nil
         }
         Task {
-            await SilveranRuntime.start()
+            guard await SilveranRuntime.start() else { return }
             await BookServiceActor.shared.setActive(false, source: .carPlay)
         }
     }

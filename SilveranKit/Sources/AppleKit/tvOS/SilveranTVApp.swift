@@ -19,7 +19,7 @@ struct SilveranTVApp: App {
                 }
             }
             .task {
-                await SilveranRuntime.start()
+                guard await SilveranRuntime.start() else { return }
                 await mediaViewModel.start()
                 await BookServiceActor.shared.setActive(true, source: .tv)
                 await initializeBookSources()
@@ -36,13 +36,13 @@ struct SilveranTVApp: App {
             case .background:
                 debugLog("[TVApp] App entering background")
                 Task {
-                    await SilveranRuntime.start()
+                    guard await SilveranRuntime.start() else { return }
                     await BookServiceActor.shared.setActive(false, source: .tv)
                 }
             case .active:
                 debugLog("[TVApp] App becoming active")
                 Task {
-                    await SilveranRuntime.start()
+                    guard await SilveranRuntime.start() else { return }
                     await BookServiceActor.shared.setActive(true, source: .tv)
                 }
             case .inactive:

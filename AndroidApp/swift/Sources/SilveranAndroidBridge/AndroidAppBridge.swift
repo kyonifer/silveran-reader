@@ -4,7 +4,9 @@ import SilveranKit
 
 public func bootstrapAndroid(filesDirectory: String) async throws {
     try AndroidPlatformBootstrap.bootstrap(filesDirectory: filesDirectory)
-    await SilveranRuntime.start()
+    guard await SilveranRuntime.start() else {
+        throw AndroidBridgeError.runtimeStartupFailed
+    }
 }
 
 public func storytellerSettingsJSON(requestID: String) async throws {
@@ -510,6 +512,7 @@ private func encodeJSON<T: Encodable>(_ value: T) throws -> String {
 
 enum AndroidBridgeError: Error, LocalizedError, CustomStringConvertible {
     case notBootstrapped
+    case runtimeStartupFailed
     case alreadyBootstrapped(existing: String, requested: String)
     case invalidServerURL(String)
     case missingUsername
@@ -527,6 +530,8 @@ enum AndroidBridgeError: Error, LocalizedError, CustomStringConvertible {
         switch self {
             case .notBootstrapped:
                 return "Silveran's Android platform has not been bootstrapped."
+            case .runtimeStartupFailed:
+                return "Silveran could not migrate its stored library data."
             case .alreadyBootstrapped(let existing, let requested):
                 return "Silveran was already bootstrapped with \(existing), not \(requested)."
             case .invalidServerURL(let value):

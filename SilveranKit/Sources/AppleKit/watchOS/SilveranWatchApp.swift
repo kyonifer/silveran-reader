@@ -10,7 +10,10 @@ class SilveranWatchAppDelegate: NSObject, WKApplicationDelegate {
             if let urlTask = task as? WKURLSessionRefreshBackgroundTask {
                 if urlTask.sessionIdentifier == "com.kyonifer.silveran.watch.downloads" {
                     Task {
-                        await SilveranRuntime.start()
+                        guard await SilveranRuntime.start() else {
+                            urlTask.setTaskCompletedWithSnapshot(false)
+                            return
+                        }
                         await DownloadManager.shared.handleBackgroundSessionEvents {
                             urlTask.setTaskCompletedWithSnapshot(false)
                         }
@@ -43,7 +46,7 @@ struct SilveranWatchApp: App {
                 }
             }
             .task {
-                await SilveranRuntime.start()
+                guard await SilveranRuntime.start() else { return }
                 WatchSessionManager.shared.activate()
                 watchViewModel.start()
                 await BookServiceActor.shared.setActive(true, source: .watch)
@@ -64,7 +67,7 @@ struct SilveranWatchApp: App {
             case .background:
                 debugLog("[WatchApp] App entering background")
                 Task {
-                    await SilveranRuntime.start()
+                    guard await SilveranRuntime.start() else { return }
                     await BookServiceActor.shared.setActive(false, source: .watch)
                     await WatchSessionManager.shared.relayPendingProgress()
                 }
@@ -72,7 +75,7 @@ struct SilveranWatchApp: App {
             case .active:
                 debugLog("[WatchApp] App becoming active")
                 Task {
-                    await SilveranRuntime.start()
+                    guard await SilveranRuntime.start() else { return }
                     await BookServiceActor.shared.setActive(true, source: .watch)
                 }
 

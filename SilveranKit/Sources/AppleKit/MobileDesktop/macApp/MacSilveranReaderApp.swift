@@ -26,7 +26,7 @@ struct SilveranReaderApp: App {
         StorytellerFontRegistration.registerBundledFonts()
         SidebarSelectionColor.install()
         Task {
-            await SilveranRuntime.start()
+            guard await SilveranRuntime.start() else { return }
 
             do {
                 let webResourcesURL = try AppleKitResources.webResourcesDirectory()
@@ -67,13 +67,13 @@ struct SilveranReaderApp: App {
             case .background:
                 debugLog("[macApp] App entering background")
                 Task {
-                    await SilveranRuntime.start()
+                    guard await SilveranRuntime.start() else { return }
                     await BookServiceActor.shared.setActive(false, source: .mac)
                 }
             case .active:
                 debugLog("[macApp] App becoming active")
                 Task {
-                    await SilveranRuntime.start()
+                    guard await SilveranRuntime.start() else { return }
                     await BookServiceActor.shared.setActive(true, source: .mac)
                 }
             case .inactive:
@@ -117,7 +117,7 @@ struct SilveranReaderApp: App {
         .background(Color(uiColor: .systemBackground))
             #endif
             .task {
-                await SilveranRuntime.start()
+                guard await SilveranRuntime.start() else { return }
                 await mediaViewModel.start()
                 await BookServiceActor.shared.setActive(true, source: .mac)
                 guard !didOpenSecondaryWindows else { return }
@@ -135,7 +135,7 @@ struct SilveranReaderApp: App {
         } else {
             ProgressView("Loading...")
                 .task {
-                    await SilveranRuntime.start()
+                    guard await SilveranRuntime.start() else { return }
                     await mediaViewModel.start()
                     runtimeReady = true
                 }

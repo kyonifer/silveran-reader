@@ -1,70 +1,63 @@
 import Foundation
 
-private actor SilveranRuntimeState {
+actor SilveranRuntimeState {
     static let shared = SilveranRuntimeState()
 
-    private var startupTask: Task<Void, Never>?
+    private var startupTask: Task<Bool, Never>?
 
-    func run(_ operation: @escaping @Sendable () async -> Void) async {
+    func run(_ operation: @escaping @Sendable () async -> Bool) async -> Bool {
         if let startupTask {
-            await startupTask.value
-            return
+            return await startupTask.value
         }
 
         let task = Task {
             await operation()
         }
         startupTask = task
-        await task.value
+        let succeeded = await task.value
+        if !succeeded {
+            startupTask = nil
+        }
+        return succeeded
     }
 }
 
 public enum SilveranRuntime {
-    public static func start() async {
+    public static func start() async -> Bool {
         await SilveranRuntimeState.shared.run {
-            await runMigrationList()
+            guard await runMigrationList() else { return false }
             await ProgressSyncActor.shared.start()
             await BookServiceActor.shared.start()
             await LocalMediaActor.shared.start()
             await ProgressSyncActor.shared.startPolling()
+            return true
         }
     }
 
-    private static func runMigrationList() async {
+    private static func runMigrationList() async -> Bool {
         let filesystem = FilesystemActor.shared
-        let sources = await runBookSourceRegistryMigration(using: filesystem)
-        await runCredentialMigrations(using: filesystem, sources: sources)
-        await runKeychainAccessibilityMigrations(using: filesystem, sources: sources)
-        await runStorageMigrations(using: filesystem, sources: sources)
-        await filesystem.runLegacyLocalProgressMigrationIfNeeded(sources: sources)
+        do {
+            let sources = try await runBookSourceRegistryMigration(using: filesystem)
+            await runCredentialMigrations(using: filesystem, sources: sources)
+            await runKeychainAccessibilityMigrations(using: filesystem, sources: sources)
+            try await filesystem.prepareBookIdentityMigrationBeforeStorage(for: sources)
+            try await filesystem.runStorageMigrations(for: sources)
+            try await filesystem.runBookIdentityMigration(for: sources)
+            return true
+        } catch {
+            debugLog("[SilveranMigrations] Required startup migration failed: \(error)")
+            return false
+        }
     }
 
     private static func runBookSourceRegistryMigration(
         using filesystem: FilesystemActor
-    ) async -> [BookSourceRecord] {
-        do {
-            if let sources = try await filesystem.loadBookSources(), !sources.isEmpty {
-                return sources
-            }
-
-            return try await filesystem.migrateLegacyBookSourceRegistry()
-        } catch {
-            debugLog("[SilveranMigrations] Book source registry migration failed: \(error)")
-            return []
+    ) async throws -> [BookSourceRecord] {
+        if let sources = try await filesystem.loadBookSources(), !sources.isEmpty {
+            return sources
         }
-    }
 
-    private static func runStorageMigrations(
-        using filesystem: FilesystemActor,
-        sources: [BookSourceRecord],
-    ) async {
-        guard !sources.isEmpty else { return }
-
-        do {
-            try await filesystem.runStorageMigrations(for: sources)
-        } catch {
-            debugLog("[SilveranMigrations] Storage migration failed: \(error)")
-        }
+        return try await filesystem.migrateLegacyBookSourceRegistry()
     }
 
     private static func runCredentialMigrations(
