@@ -15,12 +15,11 @@ struct iOSBookDetailView: View {
     @State private var isShowingRelatedBook = false
 
     private var currentItem: BookMetadata {
-        mediaViewModel.library.bookMetaData.first { $0.uuid == item.uuid } ?? item
+        mediaViewModel.library.bookMetaData.first { $0.id == item.id } ?? item
     }
 
     private var sortedStatuses: [BookStatus] {
-        guard let sourceID = currentItem.sourceID else { return [] }
-        return mediaViewModel.availableStatusesBySourceID[sourceID] ?? []
+        mediaViewModel.availableStatusesBySourceID[currentItem.sourceID] ?? []
     }
 
     var body: some View {
@@ -103,9 +102,10 @@ private struct BookOptionsSheet: View {
 
     @Environment(MediaViewModel.self) private var mediaViewModel
     @Environment(\.dismiss) private var dismiss
+    @State private var showDeleteConfirmation = false
 
     private var currentItem: BookMetadata {
-        mediaViewModel.library.bookMetaData.first { $0.uuid == item.uuid } ?? item
+        mediaViewModel.library.bookMetaData.first { $0.id == item.id } ?? item
     }
 
     private var sortedStatuses: [BookStatus] {
@@ -144,15 +144,42 @@ private struct BookOptionsSheet: View {
                         dismiss()
                         Task { @MainActor in
                             await Task.yield()
-                            editMetadataAction([item.uuid])
+                            editMetadataAction([item.id])
                         }
                     } label: {
                         Label("Edit Metadata...", systemImage: "pencil")
                     }
                 }
+
+                if mediaViewModel.isLocalFolderBook(item.id) {
+                    Section {
+                        Button(role: .destructive) {
+                            showDeleteConfirmation = true
+                        } label: {
+                            Label("Delete from Folder", systemImage: "trash")
+                        }
+                    }
+                }
             }
             .navigationTitle("Options")
             .navigationBarTitleDisplayMode(.inline)
+            .confirmationDialog(
+                "Delete \(currentItem.title)?",
+                isPresented: $showDeleteConfirmation,
+                titleVisibility: .visible,
+            ) {
+                Button("Delete", role: .destructive) {
+                    Task {
+                        if await mediaViewModel.deleteFolderBook(currentItem) {
+                            dismiss()
+                        }
+                    }
+                }
+            } message: {
+                Text(
+                    "This permanently deletes \(currentItem.title) and all its files from the folder source."
+                )
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") {
@@ -221,8 +248,7 @@ private struct StatusPickerView: View {
         defer { isUpdatingStatus = false }
 
         let success = await BookServiceActor.shared.updateStatus(
-            forBooks: [item.uuid],
-            sourceID: sourceID,
+            forBooks: [item.id],
             toStatusNamed: statusName,
         )
 

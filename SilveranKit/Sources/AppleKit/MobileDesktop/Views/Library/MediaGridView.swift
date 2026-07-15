@@ -617,15 +617,15 @@ struct MediaGridView: View {
         .sheet(isPresented: $showAddBook) {
             NavigationStack {
                 UploadNewBookView(initialSourceID: addBookSourceID)
-                    .navigationTitle("Add Book")
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .topBarTrailing) {
-                            Button("Done") {
-                                showAddBook = false
-                            }
+                .navigationTitle("Add Book")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Done") {
+                            showAddBook = false
                         }
                     }
+                }
             }
         }
         #endif
@@ -761,7 +761,7 @@ struct MediaGridView: View {
                     onQuickEdit: { bookId, field in
                         quickEditTarget = MetadataQuickEditTarget(bookId: bookId, field: field)
                     },
-                    onManageServerMedia: { bookId in
+                    onManageServerMedia: { (bookId: BookID) in
                         openWindow(
                             id: "ServerMediaManagement",
                             value: ServerMediaManagementData(bookId: bookId),
@@ -1580,7 +1580,7 @@ struct MediaGridView: View {
         activeInfoItem = item
     }
 
-    private var editMetadataHandler: (([String]) -> Void)? {
+    private var editMetadataHandler: (([BookID]) -> Void)? {
         #if os(macOS)
         return handleEditMetadata
         #else
@@ -1589,7 +1589,7 @@ struct MediaGridView: View {
     }
 
     #if os(macOS)
-    private func handleEditMetadata(bookIds: [String]) {
+    private func handleEditMetadata(bookIds: [BookID]) {
         if bookIds.contains(where: { mediaViewModel.isLocalStandaloneBook($0) }) {
             permissionErrorMessage = "Editing metadata for local books is not supported yet."
             showPermissionError = true
@@ -1621,8 +1621,7 @@ struct MediaGridView: View {
     private func checkMetadataEditPermission(sourceIDs: [BookSourceID]) async
         -> StorytellerActor.PermissionCheckResult
     {
-        let idsToCheck: [BookSourceID?] = sourceIDs.isEmpty ? [nil] : sourceIDs.map { $0 }
-        for sourceID in idsToCheck {
+        for sourceID in sourceIDs {
             let result = await BookServiceActor.shared.checkBookUpdatePermission(
                 sourceID: sourceID
             )

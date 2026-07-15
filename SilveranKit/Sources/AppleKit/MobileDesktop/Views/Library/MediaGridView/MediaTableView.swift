@@ -186,9 +186,9 @@ struct MediaTableView: NSViewRepresentable {
     let onSelect: (BookMetadata) -> Void
     let onInfo: (BookMetadata) -> Void
     var onMetadataLinkClicked: ((MetadataLinkTarget) -> Void)?
-    var onEditMetadata: (([String]) -> Void)?
-    var onQuickEdit: ((String, MetadataQuickEditField) -> Void)?
-    var onManageServerMedia: ((String) -> Void)?
+    var onEditMetadata: (([BookID]) -> Void)?
+    var onQuickEdit: ((BookID, MetadataQuickEditField) -> Void)?
+    var onManageServerMedia: ((BookID) -> Void)?
     var onCreateLocalReadaloud: ((ReadaloudGeneratorData) -> Void)?
     var onCopyBook: ((CopyBookData) -> Void)?
 
@@ -207,9 +207,9 @@ struct MediaTableView: NSViewRepresentable {
         onSelect: @escaping (BookMetadata) -> Void,
         onInfo: @escaping (BookMetadata) -> Void,
         onMetadataLinkClicked: ((MetadataLinkTarget) -> Void)? = nil,
-        onEditMetadata: (([String]) -> Void)? = nil,
-        onQuickEdit: ((String, MetadataQuickEditField) -> Void)? = nil,
-        onManageServerMedia: ((String) -> Void)? = nil,
+        onEditMetadata: (([BookID]) -> Void)? = nil,
+        onQuickEdit: ((BookID, MetadataQuickEditField) -> Void)? = nil,
+        onManageServerMedia: ((BookID) -> Void)? = nil,
         onCreateLocalReadaloud: ((ReadaloudGeneratorData) -> Void)? = nil,
         onCopyBook: ((CopyBookData) -> Void)? = nil,
     ) {
@@ -1147,7 +1147,7 @@ struct MediaTableView: NSViewRepresentable {
             guard row >= 0, row < items.count,
                 let field = MediaTableView.quickEditField(forColumnID: columnID)
             else { return }
-            parent.onQuickEdit?(items[row].uuid, field)
+            parent.onQuickEdit?(items[row].id, field)
         }
 
         // MARK: - NSMenuDelegate (right-click context menu)
@@ -1331,16 +1331,16 @@ struct MediaTableView: NSViewRepresentable {
 
         @objc private func editMetadata(_ sender: NSMenuItem) {
             guard let tableView else { return }
-            var bookIds: [String] = []
+            var bookIds: [BookID] = []
             let selectedIndexes = tableView.selectedRowIndexes
             if selectedIndexes.count > 1 {
                 for index in selectedIndexes where index < items.count {
-                    bookIds.append(items[index].uuid)
+                    bookIds.append(items[index].id)
                 }
             } else {
                 let clickedRow = tableView.clickedRow
                 if clickedRow >= 0 && clickedRow < items.count {
-                    bookIds.append(items[clickedRow].uuid)
+                    bookIds.append(items[clickedRow].id)
                 }
             }
             guard !bookIds.isEmpty else { return }
@@ -1462,8 +1462,7 @@ struct MediaTableView: NSViewRepresentable {
             guard let item = sender.representedObject as? BookMetadata else { return }
             Task {
                 _ = await BookServiceActor.shared.startAlignment(
-                    for: item.uuid,
-                    sourceID: item.sourceID,
+                    for: item.id,
                     restart: item.hasAvailableReadaloud ? .sync : .none,
                 )
                 await BookServiceActor.shared.fetchLibraryInformation()
@@ -1490,8 +1489,7 @@ struct MediaTableView: NSViewRepresentable {
             guard let item = sender.representedObject as? BookMetadata else { return }
             Task {
                 _ = await BookServiceActor.shared.startAlignment(
-                    for: item.uuid,
-                    sourceID: item.sourceID,
+                    for: item.id,
                     restart: .sync,
                 )
                 await BookServiceActor.shared.fetchLibraryInformation()
@@ -1502,8 +1500,7 @@ struct MediaTableView: NSViewRepresentable {
             guard let item = sender.representedObject as? BookMetadata else { return }
             Task {
                 _ = await BookServiceActor.shared.startAlignment(
-                    for: item.uuid,
-                    sourceID: item.sourceID,
+                    for: item.id,
                     restart: .transcription,
                 )
                 await BookServiceActor.shared.fetchLibraryInformation()
@@ -1514,8 +1511,7 @@ struct MediaTableView: NSViewRepresentable {
             guard let item = sender.representedObject as? BookMetadata else { return }
             Task {
                 _ = await BookServiceActor.shared.startAlignment(
-                    for: item.uuid,
-                    sourceID: item.sourceID,
+                    for: item.id,
                     restart: .full,
                 )
                 await BookServiceActor.shared.fetchLibraryInformation()
@@ -1526,8 +1522,7 @@ struct MediaTableView: NSViewRepresentable {
             guard let item = sender.representedObject as? BookMetadata else { return }
             Task {
                 _ = await BookServiceActor.shared.cancelAlignment(
-                    for: item.uuid,
-                    sourceID: item.sourceID,
+                    for: item.id,
                 )
                 await BookServiceActor.shared.fetchLibraryInformation()
             }
@@ -1537,15 +1532,14 @@ struct MediaTableView: NSViewRepresentable {
             guard let item = sender.representedObject as? BookMetadata else { return }
             Task {
                 _ = await BookServiceActor.shared.upgradeEpub(
-                    for: item.uuid,
-                    sourceID: item.sourceID,
+                    for: item.id,
                 )
                 await BookServiceActor.shared.fetchLibraryInformation()
             }
         }
 
         @objc private func manageServerMedia(_ sender: NSMenuItem) {
-            guard let bookId = sender.representedObject as? String else { return }
+            guard let bookId = sender.representedObject as? BookID else { return }
             parent.onManageServerMedia?(bookId)
         }
 
@@ -1682,7 +1676,7 @@ struct MediaTableView: NSViewRepresentable {
 
         private func deleteSourceAsset(_ sender: NSMenuItem, format: StorytellerBookFormat) {
             guard let item = sender.representedObject as? BookMetadata else { return }
-            let label = sourceAssetLabel(format)
+            let label = mediaViewModel.folderAssetLabel(format)
             guard
                 confirmDestructiveAction(
                     title: "Delete \(label) from Folder?",
@@ -1692,26 +1686,7 @@ struct MediaTableView: NSViewRepresentable {
                 )
             else { return }
             Task {
-                let result = await BookServiceActor.shared.deleteBookAsset(
-                    item.id,
-                    sourceID: item.sourceID,
-                    type: format,
-                )
-                await mediaViewModel.refreshMetadata(source: "MediaTableView.deleteSourceAsset")
-                let didDelete = {
-                    if case DeleteAssetResult.success = result {
-                        return true
-                    }
-                    return false
-                }()
-                mediaViewModel.showSyncNotification(
-                    SyncNotification(
-                        message: didDelete
-                            ? "Deleted \(label.lowercased()) from folder source"
-                            : "Failed to delete \(label.lowercased())",
-                        type: didDelete ? .success : .error,
-                    )
-                )
+                _ = await mediaViewModel.deleteFolderAsset(for: item, format: format)
             }
         }
 
@@ -1744,16 +1719,6 @@ struct MediaTableView: NSViewRepresentable {
             return alert.runModal() == .alertFirstButtonReturn
         }
 
-        private func sourceAssetLabel(_ format: StorytellerBookFormat) -> String {
-            switch format {
-                case .ebook:
-                    return "Ebook"
-                case .audiobook:
-                    return "Audiobook"
-                case .readaloud:
-                    return "Readaloud"
-            }
-        }
 
         private func makeCoverCell(
             tableView: NSTableView,

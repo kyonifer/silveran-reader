@@ -73,7 +73,16 @@ struct SilveranWidgetBookEntity: AppEntity, Identifiable, Hashable {
 
 struct SilveranWidgetBookQuery: EntityStringQuery {
     func entities(for identifiers: [String]) async throws -> [SilveranWidgetBookEntity] {
-        allEntities().filter { identifiers.contains($0.id) }
+        let books = SilveranWidgetSnapshotStore.loadSnapshot().books
+        return identifiers.compactMap { identifier in
+            if identifier == SilveranWidgetBookEntity.noneID {
+                return .noneChoice
+            }
+            guard let bookID = SilveranBookLink.bookID(from: identifier),
+                let exact = books.first(where: { $0.id == bookID })
+            else { return nil }
+            return entity(for: exact)
+        }
     }
 
     func entities(matching string: String) async throws -> [SilveranWidgetBookEntity] {
@@ -94,13 +103,16 @@ struct SilveranWidgetBookQuery: EntityStringQuery {
 
     private func allEntities() -> [SilveranWidgetBookEntity] {
         [.noneChoice]
-            + SilveranWidgetSnapshotStore.loadSnapshot().books.map {
-                SilveranWidgetBookEntity(
-                    id: $0.id,
-                    title: $0.title,
-                    authorLine: $0.authorLine,
-                )
-            }
+            + SilveranWidgetSnapshotStore.loadSnapshot().books.compactMap { entity(for: $0) }
+    }
+
+    private func entity(for book: SilveranWidgetBookSnapshot) -> SilveranWidgetBookEntity? {
+        guard let identifier = SilveranBookLink.identifier(for: book.bookID) else { return nil }
+        return SilveranWidgetBookEntity(
+            id: identifier,
+            title: book.title,
+            authorLine: book.authorLine,
+        )
     }
 }
 
@@ -149,11 +161,17 @@ struct SilveranReadingEntry: TimelineEntry {
         }
     }
 
-    var pinnedBookID: String? {
+    private var configuredPinnedBookID: SilveranWidgetBookSnapshot.ID? {
         guard let id = configuration.book?.id,
             id != SilveranWidgetBookEntity.noneID
         else { return nil }
-        return id
+        return SilveranBookLink.bookID(from: id)
+    }
+
+    var pinnedBookID: SilveranWidgetBookSnapshot.ID? {
+        guard let configuredPinnedBookID else { return nil }
+        return snapshot.books.contains(where: { $0.id == configuredPinnedBookID })
+            ? configuredPinnedBookID : nil
     }
 
     var featuredBookIsPinned: Bool {
@@ -326,7 +344,7 @@ private struct CoverGridWidgetView: View {
     let columns: Int
     let spacing: CGFloat
     let progressStyle: SilveranWidgetProgressStyle
-    var pinnedBookID: String? = nil
+    var pinnedBookID: SilveranWidgetBookSnapshot.ID? = nil
     var contentPadding: (horizontal: CGFloat, vertical: CGFloat)? = nil
 
     var body: some View {
@@ -351,7 +369,7 @@ private struct CoverGridWidgetView: View {
                 spacing: spacing,
             ) {
                 ForEach(books) { book in
-                    Link(destination: book.widgetURL) {
+                    OptionalLink(destination: book.widgetURL) {
                         CoverTileView(
                             book: book,
                             cornerRadius: 7,
@@ -466,7 +484,7 @@ private struct FocusedBookWidgetView: View {
 
     var body: some View {
         if let book {
-            Link(destination: book.widgetURL) {
+            OptionalLink(destination: book.widgetURL) {
                 HStack(spacing: compact ? 12 : 16) {
                     // No fixed width: the cover fills the section height so the text
                     // column lines up with its top and bottom edges.
@@ -882,12 +900,26 @@ private enum WidgetPalette {
     }
 }
 
-extension SilveranWidgetBookSnapshot {
-    fileprivate var widgetURL: URL {
-        var components = URLComponents()
-        components.scheme = "silveran"
-        components.host = "book"
-        components.path = "/" + id
-        return components.url ?? URL(string: "silveran://book")!
+private struct OptionalLink<Content: View>: View {
+    let destination: URL?
+    let content: Content
+
+    init(destination: URL?, @ViewBuilder content: () -> Content) {
+        self.destination = destination
+        self.content = content()
     }
+
+    var body: some View {
+        if let destination {
+            Link(destination: destination) {
+                content
+            }
+        } else {
+            content
+        }
+    }
+}
+
+extension SilveranWidgetBookSnapshot {
+    fileprivate var widgetURL: URL? { SilveranBookLink.url(for: bookID) }
 }

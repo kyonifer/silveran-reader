@@ -14,7 +14,7 @@ public enum HighlightColor: String, Codable, Sendable, Hashable, CaseIterable {
 
 public struct Highlight: Codable, Sendable, Hashable, Identifiable {
     public let id: UUID
-    public let bookId: String
+    public let bookID: BookID
     public let locator: BookLocator
     public let text: String
     public let color: HighlightColor?
@@ -40,7 +40,7 @@ public struct Highlight: Codable, Sendable, Hashable, Identifiable {
 
     public init(
         id: UUID = UUID(),
-        bookId: String,
+        bookID: BookID,
         locator: BookLocator,
         text: String,
         color: HighlightColor?,
@@ -48,7 +48,7 @@ public struct Highlight: Codable, Sendable, Hashable, Identifiable {
         createdAt: Date = Date(),
     ) {
         self.id = id
-        self.bookId = bookId
+        self.bookID = bookID
         self.locator = locator
         self.text = text
         self.color = color
@@ -80,23 +80,5 @@ public struct HighlightPaletteEntry: Codable, Sendable {
         self.id = id
         self.color = color
         self.label = label
-    }
-}
-
-public struct BookHighlights: Codable, Sendable {
-    public let bookId: String
-    public var highlights: [Highlight]
-
-    public init(bookId: String, highlights: [Highlight] = []) {
-        self.bookId = bookId
-        self.highlights = highlights
-    }
-
-    public var bookmarks: [Highlight] {
-        highlights.filter { $0.isBookmark }
-    }
-
-    public var coloredHighlights: [Highlight] {
-        highlights.filter { !$0.isBookmark }
     }
 }

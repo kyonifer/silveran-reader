@@ -13,7 +13,7 @@ struct MediaCompactCardView: View {
     let isSelected: Bool
     let onSelect: (BookMetadata) -> Void
     let onInfo: (BookMetadata) -> Void
-    var onEditMetadata: (([String]) -> Void)? = nil
+    var onEditMetadata: (([BookID]) -> Void)? = nil
     @Environment(MediaViewModel.self) private var mediaViewModel
     @Environment(\.colorScheme) private var colorScheme
     #if os(macOS)
@@ -225,7 +225,7 @@ struct MediaCompactCardView: View {
 
         if let editMetadataAction {
             Button {
-                editMetadataAction([item.uuid])
+                editMetadataAction([item.id])
             } label: {
                 Label("Edit Metadata...", systemImage: "pencil")
             }
@@ -236,12 +236,11 @@ struct MediaCompactCardView: View {
     }
 
     private var iOSCurrentItem: BookMetadata {
-        mediaViewModel.library.bookMetaData.first { $0.uuid == item.uuid } ?? item
+        mediaViewModel.library.bookMetaData.first { $0.id == item.id } ?? item
     }
 
     private var iOSStatusOptions: [BookStatus] {
-        guard let sourceID = iOSCurrentItem.sourceID else { return [] }
-        return mediaViewModel.availableStatusesBySourceID[sourceID] ?? []
+        mediaViewModel.availableStatusesBySourceID[iOSCurrentItem.sourceID] ?? []
     }
 
     @ViewBuilder
@@ -270,8 +269,7 @@ struct MediaCompactCardView: View {
         guard name != iOSCurrentItem.status?.name else { return }
         Task {
             let success = await BookServiceActor.shared.updateStatus(
-                forBooks: [item.uuid],
-                sourceID: iOSCurrentItem.sourceID,
+                forBooks: [item.id],
                 toStatusNamed: name,
             )
             if !success {

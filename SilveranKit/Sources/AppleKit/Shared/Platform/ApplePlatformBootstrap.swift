@@ -5,6 +5,9 @@ import Foundation
 /// consumers get working audio/keychain/fonts without extra setup; a shell
 /// that wants custom providers calls SilveranPlatform.bootstrap first.
 public func bootstrapApplePlatformDefaultsIfNeeded() {
+    AppleTemporaryFileCleaner.cleanAbandonedFilesOnce(
+        in: FileManager.default.temporaryDirectory
+    )
     guard !SilveranPlatform.isBootstrapped else { return }
     SilveranPlatform.bootstrap(
         audioPlayers: ApplePlayerProvider(),
@@ -13,5 +16,6 @@ public func bootstrapApplePlatformDefaultsIfNeeded() {
         keychain: SecurityKeychainStore(),
         fontMetadata: CoreTextFontTraitsProbe(),
         folderWatcher: applePlatformFolderWatcher(),
+        applicationStorage: AppleApplicationStorageProvider(),
     )
 }

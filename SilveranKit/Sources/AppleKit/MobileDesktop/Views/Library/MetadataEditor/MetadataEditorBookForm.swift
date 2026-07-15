@@ -11,7 +11,7 @@ struct MetadataEditorBookForm: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
-    private var bookId: String? { viewModel.selectedBookId }
+    private var bookId: BookID? { viewModel.selectedBookId }
     private var isCompactIOS: Bool {
         #if os(iOS)
         horizontalSizeClass == .compact
@@ -106,7 +106,7 @@ struct MetadataEditorBookForm: View {
     }
 
     @ViewBuilder
-    private func scopeContent(bookId: String) -> some View {
+    private func scopeContent(bookId: BookID) -> some View {
         switch selectedScope {
             case .work:
                 WorkMetadataLayout(

@@ -32,10 +32,12 @@ struct CurrentlyDownloadingView: View {
             downloads = await DownloadManager.shared.incompleteDownloads
 
             observerId = await DownloadManager.shared.addObserver { records in
-                downloads =
-                    records
-                    .filter { $0.isIncomplete }
-                    .sorted { $0.createdAt < $1.createdAt }
+                Task { @MainActor in
+                    downloads =
+                        records
+                        .filter { $0.isIncomplete }
+                        .sorted { $0.createdAt < $1.createdAt }
+                }
             }
         }
     }
@@ -89,7 +91,7 @@ struct CurrentlyDownloadingView: View {
                         Button {
                             Task {
                                 await DownloadManager.shared.resumeDownload(
-                                    for: record.bookId,
+                                    for: record.bookID,
                                     category: record.category,
                                 )
                             }
@@ -112,7 +114,7 @@ struct CurrentlyDownloadingView: View {
                     Button {
                         Task {
                             await DownloadManager.shared.cancelDownload(
-                                for: record.bookId,
+                                for: record.bookID,
                                 category: record.category,
                             )
                         }
@@ -282,7 +284,7 @@ private struct DownloadRecordRow: View {
                     Button {
                         Task {
                             await DownloadManager.shared.resumeDownload(
-                                for: record.bookId,
+                                for: record.bookID,
                                 category: record.category,
                             )
                         }
@@ -308,7 +310,7 @@ private struct DownloadRecordRow: View {
             Button(role: .destructive) {
                 Task {
                     await DownloadManager.shared.cancelDownload(
-                        for: record.bookId,
+                        for: record.bookID,
                         category: record.category,
                     )
                 }

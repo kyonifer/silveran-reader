@@ -188,7 +188,7 @@ public struct AudiobookPlayerView: View {
     private func closeBook() {
         if let bookData {
             LastOpenBookStore.clearIfMatching(
-                bookId: bookData.metadata.uuid,
+                bookId: bookData.metadata.id,
                 category: bookData.category,
             )
         }
@@ -330,7 +330,7 @@ public struct AudiobookPlayerView: View {
             await AudiobookActor.shared.setVolume(volume)
 
             if let psaProgress = await ProgressSyncActor.shared.getBookProgress(
-                for: bookData.metadata.uuid
+                for: bookData.metadata.id
             ),
                 let totalProgression = psaProgress.locator?.locations?.totalProgression
             {
@@ -362,7 +362,7 @@ public struct AudiobookPlayerView: View {
             startProgressTimer()
             startSyncTimer()
 
-            registerIncomingPositionObserver(bookId: bookData.metadata.uuid)
+            registerIncomingPositionObserver(bookId: bookData.metadata.id)
 
             isLoading = false
         } catch let error as AudiobookError {
@@ -525,7 +525,7 @@ public struct AudiobookPlayerView: View {
 
     /// Sync audiobook progress to server via ProgressSyncActor
     private func syncProgressToServer(reason: SyncReason) async {
-        guard let bookId = bookData?.metadata.uuid else {
+        guard let bookID = bookData?.metadata.id else {
             return
         }
 
@@ -583,8 +583,7 @@ public struct AudiobookPlayerView: View {
         let locationDescription = "\(chapterTitle), \(Int(chapterProgression * 100))%"
 
         let result = await ProgressSyncActor.shared.syncProgress(
-            bookId: bookId,
-            sourceID: bookData?.metadata.sourceID,
+            bookID: bookID,
             locator: locator,
             timestamp: timestamp,
             reason: reason,
@@ -652,7 +651,7 @@ public struct AudiobookPlayerView: View {
         }
     }
 
-    private func registerIncomingPositionObserver(bookId: String) {
+    private func registerIncomingPositionObserver(bookId: BookID) {
         positionObserverRegistrationTask = Task {
             let observerId = await ProgressSyncActor.shared.addIncomingPositionObserver(
                 for: bookId

@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.1-117]
+
+### Features
+- Added Home and Lock Screen widgets for quickly returning to recent books on macOS and iOS.
+- Added Audnexus audiobook metadata search and a unified metadata import comparison workflow.
+- Added quick metadata editing from the macOS library table.
+- Added Apple SpeechAnalyzer as a readaloud transcription option on supported systems.
+- Added a persistent transcription cache so repeated readaloud alignment work can reuse prior results.
+- Redesigned Add Book on macOS and iOS, and added standalone readaloud alignment on iOS.
+
+### Platform
+- Added an initial Android proof of concept.
+
+### Bug Fixes
+- Fixed tvOS reader scrolling and long-paragraph navigation issues.
+- Fixed copying readaloud-only books from folders to Storyteller servers.
+- Fixed an iOS background-task crash.
+- Fixed library sidebar animation and table column-width persistence issues on macOS.
+- Fixed overlapping group highlights unexpectedly turning the page backward.
+- Fixed local-folder descriptions displaying markup instead of readable text.
+
+---
+
 ## [0.1-112]
 
 ### Features

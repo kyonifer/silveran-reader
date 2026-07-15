@@ -8,7 +8,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     private var isLoadingBook = false
     private var readaloudListTemplate: CPListTemplate?
     private var audiobookListTemplate: CPListTemplate?
-    private var lastKnownBookId: String?
+    private var lastKnownBookId: BookID?
     private var lastKnownIsPlaying: Bool = false
 
     func templateApplicationScene(
@@ -19,16 +19,15 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
         self.interfaceController = interfaceController
 
         Task { @MainActor in
+            guard await SilveranRuntime.start() else { return }
             CarPlayCoordinator.shared.isCarPlayConnected = true
+            await setupAndShowRootTemplate()
         }
 
         configureNowPlayingTemplate()
 
-        Task { @MainActor in
-            await setupAndShowRootTemplate()
-        }
-
         Task {
+            guard await SilveranRuntime.start() else { return }
             await BookServiceActor.shared.setActive(true, source: .carPlay)
         }
     }
@@ -45,6 +44,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
             CarPlayCoordinator.shared.onChaptersUpdated = nil
         }
         Task {
+            guard await SilveranRuntime.start() else { return }
             await BookServiceActor.shared.setActive(false, source: .carPlay)
         }
     }
@@ -217,8 +217,8 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
             let resizedCover =
                 coverImage.map { resizeCoverImage($0) } ?? UIImage(systemName: "book.closed.fill")
 
-            let isCurrentBook = coordinator.isBookCurrentlyLoaded(book.uuid)
-            let isPlaying = coordinator.isBookCurrentlyPlaying(book.uuid)
+            let isCurrentBook = coordinator.isBookCurrentlyLoaded(book.id)
+            let isPlaying = coordinator.isBookCurrentlyPlaying(book.id)
 
             let item = CPListItem(
                 text: book.title,
@@ -272,7 +272,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
 
         Task { @MainActor in
             // Only skip reload if actively playing this book - otherwise reload fresh
-            if coordinator.isBookCurrentlyPlaying(book.uuid) {
+            if coordinator.isBookCurrentlyPlaying(book.id) {
                 debugLog("[CarPlay] Book already playing, navigating to NowPlaying: \(book.title)")
                 let nowPlayingTemplate = CPNowPlayingTemplate.shared
                 self.interfaceController?.pushTemplate(nowPlayingTemplate, animated: true) {

@@ -60,7 +60,7 @@ struct MediaGridInfoSidebar: View {
 
     private var currentItem: BookMetadata {
         let requestedItem = relatedItemOverride ?? item
-        return mediaViewModel.library.bookMetaData.first { $0.uuid == requestedItem.uuid }
+        return mediaViewModel.library.bookMetaData.first { $0.id == requestedItem.id }
             ?? requestedItem
     }
 
@@ -100,7 +100,7 @@ struct MediaGridInfoSidebar: View {
         }
         .environment(\.bookDetailPalette, resolvedPalette)
         .sheet(isPresented: $showingSyncHistory) {
-            SyncHistorySheet(bookId: currentItem.uuid, bookTitle: currentItem.title)
+            SyncHistorySheet(bookId: currentItem.id, bookTitle: currentItem.title)
         }
         .onAppear {
             prepareForDisplay()

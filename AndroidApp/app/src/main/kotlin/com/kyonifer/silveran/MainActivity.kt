@@ -1,44 +1,64 @@
 package com.kyonifer.silveran
 
-import android.app.Activity
 import android.os.Bundle
-import android.util.TypedValue
-import android.widget.ScrollView
-import android.widget.TextView
-import com.kyonifer.silveran.core.SilveranAndroidCore
+import android.system.Os
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.lifecycle.ViewModelProvider
+import com.kyonifer.silveran.ui.SilveranApp
+import com.kyonifer.silveran.ui.SilveranViewModel
 import java.io.File
-import kotlin.concurrent.thread
 
-class MainActivity : Activity() {
+class MainActivity : ComponentActivity() {
+    companion object {
+        private var didCleanDownloadTemps = false
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        val text = TextView(this).apply {
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
-            setPadding(32, 32, 32, 32)
-            typeface = android.graphics.Typeface.MONOSPACE
-            setText("Calling SilveranKit...")
+        if (!didCleanDownloadTemps) {
+            cleanupAbandonedSwiftDownloads(cacheDir)
+            didCleanDownloadTemps = true
         }
-        setContentView(ScrollView(this).apply { addView(text) })
+        configureSwiftNetworking(filesDir)
+        enableEdgeToEdge()
 
-        thread {
-            val output = StringBuilder()
-            try {
-                output.appendLine(SilveranAndroidCore.coreVersion())
-                output.appendLine()
+        val viewModel = ViewModelProvider(
+            this,
+            SilveranViewModel.factory(applicationContext),
+        )[SilveranViewModel::class.java]
 
-                val epub = File(cacheDir, "moby-dick.epub")
-                assets.open("moby-dick.epub").use { input ->
-                    epub.outputStream().use { input.copyTo(it) }
-                }
-                output.appendLine("Parsing ${epub.name} via SilveranKit:")
-                output.appendLine(SilveranAndroidCore.extractBookMetadata(epub.absolutePath))
-            } catch (t: Throwable) {
-                output.appendLine("FAILED: $t")
-            }
-            android.util.Log.i("SilveranApp", output.toString())
-            runOnUiThread { text.text = output.toString() }
+        setContent { SilveranApp(viewModel) }
+    }
+}
+
+private val swiftDownloadTempName =
+    Regex("""^[0-9A-Fa-f]{8}(?:-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}(?:\.tmp)?$""")
+
+private fun cleanupAbandonedSwiftDownloads(cacheDirectory: File) {
+    // FoundationNetworking leaves UUID temp files after cancellation or process death.
+    cacheDirectory.listFiles()?.forEach { file ->
+        if (file.isFile && swiftDownloadTempName.matches(file.name)) {
+            file.delete()
         }
     }
+}
+
+private fun configureSwiftNetworking(filesDirectory: File) {
+    val bundle = File(filesDirectory, "android-system-cacerts.pem")
+    if (!bundle.exists()) {
+        val certificates = File("/system/etc/security/cacerts")
+            .listFiles()
+            ?.sortedBy { it.name }
+            .orEmpty()
+        bundle.outputStream().buffered().use { output ->
+            certificates.forEach { certificate ->
+                certificate.inputStream().use { it.copyTo(output) }
+                output.write('\n'.code)
+            }
+        }
+    }
+    // AndroidBootstrap adds another JNI runtime; CAINFO must be set before Swift loads.
+    Os.setenv("URLSessionCertificateAuthorityInfoFile", bundle.absolutePath, true)
 }

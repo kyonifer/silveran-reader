@@ -53,16 +53,14 @@ struct CoverDerivedPalette {
     }
 
     static func make(from cgImage: CGImage) -> CoverDerivedPalette? {
-        guard let average = averageRGB(of: cgImage) else { return nil }
-        let source = hsv(red: average.red, green: average.green, blue: average.blue)
-        let surfaceSaturation =
-            source.saturation < 0.08
-            ? 0.06 : min(max(source.saturation * 1.15, 0.28), 0.78)
-        let surfaceBrightness = min(max(source.brightness * 0.58, 0.18), 0.38)
+        guard
+            let rgbaPixels = sampledRGBA(of: cgImage),
+            let surface = CoverColorAverager.surfaceHSB(rgbaPixels: rgbaPixels)
+        else { return nil }
         return makePalette(
-            hue: source.hue,
-            saturation: surfaceSaturation,
-            brightness: surfaceBrightness,
+            hue: surface.hue,
+            saturation: surface.saturation,
+            brightness: surface.brightness,
         )
     }
 
@@ -176,7 +174,7 @@ struct CoverDerivedPalette {
         )
     }
 
-    private static func averageRGB(of image: CGImage) -> (red: Double, green: Double, blue: Double)? {
+    private static func sampledRGBA(of image: CGImage) -> [UInt8]? {
         let sampleWidth = 8
         let sampleHeight = 8
         let bytesPerPixel = 4
@@ -202,44 +200,20 @@ struct CoverDerivedPalette {
         }
         guard didDraw else { return nil }
 
-        var red = 0.0
-        var green = 0.0
-        var blue = 0.0
-        var weight = 0.0
-
+        // Bitmap contexts require premultiplied alpha, while the shared averager accepts
+        // straight RGBA so that it can apply alpha weighting exactly once.
         for offset in stride(from: 0, to: pixels.count, by: bytesPerPixel) {
-            let alpha = Double(pixels[offset + 3]) / 255
-            guard alpha > 0.05 else { continue }
-            red += Double(pixels[offset]) * alpha
-            green += Double(pixels[offset + 1]) * alpha
-            blue += Double(pixels[offset + 2]) * alpha
-            weight += alpha
+            let alpha = pixels[offset + 3]
+            guard alpha > 0, alpha < 255 else { continue }
+            for channelOffset in 0..<3 {
+                pixels[offset + channelOffset] = UInt8(
+                    clamping: Int(
+                        (Double(pixels[offset + channelOffset]) * 255 / Double(alpha)).rounded()
+                    )
+                )
+            }
         }
-
-        guard weight > 0 else { return nil }
-        return (red / weight / 255, green / weight / 255, blue / weight / 255)
-    }
-
-    private static func hsv(red: Double, green: Double, blue: Double) -> (
-        hue: Double, saturation: Double, brightness: Double
-    ) {
-        let maximum = max(red, green, blue)
-        let minimum = min(red, green, blue)
-        let delta = maximum - minimum
-        let saturation = maximum == 0 ? 0 : delta / maximum
-
-        let hue: Double
-        if delta == 0 {
-            hue = 0
-        } else if maximum == red {
-            hue = ((green - blue) / delta).truncatingRemainder(dividingBy: 6) / 6
-        } else if maximum == green {
-            hue = ((blue - red) / delta + 2) / 6
-        } else {
-            hue = ((red - green) / delta + 4) / 6
-        }
-
-        return (hue < 0 ? hue + 1 : hue, saturation, maximum)
+        return pixels
     }
 }
 

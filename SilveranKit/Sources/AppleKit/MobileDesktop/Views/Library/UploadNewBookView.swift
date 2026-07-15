@@ -88,7 +88,9 @@ public struct UploadNewBookView: View {
                 } header: {
                     Text("Select Files")
                 } footer: {
-                    Text("Selected formats are added together as one book in the destination source.")
+                    Text(
+                        "Selected formats are added together as one book in the destination source."
+                    )
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 }
@@ -193,7 +195,7 @@ public struct UploadNewBookView: View {
     ) -> some View {
         HStack {
             Text(label)
-                .frame(width: 80, alignment: .leading)
+                .fixedSize()
             Spacer()
             if let url = selectedURL {
                 Text(url.lastPathComponent)
@@ -225,7 +227,7 @@ public struct UploadNewBookView: View {
     ) -> some View {
         HStack {
             Text(label)
-                .frame(width: 80, alignment: .leading)
+                .fixedSize()
             Spacer()
             if !selectedURLs.isEmpty {
                 Text(
@@ -464,8 +466,7 @@ public struct UploadNewBookView: View {
 
             let uploadBookUUID = UUID().uuidString
             let success = await BookServiceActor.shared.uploadBookAssets(
-                bookUUID: uploadBookUUID,
-                sourceID: sourceID,
+                bookID: BookID(sourceID: sourceID, uuid: uploadBookUUID),
                 ebook: ebookAsset,
                 audiobooks: audiobookAssets,
                 readaloud: readaloudAsset,

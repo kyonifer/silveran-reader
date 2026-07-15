@@ -15,7 +15,6 @@ public enum LocalReadaloudAlignmentLauncher {
         return ReadaloudGeneratorData(
             bookID: item.id,
             bookTitle: item.title,
-            sourceID: item.sourceID,
             sourceName: item.source ?? "source",
             sourceKind: mediaViewModel.isLocalFolderBook(item.id)
                 ? .localFolder

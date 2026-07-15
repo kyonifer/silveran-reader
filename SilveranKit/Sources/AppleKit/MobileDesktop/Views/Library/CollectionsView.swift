@@ -15,7 +15,7 @@ struct CollectionsView: View {
     var showOfflineSheet: Binding<Bool>?
     #endif
     #if os(macOS)
-    var onEditMetadata: (([String]) -> Void)? = nil
+    var onEditMetadata: (([BookID]) -> Void)? = nil
     #endif
     @Environment(MediaViewModel.self) private var mediaViewModel
     @State private var navigationPath = NavigationPath()
@@ -375,10 +375,10 @@ extension CollectionsView {
     private func findCollectionName(for identifier: String) -> String {
         let groups = mediaViewModel.booksByCollection(for: mediaKind)
         for group in groups {
-            if let collection = group.collection {
-                if collection.uuid == identifier || collection.name == identifier {
-                    return collection.name
-                }
+            if let collection = group.collection,
+                collection.uuid == identifier || collection.name == identifier
+            {
+                return collection.name
             }
         }
         return identifier

@@ -11,6 +11,8 @@ struct WatchTransferView: View {
     @State private var watchBooks: [WatchBookInfo] = []
     @State private var isWatchReachable = false
     @State private var observerId: UUID?
+    @State private var transferErrorMessage = ""
+    @State private var showTransferError = false
 
     var body: some View {
         List {
@@ -41,6 +43,11 @@ struct WatchTransferView: View {
         }
         .sheet(isPresented: $showBookSearch) {
             WatchBookSearchSheet(onSelect: handleBookSelected, watchBooks: watchBooks)
+        }
+        .alert("Unable to Send Book", isPresented: $showTransferError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(transferErrorMessage)
         }
         .task {
             await setupObserver()
@@ -107,7 +114,7 @@ struct WatchTransferView: View {
                     item: item,
                     onCancel: {
                         Task {
-                            await AppleWatchActor.shared.cancelTransfer(transferId: item.id)
+                            await AppleWatchActor.shared.cancelTransfer(transferID: item.id)
                         }
                     },
                 )
@@ -123,7 +130,7 @@ struct WatchTransferView: View {
                     onDelete: {
                         Task {
                             await AppleWatchActor.shared.deleteBookFromWatch(
-                                bookUUID: book.id,
+                                bookID: book.bookID,
                                 category: book.category,
                             )
                         }
@@ -167,7 +174,11 @@ struct WatchTransferView: View {
     @MainActor
     private func handleEvent(_ event: WatchTransferEvent) {
         switch event {
-            case .stateChanged:
+            case .stateChanged(let item):
+                if case .failed(let message) = item.state {
+                    transferErrorMessage = message
+                    showTransferError = true
+                }
                 Task { await refreshState() }
             case .transfersUpdated(let items):
                 pendingTransfers = items
@@ -193,7 +204,7 @@ struct WatchTransferView: View {
     private func handleBookSelected(_ book: BookMetadata, _ category: LocalMediaCategory) {
         showBookSearch = false
 
-        guard let url = mediaViewModel.localMediaPath(for: book.uuid, category: category) else {
+        guard let url = mediaViewModel.localMediaPath(for: book.id, category: category) else {
             debugLog("[WatchTransferView] No file for category \(category): \(book.uuid)")
             return
         }
@@ -207,6 +218,10 @@ struct WatchTransferView: View {
                 )
             } catch {
                 debugLog("[WatchTransferView] Failed to queue transfer: \(error)")
+                await MainActor.run {
+                    transferErrorMessage = error.localizedDescription
+                    showTransferError = true
+                }
             }
         }
     }
@@ -291,6 +306,8 @@ struct TransferItemRow: View {
                 return "Transferring \(String(format: "%.0f", progress * 100))%"
             case .completed:
                 return "Completed"
+            case .cancelled:
+                return "Cancelled"
             case .failed(let message):
                 return "Failed: \(message)"
         }
@@ -300,7 +317,7 @@ struct TransferItemRow: View {
         switch item.state {
             case .queued, .transferring:
                 return true
-            case .completed, .failed:
+            case .completed, .cancelled, .failed:
                 return false
         }
     }
@@ -425,9 +442,9 @@ struct WatchBookSearchSheet: View {
                             hasEbook: mediaViewModel.isCategoryDownloaded(.ebook, for: book),
                             hasSynced: mediaViewModel.isCategoryDownloaded(.synced, for: book),
                             hasAudio: mediaViewModel.isCategoryDownloaded(.audio, for: book),
-                            ebookOnWatch: isOnWatch(book.uuid, category: .ebook),
-                            syncedOnWatch: isOnWatch(book.uuid, category: .synced),
-                            audioOnWatch: isOnWatch(book.uuid, category: .audio),
+                            ebookOnWatch: isOnWatch(book.id, category: .ebook),
+                            syncedOnWatch: isOnWatch(book.id, category: .synced),
+                            audioOnWatch: isOnWatch(book.id, category: .audio),
                         ) { category in
                             if category == .synced {
                                 onSelect(book, category)
@@ -465,8 +482,8 @@ struct WatchBookSearchSheet: View {
         }
     }
 
-    private func isOnWatch(_ bookUUID: String, category: LocalMediaCategory) -> Bool {
-        watchBooks.contains { $0.id == bookUUID && $0.category == category }
+    private func isOnWatch(_ bookID: BookID, category: LocalMediaCategory) -> Bool {
+        watchBooks.contains { $0.phoneBookID == bookID && $0.category == category }
     }
 }
 

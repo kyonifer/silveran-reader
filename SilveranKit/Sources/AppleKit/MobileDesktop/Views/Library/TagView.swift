@@ -15,7 +15,7 @@ struct TagView: View {
     var showOfflineSheet: Binding<Bool>?
     #endif
     #if os(macOS)
-    var onEditMetadata: (([String]) -> Void)? = nil
+    var onEditMetadata: (([BookID]) -> Void)? = nil
     #endif
     @Environment(MediaViewModel.self) private var mediaViewModel
     @State private var navigationPath = NavigationPath()

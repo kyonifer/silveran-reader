@@ -565,7 +565,7 @@ public struct EbookPlayerView: View {
                     onDismiss: {
                         if let bookData = viewModel.bookData {
                             LastOpenBookStore.clearIfMatching(
-                                bookId: bookData.metadata.uuid,
+                                bookId: bookData.metadata.id,
                                 category: bookData.category,
                             )
                         }

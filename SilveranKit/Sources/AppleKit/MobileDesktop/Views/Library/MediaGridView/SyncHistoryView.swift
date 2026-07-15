@@ -8,7 +8,7 @@ import AppKit
 #endif
 
 struct SyncHistorySheet: View {
-    let bookId: String
+    let bookId: BookID
     let bookTitle: String
     @Environment(\.dismiss) private var dismiss
     @State private var history: [SyncHistoryEntry] = []
@@ -217,7 +217,7 @@ struct SyncHistorySheet: View {
                     if let entry = entryToRestore, let locator = entry.locator {
                         Task {
                             let _ = await ProgressSyncActor.shared.restorePosition(
-                                bookId: bookId,
+                                bookID: bookId,
                                 locator: locator,
                                 locationDescription: entry.locationDescription,
                             )
@@ -306,7 +306,6 @@ struct SyncHistoryEntryRow: View {
 
     private var resultInfo: (Color, String) {
         switch entry.result {
-            // New lifecycle statuses
             case .queued:
                 return (.orange, "Queued")
             case .sent:
@@ -316,21 +315,10 @@ struct SyncHistoryEntryRow: View {
             case .rejectedAsOlder:
                 return (.red, "Rejected")
 
-            // Server update statuses
             case .serverIncomingAccepted:
                 return (.green, "Accepted")
             case .serverIncomingRejected:
                 return (.purple, "Ignored")
-
-            // Legacy statuses
-            case .persisted:
-                return (.orange, "Queued")
-            case .sentToServer:
-                return (.blue, "Sent")
-            case .serverConfirmed:
-                return (.green, "Confirmed")
-            case .failed:
-                return (.red, "Failed")
         }
     }
 

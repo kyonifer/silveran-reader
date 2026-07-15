@@ -2,7 +2,7 @@
 import SwiftUI
 
 struct SyncStatusIndicators: View {
-    let bookId: String
+    let bookId: BookID
     @Environment(MediaViewModel.self) private var mediaViewModel: MediaViewModel
     @State private var storytellerConfigured: Bool = false
     @State private var isRefreshing: Bool = false
@@ -20,7 +20,7 @@ struct SyncStatusIndicators: View {
     }
 
     private var pendingSync: PendingProgressSync? {
-        mediaViewModel.pendingSyncsByBook[bookId]
+        mediaViewModel.pendingSync(for: bookId)
     }
 
     private var storytellerSynced: Bool {

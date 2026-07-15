@@ -10,7 +10,7 @@ struct WatchCurrentlyReadingView: View {
     @State private var errorMessage: String?
     @State private var needsServerSetup = false
     @State private var showSettingsView = false
-    @State private var downloadRecords: [String: DownloadRecord] = [:]
+    @State private var downloadRecords: [BookID: DownloadRecord] = [:]
     @State private var showDownloads = false
 
     var body: some View {
@@ -32,11 +32,13 @@ struct WatchCurrentlyReadingView: View {
         .task {
             await loadBooks()
             let _ = await DownloadManager.shared.addObserver { records in
-                var map: [String: DownloadRecord] = [:]
-                for record in records where record.isIncomplete {
-                    map[record.bookId] = record
+                Task { @MainActor in
+                    var map: [BookID: DownloadRecord] = [:]
+                    for record in records where record.isIncomplete {
+                        map[record.bookID] = record
+                    }
+                    downloadRecords = map
                 }
-                downloadRecords = map
             }
         }
         .sheet(isPresented: $showSettingsView) {
@@ -135,9 +137,9 @@ struct WatchCurrentlyReadingView: View {
         List {
             ForEach(books) { book in
                 Button {
-                    if let record = downloadRecords[book.uuid], record.isIncomplete {
+                    if let record = downloadRecords[book.id], record.isIncomplete {
                         showDownloads = true
-                    } else if !isBookDownloaded(book.uuid) {
+                    } else if !isBookDownloaded(book.id) {
                         let category: LocalMediaCategory =
                             book.hasAvailableReadaloud ? .synced : .ebook
                         Task {
@@ -163,10 +165,10 @@ struct WatchCurrentlyReadingView: View {
 
                         Spacer()
 
-                        if isBookDownloaded(book.uuid) {
+                        if isBookDownloaded(book.id) {
                             Image(systemName: "checkmark.circle.fill")
                                 .foregroundStyle(.green)
-                        } else if let record = downloadRecords[book.uuid], record.isActive {
+                        } else if let record = downloadRecords[book.id], record.isActive {
                             ZStack {
                                 Circle()
                                     .stroke(Color.blue.opacity(0.3), lineWidth: 2.5)
@@ -176,7 +178,7 @@ struct WatchCurrentlyReadingView: View {
                                     .rotationEffect(.degrees(-90))
                             }
                             .frame(width: 20, height: 20)
-                        } else if let record = downloadRecords[book.uuid], record.isIncomplete {
+                        } else if let record = downloadRecords[book.id], record.isIncomplete {
                             Image(systemName: "exclamationmark.triangle.fill")
                                 .foregroundStyle(.red)
                         } else {
@@ -209,7 +211,7 @@ struct WatchCurrentlyReadingView: View {
                 errorMessage = "Cannot connect to book sources"
                 return
             }
-            books = filterAndSortBooks(library)
+            books = await currentlyReadingBooks(in: library)
             isLoading = false
             return
         }
@@ -220,27 +222,26 @@ struct WatchCurrentlyReadingView: View {
             return
         }
 
-        books = filterAndSortBooks(library)
+        books = await currentlyReadingBooks(in: library)
         isLoading = false
     }
 
-    private func filterAndSortBooks(_ library: [BookMetadata]) -> [BookMetadata] {
-        let reading = library.filter { book in
-            book.status?.name == "Reading" && book.hasAvailableReadaloud
-        }
-
-        let sorted = reading.sorted { a, b in
-            let tsA = a.position?.timestamp ?? 0
-            let tsB = b.position?.timestamp ?? 0
-            return tsA > tsB
-        }
-
-        return Array(sorted.prefix(20))
+    private func currentlyReadingBooks(in library: [BookMetadata]) async -> [BookMetadata] {
+        let progress = await ProgressSyncActor.shared.getAllBookProgress()
+        guard
+            let section = HomeSectionDeriver.sections(
+                kinds: [.currentlyReading],
+                books: library,
+                progress: progress,
+                limit: .max,
+            ).first
+        else { return [] }
+        return Array(section.books.lazy.filter(\.hasAvailableReadaloud).prefix(20))
     }
 
-    private func isBookDownloaded(_ uuid: String) -> Bool {
+    private func isBookDownloaded(_ bookID: BookID) -> Bool {
         let watchBooks = viewModel.books
-        return watchBooks.contains { $0.uuid == uuid }
+        return watchBooks.contains { $0.id == bookID }
     }
 }
 

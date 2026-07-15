@@ -10,9 +10,8 @@ public enum DownloadState: Codable, Sendable, Equatable {
 }
 
 public struct DownloadRecord: Codable, Sendable, Identifiable, Equatable {
-    public let id: String
-    public let bookId: String
-    public let sourceID: BookSourceID?
+    public let id: UUID
+    public let bookID: BookID
     public let category: LocalMediaCategory
     public let bookTitle: String
     public let format: StorytellerBookFormat
@@ -26,15 +25,14 @@ public struct DownloadRecord: Codable, Sendable, Identifiable, Equatable {
     public var lastUpdatedAt: Date
 
     public init(
-        bookId: String,
-        sourceID: BookSourceID? = nil,
+        id: UUID = UUID(),
+        bookID: BookID,
         category: LocalMediaCategory,
         bookTitle: String,
         format: StorytellerBookFormat,
     ) {
-        self.id = "\(bookId)-\(category.rawValue)"
-        self.bookId = bookId
-        self.sourceID = sourceID
+        self.id = id
+        self.bookID = bookID
         self.category = category
         self.bookTitle = bookTitle
         self.format = format
@@ -44,38 +42,6 @@ public struct DownloadRecord: Codable, Sendable, Identifiable, Equatable {
         self.retryCount = 0
         self.createdAt = Date()
         self.lastUpdatedAt = Date()
-    }
-
-    private enum CodingKeys: String, CodingKey {
-        case id
-        case bookId
-        case sourceID
-        case category
-        case bookTitle
-        case format
-        case state
-        case receivedBytes
-        case expectedBytes
-        case retryCount
-        case createdAt
-        case lastUpdatedAt
-    }
-
-    // Custom decoding so records persisted before retryCount existed still load.
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.id = try container.decode(String.self, forKey: .id)
-        self.bookId = try container.decode(String.self, forKey: .bookId)
-        self.sourceID = try container.decodeIfPresent(BookSourceID.self, forKey: .sourceID)
-        self.category = try container.decode(LocalMediaCategory.self, forKey: .category)
-        self.bookTitle = try container.decode(String.self, forKey: .bookTitle)
-        self.format = try container.decode(StorytellerBookFormat.self, forKey: .format)
-        self.state = try container.decode(DownloadState.self, forKey: .state)
-        self.receivedBytes = try container.decode(Int64.self, forKey: .receivedBytes)
-        self.expectedBytes = try container.decodeIfPresent(Int64.self, forKey: .expectedBytes)
-        self.retryCount = try container.decodeIfPresent(Int.self, forKey: .retryCount) ?? 0
-        self.createdAt = try container.decode(Date.self, forKey: .createdAt)
-        self.lastUpdatedAt = try container.decode(Date.self, forKey: .lastUpdatedAt)
     }
 
     public var progressFraction: Double {

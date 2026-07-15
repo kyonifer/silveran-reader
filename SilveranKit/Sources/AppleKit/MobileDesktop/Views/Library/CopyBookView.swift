@@ -2,19 +2,19 @@
 import SwiftUI
 
 public struct CopyBookData: Codable, Hashable, Identifiable {
-    public var bookID: String
+    public var bookID: BookID
     public var destinationSourceID: BookSourceID
 
     public var id: String { "\(bookID)->\(destinationSourceID)" }
 
-    public init(bookID: String, destinationSourceID: BookSourceID) {
+    public init(bookID: BookID, destinationSourceID: BookSourceID) {
         self.bookID = bookID
         self.destinationSourceID = destinationSourceID
     }
 }
 
 public struct CopyBookView: View {
-    private let bookID: String
+    private let bookID: BookID
     private let destinationSourceID: BookSourceID
 
     @Environment(MediaViewModel.self) private var mediaViewModel
@@ -31,7 +31,7 @@ public struct CopyBookView: View {
         case failure(String)
     }
 
-    public init(bookID: String, destinationSourceID: BookSourceID) {
+    public init(bookID: BookID, destinationSourceID: BookSourceID) {
         self.bookID = bookID
         self.destinationSourceID = destinationSourceID
     }
@@ -137,7 +137,6 @@ public struct CopyBookView: View {
         guard let book else { return }
         availableCategories = await BookServiceActor.shared.locallyAvailableMedia(
             for: book.id,
-            sourceID: book.sourceID,
         )
     }
 

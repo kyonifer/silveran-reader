@@ -75,16 +75,16 @@ private final class SendableCGImage: @unchecked Sendable {
 public final class MediaViewModel {
     public struct LibraryRenderContext: Sendable {
         public let metadata: [BookMetadata]
-        public let paths: [String: MediaPaths]
-        public let folderSourceBookIds: Set<String>
-        public let progress: [String: BookProgress]
+        public let paths: [BookID: MediaPaths]
+        public let folderSourceBookIds: Set<BookID>
+        public let progress: [BookID: BookProgress]
         public let smartShelves: [SmartShelf]
 
         public init(
             metadata: [BookMetadata],
-            paths: [String: MediaPaths],
-            folderSourceBookIds: Set<String>,
-            progress: [String: BookProgress],
+            paths: [BookID: MediaPaths],
+            folderSourceBookIds: Set<BookID>,
+            progress: [BookID: BookProgress],
             smartShelves: [SmartShelf],
         ) {
             self.metadata = metadata
@@ -125,7 +125,7 @@ public final class MediaViewModel {
     /// Connectivity for a single source, read from the cached `sourceConnectionInfos` so
     /// per-book download buttons don't each hit the actor. Falls back to the global status
     /// when the source isn't in the cache yet.
-    public func connectionStatus(forSourceID sourceID: BookSourceID?) -> ConnectionStatus {
+    public func connectionStatus(forSourceID sourceID: BookSourceID) -> ConnectionStatus {
         guard let info = sourceConnectionInfos.first(where: { $0.id == sourceID }) else {
             return connectionStatus
         }
@@ -135,7 +135,7 @@ public final class MediaViewModel {
     /// True only when the book's own source can't currently download. A failure on a
     /// different source must not disable this book's buttons. Folder sources are local and
     /// never count as an error.
-    public func hasConnectionError(forSourceID sourceID: BookSourceID?) -> Bool {
+    public func hasConnectionError(forSourceID sourceID: BookSourceID) -> Bool {
         guard let info = sourceConnectionInfos.first(where: { $0.id == sourceID }) else {
             if lastNetworkOpSucceeded == false { return true }
             if case .error = connectionStatus { return true }
@@ -158,14 +158,14 @@ public final class MediaViewModel {
     }
 
     public var cachedConfig: SilveranGlobalConfig = SilveranGlobalConfig()
-    public var pendingSyncsByBook: [String: PendingProgressSync] = [:]
+    public var pendingSyncsByBook: [BookID: PendingProgressSync] = [:]
     public var syncNotification: SyncNotification?
     public var smartShelves: [SmartShelf] = []
     public var libraryViewSnapshot = LibraryViewSnapshot()
     public var bookSources: [BookSourceRecord] = []
     public var uploadPermittedSourceIDs: Set<BookSourceID> = []
-    var bookProgressCache: [String: BookProgress] = [:]
-    @ObservationIgnored private var readBookIds: Set<String> = []
+    var bookProgressCache: [BookID: BookProgress] = [:]
+    @ObservationIgnored private var readBookIds: Set<BookID> = []
 
     @ObservationIgnored private let libraryDerivationActor = LibraryDerivationActor()
     @ObservationIgnored private var libraryDerivationTask: Task<Void, Never>?
@@ -177,21 +177,23 @@ public final class MediaViewModel {
     @ObservationIgnored private var cachedMediaObserverId: UUID?
     @ObservationIgnored private var availableStatusLoadTasks: [BookSourceID: Task<Void, Never>] =
         [:]
-    var downloadStatuses: [String: DownloadProgressState] = [:]
+    var downloadStatuses: [BookID: DownloadProgressState] = [:]
     private var incompleteDownloadCount: Int = 0
-    private var cachedBookPaths: [String: MediaPaths] = [:]
-    private var removableCachedBookPaths: [String: MediaPaths] = [:]
-    private var folderSourceBookIds: Set<String> = []
-    private var storytellerBookIds: Set<String> = []
+    private var cachedBookPaths: [BookID: MediaPaths] = [:]
+    private var removableCachedBookPaths: [BookID: MediaPaths] = [:]
+    private var folderSourceBookIds: Set<BookID> = []
+    private var storytellerBookIds: Set<BookID> = []
     // Deep-link target (e.g. from a widget tap) waiting for the library to be ready.
     // Consumed and cleared by the first open attempt.
-    public var pendingOpenBookID: String?
+    public var pendingOpenBookID: BookID?
     // Deep-link target that should show book details in the library UI.
     // macOS has no standalone details screen, so the grid's info sidebar
     // consumes this; LibraryView navigates to a grid if none is on screen.
-    public var pendingInfoBookID: String?
+    public var pendingInfoBookID: BookID?
     @ObservationIgnored private var metadataRefreshTask: Task<Void, Never>?
     @ObservationIgnored private var widgetSnapshotPublishTask: Task<Void, Never>?
+    @ObservationIgnored private let usesInjectedLibrary: Bool
+    @ObservationIgnored private var hasStarted = false
 
     private var sourceNamesByID: [BookSourceID: String] {
         Dictionary(uniqueKeysWithValues: bookSources.map { ($0.id, $0.name) })
@@ -272,7 +274,7 @@ public final class MediaViewModel {
     }
 
     private struct CoverKey: Hashable, Sendable {
-        let id: String
+        let id: BookID
         let variant: CoverVariant
     }
 
@@ -362,6 +364,7 @@ public final class MediaViewModel {
     public init(
         injectLibrary: BookLibrary? = nil
     ) {
+        usesInjectedLibrary = injectLibrary != nil
         if let injectLibrary = injectLibrary {
             self.library = injectLibrary
         } else {
@@ -370,100 +373,90 @@ public final class MediaViewModel {
                 ebookCoverCache: [:],
                 audiobookCoverCache: [:],
             )
-            Task { [weak self] in
-                await ProgressSyncActor.shared.registerSyncNotificationCallback {
-                    @MainActor [weak self] synced, failedBookIds in
-                    guard let self else { return }
-                    if synced > 0 {
-                        let message =
-                            synced == 1
-                            ? "Synced reading progress for 1 book"
-                            : "Synced reading progress for \(synced) books"
-                        self.showSyncNotification(
-                            SyncNotification(message: message, type: .success)
-                        )
-                    } else if !failedBookIds.isEmpty {
-                        let bookNames = failedBookIds.compactMap { bookId in
-                            self.library.bookMetaData.first(where: { $0.uuid == bookId })?.title
-                        }
-                        let message =
-                            bookNames.isEmpty
-                            ? "Failed to sync \(failedBookIds.count) book(s)"
-                            : "Failed to sync: \(bookNames.joined(separator: ", "))"
-                        self.showSyncNotification(
-                            SyncNotification(
-                                message: message,
-                                type: .error,
-                                failedBookIds: failedBookIds,
-                            )
-                        )
-                    }
-                }
-
-                let initialStatus = await BookServiceActor.shared.connectionStatus
-                debugLog(
-                    "[MediaViewModel] init: Setting initial connectionStatus to \(initialStatus)"
-                )
-                let initialSourceInfos = await BookServiceActor.shared.sourceConnectionInfos()
-                await MainActor.run { [weak self] in
-                    self?.connectionStatus = initialStatus
-                    self?.sourceConnectionInfos = initialSourceInfos
-                    debugLog(
-                        "[MediaViewModel] init: connectionStatus is now \(self?.connectionStatus ?? .disconnected)"
-                    )
-                }
-
-                await BookServiceActor.shared.request_notify { @MainActor [weak self] in
-                    guard let self else { return }
-                    Task { @MainActor [weak self] in
-                        guard let self else { return }
-                        let status = await BookServiceActor.shared.connectionStatus
-                        let networkOp = await BookServiceActor.shared.lastNetworkOpSucceeded
-                        self.connectionStatus = status
-                        self.lastNetworkOpSucceeded = networkOp
-                        self.sourceConnectionInfos =
-                            await BookServiceActor.shared.sourceConnectionInfos()
-                        debugLogVerbose(
-                            "[MediaViewModel] StorytellerActor notify: connectionStatus=\(status), lastNetworkOpSucceeded=\(String(describing: networkOp))"
-                        )
-                        if status == .connected {
-                            let statuses = await BookServiceActor.shared.getAvailableStatuses()
-                            if statuses != self.availableStatuses {
-                                self.availableStatuses = statuses
-                            }
-                            self.refreshAvailableStatusCaches(
-                                for: self.library.bookMetaData,
-                                retryEmpty: true,
-                            )
-                        }
-                    }
-                }
-            }
-            setupPathCacheSync()
-            setupSettingsSync()
-            startMetadataRefreshTask()
-            setupDownloadManagerObserver()
         }
     }
 
-    private func setupDownloadManagerObserver() {
-        Task { [weak self] in
-            let id = await DownloadManager.shared.addObserver { [weak self] records in
-                guard let self else { return }
-                self.applyDownloadRecords(records)
-            }
-            let initialRecords = await DownloadManager.shared.incompleteDownloads
-            await MainActor.run { [weak self] in
-                self?.downloadManagerObserverId = id
-                self?.applyDownloadRecords(initialRecords)
+    public func start() async {
+        guard !usesInjectedLibrary, !hasStarted else { return }
+        hasStarted = true
+
+        await ProgressSyncActor.shared.registerSyncNotificationCallback {
+            @MainActor [weak self] synced, failedBookIDs in
+            guard let self else { return }
+            if synced > 0 {
+                let message =
+                    synced == 1
+                    ? "Synced reading progress for 1 book"
+                    : "Synced reading progress for \(synced) books"
+                self.showSyncNotification(
+                    SyncNotification(message: message, type: .success)
+                )
+            } else if !failedBookIDs.isEmpty {
+                let bookNames = failedBookIDs.compactMap { bookID in
+                    self.library.bookMetaData.first { $0.id == bookID }?.title
+                }
+                let message =
+                    bookNames.isEmpty
+                    ? "Failed to sync \(failedBookIDs.count) book(s)"
+                    : "Failed to sync: \(bookNames.joined(separator: ", "))"
+                self.showSyncNotification(
+                    SyncNotification(
+                        message: message,
+                        type: .error,
+                        failedBookIDs: failedBookIDs,
+                    )
+                )
             }
         }
+
+        connectionStatus = await BookServiceActor.shared.connectionStatus
+        sourceConnectionInfos = await BookServiceActor.shared.sourceConnectionInfos()
+
+        await BookServiceActor.shared.request_notify { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                let status = await BookServiceActor.shared.connectionStatus
+                let networkOp = await BookServiceActor.shared.lastNetworkOpSucceeded
+                self.connectionStatus = status
+                self.lastNetworkOpSucceeded = networkOp
+                self.sourceConnectionInfos =
+                    await BookServiceActor.shared.sourceConnectionInfos()
+                debugLogVerbose(
+                    "[MediaViewModel] StorytellerActor notify: connectionStatus=\(status), lastNetworkOpSucceeded=\(String(describing: networkOp))"
+                )
+                if status == .connected {
+                    let statuses = await BookServiceActor.shared.getAvailableStatuses()
+                    if statuses != self.availableStatuses {
+                        self.availableStatuses = statuses
+                    }
+                    self.refreshAvailableStatusCaches(
+                        for: self.library.bookMetaData,
+                        retryEmpty: true,
+                    )
+                }
+            }
+        }
+        await setupSettingsSync()
+        await setupPathCacheSync()
+        startMetadataRefreshTask()
+        await setupDownloadManagerObserver()
+    }
+
+    private func setupDownloadManagerObserver() async {
+        let id = await DownloadManager.shared.addObserver { [weak self] records in
+            Task { @MainActor [weak self] in
+                self?.applyDownloadRecords(records)
+            }
+        }
+        let initialRecords = await DownloadManager.shared.incompleteDownloads
+        downloadManagerObserverId = id
+        applyDownloadRecords(initialRecords)
     }
 
     private func applyDownloadRecords(_ records: [DownloadRecord]) {
-        var statuses: [String: DownloadProgressState] = [:]
+        var statuses: [BookID: DownloadProgressState] = [:]
         for record in records {
-            var state = statuses[record.bookId] ?? DownloadProgressState()
+            var state = statuses[record.bookID] ?? DownloadProgressState()
             var catState = DownloadProgressState.CategoryState()
             catState.expected = record.expectedBytes
             catState.latestReceived = record.receivedBytes
@@ -483,7 +476,7 @@ public final class MediaViewModel {
             }
 
             state.categories[record.category] = catState
-            statuses[record.bookId] = state
+            statuses[record.bookID] = state
         }
         downloadStatuses = statuses
         let count = records.filter(\.isIncomplete).count
@@ -529,7 +522,7 @@ public final class MediaViewModel {
             "[PerfTrace][MediaViewModel] refreshMetadata status=\(status) pendingSyncs=\(pendingSyncs.count)"
         )
         if !pendingSyncs.isEmpty {
-            let bookIds = pendingSyncs.map { $0.bookId }.joined(separator: ", ")
+            let bookIds = pendingSyncs.map { $0.bookID.description }.joined(separator: ", ")
             debugLog("[PerfTrace][MediaViewModel] refreshMetadata pendingBookIds=[\(bookIds)]")
         }
 
@@ -551,7 +544,12 @@ public final class MediaViewModel {
 
         setIfChanged(
             \.pendingSyncsByBook,
-            Dictionary(uniqueKeysWithValues: pendingSyncs.map { ($0.bookId, $0) }),
+            Dictionary(
+                pendingSyncs.map { ($0.bookID, $0) },
+                uniquingKeysWith: { current, candidate in
+                    candidate.timestamp > current.timestamp ? candidate : current
+                },
+            ),
         )
         debugLog(
             "[PerfTrace][MediaViewModel] refreshMetadata pendingSyncsByBook=\(pendingSyncsByBook.count)"
@@ -582,16 +580,16 @@ public final class MediaViewModel {
             \.folderSourceBookIds,
             Set(
                 libraryMetadata.filter { book in
-                    sourceKindsByID[book.sourceID ?? ""] == .localFolder
-                }.map(\.uuid)
+                    sourceKindsByID[book.sourceID] == .localFolder
+                }.map(\.id)
             ),
         )
         setIfChanged(
             \.storytellerBookIds,
             Set(
                 libraryMetadata.filter { book in
-                    sourceKindsByID[book.sourceID ?? ""] == .storyteller
-                }.map(\.uuid)
+                    sourceKindsByID[book.sourceID] == .storyteller
+                }.map(\.id)
             ),
         )
         sourceGroupsCache.removeAll()
@@ -800,43 +798,36 @@ public final class MediaViewModel {
         }
     }
 
-    private func setupSettingsSync() {
-        Task {
-            await SettingsActor.shared.request_notify { @MainActor [weak self] in
+    private func setupSettingsSync() async {
+        await SettingsActor.shared.request_notify { @MainActor [weak self] in
+            guard let self else { return }
+            Task { @MainActor [weak self] in
                 guard let self else { return }
-                Task { @MainActor [weak self] in
-                    guard let self else { return }
-                    let config = await SettingsActor.shared.config
-                    self.cachedConfig = config
-                    self.restartMetadataRefreshTask()
-                }
-            }
-
-            let initialConfig = await SettingsActor.shared.config
-            await MainActor.run { [weak self] in
-                self?.cachedConfig = initialConfig
+                let config = await SettingsActor.shared.config
+                self.cachedConfig = config
+                self.restartMetadataRefreshTask()
             }
         }
+
+        cachedConfig = await SettingsActor.shared.config
     }
 
-    private func setupPathCacheSync() {
-        Task {
-            cachedMediaObserverId = await BookServiceActor.shared.addLibraryCacheObserver {
-                @MainActor [weak self] in
-                Task { @MainActor in
-                    await self?.syncPathCache()
-                    await self?.refreshMetadata(source: "LocalMediaActor.cachedMediaObserver")
-                }
+    private func setupPathCacheSync() async {
+        cachedMediaObserverId = await BookServiceActor.shared.addLibraryCacheObserver {
+            [weak self] in
+            Task { @MainActor [weak self] in
+                await self?.syncPathCache()
+                await self?.refreshMetadata(source: "LocalMediaActor.cachedMediaObserver")
             }
-
-            await ProgressSyncActor.shared.addObserver { [weak self] in
-                Task { @MainActor in
-                    await self?.refreshMetadata(source: "ProgressSyncActor.observer")
-                }
-            }
-
-            await self.refreshMetadata(source: "init")
         }
+
+        await ProgressSyncActor.shared.addObserver { [weak self] in
+            Task { @MainActor in
+                await self?.refreshMetadata(source: "ProgressSyncActor.observer")
+            }
+        }
+
+        await refreshMetadata(source: "start")
     }
 
     private func syncPathCache() async {
@@ -857,9 +848,8 @@ public final class MediaViewModel {
             "[PerfTrace][MediaViewModel] applyLibraryMetadata start incoming=\(metadata.count) previous=\(library.bookMetaData.count) libraryVersion=\(libraryVersion)"
         )
         let previousMetadataByID = Dictionary(
-            uniqueKeysWithValues: library.bookMetaData.map {
-                ($0.id, $0)
-            }
+            library.bookMetaData.map { ($0.id, $0) },
+            uniquingKeysWith: { current, _ in current },
         )
         let previousMapElapsed = (CFAbsoluteTimeGetCurrent() - started) * 1000
         debugLog(
@@ -906,8 +896,7 @@ public final class MediaViewModel {
             bookSources.filter { $0.kind == .storyteller }.map(\.id)
         )
         let changedStorytellerBooks = metadata.filter { book in
-            guard let sourceID = book.sourceID,
-                storytellerSourceIDs.contains(sourceID),
+            guard storytellerSourceIDs.contains(book.sourceID),
                 let previous = previousMetadataByID[book.id],
                 previous.updatedAt != book.updatedAt
             else { return false }
@@ -937,7 +926,7 @@ public final class MediaViewModel {
         for metadata: [BookMetadata],
         retryEmpty: Bool = false,
     ) {
-        let sourceIDs = Set(metadata.compactMap(\.sourceID))
+        let sourceIDs = Set(metadata.map(\.sourceID))
         setIfChanged(
             \.availableStatusesBySourceID,
             availableStatusesBySourceID.filter { sourceIDs.contains($0.key) },
@@ -1012,7 +1001,7 @@ public final class MediaViewModel {
         )
     }
 
-    private func pruneCoverTasks(keeping validIDs: Set<String>) {
+    private func pruneCoverTasks(keeping validIDs: Set<BookID>) {
         let invalidKeys = coverTasks.keys.filter { !validIDs.contains($0.id) }
         for key in invalidKeys {
             coverTasks[key]?.cancel()
@@ -1070,49 +1059,6 @@ public final class MediaViewModel {
             "[PerfTrace][MediaViewModel] items kind=\(kind) narration=\(narrationFilter) tag=\(tagFilter ?? "nil") result=\(base.count) elapsedMs=\(String(format: "%.1f", elapsed))"
         )
         return base
-    }
-
-    public func itemsByStatus(_ statusName: String, sortBy: StatusSortOrder, limit: Int)
-        -> [BookMetadata]
-    {
-        let started = CFAbsoluteTimeGetCurrent()
-        let filtered = library.bookMetaData.filter { metadata in
-            metadata.status?.name == statusName
-        }
-
-        let sorted: [BookMetadata]
-        switch sortBy {
-            case .recentPositionUpdate:
-                sorted = filtered.sorted { a, b in
-                    let tsA = bookProgressCache[a.id]?.timestamp ?? 0
-                    let tsB = bookProgressCache[b.id]?.timestamp ?? 0
-                    return tsA > tsB
-                }
-            case .recentlyAdded:
-                sorted = filtered.sorted { a, b in
-                    (a.createdAt ?? "") > (b.createdAt ?? "")
-                }
-        }
-
-        let result = Array(sorted.prefix(limit))
-        let elapsed = (CFAbsoluteTimeGetCurrent() - started) * 1000
-        debugLog(
-            "[PerfTrace][MediaViewModel] itemsByStatus status='\(statusName)' filtered=\(filtered.count) result=\(result.count) elapsedMs=\(String(format: "%.1f", elapsed))"
-        )
-        return result
-    }
-
-    public func recentlyAddedItems(limit: Int) -> [BookMetadata] {
-        let started = CFAbsoluteTimeGetCurrent()
-        let sorted = library.bookMetaData.sorted { a, b in
-            (a.createdAt ?? "") > (b.createdAt ?? "")
-        }
-        let result = Array(sorted.prefix(limit))
-        let elapsed = (CFAbsoluteTimeGetCurrent() - started) * 1000
-        debugLog(
-            "[PerfTrace][MediaViewModel] recentlyAddedItems total=\(library.bookMetaData.count) result=\(result.count) elapsedMs=\(String(format: "%.1f", elapsed))"
-        )
-        return result
     }
 
     public func booksBySeries(for kind: MediaKind)
@@ -1714,7 +1660,7 @@ public final class MediaViewModel {
         var sourceMap: [String: [BookMetadata]] = [:]
 
         for book in allBooks {
-            let key = book.source ?? sourceNamesByID[book.sourceID ?? ""] ?? "Unknown"
+            let key = book.source ?? sourceNamesByID[book.sourceID] ?? "Unknown"
 
             if var existing = sourceMap[key] {
                 existing.append(book)
@@ -1748,11 +1694,6 @@ public final class MediaViewModel {
         )
         return result
         #endif
-    }
-
-    public enum StatusSortOrder: Sendable {
-        case recentPositionUpdate
-        case recentlyAdded
     }
 
     public func badgeCount(for content: SidebarContentKind) -> Int {
@@ -1883,7 +1824,7 @@ public final class MediaViewModel {
         }
     }
 
-    public func localMediaPath(for bookID: String, category: LocalMediaCategory) -> URL? {
+    public func localMediaPath(for bookID: BookID, category: LocalMediaCategory) -> URL? {
         guard let paths = cachedBookPaths[bookID] else { return nil }
         switch category {
             case .ebook:
@@ -1931,7 +1872,7 @@ public final class MediaViewModel {
         return bookData
     }
 
-    private func cachedCoverImage(bookID: String, audio: Bool) async -> Image? {
+    private func cachedCoverImage(bookID: BookID, audio: Bool) async -> Image? {
         guard let data = await BookServiceActor.shared.cachedCoverData(for: bookID, audio: audio),
             let payload = Self.makeCoverPayload(from: data)
         else { return nil }
@@ -1958,63 +1899,105 @@ public final class MediaViewModel {
         )
     }
 
-    public func isLocalStandaloneBook(_ bookID: String) -> Bool {
+    public func isLocalStandaloneBook(_ bookID: BookID) -> Bool {
         folderSourceBookIds.contains(bookID)
     }
 
-    public func sourceLabel(for bookID: String) -> String {
+    public func sourceLabel(for bookID: BookID) -> String {
         library.bookMetaData.first { $0.id == bookID }?.source ?? "Unknown"
     }
 
-    public func sourceIDs(for bookIDs: [String]) -> [BookSourceID] {
+    public func sourceIDs(for bookIDs: [BookID]) -> [BookSourceID] {
         let requested = Set(bookIDs)
         var seen: Set<BookSourceID> = []
         var sourceIDs: [BookSourceID] = []
 
         for book in library.bookMetaData where requested.contains(book.id) {
-            guard let sourceID = book.sourceID else { continue }
-            if seen.insert(sourceID).inserted {
-                sourceIDs.append(sourceID)
+            if seen.insert(book.sourceID).inserted {
+                sourceIDs.append(book.sourceID)
             }
         }
 
         return sourceIDs
     }
 
-    public func isServerBook(_ bookID: String) -> Bool {
+    public func isServerBook(_ bookID: BookID) -> Bool {
         storytellerBookIds.contains(bookID)
     }
 
-    public func canManageSourceMedia(for bookID: String) -> Bool {
-        guard let sourceID = library.bookMetaData.first(where: { $0.id == bookID })?.sourceID,
-            let source = bookSources.first(where: { $0.id == sourceID })
+    public func canManageSourceMedia(for bookID: BookID) -> Bool {
+        guard let source = bookSources.first(where: { $0.id == bookID.sourceID })
         else {
             return false
         }
         return source.capabilities.canManageMedia
     }
 
-    public func isLocalFolderBook(_ bookID: String) -> Bool {
+    public func isLocalFolderBook(_ bookID: BookID) -> Bool {
         folderSourceBookIds.contains(bookID)
     }
 
     public func deleteBookFromSource(_ item: BookMetadata) async -> Bool {
-        guard let sourceID = item.sourceID else { return false }
-        let success = await BookServiceActor.shared.deleteBook(item.id, sourceID: sourceID)
+        let success = await BookServiceActor.shared.deleteBook(item.id)
         if success {
             await refreshMetadata(source: "MediaViewModel.deleteBookFromSource")
         }
         return success
     }
 
+    public func deleteFolderAsset(for item: BookMetadata, format: StorytellerBookFormat) async
+        -> Bool
+    {
+        let result = await BookServiceActor.shared.deleteBookAsset(
+            item.id,
+            type: format,
+        )
+        await refreshMetadata(source: "MediaViewModel.deleteFolderAsset")
+        let didDelete: Bool = {
+            if case DeleteAssetResult.success = result { return true }
+            return false
+        }()
+        let label = folderAssetLabel(format).lowercased()
+        showSyncNotification(
+            SyncNotification(
+                message: didDelete
+                    ? "Deleted \(label) from folder source"
+                    : "Failed to delete \(label)",
+                type: didDelete ? .success : .error,
+            )
+        )
+        return didDelete
+    }
+
+    public func deleteFolderBook(_ item: BookMetadata) async -> Bool {
+        let success = await deleteBookFromSource(item)
+        showSyncNotification(
+            SyncNotification(
+                message: success
+                    ? "Deleted \(item.title) from folder source"
+                    : "Failed to delete \(item.title)",
+                type: success ? .success : .error,
+            )
+        )
+        return success
+    }
+
+    public func folderAssetLabel(_ format: StorytellerBookFormat) -> String {
+        switch format {
+            case .ebook: return "Ebook"
+            case .audiobook: return "Audiobook"
+            case .readaloud: return "Readaloud"
+        }
+    }
+
     // MARK: - Progress from PSA
 
-    public func progress(for bookId: String) -> Double {
+    public func progress(for bookId: BookID) -> Double {
         if readBookIds.contains(bookId) { return 1.0 }
         return bookProgressCache[bookId]?.progressFraction ?? 0
     }
 
-    public func position(for bookId: String) -> BookReadingPosition? {
+    public func position(for bookId: BookID) -> BookReadingPosition? {
         guard let bp = bookProgressCache[bookId], let locator = bp.locator else { return nil }
         return BookReadingPosition(
             uuid: nil,
@@ -2023,6 +2006,10 @@ public final class MediaViewModel {
             createdAt: nil,
             updatedAt: nil,
         )
+    }
+
+    public func pendingSync(for bookId: BookID) -> PendingProgressSync? {
+        pendingSyncsByBook[bookId]
     }
 
     public func downloadProgressFraction(
@@ -2052,7 +2039,6 @@ public final class MediaViewModel {
             guard
                 let directory = await BookServiceActor.shared.localMediaDirectory(
                     for: item.id,
-                    sourceID: item.sourceID,
                     category: category,
                 )
             else { return }
@@ -2073,7 +2059,6 @@ public final class MediaViewModel {
             do {
                 try await BookServiceActor.shared.deleteCachedMedia(
                     for: item.id,
-                    sourceID: item.sourceID,
                     category: category,
                 )
                 await MainActor.run {
@@ -2442,7 +2427,6 @@ public final class MediaViewModel {
         let coverStart = CFAbsoluteTimeGetCurrent()
         let response = await BookServiceActor.shared.loadCover(
             for: item.id,
-            sourceID: item.sourceID,
             audio: params.audio,
             width: params.width,
             height: params.height,
@@ -2452,7 +2436,7 @@ public final class MediaViewModel {
         )
         let coverElapsed = (CFAbsoluteTimeGetCurrent() - coverStart) * 1000
         debugLog(
-            "[CoverDiag] book=\(item.id) source=\(item.sourceID ?? "nil") allowNetwork=\(isConnected) result=\(response.diagLabel) elapsed=\(String(format: "%.0f", coverElapsed))ms"
+            "[CoverDiag] book=\(item.id) source=\(item.sourceID) allowNetwork=\(isConnected) result=\(response.diagLabel) elapsed=\(String(format: "%.0f", coverElapsed))ms"
         )
         switch response {
             case .cached(let data):
@@ -2501,7 +2485,6 @@ public final class MediaViewModel {
         let params = variant.requestParameters
         let response = await BookServiceActor.shared.loadCover(
             for: item.id,
-            sourceID: item.sourceID,
             audio: params.audio,
             width: params.width,
             height: params.height,
@@ -2566,7 +2549,7 @@ public final class MediaViewModel {
     }
 
     public func invalidateCoverCache(
-        for bookID: String,
+        for bookID: BookID,
         variants: [CoverVariant] = [.standard, .audioSquare],
     ) async {
         debugLog(
@@ -2739,7 +2722,7 @@ public final class MediaViewModel {
 
     public func showSyncNotification(_ notification: SyncNotification) {
         syncNotification = notification
-        if notification.failedBookIds.isEmpty {
+        if notification.failedBookIDs.isEmpty {
             Task { @MainActor in
                 try? await Task.sleep(for: .seconds(5))
                 if syncNotification?.id == notification.id {
@@ -2753,10 +2736,10 @@ public final class MediaViewModel {
         syncNotification = nil
     }
 
-    public func ignoreFailedSyncs(bookIds: [String]) {
+    public func ignoreFailedSyncs(_ failedBookIDs: [BookID]) {
         Task {
-            for bookId in bookIds {
-                await ProgressSyncActor.shared.removePendingSync(for: bookId)
+            for bookID in failedBookIDs {
+                await ProgressSyncActor.shared.removePendingSync(for: bookID)
             }
             await MainActor.run {
                 self.syncNotification = nil

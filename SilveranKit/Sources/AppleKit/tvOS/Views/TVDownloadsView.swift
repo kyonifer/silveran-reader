@@ -54,7 +54,7 @@ struct TVDownloadsView: View {
                 ],
                 spacing: 30,
             ) {
-                ForEach(sorted, id: \.uuid) { book in
+                ForEach(sorted, id: \.id) { book in
                     NavigationLink(value: book) {
                         TVBookCardView(
                             book: book,

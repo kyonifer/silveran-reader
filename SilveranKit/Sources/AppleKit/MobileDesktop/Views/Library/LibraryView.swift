@@ -152,8 +152,8 @@ public struct LibraryView: View {
                         onDismiss: {
                             mediaViewModel.dismissSyncNotification()
                         },
-                        onIgnore: { bookIds in
-                            mediaViewModel.ignoreFailedSyncs(bookIds: bookIds)
+                        onIgnore: { failedSyncs in
+                            mediaViewModel.ignoreFailedSyncs(failedSyncs)
                         },
                     )
                     .transition(.move(edge: .top).combined(with: .opacity))
@@ -600,7 +600,7 @@ public struct LibraryView: View {
             }
     }
 
-    private func handleEditMetadata(bookIds: [String]) {
+    private func handleEditMetadata(bookIds: [BookID]) {
         if bookIds.contains(where: { mediaViewModel.isLocalStandaloneBook($0) }) {
             permissionErrorMessage = "Editing metadata for local books is not supported yet."
             showPermissionError = true
@@ -632,8 +632,7 @@ public struct LibraryView: View {
     private func checkMetadataEditPermission(sourceIDs: [BookSourceID]) async
         -> StorytellerActor.PermissionCheckResult
     {
-        let idsToCheck: [BookSourceID?] = sourceIDs.isEmpty ? [nil] : sourceIDs.map { $0 }
-        for sourceID in idsToCheck {
+        for sourceID in sourceIDs {
             let result = await BookServiceActor.shared.checkBookUpdatePermission(
                 sourceID: sourceID
             )

@@ -3,10 +3,10 @@ import SwiftUI
 
 struct CategoryGroupMetadataContextMenuContent: View {
     let group: CategoryGroup
-    let onEditMetadata: ([String]) -> Void
+    let onEditMetadata: ([BookID]) -> Void
 
-    private var bookIds: [String] {
-        group.books.map(\.uuid)
+    private var bookIds: [BookID] {
+        group.books.map(\.id)
     }
 
     private var labelText: String {

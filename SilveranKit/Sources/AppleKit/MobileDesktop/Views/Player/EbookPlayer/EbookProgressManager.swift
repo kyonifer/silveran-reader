@@ -106,8 +106,7 @@ class EbookProgressManager {
 
     /// Timer for periodic progress syncs to server
     private var syncTimer: Timer? = nil
-    private var bookId: String? = nil
-    private var sourceID: BookSourceID? = nil
+    private var bookID: BookID? = nil
 
     /// Debounced sync task - cancelled and recreated on each page flip to avoid sync spam
     private var debouncedSyncTask: Task<Void, Never>? = nil
@@ -127,17 +126,15 @@ class EbookProgressManager {
     init(
         bridge: WebViewCommsBridge?,
         settingsVM: SettingsViewModel,
-        bookId: String? = nil,
-        sourceID: BookSourceID? = nil,
+        bookID: BookID? = nil,
         initialLocator: BookLocator? = nil,
     ) {
         self.commsBridge = bridge
         self.settingsVM = settingsVM
-        self.bookId = bookId
-        self.sourceID = sourceID
+        self.bookID = bookID
         self.initialLocator = initialLocator
         debugLog(
-            "[EPM] EbookProgressManager initialized with bookId: \(bookId ?? "none"), locator: \(initialLocator?.href ?? "none")"
+            "[EPM] EbookProgressManager initialized with bookID: \(bookID?.description ?? "none"), locator: \(initialLocator?.href ?? "none")"
         )
 
         bridge?.onRelocated = { [weak self] message in
@@ -299,9 +296,9 @@ class EbookProgressManager {
             do {
                 var locatorToUse = initialLocator
 
-                if let bookId = self.bookId {
+                if let bookID = self.bookID {
                     if let psaProgress = await ProgressSyncActor.shared.getBookProgress(
-                        for: bookId
+                        for: bookID
                     ),
                         let psaLocator = psaProgress.locator
                     {
@@ -1188,8 +1185,8 @@ class EbookProgressManager {
     ///   - reason: Why this sync is occurring
     ///   - useFragment: If true and MOM has a current fragment, use it. If false, use totalProgression.
     func syncProgressToServer(reason: SyncReason, useFragment: Bool = true) async {
-        guard let bookId = bookId else {
-            debugLog("[EPM] Cannot sync: no bookId")
+        guard let bookID else {
+            debugLog("[EPM] Cannot sync: no book identity")
             return
         }
 
@@ -1249,8 +1246,7 @@ class EbookProgressManager {
         }
 
         let result = await ProgressSyncActor.shared.syncProgress(
-            bookId: bookId,
-            sourceID: sourceID,
+            bookID: bookID,
             locator: finalLocator,
             timestamp: timestampMs,
             reason: reason,
@@ -1326,15 +1322,15 @@ class EbookProgressManager {
             "[EPM] Resume detected - suppressing nav actions for \(resumeSuppressionDuration)s"
         )
 
-        guard let bookId = bookId else {
-            debugLog("[EPM] No bookId, skipping position check")
+        guard let bookID else {
+            debugLog("[EPM] No bookID, skipping position check")
             return
         }
 
-        guard let psaProgress = await ProgressSyncActor.shared.getBookProgress(for: bookId),
+        guard let psaProgress = await ProgressSyncActor.shared.getBookProgress(for: bookID),
             let psaTimestamp = psaProgress.timestamp
         else {
-            debugLog("[EPM] No position from PSA for book \(bookId)")
+            debugLog("[EPM] No position from PSA for book \(bookID)")
             return
         }
 

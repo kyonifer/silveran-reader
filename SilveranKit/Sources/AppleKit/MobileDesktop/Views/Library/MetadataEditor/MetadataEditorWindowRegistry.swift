@@ -7,9 +7,9 @@ import AppKit
 @MainActor
 enum MetadataEditorWindowRegistry {
     private static weak var window: NSWindow?
-    private static var addBookIdsHandler: (([String]) -> Void)?
+    private static var addBookIdsHandler: (([BookID]) -> Void)?
 
-    static func register(addBookIds: @escaping ([String]) -> Void) {
+    static func register(addBookIds: @escaping ([BookID]) -> Void) {
         addBookIdsHandler = addBookIds
     }
 
@@ -22,7 +22,7 @@ enum MetadataEditorWindowRegistry {
         addBookIdsHandler = nil
     }
 
-    static func addToExistingWindow(_ bookIds: [String]) -> Bool {
+    static func addToExistingWindow(_ bookIds: [BookID]) -> Bool {
         guard let addBookIdsHandler else { return false }
         addBookIdsHandler(bookIds)
         window?.makeKeyAndOrderFront(nil)

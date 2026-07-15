@@ -15,7 +15,7 @@ struct SourceView: View {
     var showOfflineSheet: Binding<Bool>?
     #endif
     #if os(macOS)
-    var onEditMetadata: (([String]) -> Void)? = nil
+    var onEditMetadata: (([BookID]) -> Void)? = nil
     @Environment(\.openWindow) private var openWindow
     #endif
     @Environment(MediaViewModel.self) private var mediaViewModel
@@ -68,8 +68,7 @@ struct SourceView: View {
     private func booksBySourceID() -> [BookSourceID: [BookMetadata]] {
         var grouped: [BookSourceID: [BookMetadata]] = [:]
         for book in mediaViewModel.library.bookMetaData {
-            guard let sourceID = book.sourceID else { continue }
-            grouped[sourceID, default: []].append(book)
+            grouped[book.sourceID, default: []].append(book)
         }
         for sourceID in grouped.keys {
             grouped[sourceID]?.sort {

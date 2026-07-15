@@ -48,15 +48,13 @@ public struct PlayerBookData: Codable, Hashable, Sendable {
         // WindowGroup uses this value to find an existing player window. BookMetadata
         // contains mutable fields such as position and status, so hashing all of it
         // causes a deep link to open a duplicate window after those fields change.
-        hasher.combine(metadata.uuid)
-        hasher.combine(metadata.sourceID)
+        hasher.combine(metadata.id)
         hasher.combine(localMediaPath)
         hasher.combine(category)
     }
 
     public static func == (lhs: PlayerBookData, rhs: PlayerBookData) -> Bool {
-        lhs.metadata.uuid == rhs.metadata.uuid
-            && lhs.metadata.sourceID == rhs.metadata.sourceID
+        lhs.metadata.id == rhs.metadata.id
             && lhs.localMediaPath == rhs.localMediaPath
             && lhs.category == rhs.category
     }

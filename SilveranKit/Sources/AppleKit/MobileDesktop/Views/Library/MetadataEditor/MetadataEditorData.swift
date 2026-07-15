@@ -15,11 +15,11 @@ enum MetadataCoverScope: String, CaseIterable, Identifiable {
 }
 
 public struct MetadataEditorData: Codable, Hashable, Identifiable {
-    public let bookIds: [String]
+    public let bookIds: [BookID]
     public let sessionId: UUID
     public var id: UUID { sessionId }
 
-    public init(bookIds: [String], sessionId: UUID = UUID()) {
+    public init(bookIds: [BookID], sessionId: UUID = UUID()) {
         self.bookIds = bookIds
         self.sessionId = sessionId
     }

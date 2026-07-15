@@ -134,7 +134,10 @@ extension AudnexusBookDetails {
         var series: [(name: String, position: Double?, featured: Bool)] = []
         if let primary = seriesPrimary, !primary.name.isEmpty {
             series.append(
-                (name: primary.name, position: primary.position.flatMap { Double($0) }, featured: true)
+                (
+                    name: primary.name, position: primary.position.flatMap { Double($0) },
+                    featured: true,
+                )
             )
         }
         if let secondary = seriesSecondary, !secondary.name.isEmpty {

@@ -42,7 +42,7 @@ public enum ActivitySource: String, Hashable, Sendable {
 public actor StorytellerActor {
 
     private let sourceRecordValue: BookSourceRecord
-    private var observers: (@Sendable @MainActor () -> Void)? = nil
+    private var observers: (@Sendable () -> Void)? = nil
 
     private var username: String?
     private var password: String?
@@ -132,7 +132,7 @@ public actor StorytellerActor {
         }
     }
 
-    public func request_notify(callback: @Sendable @MainActor @escaping () -> Void) {
+    public func request_notify(callback: @escaping @Sendable () -> Void) {
         self.observers = callback
     }
 
@@ -172,7 +172,7 @@ public actor StorytellerActor {
             "[StorytellerActor] updateConnectionStatus: \(connectionStatus) -> \(status), wasNotConnected: \(wasNotConnected)"
         )
         connectionStatus = status
-        await observers?()
+        observers?()
 
         if wasNotConnected && status == .connected {
             debugLog("[StorytellerActor] Connection restored, syncing pending progress queue")
@@ -372,7 +372,7 @@ public actor StorytellerActor {
         if connectionStatus != .connected {
             await updateConnectionStatus(.connected)
         } else if notifyWhenAlreadyConnected {
-            await observers?()
+            observers?()
         }
     }
 
@@ -387,7 +387,7 @@ public actor StorytellerActor {
             case .connected, .connecting:
                 await updateConnectionStatus(.error("Connection lost"))
             default:
-                await observers?()
+                observers?()
         }
         return true
     }
@@ -397,7 +397,6 @@ public actor StorytellerActor {
         username: String,
         password: String,
     ) async -> Bool {
-        await SilveranMigrations.ensureMigrationsRan()
         guard
             await configureCredentials(
                 baseURL: baseURLString,
@@ -751,14 +750,11 @@ public actor StorytellerActor {
 
             do {
                 let wrapper = try decoder.decode(
-                    LenientArrayWrapper<BookMetadata>.self,
+                    LenientArrayWrapper<StorytellerBookMetadataPayload>.self,
                     from: response.data,
                 )
-                libraryMetadata = wrapper.values.map { book in
-                    var stamped = book
-                    stamped.sourceID =
-                        stamped.sourceID ?? sourceRecordValue.id
-                    return stamped
+                libraryMetadata = wrapper.values.map { payload in
+                    payload.scoped(to: sourceRecordValue.id)
                 }
 
                 if let jsonArray = try? JSONSerialization.jsonObject(with: response.data) as? [Any]
@@ -1017,7 +1013,10 @@ public actor StorytellerActor {
             }
 
             do {
-                let metadata = try decoder.decode(BookMetadata.self, from: response.data)
+                let metadata = try decoder.decode(
+                    StorytellerBookMetadataPayload.self,
+                    from: response.data,
+                ).scoped(to: sourceRecordValue.id)
                 debugLog(
                     "[MetadataCoverRefresh] StorytellerActor fetchBookDetails success bookID=\(bookId) updatedAt=\(metadata.updatedAt ?? "nil")"
                 )
@@ -1230,7 +1229,10 @@ public actor StorytellerActor {
 
             do {
                 lastUpdateBookError = nil
-                return try decoder.decode(BookMetadata.self, from: response.data)
+                return try decoder.decode(
+                    StorytellerBookMetadataPayload.self,
+                    from: response.data,
+                ).scoped(to: sourceRecordValue.id)
             } catch {
                 logStorytellerError("updateBook decode", error: error)
                 let bodyPreview =
@@ -1279,8 +1281,7 @@ public actor StorytellerActor {
                 ) == .success
             if succeeded {
                 await LocalMediaActor.shared.removeAllMedia(
-                    for: bookId,
-                    sourceID: sourceRecordValue.id,
+                    for: BookID(sourceID: sourceRecordValue.id, uuid: bookId)
                 )
             }
             return succeeded
@@ -1343,7 +1344,10 @@ public actor StorytellerActor {
             }
 
             do {
-                let updatedBook = try decoder.decode(BookMetadata.self, from: response.data)
+                let updatedBook = try decoder.decode(
+                    StorytellerBookMetadataPayload.self,
+                    from: response.data,
+                ).scoped(to: sourceRecordValue.id)
                 return .success(updatedBook)
             } catch {
                 logStorytellerError("deleteBookAsset decode", error: error)
@@ -2833,16 +2837,14 @@ extension StorytellerActor: BookSourceActor {
     ) async -> ResolvedLocalMedia? {
         guard
             let url = await LocalMediaActor.shared.resolveAndRecordBookPath(
-                for: bookID,
+                for: BookID(sourceID: sourceRecordValue.id, uuid: bookID),
                 category: category,
-                sourceID: sourceRecordValue.id,
             )
         else {
             return nil
         }
         return ResolvedLocalMedia(
-            bookID: bookID,
-            sourceID: sourceRecordValue.id,
+            bookID: BookID(sourceID: sourceRecordValue.id, uuid: bookID),
             category: category,
             url: url,
             kind: .cached,
@@ -3006,15 +3008,13 @@ extension StorytellerActor: BookSourceActor {
         let result = await deleteBookAsset(bookID, type: storytellerFormat(for: category))
         if case .success(let updatedBook) = result {
             try? await LocalMediaActor.shared.deleteMedia(
-                for: bookID,
+                for: BookID(sourceID: sourceRecordValue.id, uuid: bookID),
                 category: category,
-                sourceID: sourceRecordValue.id,
             )
             // The DELETE response is authoritative for this book; write it straight to the cache so
             // the UI updates without a full multi-source library refetch.
             try? await LocalMediaActor.shared.updateSourceCacheBookMetadata(
-                updatedBook,
-                sourceID: sourceRecordValue.id,
+                updatedBook
             )
         }
         return result
@@ -3041,9 +3041,8 @@ extension StorytellerActor: BookSourceActor {
         )
         if case .success = result {
             try? await LocalMediaActor.shared.deleteMedia(
-                for: bookID,
+                for: BookID(sourceID: sourceRecordValue.id, uuid: bookID),
                 category: localMediaCategory(for: asset.format),
-                sourceID: sourceRecordValue.id,
             )
         }
         return result

@@ -19,7 +19,7 @@ class MediaOverlayManager {
     // MARK: - Properties
 
     private let bookStructure: [SectionInfo]
-    private let bookId: String
+    private let bookID: BookID
     private let reloadBookIntoActor: () async -> Void
     private let settingsVM: SettingsViewModel
     /// Section indices that contain at least one SMIL entry (used to skip non-audio sections).
@@ -128,13 +128,13 @@ class MediaOverlayManager {
 
     init(
         bookStructure: [SectionInfo],
-        bookId: String,
+        bookID: BookID,
         bridge: WebViewCommsBridge,
         settingsVM: SettingsViewModel,
         reloadBookIntoActor: @escaping () async -> Void,
     ) {
         self.bookStructure = bookStructure
-        self.bookId = bookId
+        self.bookID = bookID
         self.commsBridge = bridge
         self.settingsVM = settingsVM
         self.reloadBookIntoActor = reloadBookIntoActor
@@ -145,7 +145,7 @@ class MediaOverlayManager {
         )
         textIdIndexBySection = Self.buildTextIdIndexBySection(bookStructure: bookStructure)
         tocSectionsCache = bookStructure.filter { $0.label != nil }
-        debugLog("[MOM] MediaOverlayManager initialized for book: \(bookId)")
+        debugLog("[MOM] MediaOverlayManager initialized for book: \(bookID)")
         debugLog("[MOM]   Total sections: \(bookStructure.count)")
         debugLog(
             "[MOM]   Sections with audio: \(bookStructure.filter { !$0.mediaOverlay.isEmpty }.count)"
@@ -210,7 +210,7 @@ class MediaOverlayManager {
     }
 
     private func handleActorStateUpdate(_ state: SMILPlaybackState) {
-        guard state.bookId == bookId else { return }
+        guard state.bookID == bookID else { return }
 
         let previousSectionIndex = cachedSectionIndex
         let previousEntryIndex = cachedEntryIndex
@@ -463,10 +463,10 @@ class MediaOverlayManager {
         enableScreenWakeLock()
 
         do {
-            let loadedBookId = await SMILPlayerActor.shared.getLoadedBookId()
-            if loadedBookId != bookId {
+            let loadedBookID = await SMILPlayerActor.shared.getLoadedBookID()
+            if loadedBookID != bookID {
                 debugLog(
-                    "[MOM] Actor has different book (\(loadedBookId ?? "none")), reloading \(bookId)"
+                    "[MOM] Actor has different book (\(loadedBookID?.description ?? "none")), reloading \(bookID)"
                 )
                 await reloadBookIntoActor()
             }

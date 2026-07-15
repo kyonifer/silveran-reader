@@ -6,59 +6,31 @@ struct TVHomeView: View {
     @Environment(MediaViewModel.self) private var mediaViewModel
     @Binding var navigationPath: NavigationPath
 
-    private var currentlyReading: [BookMetadata] {
-        Array(
-            mediaViewModel.itemsByStatus(
-                "Reading",
-                sortBy: .recentPositionUpdate,
-                limit: .max,
-            ).filter { $0.hasAvailableReadaloud }.prefix(12)
-        )
-    }
-
-    private var startReading: [BookMetadata] {
-        Array(
-            mediaViewModel.itemsByStatus(
-                "To read",
-                sortBy: .recentlyAdded,
-                limit: .max,
-            ).filter { $0.hasAvailableReadaloud }.prefix(12)
-        )
-    }
-
-    private var recentlyAdded: [BookMetadata] {
-        Array(
-            mediaViewModel.recentlyAddedItems(limit: .max)
-                .filter { $0.hasAvailableReadaloud }.prefix(12)
-        )
-    }
-
-    private var completed: [BookMetadata] {
-        Array(
-            mediaViewModel.itemsByStatus(
-                "Read",
-                sortBy: .recentPositionUpdate,
-                limit: .max,
-            ).filter { $0.hasAvailableReadaloud }.prefix(12)
-        )
-    }
-
-    private var hasAnyContent: Bool {
-        !currentlyReading.isEmpty || !startReading.isEmpty || !recentlyAdded.isEmpty
-            || !completed.isEmpty
+    private var homeSections: [HomeSectionSnapshot] {
+        let context = mediaViewModel.libraryRenderContext()
+        return HomeSectionDeriver.sections(
+            books: context.metadata,
+            progress: context.progress,
+            limit: .max,
+        ).compactMap { section in
+            let playableBooks = Array(section.books.lazy.filter(\.hasAvailableReadaloud).prefix(12))
+            guard !playableBooks.isEmpty else { return nil }
+            return HomeSectionSnapshot(kind: section.kind, books: playableBooks)
+        }
     }
 
     var body: some View {
+        let homeSections = homeSections
         NavigationStack(path: $navigationPath) {
             Group {
                 if isDisconnected {
                     disconnectedView
                 } else if !mediaViewModel.isReady {
                     loadingView
-                } else if !hasAnyContent {
+                } else if homeSections.isEmpty {
                     emptyStateView
                 } else {
-                    sectionsView
+                    sectionsView(homeSections)
                 }
             }
             .toolbar(.hidden, for: .navigationBar)
@@ -105,37 +77,13 @@ struct TVHomeView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private var sectionsView: some View {
+    private func sectionsView(_ sections: [HomeSectionSnapshot]) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 50) {
-                if !currentlyReading.isEmpty {
+                ForEach(sections, id: \.kind) { section in
                     TVHomeSectionView(
-                        title: "Currently Reading",
-                        books: currentlyReading,
-                        viewModel: mediaViewModel,
-                    )
-                }
-
-                if !startReading.isEmpty {
-                    TVHomeSectionView(
-                        title: "Start Reading",
-                        books: startReading,
-                        viewModel: mediaViewModel,
-                    )
-                }
-
-                if !recentlyAdded.isEmpty {
-                    TVHomeSectionView(
-                        title: "Recently Added",
-                        books: recentlyAdded,
-                        viewModel: mediaViewModel,
-                    )
-                }
-
-                if !completed.isEmpty {
-                    TVHomeSectionView(
-                        title: "Completed",
-                        books: completed,
+                        title: section.kind.title,
+                        books: section.books,
                         viewModel: mediaViewModel,
                     )
                 }
@@ -177,7 +125,7 @@ private struct TVHomeSectionView: View {
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 20) {
-                    ForEach(books, id: \.uuid) { book in
+                    ForEach(books, id: \.id) { book in
                         NavigationLink(value: book) {
                             TVBookCardView(
                                 book: book,

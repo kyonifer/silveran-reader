@@ -54,29 +54,33 @@ struct ContentServerHandlers: Sendable {
     func books(_ request: Request, _ context: BasicRequestContext) async throws -> Response {
         guard authorized(request) else { return empty(.unauthorized) }
         let books = await BookServiceActor.shared.fetchLibraryInformation(sourceID: sourceID) ?? []
-        return try json(bookEncoder().encode(books))
+        let payload = books.map { StorytellerBookMetadataPayload(book: $0) }
+        return try json(bookEncoder().encode(payload))
     }
 
     func book(_ request: Request, _ context: BasicRequestContext) async throws -> Response {
         guard authorized(request) else { return empty(.unauthorized) }
-        guard let bookID = context.parameters.get("bookID") else { return empty(.badRequest) }
+        guard let uuid = context.parameters.get("bookID") else { return empty(.badRequest) }
+        let bookID = BookID(sourceID: sourceID, uuid: uuid)
         let books = await BookServiceActor.shared.fetchLibraryInformation(sourceID: sourceID) ?? []
-        guard let book = books.first(where: { $0.uuid == bookID }) else {
+        guard let book = books.first(where: { $0.id == bookID }) else {
             return notFound("Could not find book with id \(bookID)")
         }
-        return try json(bookEncoder().encode(book))
+        return try json(
+            bookEncoder().encode(StorytellerBookMetadataPayload(book: book))
+        )
     }
 
     func cover(_ request: Request, _ context: BasicRequestContext) async throws -> Response {
         guard authorized(request) else { return empty(.unauthorized) }
-        guard let bookID = context.parameters.get("bookID") else { return empty(.badRequest) }
+        guard let uuid = context.parameters.get("bookID") else { return empty(.badRequest) }
+        let bookID = BookID(sourceID: sourceID, uuid: uuid)
         let audio = boolQuery(request, "audio")
         let width = intQuery(request, "w")
         let height = intQuery(request, "h")
         guard
             let cover = await BookServiceActor.shared.fetchCoverImage(
                 for: bookID,
-                sourceID: sourceID,
                 audio: audio,
                 width: width,
                 height: height,
@@ -89,7 +93,8 @@ struct ContentServerHandlers: Sendable {
 
     func files(_ request: Request, _ context: BasicRequestContext) async throws -> Response {
         guard authorized(request) else { return empty(.unauthorized) }
-        guard let bookID = context.parameters.get("bookID") else { return empty(.badRequest) }
+        guard let uuid = context.parameters.get("bookID") else { return empty(.badRequest) }
+        let bookID = BookID(sourceID: sourceID, uuid: uuid)
 
         let requestedFormat = stringQuery(request, "format")
 
@@ -112,7 +117,7 @@ struct ContentServerHandlers: Sendable {
     /// format is given we mirror the real server's fallback: readaloud, then audiobook, then ebook.
     private func resolveFormatCategory(
         _ format: String?,
-        bookID: String,
+        bookID: BookID,
     ) async -> LocalMediaCategory? {
         switch format {
             case "ebook":
@@ -125,7 +130,6 @@ struct ContentServerHandlers: Sendable {
                 for candidate in [LocalMediaCategory.synced, .audio, .ebook] {
                     if await BookServiceActor.shared.resolveLocalMedia(
                         for: bookID,
-                        sourceID: sourceID,
                         category: candidate,
                     ) != nil {
                         return candidate
@@ -136,14 +140,13 @@ struct ContentServerHandlers: Sendable {
     }
 
     private func epubResponse(
-        for bookID: String,
+        for bookID: BookID,
         category: LocalMediaCategory,
         requestedFormat: String?,
     ) async throws -> Response {
         guard
             let media = await BookServiceActor.shared.resolveLocalMedia(
                 for: bookID,
-                sourceID: sourceID,
                 category: category,
             )
         else {
@@ -172,13 +175,12 @@ struct ContentServerHandlers: Sendable {
     /// `Accept: application/audiobook+zip` and reads `manifest.audiobook-manifest`, Silveran
     /// requests `format=audiobook-rpf` and reads `manifest.json`; the package carries both.
     private func audiobookResponse(
-        for bookID: String,
+        for bookID: BookID,
         requestedFormat: String?,
     ) async throws -> Response {
         guard
             let zipURL = await BookServiceActor.shared.packageAudiobook(
-                for: bookID,
-                sourceID: sourceID,
+                for: bookID
             )
         else {
             return notFound(
@@ -195,7 +197,7 @@ struct ContentServerHandlers: Sendable {
         headers[.contentType] = "application/audiobook+zip"
         headers[.acceptRanges] = "bytes"
         headers[.contentLength] = String(data.count)
-        headers[.contentDisposition] = "attachment; filename=\"\(bookID).audiobook\""
+        headers[.contentDisposition] = "attachment; filename=\"\(bookID.uuid).audiobook\""
         var buffer = ByteBuffer()
         buffer.writeBytes(data)
         return Response(status: .ok, headers: headers, body: ResponseBody(byteBuffer: buffer))
@@ -203,11 +205,11 @@ struct ContentServerHandlers: Sendable {
 
     func getPosition(_ request: Request, _ context: BasicRequestContext) async throws -> Response {
         guard authorized(request) else { return empty(.unauthorized) }
-        guard let bookID = context.parameters.get("bookID") else { return empty(.badRequest) }
+        guard let uuid = context.parameters.get("bookID") else { return empty(.badRequest) }
+        let bookID = BookID(sourceID: sourceID, uuid: uuid)
         guard
             let position = await BookServiceActor.shared.fetchBookPosition(
-                bookId: bookID,
-                sourceID: sourceID,
+                bookID: bookID
             ),
             position.locator != nil
         else {
@@ -218,7 +220,8 @@ struct ContentServerHandlers: Sendable {
 
     func postPosition(_ request: Request, _ context: BasicRequestContext) async throws -> Response {
         guard authorized(request) else { return empty(.unauthorized) }
-        guard let bookID = context.parameters.get("bookID") else { return empty(.badRequest) }
+        guard let uuid = context.parameters.get("bookID") else { return empty(.badRequest) }
+        let bookID = BookID(sourceID: sourceID, uuid: uuid)
 
         let data = try await collectData(request)
         guard let update = try? bookDecoder().decode(PositionUpdate.self, from: data) else {
@@ -228,16 +231,14 @@ struct ContentServerHandlers: Sendable {
         // Reject stale writes so concurrent clients converge on the newest position. The client
         // re-fetches via GET when it sees a 409.
         let existing = await BookServiceActor.shared.fetchBookPosition(
-            bookId: bookID,
-            sourceID: sourceID,
+            bookID: bookID
         )
         if let existingTimestamp = existing?.timestamp, existingTimestamp > update.timestamp {
             return jsonMessage("Position already exists with a later timestamp", status: .conflict)
         }
 
         let result = await BookServiceActor.shared.sendProgressToServer(
-            bookId: bookID,
-            sourceID: sourceID,
+            bookID: bookID,
             locator: update.locator,
             timestamp: update.timestamp,
         )

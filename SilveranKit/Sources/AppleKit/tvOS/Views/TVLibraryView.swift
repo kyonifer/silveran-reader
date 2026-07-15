@@ -59,7 +59,7 @@ struct TVLibraryView: View {
                 ],
                 spacing: 35,
             ) {
-                ForEach(books, id: \.uuid) { book in
+                ForEach(books, id: \.id) { book in
                     NavigationLink(value: book) {
                         TVBookCardView(
                             book: book,

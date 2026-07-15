@@ -112,7 +112,7 @@ public struct FolderSourceMedia: Codable, Sendable, Hashable, Identifiable {
     public var role: FolderSourceMediaRole
     public var relativePaths: [String]
     public var signature: FolderSourceMediaSignature
-    public var extractedMetadata: BookMetadata?
+    public var extractedMetadata: FolderSourceExtractedMetadata?
     public var missing: Bool
     public var firstSeenAt: String?
     public var lastSeenAt: String?
@@ -125,7 +125,7 @@ public struct FolderSourceMedia: Codable, Sendable, Hashable, Identifiable {
         role: FolderSourceMediaRole,
         relativePaths: [String],
         signature: FolderSourceMediaSignature,
-        extractedMetadata: BookMetadata? = nil,
+        extractedMetadata: FolderSourceExtractedMetadata? = nil,
         missing: Bool = false,
         firstSeenAt: String? = nil,
         lastSeenAt: String? = nil,
@@ -140,6 +140,62 @@ public struct FolderSourceMedia: Codable, Sendable, Hashable, Identifiable {
         self.firstSeenAt = firstSeenAt
         self.lastSeenAt = lastSeenAt
         self.previousRelativePaths = previousRelativePaths
+    }
+}
+
+/// Descriptive metadata read from a media file before that file is assigned to a
+/// folder-source work. The enclosing `FolderSourceLibraryState` owns source identity.
+public struct FolderSourceExtractedMetadata: Codable, Sendable, Hashable {
+    public let title: String
+    public let subtitle: String?
+    public let description: String?
+    public let language: String?
+    public let createdAt: String?
+    public let updatedAt: String?
+    public let publicationDate: String?
+    public let authors: [BookCreator]?
+    public let narrators: [BookCreator]?
+    public let creators: [BookCreator]?
+    public let series: [BookSeries]?
+    public let tags: [BookTag]?
+    public let collections: [BookCollectionSummary]?
+    public let ebook: BookAsset?
+    public let audiobook: BookAsset?
+    public let readaloud: BookReadaloud?
+    public let status: BookStatus?
+    public let position: BookReadingPosition?
+    public let rating: Double?
+    public let pageCount: Int?
+    public let duration: Double?
+    public let alignedAt: String?
+    public let alignedByStorytellerVersion: String?
+    public let alignedWith: String?
+
+    public init(_ metadata: BookMetadata) {
+        title = metadata.title
+        subtitle = metadata.subtitle
+        description = metadata.description
+        language = metadata.language
+        createdAt = metadata.createdAt
+        updatedAt = metadata.updatedAt
+        publicationDate = metadata.publicationDate
+        authors = metadata.authors
+        narrators = metadata.narrators
+        creators = metadata.creators
+        series = metadata.series
+        tags = metadata.tags
+        collections = metadata.collections
+        ebook = metadata.ebook
+        audiobook = metadata.audiobook
+        readaloud = metadata.readaloud
+        status = metadata.status
+        position = metadata.position
+        rating = metadata.rating
+        pageCount = metadata.pageCount
+        duration = metadata.duration
+        alignedAt = metadata.alignedAt
+        alignedByStorytellerVersion = metadata.alignedByStorytellerVersion
+        alignedWith = metadata.alignedWith
     }
 }
 

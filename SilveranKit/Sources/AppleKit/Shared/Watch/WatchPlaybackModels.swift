@@ -1,8 +1,9 @@
 import Foundation
+import SilveranKit
 
-public struct RemotePlaybackState: Codable, Sendable {
+public struct RemotePlaybackState: Codable, Hashable, Sendable {
     public let bookTitle: String
-    public let bookId: String
+    public let bookID: BookID
     public let chapterTitle: String
     public let currentChapterIndex: Int
     public let chapters: [RemoteChapter]
@@ -16,7 +17,7 @@ public struct RemotePlaybackState: Codable, Sendable {
 
     public init(
         bookTitle: String,
-        bookId: String,
+        bookID: BookID,
         chapterTitle: String,
         currentChapterIndex: Int,
         chapters: [RemoteChapter],
@@ -29,7 +30,7 @@ public struct RemotePlaybackState: Codable, Sendable {
         volume: Double,
     ) {
         self.bookTitle = bookTitle
-        self.bookId = bookId
+        self.bookID = bookID
         self.chapterTitle = chapterTitle
         self.currentChapterIndex = currentChapterIndex
         self.chapters = chapters
@@ -43,7 +44,7 @@ public struct RemotePlaybackState: Codable, Sendable {
     }
 }
 
-public struct RemoteChapter: Codable, Sendable {
+public struct RemoteChapter: Codable, Hashable, Sendable {
     public let index: Int
     public let title: String
     public let sectionIndex: Int
@@ -55,7 +56,7 @@ public struct RemoteChapter: Codable, Sendable {
     }
 }
 
-public enum RemotePlaybackCommand: Sendable {
+public enum RemotePlaybackCommand: Codable, Hashable, Sendable {
     case togglePlayPause
     case skipForward
     case skipBackward

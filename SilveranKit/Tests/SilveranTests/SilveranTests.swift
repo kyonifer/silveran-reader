@@ -5,7 +5,7 @@ import Testing
 @testable import SilveranKit
 
 @Test func playerBookDataIdentityIgnoresMutableMetadata() async throws {
-    var originalMetadata = makeBook(publicationDate: nil)
+    var originalMetadata = makeBook(publicationDate: nil, sourceID: "source-a")
     var refreshedMetadata = originalMetadata
     originalMetadata.pageCount = 100
     refreshedMetadata.pageCount = 101
@@ -36,7 +36,7 @@ import Testing
 
 @Test func publicationYearSmartShelfNormalizesLegacyTimestampValues() async throws {
     let book = BookMetadata(
-        uuid: "book-id",
+        bookID: BookID(sourceID: "test-source", uuid: "book-id"),
         title: "Book",
         subtitle: nil,
         description: nil,
@@ -141,7 +141,10 @@ import Testing
     let data = """
         [
           {
-            "uuid": "book-1",
+            "id": {
+              "sourceID": "test-source",
+              "uuid": "book-1"
+            },
             "title": "Still Visible",
             "position": {
               "uuid": "position-1",
@@ -256,6 +259,20 @@ import Testing
     let merged = LegacyLocalProgressMerge.merge(into: scanned, legacy: [legacy])
     #expect(merged.works.first?.position == nil)
     #expect(merged.works.first?.uuid == "work-id")
+}
+
+@Test func legacyLocalProgressAcceptsDuplicateMediaIDs() {
+    var scanned = makeScannedState(title: "Legacy Book", ebookPath: "Legacy Book.epub")
+    scanned.media.append(scanned.media[0])
+    let legacy = makeLegacyLocalBook(
+        title: "Legacy Book",
+        ebookFilename: "Legacy Book.epub",
+        timestamp: 4242,
+    )
+
+    let merged = LegacyLocalProgressMerge.merge(into: scanned, legacy: [legacy])
+    #expect(merged.works.first?.position?.timestamp == 4242)
+    #expect(merged.works.first?.uuid == legacy.uuid)
 }
 
 @Test func audiobookActorLoadsManifestWithAbsoluteFileHrefs() async throws {
@@ -741,9 +758,12 @@ import Testing
     )
 }
 
-private func makeBook(publicationDate: String?) -> BookMetadata {
+private func makeBook(
+    publicationDate: String?,
+    sourceID: BookSourceID = "test-source",
+) -> BookMetadata {
     BookMetadata(
-        uuid: UUID().uuidString,
+        bookID: BookID(sourceID: sourceID, uuid: UUID().uuidString),
         title: "Book",
         subtitle: nil,
         description: nil,
@@ -772,7 +792,7 @@ private func makeLegacyLocalBook(
     timestamp: Double,
 ) -> BookMetadata {
     BookMetadata(
-        uuid: "old-\(UUID().uuidString)",
+        bookID: BookID(sourceID: "test-source", uuid: "old-\(UUID().uuidString)"),
         title: title,
         subtitle: nil,
         description: nil,
@@ -887,8 +907,8 @@ private func makeCopyTestBook(
     hasReadaloud: Bool = false,
 ) -> BookMetadata {
     let uuid = UUID().uuidString
-    var book = BookMetadata(
-        uuid: uuid,
+    return BookMetadata(
+        bookID: BookID(sourceID: sourceID, uuid: uuid),
         title: "Book",
         subtitle: nil,
         description: nil,
@@ -932,8 +952,6 @@ private func makeCopyTestBook(
         position: nil,
         rating: nil,
     )
-    book.sourceID = sourceID
-    return book
 }
 
 @Test func pollingFolderWatcherFiresOnFileChanges() async throws {

@@ -242,30 +242,7 @@ public actor CustomFontsActor {
     }
 
     private static func defaultFontsDirectory(fileManager: FileManager) -> URL {
-        let appSupport: URL
-        if let resolved = try? fileManager.url(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: true,
-        ) {
-            appSupport = resolved
-        } else {
-            let fallback =
-                fileManager.urls(for: .documentDirectory, in: .userDomainMask).first
-                ?? fileManager.temporaryDirectory
-            appSupport = fallback
-        }
-
-        let bundleID = Bundle.main.bundleIdentifier ?? "SilveranReader"
-        let base: URL =
-            if appSupport.path.contains("/Containers/") {
-                appSupport
-            } else {
-                appSupport.appendingPathComponent(bundleID, isDirectory: true)
-            }
-
-        return base.appendingPathComponent("CustomFonts", isDirectory: true)
+        SilveranPlatform.customFontsDirectory(fileManager: fileManager)
     }
 
     private static func ensureFontsDirectory(_ directory: URL, using fileManager: FileManager)

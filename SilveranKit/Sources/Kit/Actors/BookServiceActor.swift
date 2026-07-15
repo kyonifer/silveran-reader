@@ -15,16 +15,17 @@ public actor BookServiceActor {
     private var sourcesByID: [BookSourceID: any BookSourceActor]
     private var sourceRegistryLoaded = false
     private var lastUpdateErrorsBySourceID: [BookSourceID: String] = [:]
-    private var libraryObservers: [UUID: @Sendable @MainActor () -> Void] = [:]
+    private var libraryObservers: [UUID: @Sendable () -> Void] = [:]
     private var localMediaObserverID: UUID?
-    private var startupRefreshStarted = false
 
     public init() {
         self.sourceRecords = []
         self.sourcesByID = [:]
-        Task {
-            await self.refreshLibraryAfterStartup()
-        }
+    }
+
+    func start() async {
+        await ensureSourceRegistryLoaded()
+        await ensureLocalMediaObserver()
     }
 
     private func ensureLocalMediaObserver() async {
@@ -38,23 +39,12 @@ public actor BookServiceActor {
 
     private func notifyLibraryObservers() async {
         for (_, callback) in libraryObservers {
-            await callback()
+            callback()
         }
     }
 
-    private func refreshLibraryAfterStartup() async {
-        guard !startupRefreshStarted else { return }
-        startupRefreshStarted = true
-        _ = await fetchLibraryInformation()
-        await notifyLibraryObservers()
-    }
-
-    private func sourceActor(for sourceID: BookSourceID?) -> (any BookSourceActor)? {
-        guard let requestedID = sourceID else { return nil }
-        if let source = sourcesByID[requestedID] {
-            return source
-        }
-        return nil
+    private func sourceActor(for sourceID: BookSourceID) -> (any BookSourceActor)? {
+        sourcesByID[sourceID]
     }
 
     private func closeFolderAccessIfNeeded(sourceID: BookSourceID) async {
@@ -69,36 +59,14 @@ public actor BookServiceActor {
         }
     }
 
-    private func storytellerActor(for sourceID: BookSourceID?) async -> StorytellerActor? {
+    private func storytellerActor(for sourceID: BookSourceID) async -> StorytellerActor? {
         await ensureSourceRegistryLoaded()
         return sourceActor(for: sourceID) as? StorytellerActor
     }
 
-    private func folderSourceActor(for sourceID: BookSourceID?) async -> FolderSourceActor? {
+    private func folderSourceActor(for sourceID: BookSourceID) async -> FolderSourceActor? {
         await ensureSourceRegistryLoaded()
-        guard let resolvedSourceID = resolveFolderSourceID(sourceID) else { return nil }
-        return sourceActor(for: resolvedSourceID) as? FolderSourceActor
-    }
-
-    private func resolveFolderSourceID(_ sourceID: BookSourceID?) -> BookSourceID? {
-        if let sourceID,
-            sourceRecords.contains(where: { $0.id == sourceID && $0.kind == .localFolder })
-        {
-            return sourceID
-        }
-        if sourceID != nil {
-            return nil
-        }
-        return sourceRecords.first(where: { $0.kind == .localFolder })?.id
-    }
-
-    private func resolveExplicitSourceID(_ sourceID: BookSourceID?) -> BookSourceID? {
-        guard let sourceID else { return nil }
-
-        if sourcesByID[sourceID] != nil {
-            return sourceID
-        }
-        return sourceID
+        return sourceActor(for: sourceID) as? FolderSourceActor
     }
 
     public var bookSources: [BookSourceRecord] {
@@ -108,15 +76,12 @@ public actor BookServiceActor {
         }
     }
 
-    public func lastUpdateBookError(sourceID: BookSourceID?) async -> String? {
+    public func lastUpdateBookError(sourceID: BookSourceID) async -> String? {
         await ensureSourceRegistryLoaded()
-        guard let resolvedSourceID = resolveExplicitSourceID(sourceID) else {
-            return "Book metadata is missing source ID."
-        }
-        if let actorError = await storytellerActor(for: resolvedSourceID)?.lastUpdateBookError {
+        if let actorError = await storytellerActor(for: sourceID)?.lastUpdateBookError {
             return actorError
         }
-        return lastUpdateErrorsBySourceID[resolvedSourceID]
+        return lastUpdateErrorsBySourceID[sourceID]
     }
 
     public var connectionStatus: ConnectionStatus {
@@ -143,7 +108,7 @@ public actor BookServiceActor {
         }
     }
 
-    public func connectionStatus(sourceID: BookSourceID?) async -> ConnectionStatus {
+    public func connectionStatus(sourceID: BookSourceID) async -> ConnectionStatus {
         await ensureSourceRegistryLoaded()
         guard let source = sourceActor(for: sourceID) else { return .disconnected }
         return await source.connectionStatus
@@ -210,7 +175,7 @@ public actor BookServiceActor {
         }
     }
 
-    public func request_notify(callback: @Sendable @MainActor @escaping () -> Void) async {
+    public func request_notify(callback: @escaping @Sendable () -> Void) async {
         await ensureSourceRegistryLoaded()
         for actor in storytellerActors() {
             await actor.request_notify(callback: callback)
@@ -238,15 +203,23 @@ public actor BookServiceActor {
         -> BookSourceRecord?
     {
         await ensureSourceRegistryLoaded()
-
-        let now = SilveranDate.isoTimestamp(from: Date())
         let sourceID = await sourceIDForNewSource(
             kind: configuration.kind,
             configuredPath: configuration.storagePath,
         )
-        if sourceRecords.contains(where: { $0.id == sourceID }) {
+        return await createBookSource(id: sourceID, configuration: configuration)
+    }
+
+    public func createBookSource(
+        id sourceID: BookSourceID,
+        configuration: BookSourceConfiguration,
+    ) async -> BookSourceRecord? {
+        await ensureSourceRegistryLoaded()
+
+        if sourceID.isEmpty || sourceRecords.contains(where: { $0.id == sourceID }) {
             return nil
         }
+        let now = SilveranDate.isoTimestamp(from: Date())
         let storageURL = await storageURLForNewSource(
             kind: configuration.kind,
             sourceID: sourceID,
@@ -474,7 +447,7 @@ public actor BookServiceActor {
     }
 
     public func checkBookUpdatePermission(
-        sourceID: BookSourceID? = nil
+        sourceID: BookSourceID
     ) async -> StorytellerActor.PermissionCheckResult {
         guard let storyteller = await storytellerActor(for: sourceID) else {
             return .error("Not connected to server")
@@ -483,7 +456,6 @@ public actor BookServiceActor {
     }
 
     public func reloadSourceRegistry() async {
-        await SilveranMigrations.ensureMigrationsRan()
         await closeAllFolderAccess()
         sourcesByID.removeAll()
         sourceRegistryLoaded = false
@@ -528,16 +500,15 @@ public actor BookServiceActor {
                 continue
             }
 
-            let stamped = sourceMetadata.map { book in
-                var stamped = book
-                stamped.sourceID = stamped.sourceID ?? record.id
-                stamped.source = stamped.source ?? record.name
-                return stamped
+            let named = sourceMetadata.map { book in
+                var named = book
+                named.source = named.source ?? record.name
+                return named
             }
-            metadata.append(contentsOf: stamped)
+            metadata.append(contentsOf: named)
             if record.kind == .storyteller {
                 try? await LocalMediaActor.shared.updateSourceCacheMetadata(
-                    stamped,
+                    named,
                     replacingSourceID: record.id,
                 )
             }
@@ -558,44 +529,40 @@ public actor BookServiceActor {
         guard let source = sourceActor(for: sourceID) else { return nil }
         guard let metadata = await source.fetchLibraryInformation() else { return nil }
         let sourceRecord = sourceRecords.first(where: { $0.id == sourceID })
-        let stamped = metadata.map { book in
-            var stamped = book
-            stamped.sourceID = stamped.sourceID ?? sourceID
-            stamped.source = stamped.source ?? sourceRecord?.name
-            return stamped
+        let named = metadata.map { book in
+            var named = book
+            named.source = named.source ?? sourceRecord?.name
+            return named
         }
         if sourceRecord?.kind == .storyteller {
             try? await LocalMediaActor.shared.updateSourceCacheMetadata(
-                stamped,
+                named,
                 replacingSourceID: sourceID,
             )
         }
-        return stamped
+        return named
     }
 
     public func refreshBookFromSource(
-        bookID: String,
-        sourceID: BookSourceID?,
+        bookID: BookID,
         policy: BookRefreshPolicy = .refresh,
     ) async -> BookRefreshResult {
         await ensureSourceRegistryLoaded()
         debugLog(
-            "[MetadataCoverRefresh] BSA refreshBookFromSource start bookID=\(bookID) sourceID=\(sourceID ?? "nil") policy=\(policy)"
+            "[MetadataCoverRefresh] BSA refreshBookFromSource start bookID=\(bookID) policy=\(policy)"
         )
-        guard let resolvedSourceID = resolveExplicitSourceID(sourceID),
-            let source = sourceActor(for: resolvedSourceID)
-        else {
+        guard let source = sourceActor(for: bookID.sourceID) else {
             debugLog(
-                "[MetadataCoverRefresh] BSA refreshBookFromSource missing source bookID=\(bookID) sourceID=\(sourceID ?? "nil")"
+                "[MetadataCoverRefresh] BSA refreshBookFromSource missing source bookID=\(bookID)"
             )
             return BookRefreshResult(
                 book: nil,
                 source: .cache,
-                error: "Book metadata is missing source ID.",
+                error: "Book source is unavailable.",
             )
         }
 
-        let cachedBook = await cachedBookMetadata(bookID: bookID, sourceID: resolvedSourceID)
+        let cachedBook = await cachedBookMetadata(bookID: bookID)
         debugLog(
             "[MetadataCoverRefresh] BSA cached book bookID=\(bookID) found=\(cachedBook != nil) cachedUpdatedAt=\(cachedBook?.updatedAt ?? "nil")"
         )
@@ -603,12 +570,11 @@ public actor BookServiceActor {
             return BookRefreshResult(book: cachedBook, source: .cache)
         }
 
-        let sourceRecord = sourceRecords.first { $0.id == resolvedSourceID }
         if policy == .forceRefresh, let storyteller = source as? StorytellerActor {
             debugLog(
-                "[MetadataCoverRefresh] BSA fetching Storyteller book details bookID=\(bookID) sourceID=\(resolvedSourceID)"
+                "[MetadataCoverRefresh] BSA fetching Storyteller book details bookID=\(bookID)"
             )
-            guard var refreshed = await storyteller.fetchBookDetails(for: bookID) else {
+            guard let refreshed = await storyteller.fetchBookDetails(for: bookID.uuid) else {
                 debugLog(
                     "[MetadataCoverRefresh] BSA Storyteller book details failed bookID=\(bookID) returningCache=\(cachedBook != nil)"
                 )
@@ -618,9 +584,6 @@ public actor BookServiceActor {
                     error: "Could not refresh book from Storyteller.",
                 )
             }
-            refreshed.sourceID = refreshed.sourceID ?? resolvedSourceID
-            refreshed.source = refreshed.source ?? sourceRecord?.name
-
             debugLog(
                 "[MetadataCoverRefresh] BSA replacing cached book metadata bookID=\(bookID) refreshedUpdatedAt=\(refreshed.updatedAt ?? "nil")"
             )
@@ -628,8 +591,7 @@ public actor BookServiceActor {
             // first would delete its downloaded media and strand cover states held by
             // views, and the intermediate notify defeats updatedAt change detection.
             try? await LocalMediaActor.shared.updateSourceCacheBookMetadata(
-                refreshed,
-                sourceID: resolvedSourceID,
+                refreshed
             )
             debugLog(
                 "[MetadataCoverRefresh] BSA force refresh complete bookID=\(bookID) refreshedUpdatedAt=\(refreshed.updatedAt ?? "nil")"
@@ -638,10 +600,10 @@ public actor BookServiceActor {
         }
 
         debugLog(
-            "[MetadataCoverRefresh] BSA fetching full source library bookID=\(bookID) sourceID=\(resolvedSourceID)"
+            "[MetadataCoverRefresh] BSA fetching full source library bookID=\(bookID)"
         )
-        guard let sourceMetadata = await fetchLibraryInformation(sourceID: resolvedSourceID),
-            let refreshed = sourceMetadata.first(where: { $0.uuid == bookID })
+        guard let sourceMetadata = await fetchLibraryInformation(sourceID: bookID.sourceID),
+            let refreshed = sourceMetadata.first(where: { $0.id == bookID })
         else {
             debugLog(
                 "[MetadataCoverRefresh] BSA full source refresh failed bookID=\(bookID) returningCache=\(cachedBook != nil)"
@@ -683,10 +645,7 @@ public actor BookServiceActor {
     private func cachedLibrarySnapshot() async -> BookServiceLibrarySnapshot {
         let folderSourceIDs = Set(sourceRecords.filter { $0.kind == .localFolder }.map(\.id))
         let cachedMetadata = await LocalMediaActor.shared.libraryMetadata()
-            .filter { book in
-                guard let sourceID = book.sourceID else { return true }
-                return !folderSourceIDs.contains(sourceID)
-            }
+            .filter { !folderSourceIDs.contains($0.sourceID) }
         let metadata = cachedMetadata + (await cachedLocalFolderBooks())
         return BookServiceLibrarySnapshot(
             books: metadata,
@@ -696,21 +655,16 @@ public actor BookServiceActor {
         )
     }
 
-    private func cachedBookMetadata(
-        bookID: String,
-        sourceID: BookSourceID,
-    ) async -> BookMetadata? {
+    private func cachedBookMetadata(bookID: BookID) async -> BookMetadata? {
         let folderSourceIDs = Set(sourceRecords.filter { $0.kind == .localFolder }.map(\.id))
-        if folderSourceIDs.contains(sourceID) {
-            return await localFolderBooks(sourceID: sourceID).first { $0.uuid == bookID }
+        if folderSourceIDs.contains(bookID.sourceID) {
+            return await localFolderBooks(sourceID: bookID.sourceID).first { $0.id == bookID }
         }
-        return await LocalMediaActor.shared.libraryMetadata().first {
-            $0.uuid == bookID && $0.sourceID == sourceID
-        }
+        return await LocalMediaActor.shared.libraryMetadata().first { $0.id == bookID }
     }
 
     public func addLibraryCacheObserver(
-        _ callback: @escaping @Sendable @MainActor () -> Void
+        _ callback: @escaping @Sendable () -> Void
     ) async -> UUID {
         let id = UUID()
         libraryObservers[id] = callback
@@ -724,18 +678,15 @@ public actor BookServiceActor {
 
     public func updateLibraryCacheMetadata(
         _ metadata: [BookMetadata],
-        replacingSourceID sourceID: BookSourceID? = nil,
+        replacingSourceID sourceID: BookSourceID,
     ) async throws {
         await ensureSourceRegistryLoaded()
         let folderSourceIDs = Set(sourceRecords.filter { $0.kind == .localFolder }.map(\.id))
-        if let sourceID, folderSourceIDs.contains(sourceID) {
+        if folderSourceIDs.contains(sourceID) {
             await notifyLibraryObservers()
             return
         }
-        let cacheableMetadata = metadata.filter { book in
-            guard let sourceID = book.sourceID else { return true }
-            return !folderSourceIDs.contains(sourceID)
-        }
+        let cacheableMetadata = metadata.filter { !folderSourceIDs.contains($0.sourceID) }
         try await LocalMediaActor.shared.updateSourceCacheMetadata(
             cacheableMetadata,
             replacingSourceID: sourceID,
@@ -758,63 +709,73 @@ public actor BookServiceActor {
         )
     }
 
-    public func localFolderBooks(sourceID: BookSourceID? = nil) async -> [BookMetadata] {
+    public func localFolderBooks() async -> [BookMetadata] {
         await ensureSourceRegistryLoaded()
-        let folderRecords =
-            if let sourceID {
-                sourceRecords.filter { $0.id == sourceID && $0.kind == .localFolder }
-            } else {
-                sourceRecords.filter { $0.kind == .localFolder }
-            }
+        return await localFolderBooks(
+            in: sourceRecords.filter { $0.kind == .localFolder }
+        )
+    }
 
+    public func localFolderBooks(sourceID: BookSourceID) async -> [BookMetadata] {
+        await ensureSourceRegistryLoaded()
+        return await localFolderBooks(
+            in: sourceRecords.filter { $0.id == sourceID && $0.kind == .localFolder }
+        )
+    }
+
+    private func localFolderBooks(in folderRecords: [BookSourceRecord]) async -> [BookMetadata] {
         var metadata: [BookMetadata] = []
         for record in folderRecords {
             guard let folder = sourceActor(for: record.id) as? FolderSourceActor else { continue }
             guard let sourceMetadata = await folder.fetchLibraryInformation() else { continue }
-            let stamped = sourceMetadata.map { book in
-                var stamped = book
-                stamped.sourceID = stamped.sourceID ?? record.id
-                stamped.source = stamped.source ?? record.name
-                return stamped
+            let named = sourceMetadata.map { book in
+                var named = book
+                named.source = named.source ?? record.name
+                return named
             }
-            metadata.append(contentsOf: stamped)
+            metadata.append(contentsOf: named)
         }
         return metadata
     }
 
-    public func cachedLocalFolderBooks(sourceID: BookSourceID? = nil) async -> [BookMetadata] {
+    public func cachedLocalFolderBooks() async -> [BookMetadata] {
         await ensureSourceRegistryLoaded()
-        let folderRecords =
-            if let sourceID {
-                sourceRecords.filter { $0.id == sourceID && $0.kind == .localFolder }
-            } else {
-                sourceRecords.filter { $0.kind == .localFolder }
-            }
+        return await cachedLocalFolderBooks(
+            in: sourceRecords.filter { $0.kind == .localFolder }
+        )
+    }
 
+    public func cachedLocalFolderBooks(sourceID: BookSourceID) async -> [BookMetadata] {
+        await ensureSourceRegistryLoaded()
+        return await cachedLocalFolderBooks(
+            in: sourceRecords.filter { $0.id == sourceID && $0.kind == .localFolder }
+        )
+    }
+
+    private func cachedLocalFolderBooks(in folderRecords: [BookSourceRecord]) async
+        -> [BookMetadata]
+    {
         var metadata: [BookMetadata] = []
         for record in folderRecords {
             guard let folder = sourceActor(for: record.id) as? FolderSourceActor else { continue }
             let sourceMetadata = await folder.cachedLibraryInformation()
-            let stamped = sourceMetadata.map { book in
-                var stamped = book
-                stamped.sourceID = stamped.sourceID ?? record.id
-                stamped.source = stamped.source ?? record.name
-                return stamped
+            let named = sourceMetadata.map { book in
+                var named = book
+                named.source = named.source ?? record.name
+                return named
             }
-            metadata.append(contentsOf: stamped)
+            metadata.append(contentsOf: named)
         }
         return metadata
     }
 
     public func localMediaDirectory(
-        for bookID: String,
-        sourceID: BookSourceID?,
+        for bookID: BookID,
         category: LocalMediaCategory,
     ) async -> URL? {
         guard
             let media = await resolveLocalMedia(
                 for: bookID,
-                sourceID: sourceID,
                 category: category,
             )
         else {
@@ -824,33 +785,18 @@ public actor BookServiceActor {
     }
 
     public func deleteCachedMedia(
-        for bookID: String,
-        sourceID: BookSourceID?,
+        for bookID: BookID,
         category: LocalMediaCategory,
     ) async throws {
         await ensureSourceRegistryLoaded()
-        let resolvedSourceID = resolveExplicitSourceID(sourceID)
-        if let resolvedSourceID,
-            sourceRecords.first(where: { $0.id == resolvedSourceID })?.kind == .localFolder
-        {
-            try await LocalMediaActor.shared.deleteMedia(
-                for: bookID,
-                category: category,
-                sourceID: resolvedSourceID,
-            )
-            return
-        }
-
         try await LocalMediaActor.shared.deleteMedia(
             for: bookID,
             category: category,
-            sourceID: resolvedSourceID,
         )
     }
 
     public func fetchCoverImage(
-        for bookId: String,
-        sourceID: BookSourceID,
+        for bookID: BookID,
         audio: Bool = false,
         width: Int? = 209,
         height: Int? = 320,
@@ -859,9 +805,9 @@ public actor BookServiceActor {
         ifModifiedSince: String? = nil,
     ) async -> BookCover? {
         await ensureSourceRegistryLoaded()
-        guard let source = sourceActor(for: sourceID) else { return nil }
+        guard let source = sourceActor(for: bookID.sourceID) else { return nil }
         return await source.fetchCoverImage(
-            for: bookId,
+            for: bookID.uuid,
             audio: audio,
             width: width,
             height: height,
@@ -875,9 +821,9 @@ public actor BookServiceActor {
         audio ? "audioSquare" : "standard"
     }
 
-    public func cachedCoverData(for bookID: String, audio: Bool) async -> Data? {
+    public func cachedCoverData(for bookID: BookID, audio: Bool) async -> Data? {
         await FilesystemActor.shared.loadCoverImage(
-            uuid: bookID,
+            bookID: bookID,
             variant: Self.coverCacheVariant(audio: audio),
         )
     }
@@ -888,8 +834,7 @@ public actor BookServiceActor {
     // fetched bytes is left to persistCachedCover so callers only cache
     // payloads that proved decodable.
     public func loadCover(
-        for bookID: String,
-        sourceID: BookSourceID?,
+        for bookID: BookID,
         audio: Bool,
         width: Int?,
         height: Int?,
@@ -903,13 +848,10 @@ public actor BookServiceActor {
             return .cached(data)
         }
 
-        guard let sourceID else { return .missing }
-
-        if policy == .cachedThenFetch, await sourceKind(for: sourceID) == .localFolder {
+        if policy == .cachedThenFetch, await sourceKind(for: bookID.sourceID) == .localFolder {
             guard
                 let cover = await fetchCoverImage(
                     for: bookID,
-                    sourceID: sourceID,
                     audio: false,
                     width: nil,
                     height: nil,
@@ -924,11 +866,10 @@ public actor BookServiceActor {
         guard allowNetwork else { return .skippedOffline }
 
         debugLog(
-            "[MetadataCoverRefresh] BSA loadCover sized fetch bookID=\(bookID) sourceID=\(sourceID) audio=\(audio) size=\(width.map(String.init) ?? "nil")x\(height.map(String.init) ?? "nil") version=\(version ?? "nil") policy=\(policy)"
+            "[MetadataCoverRefresh] BSA loadCover sized fetch bookID=\(bookID) audio=\(audio) size=\(width.map(String.init) ?? "nil")x\(height.map(String.init) ?? "nil") version=\(version ?? "nil") policy=\(policy)"
         )
         if let cover = await fetchCoverImage(
             for: bookID,
-            sourceID: sourceID,
             audio: audio,
             width: width,
             height: height,
@@ -945,7 +886,6 @@ public actor BookServiceActor {
         )
         if let cover = await fetchCoverImage(
             for: bookID,
-            sourceID: sourceID,
             audio: audio,
             width: nil,
             height: nil,
@@ -962,57 +902,45 @@ public actor BookServiceActor {
         return .missing
     }
 
-    public func persistCachedCover(bookID: String, audio: Bool, data: Data) async {
+    public func persistCachedCover(bookID: BookID, audio: Bool, data: Data) async {
         try? await FilesystemActor.shared.saveCoverImage(
-            uuid: bookID,
+            bookID: bookID,
             data: data,
             variant: Self.coverCacheVariant(audio: audio),
         )
     }
 
-    public func invalidateCachedCovers(for bookID: String) async throws {
-        try await FilesystemActor.shared.removeCoverImages(uuid: bookID)
+    public func invalidateCachedCovers(for bookID: BookID) async throws {
+        try await FilesystemActor.shared.removeCoverImages(bookID: bookID)
     }
 
     public func removeAllCachedCovers() async throws {
         try await FilesystemActor.shared.removeAllCoverImages()
     }
 
-    func fetchBookDetails(for bookId: String, sourceID: BookSourceID?) async -> BookMetadata? {
-        guard let storyteller = await storytellerActor(for: sourceID) else { return nil }
-        guard var book = await storyteller.fetchBookDetails(for: bookId) else { return nil }
-        book.sourceID = book.sourceID ?? sourceID
-        book.source = book.source ?? sourceRecords.first(where: { $0.id == sourceID })?.name
-        return book
+    func fetchBookDetails(for bookID: BookID) async -> BookMetadata? {
+        guard let storyteller = await storytellerActor(for: bookID.sourceID) else { return nil }
+        return await storyteller.fetchBookDetails(for: bookID.uuid)
     }
 
     public func resolveLocalMedia(
-        for bookID: String,
-        sourceID: BookSourceID?,
+        for bookID: BookID,
         category: LocalMediaCategory,
     ) async -> ResolvedLocalMedia? {
         await ensureSourceRegistryLoaded()
-        guard let resolvedSourceID = resolveExplicitSourceID(sourceID),
-            let source = sourceActor(for: resolvedSourceID)
-        else {
-            return nil
-        }
-        return await source.resolveLocalMedia(for: bookID, category: category)
+        guard let source = sourceActor(for: bookID.sourceID) else { return nil }
+        return await source.resolveLocalMedia(for: bookID.uuid, category: category)
     }
 
     /// Packages a book's local audiobook into a Readium `.audiobook` zip for the content server's
     /// download. Returns a temp file URL the caller is responsible for deleting after sending it.
-    public func packageAudiobook(for bookID: String, sourceID: BookSourceID?) async -> URL? {
+    public func packageAudiobook(for bookID: BookID) async -> URL? {
         await ensureSourceRegistryLoaded()
-        guard let resolvedSourceID = resolveExplicitSourceID(sourceID),
-            let source = sourceActor(for: resolvedSourceID)
-        else {
-            return nil
-        }
-        return await source.packageAudiobook(for: bookID)
+        guard let source = sourceActor(for: bookID.sourceID) else { return nil }
+        return await source.packageAudiobook(for: bookID.uuid)
     }
 
-    public func resolvedLocalMediaPaths(for metadata: [BookMetadata]) async -> [String: MediaPaths]
+    public func resolvedLocalMediaPaths(for metadata: [BookMetadata]) async -> [BookID: MediaPaths]
     {
         await ensureSourceRegistryLoaded()
         let folderSourceIDs = Set(sourceRecords.filter { $0.kind == .localFolder }.map(\.id))
@@ -1020,12 +948,11 @@ public actor BookServiceActor {
         var pathsByBookID = await LocalMediaActor.shared.cachedMediaPaths(for: metadata)
 
         for book in metadata {
-            guard let sourceID = book.sourceID, folderSourceIDs.contains(sourceID) else { continue }
-            var paths = pathsByBookID[book.uuid] ?? MediaPaths()
+            guard folderSourceIDs.contains(book.sourceID) else { continue }
+            var paths = pathsByBookID[book.id] ?? MediaPaths()
             if paths.ebookPath == nil,
                 let ebook = await resolveLocalMedia(
-                    for: book.uuid,
-                    sourceID: sourceID,
+                    for: book.id,
                     category: .ebook,
                 )
             {
@@ -1033,8 +960,7 @@ public actor BookServiceActor {
             }
             if paths.audioPath == nil,
                 let audio = await resolveLocalMedia(
-                    for: book.uuid,
-                    sourceID: sourceID,
+                    for: book.id,
                     category: .audio,
                 )
             {
@@ -1042,29 +968,26 @@ public actor BookServiceActor {
             }
             if paths.syncedPath == nil,
                 let synced = await resolveLocalMedia(
-                    for: book.uuid,
-                    sourceID: sourceID,
+                    for: book.id,
                     category: .synced,
                 )
             {
                 paths.syncedPath = synced.url
             }
             if paths.ebookPath != nil || paths.audioPath != nil || paths.syncedPath != nil {
-                pathsByBookID[book.uuid] = paths
+                pathsByBookID[book.id] = paths
             }
         }
         return pathsByBookID
     }
 
     public func prepareEbookForReading(
-        bookID: String,
-        sourceID: BookSourceID?,
+        bookID: BookID,
         category: LocalMediaCategory,
     ) async throws -> PreparedEbookMedia {
         guard
             let resolved = await resolveLocalMedia(
                 for: bookID,
-                sourceID: sourceID,
                 category: category,
             )
         else {
@@ -1074,13 +997,12 @@ public actor BookServiceActor {
         let readerURL = try await FilesystemActor.shared.prepareEpubForReading(
             epubPath: resolved.url,
             sourceID: resolved.sourceID,
-            bookID: resolved.bookID,
+            bookID: resolved.bookID.uuid,
             category: resolved.category,
         )
 
         return PreparedEbookMedia(
             bookID: resolved.bookID,
-            sourceID: resolved.sourceID,
             category: resolved.category,
             originalURL: resolved.url,
             readerURL: readerURL,
@@ -1089,23 +1011,24 @@ public actor BookServiceActor {
     }
 
     public func createAuthenticatedDownloadRequest(
-        for bookId: String,
-        sourceID: BookSourceID?,
+        for bookID: BookID,
         format: StorytellerBookFormat,
     ) async -> URLRequest? {
-        guard let storyteller = await storytellerActor(for: sourceID) else { return nil }
-        return await storyteller.createAuthenticatedDownloadRequest(for: bookId, format: format)
+        guard let storyteller = await storytellerActor(for: bookID.sourceID) else { return nil }
+        return await storyteller.createAuthenticatedDownloadRequest(
+            for: bookID.uuid,
+            format: format,
+        )
     }
 
     public func createAuthenticatedPositionUploadRequest(
-        bookId: String,
-        sourceID: BookSourceID?,
+        bookID: BookID,
         locator: BookLocator,
         timestamp: Double,
     ) async -> ProgressUploadRequest? {
-        guard let storyteller = await storytellerActor(for: sourceID) else { return nil }
+        guard let storyteller = await storytellerActor(for: bookID.sourceID) else { return nil }
         return await storyteller.createAuthenticatedPositionUploadRequest(
-            bookId: bookId,
+            bookId: bookID.uuid,
             locator: locator,
             timestamp: timestamp,
         )
@@ -1113,58 +1036,52 @@ public actor BookServiceActor {
 
     public func updateBook(
         _ payload: StorytellerBookUpdatePayload,
-        sourceID: BookSourceID? = nil,
+        bookID: BookID,
         textCover: StorytellerCoverUpload? = nil,
         audioCover: StorytellerCoverUpload? = nil,
     ) async -> BookMetadata? {
         await ensureSourceRegistryLoaded()
-        guard let resolvedSourceID = resolveExplicitSourceID(sourceID) else {
-            return nil
-        }
-        guard let storyteller = sourceActor(for: resolvedSourceID) as? StorytellerActor else {
-            lastUpdateErrorsBySourceID[resolvedSourceID] =
+        guard let storyteller = sourceActor(for: bookID.sourceID) as? StorytellerActor else {
+            lastUpdateErrorsBySourceID[bookID.sourceID] =
                 "No Storyteller server is configured for this book."
             return nil
         }
 
         guard
-            var metadata = await storyteller.updateBook(
+            let metadata = await storyteller.updateBook(
                 payload,
                 textCover: textCover,
                 audioCover: audioCover,
             )
         else {
-            lastUpdateErrorsBySourceID[resolvedSourceID] =
+            lastUpdateErrorsBySourceID[bookID.sourceID] =
                 await storyteller.lastUpdateBookError ?? "Update failed"
             return nil
         }
 
-        metadata.sourceID = resolvedSourceID
-        lastUpdateErrorsBySourceID[resolvedSourceID] = nil
+        lastUpdateErrorsBySourceID[bookID.sourceID] = nil
 
         debugLog(
-            "[MetadataCoverRefresh] BSA updateBook success bookID=\(metadata.uuid) sourceID=\(resolvedSourceID) updatedAt=\(metadata.updatedAt ?? "nil")"
+            "[MetadataCoverRefresh] BSA updateBook success bookID=\(bookID) updatedAt=\(metadata.updatedAt ?? "nil")"
         )
 
         let refreshResult = await refreshBookFromSource(
-            bookID: metadata.uuid,
-            sourceID: resolvedSourceID,
+            bookID: bookID,
             policy: .forceRefresh,
         )
         if let refreshed = refreshResult.book, refreshResult.source == .source {
             debugLog(
-                "[MetadataCoverRefresh] BSA updateBook force refreshed bookID=\(refreshed.uuid) sourceID=\(resolvedSourceID) updatedAt=\(refreshed.updatedAt ?? "nil")"
+                "[MetadataCoverRefresh] BSA updateBook force refreshed bookID=\(bookID) updatedAt=\(refreshed.updatedAt ?? "nil")"
             )
             return refreshed
         }
 
         debugLog(
-            "[MetadataCoverRefresh] BSA updateBook force refresh failed; caching update response bookID=\(metadata.uuid) sourceID=\(resolvedSourceID) updatedAt=\(metadata.updatedAt ?? "nil") error=\(refreshResult.error ?? "nil")"
+            "[MetadataCoverRefresh] BSA updateBook force refresh failed; caching update response bookID=\(bookID) updatedAt=\(metadata.updatedAt ?? "nil") error=\(refreshResult.error ?? "nil")"
         )
         do {
             try await LocalMediaActor.shared.updateSourceCacheBookMetadata(
-                metadata,
-                sourceID: resolvedSourceID,
+                metadata
             )
         } catch {
             debugLog(
@@ -1174,18 +1091,11 @@ public actor BookServiceActor {
         return metadata
     }
 
-    public func deleteBook(
-        _ bookId: String,
-        sourceID: BookSourceID? = nil,
-    ) async -> Bool {
+    public func deleteBook(_ bookID: BookID) async -> Bool {
         await ensureSourceRegistryLoaded()
-        guard let resolvedSourceID = resolveExplicitSourceID(sourceID),
-            let source = sourceActor(for: resolvedSourceID)
-        else {
-            return false
-        }
+        guard let source = sourceActor(for: bookID.sourceID) else { return false }
 
-        let success = await source.deleteBook(bookId)
+        let success = await source.deleteBook(bookID.uuid)
         if success {
             await notifyLibraryObservers()
         }
@@ -1193,18 +1103,13 @@ public actor BookServiceActor {
     }
 
     public func deleteBookAsset(
-        _ bookId: String,
-        sourceID: BookSourceID? = nil,
+        _ bookID: BookID,
         type: StorytellerBookFormat,
     ) async -> DeleteAssetResult {
         await ensureSourceRegistryLoaded()
-        guard let resolvedSourceID = resolveExplicitSourceID(sourceID),
-            let source = sourceActor(for: resolvedSourceID)
-        else {
-            return .failed
-        }
+        guard let source = sourceActor(for: bookID.sourceID) else { return .failed }
 
-        let result = await source.deleteAsset(bookId, category: localMediaCategory(for: type))
+        let result = await source.deleteAsset(bookID.uuid, category: localMediaCategory(for: type))
         if case .success = result {
             await notifyLibraryObservers()
         }
@@ -1212,27 +1117,25 @@ public actor BookServiceActor {
     }
 
     public func startAlignment(
-        for bookId: String,
-        sourceID: BookSourceID? = nil,
+        for bookID: BookID,
         restart: AlignmentRestartMode = .none,
     ) async -> Bool {
-        guard let storyteller = await storytellerActor(for: sourceID) else { return false }
-        return await storyteller.startAlignment(for: bookId, restart: restart)
+        guard let storyteller = await storytellerActor(for: bookID.sourceID) else { return false }
+        return await storyteller.startAlignment(for: bookID.uuid, restart: restart)
     }
 
-    public func cancelAlignment(for bookId: String, sourceID: BookSourceID? = nil) async -> Bool {
-        guard let storyteller = await storytellerActor(for: sourceID) else { return false }
-        return await storyteller.cancelAlignment(for: bookId)
+    public func cancelAlignment(for bookID: BookID) async -> Bool {
+        guard let storyteller = await storytellerActor(for: bookID.sourceID) else { return false }
+        return await storyteller.cancelAlignment(for: bookID.uuid)
     }
 
-    public func upgradeEpub(for bookId: String, sourceID: BookSourceID? = nil) async -> Bool {
-        guard let storyteller = await storytellerActor(for: sourceID) else { return false }
-        return await storyteller.upgradeEpub(for: bookId)
+    public func upgradeEpub(for bookID: BookID) async -> Bool {
+        guard let storyteller = await storytellerActor(for: bookID.sourceID) else { return false }
+        return await storyteller.upgradeEpub(for: bookID.uuid)
     }
 
     public func uploadBookAssets(
-        bookUUID: String,
-        sourceID: BookSourceID? = nil,
+        bookID: BookID,
         ebook: StorytellerUploadAsset? = nil,
         audiobook: StorytellerUploadAsset? = nil,
         audiobooks: [StorytellerUploadAsset] = [],
@@ -1241,11 +1144,7 @@ public actor BookServiceActor {
         onProgress: (@Sendable (Double) -> Void)? = nil,
     ) async -> Bool {
         await ensureSourceRegistryLoaded()
-        guard let resolvedSourceID = resolveExplicitSourceID(sourceID),
-            let source = sourceActor(for: resolvedSourceID)
-        else {
-            return false
-        }
+        guard let source = sourceActor(for: bookID.sourceID) else { return false }
 
         let audiobookAssets = audiobooks + [audiobook].compactMap(\.self)
         let title =
@@ -1254,7 +1153,7 @@ public actor BookServiceActor {
             ?? audiobookAssets.first?.filename
             ?? "Book"
         let acceptedBookID = await source.acceptBook(
-            bookUUID: bookUUID,
+            bookUUID: bookID.uuid,
             title: title,
             ebook: ebook,
             audiobooks: audiobookAssets,
@@ -1270,21 +1169,16 @@ public actor BookServiceActor {
 
     public func replaceBookAsset(
         _ asset: StorytellerUploadAsset,
-        bookUUID: String,
-        sourceID: BookSourceID? = nil,
+        bookID: BookID,
         replaceMetadata: Bool = false,
         onProgress: (@Sendable (Double) -> Void)? = nil,
     ) async -> ReplaceAssetResult {
         await ensureSourceRegistryLoaded()
-        guard let resolvedSourceID = resolveExplicitSourceID(sourceID),
-            let source = sourceActor(for: resolvedSourceID)
-        else {
-            return .failed
-        }
+        guard let source = sourceActor(for: bookID.sourceID) else { return .failed }
 
         let result = await source.replaceAsset(
             asset,
-            bookID: bookUUID,
+            bookID: bookID.uuid,
             replaceMetadata: replaceMetadata,
             onProgress: onProgress,
         )
@@ -1305,17 +1199,10 @@ public actor BookServiceActor {
         }
     }
 
-    public func locallyAvailableMedia(
-        for bookID: String,
-        sourceID: BookSourceID?,
-    ) async -> Set<LocalMediaCategory> {
+    public func locallyAvailableMedia(for bookID: BookID) async -> Set<LocalMediaCategory> {
         await ensureSourceRegistryLoaded()
-        guard let resolvedSourceID = resolveExplicitSourceID(sourceID),
-            let source = sourceActor(for: resolvedSourceID)
-        else {
-            return []
-        }
-        return await source.locallyAvailableMedia(for: bookID)
+        guard let source = sourceActor(for: bookID.sourceID) else { return [] }
+        return await source.locallyAvailableMedia(for: bookID.uuid)
     }
 
     /// Copies a book between sources. The source actor exports its locally-available media and the
@@ -1336,13 +1223,13 @@ public actor BookServiceActor {
             return false
         }
 
-        let available = await source.locallyAvailableMedia(for: book.id)
+        let available = await source.locallyAvailableMedia(for: book.uuid)
         guard requiredCategories(for: book).isSubset(of: available) else {
             debugLog("[BookServiceActor] copyBook: \(book.id) not fully downloaded at source")
             return false
         }
 
-        guard let assets = await source.exportAssets(for: book.id) else {
+        guard let assets = await source.exportAssets(for: book.uuid) else {
             debugLog("[BookServiceActor] copyBook: source could not export \(book.id)")
             return false
         }
@@ -1364,7 +1251,7 @@ public actor BookServiceActor {
 
         // Carry reading progress across: read the source's locator and push it onto the new book id.
         // Best-effort: a progress-mirror failure does not undo the media copy.
-        if let position = await source.fetchBookPosition(bookId: book.id),
+        if let position = await source.fetchBookPosition(bookId: book.uuid),
             let locator = position.locator
         {
             let result = await destination.sendProgressToServer(
@@ -1421,23 +1308,22 @@ public actor BookServiceActor {
     }
 
     public func updateStatus(
-        forBooks bookIds: [String],
-        sourceID: BookSourceID?,
+        forBooks bookIDs: [BookID],
         toStatusNamed statusName: String,
     ) async -> Bool {
         await ensureSourceRegistryLoaded()
-        guard let resolvedSourceID = resolveExplicitSourceID(sourceID),
-            let source = sourceActor(for: resolvedSourceID)
-        else {
-            return false
+        for (sourceID, sourceBookIDs) in Dictionary(grouping: bookIDs, by: \.sourceID) {
+            guard let source = sourceActor(for: sourceID) else { return false }
+            let success = await source.updateStatus(
+                forBooks: sourceBookIDs.map(\.uuid),
+                toStatusNamed: statusName,
+            )
+            guard success else { return false }
         }
-        // Each source keeps its own cache consistent inside updateStatus, so a single observer
-        // notification suffices; we never force a folder rescan here.
-        let success = await source.updateStatus(forBooks: bookIds, toStatusNamed: statusName)
-        if success {
+        if !bookIDs.isEmpty {
             await notifyLibraryObservers()
         }
-        return success
+        return true
     }
 
     public func fetchCollections(sourceID: BookSourceID) async -> [StorytellerCollection]? {
@@ -1461,31 +1347,26 @@ public actor BookServiceActor {
     }
 
     public func sendProgressToServer(
-        bookId: String,
-        sourceID: BookSourceID,
+        bookID: BookID,
         locator: BookLocator,
         timestamp: Double,
     ) async -> HTTPResult {
         await ensureSourceRegistryLoaded()
-        guard let source = sourceActor(for: sourceID) else { return .noConnection }
+        guard let source = sourceActor(for: bookID.sourceID) else { return .noConnection }
         return await source.sendProgressToServer(
-            bookId: bookId,
+            bookId: bookID.uuid,
             locator: locator,
             timestamp: timestamp,
         )
     }
 
-    public func fetchBookPosition(
-        bookId: String,
-        sourceID: BookSourceID,
-    ) async -> BookReadingPosition? {
+    public func fetchBookPosition(bookID: BookID) async -> BookReadingPosition? {
         await ensureSourceRegistryLoaded()
-        guard let source = sourceActor(for: sourceID) else { return nil }
-        return await source.fetchBookPosition(bookId: bookId)
+        guard let source = sourceActor(for: bookID.sourceID) else { return nil }
+        return await source.fetchBookPosition(bookId: bookID.uuid)
     }
 
     private func ensureSourceRegistryLoaded() async {
-        await SilveranMigrations.ensureMigrationsRan()
         guard !sourceRegistryLoaded else { return }
 
         let loadedSources =
@@ -1639,9 +1520,8 @@ public actor BookServiceActor {
         }
     }
 
-    public func sourceKind(for sourceID: BookSourceID?) async -> BookSourceKind? {
+    public func sourceKind(for sourceID: BookSourceID) async -> BookSourceKind? {
         await ensureSourceRegistryLoaded()
-        guard let sourceID else { return nil }
         return sourceRecords.first(where: { $0.id == sourceID })?.kind
     }
 }

@@ -2,6 +2,30 @@ import Dispatch
 import Foundation
 import ZIPFoundation
 
+func encodedIdentityPathComponent(_ input: String) -> String {
+    let encoded = Data(input.utf8).base64EncodedString()
+        .replacingOccurrences(of: "+", with: "-")
+        .replacingOccurrences(of: "/", with: "_")
+        .replacingOccurrences(of: "=", with: "")
+    return "b64_\(encoded)"
+}
+
+struct PersistedSyncHistory: Codable, Sendable {
+    struct Book: Codable, Sendable {
+        let bookID: BookID
+        let entries: [SyncHistoryEntry]
+    }
+
+    let books: [Book]
+}
+
+func decodePersistedSyncHistory(_ data: Data) throws -> [BookID: [SyncHistoryEntry]] {
+    let store = try JSONDecoder().decode(PersistedSyncHistory.self, from: data)
+    return store.books.reduce(into: [:]) { history, book in
+        history[book.bookID] = book.entries
+    }
+}
+
 /// Handles filesystem storage for local media, including directory management and metadata persistence.
 public actor FilesystemActor {
     public static let shared = FilesystemActor()
@@ -56,6 +80,28 @@ public actor FilesystemActor {
     public func sourceCacheDirectory(sourceID: BookSourceID) -> URL {
         return sourceCacheRootDirectory()
             .appendingPathComponent(sanitizedPathComponent(from: sourceID), isDirectory: true)
+    }
+
+    func sourceCacheSourceIDs() throws -> Set<BookSourceID> {
+        let root = sourceCacheRootDirectory()
+        try ensureDirectoryExists(at: root)
+        let directories = try FileManager.default.contentsOfDirectory(
+            at: root,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles],
+        )
+
+        var sourceIDs: Set<BookSourceID> = []
+        for directory in directories {
+            guard
+                (try? directory.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+            else { continue }
+            let sourceID = directory.lastPathComponent
+            if !sourceID.isEmpty {
+                sourceIDs.insert(sourceID)
+            }
+        }
+        return sourceIDs
     }
 
     public func internalFolderSourceRootDirectory() -> URL {
@@ -363,7 +409,7 @@ public actor FilesystemActor {
         await waitForPendingQueueWrite()
         let configDir = getConfigDirectory()
         let queueURL = configDir.appendingPathComponent(
-            "offline_progress_queue.json",
+            "offline_progress_queue_v2.json",
             isDirectory: false,
         )
 
@@ -375,7 +421,12 @@ public actor FilesystemActor {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         let data = try Data(contentsOf: queueURL)
-        return try decoder.decode([PendingProgressSync].self, from: data)
+        do {
+            return try decoder.decode([PendingProgressSync].self, from: data)
+        } catch is DecodingError {
+            try fm.removeItem(at: queueURL)
+            return []
+        }
     }
 
     public func saveProgressQueue(_ queue: [PendingProgressSync]) async throws {
@@ -383,11 +434,7 @@ public actor FilesystemActor {
         try ensureDirectoryExists(at: configDir)
 
         let queueURL = configDir.appendingPathComponent(
-            "offline_progress_queue.json",
-            isDirectory: false,
-        )
-        let tempURL = configDir.appendingPathComponent(
-            "offline_progress_queue.tmp",
+            "offline_progress_queue_v2.json",
             isDirectory: false,
         )
         let queueSnapshot = queue
@@ -401,13 +448,7 @@ public actor FilesystemActor {
                         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
                         encoder.dateEncodingStrategy = .iso8601
                         let data = try encoder.encode(queueSnapshot)
-                        try data.write(to: tempURL, options: .atomic)
-
-                        let fm = FileManager.default
-                        if fm.fileExists(atPath: queueURL.path) {
-                            try fm.removeItem(at: queueURL)
-                        }
-                        try fm.moveItem(at: tempURL, to: queueURL)
+                        try data.write(to: queueURL, options: .atomic)
                         continuation.resume()
                     } catch {
                         continuation.resume(throwing: error)
@@ -432,60 +473,73 @@ public actor FilesystemActor {
     }
 
     public func writeProgressUploadSpoolFile(
-        bookId: String,
+        bookID: BookID,
         token: String,
         data: Data,
     ) throws -> URL {
         let directory = progressUploadSpoolDirectory()
+            .appendingPathComponent("V2", isDirectory: true)
+            .appendingPathComponent(
+                encodedIdentityPathComponent(bookID.sourceID),
+                isDirectory: true,
+            )
+            .appendingPathComponent(
+                encodedIdentityPathComponent(bookID.uuid),
+                isDirectory: true,
+            )
         try ensureDirectoryExists(at: directory)
         let fileURL = directory.appendingPathComponent(
-            progressUploadSpoolFilename(bookId: bookId, token: token),
+            "\(encodedIdentityPathComponent(token)).json",
             isDirectory: false,
         )
         try data.write(to: fileURL, options: .atomic)
         return fileURL
     }
 
-    public func removeProgressUploadSpoolFile(bookId: String, token: String) {
-        let fileURL = progressUploadSpoolDirectory().appendingPathComponent(
-            progressUploadSpoolFilename(bookId: bookId, token: token),
-            isDirectory: false,
-        )
+    public func removeProgressUploadSpoolFile(bookID: BookID, token: String) {
+        let fileURL = progressUploadSpoolDirectory()
+            .appendingPathComponent("V2", isDirectory: true)
+            .appendingPathComponent(
+                encodedIdentityPathComponent(bookID.sourceID),
+                isDirectory: true,
+            )
+            .appendingPathComponent(
+                encodedIdentityPathComponent(bookID.uuid),
+                isDirectory: true,
+            )
+            .appendingPathComponent(
+                "\(encodedIdentityPathComponent(token)).json",
+                isDirectory: false,
+            )
         try? FileManager.default.removeItem(at: fileURL)
     }
 
-    private func progressUploadSpoolFilename(bookId: String, token: String) -> String {
-        "\(sanitizedPathComponent(from: bookId))-\(token).json"
-    }
-
-    public func loadSyncHistory() async throws -> [String: [SyncHistoryEntry]] {
+    public func loadSyncHistory() async throws -> [BookID: [SyncHistoryEntry]] {
         await waitForPendingHistoryWrite()
-        let configDir = getConfigDirectory()
-        let historyURL = configDir.appendingPathComponent(
-            "sync_history.json",
-            isDirectory: false,
-        )
+        let historyURL = syncHistoryURL()
 
         let fm = FileManager.default
         guard fm.fileExists(atPath: historyURL.path) else {
             return [:]
         }
 
-        let decoder = JSONDecoder()
         let data = try Data(contentsOf: historyURL)
-        return try decoder.decode([String: [SyncHistoryEntry]].self, from: data)
+        return try decodePersistedSyncHistory(data)
     }
 
-    public func saveSyncHistory(_ history: [String: [SyncHistoryEntry]]) async throws {
+    func syncHistoryURL() -> URL {
+        getConfigDirectory().appendingPathComponent(
+            "sync_history_v2.json",
+            isDirectory: false,
+        )
+    }
+
+    public func saveSyncHistory(_ history: [BookID: [SyncHistoryEntry]]) async throws {
         let configDir = getConfigDirectory()
         try ensureDirectoryExists(at: configDir)
 
         let historyURL = configDir.appendingPathComponent(
-            "sync_history.json",
-            isDirectory: false,
-        )
-        let tempURL = configDir.appendingPathComponent(
-            "sync_history.tmp",
+            "sync_history_v2.json",
             isDirectory: false,
         )
         let historySnapshot = history
@@ -497,14 +551,16 @@ public actor FilesystemActor {
                     do {
                         let encoder = JSONEncoder()
                         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-                        let data = try encoder.encode(historySnapshot)
-                        try data.write(to: tempURL, options: .atomic)
-
-                        let fm = FileManager.default
-                        if fm.fileExists(atPath: historyURL.path) {
-                            try fm.removeItem(at: historyURL)
-                        }
-                        try fm.moveItem(at: tempURL, to: historyURL)
+                        let store = PersistedSyncHistory(
+                            books:
+                                historySnapshot
+                                .map {
+                                    PersistedSyncHistory.Book(bookID: $0.key, entries: $0.value)
+                                }
+                                .sorted { $0.bookID < $1.bookID }
+                        )
+                        let data = try encoder.encode(store)
+                        try data.write(to: historyURL, options: .atomic)
                         continuation.resume()
                     } catch {
                         continuation.resume(throwing: error)
@@ -543,19 +599,14 @@ public actor FilesystemActor {
         }
     }
 
-    public func saveCoverImage(uuid: String, data: Data, variant: String) throws {
-        let coversDir = coversCacheDirectory()
-        try ensureDirectoryExists(at: coversDir)
-
-        let filename = "\(uuid)_\(variant).dat"
-        let coverURL = coversDir.appendingPathComponent(filename, isDirectory: false)
+    public func saveCoverImage(bookID: BookID, data: Data, variant: String) throws {
+        let coverURL = coverFileURL(bookID: bookID, variant: variant)
+        try ensureDirectoryExists(at: coverURL.deletingLastPathComponent())
         try write(data: data, to: coverURL)
     }
 
-    public func loadCoverImage(uuid: String, variant: String) -> Data? {
-        let coversDir = coversCacheDirectory()
-        let filename = "\(uuid)_\(variant).dat"
-        let coverURL = coversDir.appendingPathComponent(filename, isDirectory: false)
+    public func loadCoverImage(bookID: BookID, variant: String) -> Data? {
+        let coverURL = coverFileURL(bookID: bookID, variant: variant)
         let fm = FileManager.default
 
         guard fm.fileExists(atPath: coverURL.path) else {
@@ -574,32 +625,42 @@ public actor FilesystemActor {
         }
     }
 
-    public func removeCoverImages(uuid: String) throws {
-        let coversDir = coversCacheDirectory()
-        let fm = FileManager.default
-
-        guard
-            let contents = try? fm.contentsOfDirectory(
-                at: coversDir,
-                includingPropertiesForKeys: nil,
-                options: [.skipsHiddenFiles],
+    public func removeCoverImages(bookID: BookID) throws {
+        let bookDirectory = coversCacheDirectory()
+            .appendingPathComponent("V2", isDirectory: true)
+            .appendingPathComponent(
+                encodedIdentityPathComponent(bookID.sourceID),
+                isDirectory: true,
             )
-        else {
-            return
-        }
-
-        let sanitizedUUID = sanitizedPathComponent(from: uuid)
-        for url in contents
-        where url.lastPathComponent == "\(sanitizedUUID).dat"
-            || url.lastPathComponent.hasPrefix("\(sanitizedUUID)_")
-        {
-            try fm.removeItem(at: url)
-        }
+            .appendingPathComponent(
+                encodedIdentityPathComponent(bookID.uuid),
+                isDirectory: true,
+            )
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: bookDirectory.path) else { return }
+        try fm.removeItem(at: bookDirectory)
     }
 
     private func coversCacheDirectory() -> URL {
         applicationSupportBaseDirectory()
             .appendingPathComponent("CoversCache", isDirectory: true)
+    }
+
+    private func coverFileURL(bookID: BookID, variant: String) -> URL {
+        coversCacheDirectory()
+            .appendingPathComponent("V2", isDirectory: true)
+            .appendingPathComponent(
+                encodedIdentityPathComponent(bookID.sourceID),
+                isDirectory: true,
+            )
+            .appendingPathComponent(
+                encodedIdentityPathComponent(bookID.uuid),
+                isDirectory: true,
+            )
+            .appendingPathComponent(
+                "\(encodedIdentityPathComponent(variant)).dat",
+                isDirectory: false,
+            )
     }
 
     public func removeSourceCacheBookData(
@@ -614,7 +675,7 @@ public actor FilesystemActor {
                 in: cacheDir,
             )
         else {
-            try removeCoverImages(uuid: uuid)
+            try removeCoverImages(bookID: BookID(sourceID: sourceID, uuid: uuid))
             return
         }
 
@@ -623,7 +684,7 @@ public actor FilesystemActor {
         if fm.fileExists(atPath: bookRoot.path) {
             try fm.removeItem(at: bookRoot)
         }
-        try removeCoverImages(uuid: uuid)
+        try removeCoverImages(bookID: BookID(sourceID: sourceID, uuid: uuid))
     }
 
     public func getHighlightsDirectory() -> URL {
@@ -631,14 +692,8 @@ public actor FilesystemActor {
             .appendingPathComponent("Highlights", isDirectory: true)
     }
 
-    public func loadHighlights(bookId: String) throws -> [Highlight]? {
-        let highlightsDir = getHighlightsDirectory()
-        let sanitizedBookId = bookId.replacingOccurrences(of: "/", with: "_")
-        let fileURL = highlightsDir.appendingPathComponent(
-            "\(sanitizedBookId).json",
-            isDirectory: false,
-        )
-
+    public func loadHighlights(bookID: BookID) throws -> [Highlight]? {
+        let fileURL = highlightsFileURL(bookID: bookID)
         let fm = FileManager.default
         guard fm.fileExists(atPath: fileURL.path) else {
             return nil
@@ -646,52 +701,40 @@ public actor FilesystemActor {
 
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        let data = try Data(contentsOf: fileURL)
-        let bookHighlights = try decoder.decode(BookHighlights.self, from: data)
-        return bookHighlights.highlights
+        return try decoder.decode([Highlight].self, from: Data(contentsOf: fileURL))
     }
 
-    public func saveHighlights(bookId: String, highlights: [Highlight]) throws {
-        let highlightsDir = getHighlightsDirectory()
-        try ensureDirectoryExists(at: highlightsDir)
-
-        let sanitizedBookId = bookId.replacingOccurrences(of: "/", with: "_")
-        let fileURL = highlightsDir.appendingPathComponent(
-            "\(sanitizedBookId).json",
-            isDirectory: false,
-        )
-
-        let bookHighlights = BookHighlights(bookId: bookId, highlights: highlights)
+    public func saveHighlights(bookID: BookID, highlights: [Highlight]) throws {
+        let fileURL = highlightsFileURL(bookID: bookID)
+        try ensureDirectoryExists(at: fileURL.deletingLastPathComponent())
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
-        let data = try encoder.encode(bookHighlights)
-
-        let tempURL = highlightsDir.appendingPathComponent(
-            "\(sanitizedBookId).tmp",
-            isDirectory: false,
-        )
-        try data.write(to: tempURL, options: .atomic)
-
-        let fm = FileManager.default
-        if fm.fileExists(atPath: fileURL.path) {
-            try fm.removeItem(at: fileURL)
-        }
-        try fm.moveItem(at: tempURL, to: fileURL)
+        try write(data: try encoder.encode(highlights), to: fileURL)
     }
 
-    public func deleteHighlights(bookId: String) throws {
-        let highlightsDir = getHighlightsDirectory()
-        let sanitizedBookId = bookId.replacingOccurrences(of: "/", with: "_")
-        let fileURL = highlightsDir.appendingPathComponent(
-            "\(sanitizedBookId).json",
-            isDirectory: false,
-        )
-
+    public func deleteHighlights(bookID: BookID) throws {
+        let fileURL = highlightsFileURL(bookID: bookID)
         let fm = FileManager.default
         if fm.fileExists(atPath: fileURL.path) {
             try fm.removeItem(at: fileURL)
         }
+    }
+
+    func highlightsV2Directory() -> URL {
+        getHighlightsDirectory().appendingPathComponent("V2", isDirectory: true)
+    }
+
+    func highlightsFileURL(bookID: BookID) -> URL {
+        highlightsV2Directory()
+            .appendingPathComponent(
+                encodedIdentityPathComponent(bookID.sourceID),
+                isDirectory: true,
+            )
+            .appendingPathComponent(
+                "\(encodedIdentityPathComponent(bookID.uuid)).json",
+                isDirectory: false,
+            )
     }
 
     private func existingFolder(
@@ -776,10 +819,6 @@ public actor FilesystemActor {
     }
 
     private func write(data: Data, to destination: URL) throws {
-        let fm = FileManager.default
-        if fm.fileExists(atPath: destination.path) {
-            try fm.removeItem(at: destination)
-        }
         try data.write(to: destination, options: .atomic)
     }
 
@@ -1118,14 +1157,14 @@ public actor FilesystemActor {
 
     private func getResumeDataDirectory() -> URL {
         applicationSupportBaseDirectory()
-            .appendingPathComponent("ResumeData", isDirectory: true)
+            .appendingPathComponent("ResumeDataV2", isDirectory: true)
     }
 
     public func saveDownloadState(_ records: [DownloadRecord]) throws {
         let configDir = getConfigDirectory()
         try ensureDirectoryExists(at: configDir)
 
-        let url = configDir.appendingPathComponent("downloads.json", isDirectory: false)
+        let url = configDir.appendingPathComponent("downloads_v2.json", isDirectory: false)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
@@ -1135,7 +1174,7 @@ public actor FilesystemActor {
 
     public func loadDownloadState() throws -> [DownloadRecord] {
         let configDir = getConfigDirectory()
-        let url = configDir.appendingPathComponent("downloads.json", isDirectory: false)
+        let url = configDir.appendingPathComponent("downloads_v2.json", isDirectory: false)
 
         guard FileManager.default.fileExists(atPath: url.path) else { return [] }
 
@@ -1174,48 +1213,6 @@ public actor FilesystemActor {
         if fm.fileExists(atPath: url.path) {
             try fm.removeItem(at: url)
         }
-    }
-
-    public func applicationSupportRelativePath(for url: URL) -> String? {
-        let basePath = applicationSupportBaseDirectory().standardizedFileURL.path
-        let path = url.standardizedFileURL.path
-        guard path == basePath || path.hasPrefix(basePath + "/") else {
-            return nil
-        }
-        return String(path.dropFirst(basePath.count)).trimmingCharacters(
-            in: CharacterSet(charactersIn: "/")
-        )
-    }
-
-    public func applicationSupportURL(relativePath: String) -> URL {
-        applicationSupportBaseDirectory()
-            .appendingPathComponent(relativePath, isDirectory: false)
-    }
-
-    public func resolvePersistedApplicationSupportURL(
-        relativePath: String?,
-        legacyAbsoluteURL: URL?,
-    ) -> URL? {
-        if let relativePath, !relativePath.isEmpty {
-            return applicationSupportURL(relativePath: relativePath)
-        }
-
-        guard let legacyAbsoluteURL else { return nil }
-        if let relativePath = applicationSupportRelativePath(for: legacyAbsoluteURL) {
-            return applicationSupportURL(relativePath: relativePath)
-        }
-
-        let marker = "/Library/Application Support/"
-        let path = legacyAbsoluteURL.standardizedFileURL.path
-        guard let range = path.range(of: marker) else {
-            return legacyAbsoluteURL
-        }
-
-        let relativePath = String(path[range.upperBound...])
-        guard !relativePath.isEmpty else {
-            return applicationSupportBaseDirectory()
-        }
-        return applicationSupportURL(relativePath: relativePath)
     }
 
     /// Rebases a persisted folder-source path that belongs to this app's Application
@@ -1263,30 +1260,6 @@ public actor FilesystemActor {
     }
 
     private nonisolated func applicationSupportBaseDirectory() -> URL {
-        let fm = FileManager.default
-        let bundleID = Bundle.main.bundleIdentifier ?? "SilveranReader"
-
-        #if os(tvOS)
-        let cachesDir = try! fm.url(
-            for: .cachesDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: true,
-        )
-        return cachesDir.appendingPathComponent(bundleID, isDirectory: true)
-        #else
-        let appSupport = try! fm.url(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: true,
-        )
-
-        if appSupport.path.contains("/Containers/") {
-            return appSupport
-        } else {
-            return appSupport.appendingPathComponent(bundleID, isDirectory: true)
-        }
-        #endif
+        SilveranPlatform.applicationSupportDirectory()
     }
 }

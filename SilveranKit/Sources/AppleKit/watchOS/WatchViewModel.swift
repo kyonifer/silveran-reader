@@ -10,16 +10,21 @@ public final class WatchViewModel {
     var receivingTitle: String?
     var receivedChunks: Int = 0
     var totalChunks: Int = 0
-    var savingBook: (uuid: String, title: String)?
+    var savingBook: (bookID: BookID, title: String)?
     var remotePlaybackState: RemotePlaybackState?
     private var metadataRefreshTask: Task<Void, Never>?
+    private var started = false
 
     var transferProgress: Double {
         guard totalChunks > 0 else { return 0 }
         return Double(receivedChunks) / Double(totalChunks)
     }
 
-    init() {
+    init() {}
+
+    func start() {
+        guard !started else { return }
+        started = true
         loadBooks()
         setupObservers()
         startMetadataRefreshTask()
@@ -34,18 +39,21 @@ public final class WatchViewModel {
             }
         }
 
-        WatchSessionManager.shared.onTransferComplete = { [weak self] uuid, title in
+        WatchSessionManager.shared.onTransferComplete = { [weak self] bookID, title in
             Task { @MainActor in
                 self?.receivingTitle = nil
                 self?.receivedChunks = 0
                 self?.totalChunks = 0
-                self?.savingBook = (uuid: uuid, title: title)
+                self?.savingBook = (bookID: bookID, title: title)
             }
         }
 
         WatchSessionManager.shared.onImportComplete = { [weak self] success in
             Task { @MainActor in
                 if !success {
+                    self?.receivingTitle = nil
+                    self?.receivedChunks = 0
+                    self?.totalChunks = 0
                     self?.savingBook = nil
                 }
                 self?.loadBooks()
@@ -85,12 +93,12 @@ public final class WatchViewModel {
         Task {
             let snapshot = await BookServiceActor.shared.librarySnapshot(policy: .cachedOnly)
             let booksWithFiles = snapshot.books.filter { book in
-                snapshot.mediaPaths[book.uuid]?.syncedPath != nil
+                snapshot.mediaPaths[book.id]?.syncedPath != nil
             }
             await MainActor.run {
                 self.books = booksWithFiles
                 if let saving = self.savingBook,
-                    booksWithFiles.contains(where: { $0.uuid == saving.uuid })
+                    booksWithFiles.contains(where: { $0.id == saving.bookID })
                 {
                     self.savingBook = nil
                 }
@@ -101,8 +109,7 @@ public final class WatchViewModel {
     func deleteBook(_ book: BookMetadata, category: LocalMediaCategory) {
         Task {
             try? await BookServiceActor.shared.deleteCachedMedia(
-                for: book.uuid,
-                sourceID: book.sourceID,
+                for: book.id,
                 category: category,
             )
         }

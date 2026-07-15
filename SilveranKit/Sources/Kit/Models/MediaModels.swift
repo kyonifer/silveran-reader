@@ -593,21 +593,18 @@ public enum SyncReason: String, Sendable, Codable {
 }
 
 public struct PendingProgressSync: Codable, Sendable, Hashable {
-    public let bookId: String
-    public let sourceID: BookSourceID?
+    public let bookID: BookID
     public let locator: BookLocator
     public let timestamp: Double
     public var syncedToStoryteller: Bool
 
     public init(
-        bookId: String,
-        sourceID: BookSourceID? = nil,
+        bookID: BookID,
         locator: BookLocator,
         timestamp: Double,
         syncedToStoryteller: Bool = false,
     ) {
-        self.bookId = bookId
-        self.sourceID = sourceID
+        self.bookID = bookID
         self.locator = locator
         self.timestamp = timestamp
         self.syncedToStoryteller = syncedToStoryteller
@@ -618,7 +615,7 @@ public struct SyncNotification: Sendable, Equatable {
     public let id: UUID
     public let message: String
     public let type: NotificationType
-    public let failedBookIds: [String]
+    public let failedBookIDs: [BookID]
 
     public enum NotificationType: Sendable, Equatable {
         case success
@@ -626,11 +623,11 @@ public struct SyncNotification: Sendable, Equatable {
         case error
     }
 
-    public init(message: String, type: NotificationType, failedBookIds: [String] = []) {
+    public init(message: String, type: NotificationType, failedBookIDs: [BookID] = []) {
         self.id = UUID()
         self.message = message
         self.type = type
-        self.failedBookIds = failedBookIds
+        self.failedBookIDs = failedBookIDs
     }
 }
 
@@ -656,12 +653,6 @@ public struct SyncHistoryEntry: Codable, Sendable, Hashable {
         // Server update statuses (immutable once recorded)
         case serverIncomingAccepted  // Server position accepted (newer than local)
         case serverIncomingRejected  // Server position rejected (older than local)
-
-        // Legacy (for backward compat with old history files)
-        case persisted
-        case sentToServer
-        case serverConfirmed
-        case failed
     }
 
     public init(
@@ -705,7 +696,7 @@ public struct SeriesSortKey: Comparable, Hashable, Sendable {
 }
 
 public struct BookMetadata: Codable, Sendable, Identifiable, Hashable {
-    public let uuid: String
+    public let id: BookID
     public let title: String
     public let subtitle: String?
     public let description: String?
@@ -730,12 +721,13 @@ public struct BookMetadata: Codable, Sendable, Identifiable, Hashable {
     public var alignedAt: String? = nil
     public var alignedByStorytellerVersion: String? = nil
     public var alignedWith: String? = nil
-    public var sourceID: BookSourceID? = nil
     public var source: String? = nil
-    public var id: String { uuid }
+
+    public var uuid: String { id.uuid }
+    public var sourceID: BookSourceID { id.sourceID }
 
     public init(
-        uuid: String,
+        bookID: BookID,
         title: String,
         subtitle: String?,
         description: String?,
@@ -760,10 +752,9 @@ public struct BookMetadata: Codable, Sendable, Identifiable, Hashable {
         alignedAt: String? = nil,
         alignedByStorytellerVersion: String? = nil,
         alignedWith: String? = nil,
-        sourceID: BookSourceID? = nil,
         source: String? = nil,
     ) {
-        self.uuid = uuid
+        self.id = bookID
         self.title = title
         self.subtitle = subtitle
         self.description = description
@@ -788,7 +779,6 @@ public struct BookMetadata: Codable, Sendable, Identifiable, Hashable {
         self.alignedAt = alignedAt
         self.alignedByStorytellerVersion = alignedByStorytellerVersion
         self.alignedWith = alignedWith
-        self.sourceID = sourceID
         self.source = source
     }
 
@@ -1022,18 +1012,18 @@ public struct Book: Sendable, Identifiable {
     public var metadata: BookMetadata
     public var ebookCover: BookCover?
     public var audiobookCover: BookCover?
-    public var id: String { metadata.id }
+    public var id: BookID { metadata.id }
 }
 
 public struct BookLibrary: Sendable {
     public var bookMetaData: [BookMetadata]
-    public var ebookCoverCache: [String: BookCover?]
-    public var audiobookCoverCache: [String: BookCover?]
+    public var ebookCoverCache: [BookID: BookCover?]
+    public var audiobookCoverCache: [BookID: BookCover?]
 
     public init(
         bookMetaData: [BookMetadata],
-        ebookCoverCache: [String: BookCover?],
-        audiobookCoverCache: [String: BookCover?],
+        ebookCoverCache: [BookID: BookCover?],
+        audiobookCoverCache: [BookID: BookCover?],
     ) {
         self.bookMetaData = bookMetaData
         self.ebookCoverCache = ebookCoverCache

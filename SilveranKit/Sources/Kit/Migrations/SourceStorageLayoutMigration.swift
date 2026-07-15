@@ -11,8 +11,16 @@ extension FilesystemActor {
 
     func runStorageMigrations(for sources: [BookSourceRecord]) async throws {
         try runSourceStorageLayoutMigrationIfNeeded(for: sources)
-        try await runLegacyM4BAudiobookMigrationIfNeeded(for: sources)
-        try runWhisperModelStorageMigrationIfNeeded()
+        do {
+            try await runLegacyM4BAudiobookMigrationIfNeeded(for: sources)
+        } catch {
+            debugLog("[SilveranMigrations] Legacy M4B migration failed: \(error)")
+        }
+        do {
+            try runWhisperModelStorageMigrationIfNeeded()
+        } catch {
+            debugLog("[SilveranMigrations] Whisper model migration failed: \(error)")
+        }
     }
 
     private func runLegacyM4BAudiobookMigrationIfNeeded(
@@ -55,9 +63,6 @@ extension FilesystemActor {
         for sources: [BookSourceRecord]
     ) throws {
         guard !migrationSentinelExists(Self.sourceStorageLayoutMigrationID) else { return }
-
-        // Capture before the consolidation below deletes it.
-        stashLegacyLocalLibraryMetadataIfNeeded()
 
         let storytellerIDs = Set(
             sources
@@ -144,7 +149,7 @@ extension FilesystemActor {
         }
     }
 
-    private func migrateLegacyRoot(
+    func migrateLegacyRoot(
         from legacyRoot: URL,
         to modernRoot: URL,
         defaultDestination: URL,
@@ -460,57 +465,6 @@ extension FilesystemActor {
         #else
         return []
         #endif
-    }
-
-    private func legacyLocalLibraryMetadataStashURL() -> URL {
-        getConfigDirectory()
-            .appendingPathComponent("legacy_local_library_metadata.json", isDirectory: false)
-    }
-
-    private func stashLegacyLocalLibraryMetadataIfNeeded() {
-        let fm = FileManager.default
-        let stashURL = legacyLocalLibraryMetadataStashURL()
-        guard !fm.fileExists(atPath: stashURL.path) else { return }
-
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
-        let candidates = [
-            legacyLocalFolderRootDirectory()
-                .appendingPathComponent("library_metadata.json", isDirectory: false),
-            internalFolderSourceRootDirectory()
-                .appendingPathComponent("library_metadata.json", isDirectory: false),
-        ]
-
-        for url in candidates where fm.fileExists(atPath: url.path) {
-            guard let data = try? Data(contentsOf: url),
-                (try? decoder.decode([BookMetadata].self, from: data)) != nil
-            else {
-                continue
-            }
-            do {
-                try ensureDirectoryExists(at: stashURL.deletingLastPathComponent())
-                try data.write(to: stashURL, options: .atomic)
-            } catch {
-                debugLog("[FilesystemActor] Failed to stash legacy local metadata: \(error)")
-            }
-            return
-        }
-    }
-
-    func loadStashedLegacyLocalLibraryMetadata() -> [BookMetadata]? {
-        let stashURL = legacyLocalLibraryMetadataStashURL()
-        guard FileManager.default.fileExists(atPath: stashURL.path),
-            let data = try? Data(contentsOf: stashURL)
-        else {
-            return nil
-        }
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
-        return try? decoder.decode([BookMetadata].self, from: data)
-    }
-
-    func removeStashedLegacyLocalLibraryMetadata() {
-        try? FileManager.default.removeItem(at: legacyLocalLibraryMetadataStashURL())
     }
 
     func migrationSentinelExists(_ migrationID: String) -> Bool {

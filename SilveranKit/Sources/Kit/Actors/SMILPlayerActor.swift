@@ -60,7 +60,7 @@ public struct SMILPlaybackState: Sendable {
     public let bookTotal: Double
     public let playbackRate: Double
     public let volume: Double
-    public let bookId: String?
+    public let bookID: BookID?
 
     public init(
         isPlaying: Bool,
@@ -74,7 +74,7 @@ public struct SMILPlaybackState: Sendable {
         bookTotal: Double,
         playbackRate: Double,
         volume: Double,
-        bookId: String?,
+        bookID: BookID?,
     ) {
         self.isPlaying = isPlaying
         self.currentSectionIndex = currentSectionIndex
@@ -87,7 +87,7 @@ public struct SMILPlaybackState: Sendable {
         self.bookTotal = bookTotal
         self.playbackRate = playbackRate
         self.volume = volume
-        self.bookId = bookId
+        self.bookID = bookID
     }
 }
 
@@ -114,7 +114,7 @@ public actor SMILPlayerActor {
     private var cachedBookTotal: Double = 0
     private var cachedChapterStartCumSums: [Int: Double] = [:]
     private var epubPath: URL?
-    private var bookId: String?
+    private var bookID: BookID?
     private var bookTitle: String?
     private var bookAuthor: String?
 
@@ -143,19 +143,19 @@ public actor SMILPlayerActor {
 
     public func loadBook(
         epubPath: URL,
-        bookId: String,
+        bookID: BookID,
         title: String?,
         author: String?,
     ) async throws {
         debugLog(
-            "[SMILPlayerActor] Loading book: \(bookId) from \(epubPath.path) (existingBookId=\(self.bookId ?? "nil"), structureCount=\(bookStructure.count))"
+            "[SMILPlayerActor] Loading book: \(bookID) from \(epubPath.path) (existingBookID=\(self.bookID?.description ?? "nil"), structureCount=\(bookStructure.count))"
         )
 
         guard let provider = SilveranPlatform.audioPlayers else {
             throw SMILPlayerError.playbackUnavailable
         }
 
-        if self.bookId == bookId && !bookStructure.isEmpty {
+        if self.bookID == bookID && !bookStructure.isEmpty {
             debugLog("[SMILPlayerActor] Same book already loaded, skipping reload")
             sessionID = UUID()
             try? await provider.prepareSession(longForm: true)
@@ -175,7 +175,7 @@ public actor SMILPlayerActor {
         self.bookStructure = result.sections
         self.tocEntries = result.tocEntries
         self.epubPath = epubPath
-        self.bookId = bookId
+        self.bookID = bookID
         self.bookTitle = title
         self.bookAuthor = author
         self.currentSectionIndex = 0
@@ -198,8 +198,8 @@ public actor SMILPlayerActor {
         return tocEntries
     }
 
-    public func getLoadedBookId() -> String? {
-        return bookId
+    public func getLoadedBookID() -> BookID? {
+        return bookID
     }
 
     public func getLoadedBookTitle() -> String? {
@@ -483,7 +483,7 @@ public actor SMILPlayerActor {
         cachedBookTotal = 0
         cachedChapterStartCumSums = [:]
         epubPath = nil
-        bookId = nil
+        bookID = nil
         bookTitle = nil
         bookAuthor = nil
         currentSectionIndex = 0
@@ -911,7 +911,7 @@ public actor SMILPlayerActor {
             bookTotal: bookTotal,
             playbackRate: playbackRate,
             volume: volume,
-            bookId: bookId,
+            bookID: bookID,
         )
     }
 

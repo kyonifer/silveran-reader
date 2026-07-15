@@ -353,7 +353,7 @@ public struct iOSLibraryView: View {
         }
     }
 
-    private func handleEditMetadata(bookIds: [String]) {
+    private func handleEditMetadata(bookIds: [BookID]) {
         if bookIds.contains(where: { mediaViewModel.isLocalStandaloneBook($0) }) {
             metadataPermissionErrorMessage =
                 "Editing metadata for local books is not supported yet."
@@ -387,8 +387,7 @@ public struct iOSLibraryView: View {
     private func checkMetadataEditPermission(sourceIDs: [BookSourceID]) async
         -> StorytellerActor.PermissionCheckResult
     {
-        let idsToCheck: [BookSourceID?] = sourceIDs.isEmpty ? [nil] : sourceIDs.map { $0 }
-        for sourceID in idsToCheck {
+        for sourceID in sourceIDs {
             let result = await BookServiceActor.shared.checkBookUpdatePermission(
                 sourceID: sourceID
             )
@@ -590,14 +589,14 @@ public struct iOSLibraryView: View {
     }
 
     private func openPendingBookIfReady() {
-        guard let bookID = mediaViewModel.pendingOpenBookID,
+        guard let target = mediaViewModel.pendingOpenBookID,
             !mediaViewModel.library.bookMetaData.isEmpty
         else { return }
         mediaViewModel.pendingOpenBookID = nil
 
-        guard let book = mediaViewModel.library.bookMetaData.first(where: { $0.id == bookID })
+        guard let book = mediaViewModel.library.bookMetaData.first(where: { $0.id == target })
         else {
-            debugLog("[iOSLibraryView] Dropping deep link for unknown book \(bookID)")
+            debugLog("[iOSLibraryView] Dropping unknown deep link for book \(target)")
             return
         }
         guard let category = mediaViewModel.preferredDownloadedCategory(for: book) else {
@@ -729,7 +728,15 @@ struct MoreMenuView: View {
                 }
                 if AppLaunchContext.environment.readaloudAligner != nil {
                     NavigationLink(value: MoreDestination.createReadaloud) {
-                        Label("Create Readaloud", systemImage: "waveform.and.book.pages")
+                        Label {
+                            Text("Create Readaloud")
+                        } icon: {
+                            Image("readalong")
+                                .renderingMode(.template)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(width: 20, height: 20)
+                        }
                     }
                 }
                 if isWatchPaired {
@@ -745,7 +752,9 @@ struct MoreMenuView: View {
             hasIncompleteDownloads = !downloads.isEmpty
 
             let _ = await DownloadManager.shared.addObserver { records in
-                hasIncompleteDownloads = records.contains { $0.isIncomplete }
+                Task { @MainActor in
+                    hasIncompleteDownloads = records.contains { $0.isIncomplete }
+                }
             }
         }
         .navigationTitle("More")
@@ -1037,10 +1046,9 @@ struct CollectionsListView: View {
     )
         -> some View
     {
-        let collectionId = collection?.uuid ?? collection?.name ?? ""
         let collectionName = collection?.name ?? "Unknown Collection"
         let stackWidth = max(contentWidth - (horizontalPadding * 2), 100)
-        let navIdentifier = CollectionNavIdentifier(id: collectionId, name: collectionName)
+        let navIdentifier = CollectionNavIdentifier(id: collectionName, name: collectionName)
         let displayBooks = Array(books.prefix(30))
 
         VStack(alignment: .center, spacing: 12) {
@@ -1606,7 +1614,7 @@ struct LibraryNavigationDestinations: ViewModifier {
                     viewOptionsKey: "collectionsView.ebook",
                     tagFilter: nil,
                     seriesFilter: nil,
-                    collectionFilter: collection.id,
+                    collectionFilter: collection.name,
                     statusFilter: nil,
                     defaultSort: "titleAZ",
                     preferredTileWidth: 110,

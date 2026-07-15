@@ -4,17 +4,27 @@ import SwiftUI
 
 struct SilveranTVApp: App {
     @State private var mediaViewModel = MediaViewModel()
+    @State private var runtimeReady = false
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
-            TVContentView()
-                .environment(AppLaunchContext.environment)
-                .environment(mediaViewModel)
-                .task {
-                    await BookServiceActor.shared.setActive(true, source: .tv)
-                    await initializeBookSources()
+            Group {
+                if runtimeReady {
+                    TVContentView()
+                        .environment(AppLaunchContext.environment)
+                        .environment(mediaViewModel)
+                } else {
+                    ProgressView("Loading...")
                 }
+            }
+            .task {
+                guard await SilveranRuntime.start() else { return }
+                await mediaViewModel.start()
+                await BookServiceActor.shared.setActive(true, source: .tv)
+                await initializeBookSources()
+                runtimeReady = true
+            }
         }
         .onChange(of: scenePhase) { _, newPhase in
             handleScenePhaseChange(newPhase)
@@ -26,11 +36,13 @@ struct SilveranTVApp: App {
             case .background:
                 debugLog("[TVApp] App entering background")
                 Task {
+                    guard await SilveranRuntime.start() else { return }
                     await BookServiceActor.shared.setActive(false, source: .tv)
                 }
             case .active:
                 debugLog("[TVApp] App becoming active")
                 Task {
+                    guard await SilveranRuntime.start() else { return }
                     await BookServiceActor.shared.setActive(true, source: .tv)
                 }
             case .inactive:
@@ -41,8 +53,6 @@ struct SilveranTVApp: App {
     }
 
     private func initializeBookSources() async {
-        await SilveranMigrations.runMigrations()
-        await BookServiceActor.shared.reloadSourceRegistry()
         await syncOnLaunch()
         await mediaViewModel.refreshMetadata(source: "tvApp.registry")
     }
@@ -52,7 +62,6 @@ struct SilveranTVApp: App {
         debugLog("[TVApp] Sync on launch: synced=\(result.synced), failed=\(result.failed)")
 
         if let library = await BookServiceActor.shared.fetchLibraryInformation() {
-            try? await BookServiceActor.shared.updateLibraryCacheMetadata(library)
             debugLog("[TVApp] Library metadata updated: \(library.count) books")
         }
     }

@@ -36,7 +36,7 @@ final class MetadataEditorViewModel {
     }
 
     struct EditableBook: Identifiable {
-        let id: String
+        let id: BookID
         var originalMetadata: BookMetadata
 
         var title: String
@@ -64,7 +64,7 @@ final class MetadataEditorViewModel {
         }
 
         init(from metadata: BookMetadata) {
-            self.id = metadata.uuid
+            self.id = metadata.id
             self.originalMetadata = metadata
             self.title = metadata.title
             self.subtitle = metadata.subtitle ?? ""
@@ -134,21 +134,19 @@ final class MetadataEditorViewModel {
     }
 
     var books: [EditableBook] = []
-    var selectedBookId: String?
+    var selectedBookId: BookID?
     var isSaving = false
     var saveError: String?
-    var saveResults: [String: Bool] = [:]
-    var itunesResultsByBookId: [String: [ITunesCoverResult]] = [:]
-    var searchingItunesBookIds: Set<String> = []
+    var saveResults: [BookID: Bool] = [:]
+    var itunesResultsByBookId: [BookID: [ITunesCoverResult]] = [:]
+    var searchingItunesBookIds: Set<BookID> = []
     var libraryAuthorNames: [String] = []
     var libraryNarratorNames: [String] = []
     var libraryCreatorNamesByRole: [String: [String]] = [:]
     var libraryTagNames: [String] = []
-    var libraryCollections: [BookCollectionSummary] = []
-    var libraryCollectionChoices: [CollectionChoice] = []
-    var libraryCollectionNamesByUuid: [String: String] = [:]
-    var availableStatuses: [BookStatus] = []
-    var deletedCollectionUuids: Set<String> = []
+    var libraryCollectionsBySourceID: [BookSourceID: [BookCollectionSummary]] = [:]
+    var availableStatusesBySourceID: [BookSourceID: [BookStatus]] = [:]
+    var deletedCollectionUuidsBySourceID: [BookSourceID: Set<String>] = [:]
 
     var selectedBook: EditableBook? {
         get { books.first { $0.id == selectedBookId } }
@@ -160,7 +158,7 @@ final class MetadataEditorViewModel {
         }
     }
 
-    func addBooks(ids: [String], from library: BookLibrary) {
+    func addBooks(ids: [BookID], from library: BookLibrary) {
         updateLibraryAuthors(from: library)
         updateLibraryNarrators(from: library)
         updateLibraryCreators(from: library)
@@ -169,7 +167,7 @@ final class MetadataEditorViewModel {
 
         for id in ids {
             guard !books.contains(where: { $0.id == id }) else { continue }
-            guard let metadata = library.bookMetaData.first(where: { $0.uuid == id }) else {
+            guard let metadata = library.bookMetaData.first(where: { $0.id == id }) else {
                 continue
             }
             books.append(EditableBook(from: metadata))
@@ -271,30 +269,35 @@ final class MetadataEditorViewModel {
     }
 
     private func updateLibraryCollections(from library: BookLibrary) {
-        var collectionsByKey: [String: BookCollectionSummary] = [:]
+        var collectionsBySourceAndKey: [BookSourceID: [String: BookCollectionSummary]] = [:]
         for book in library.bookMetaData {
             for collection in book.collections ?? [] {
+                if let uuid = collection.uuid,
+                    deletedCollectionUuidsBySourceID[book.id.sourceID, default: []].contains(uuid)
+                {
+                    continue
+                }
                 let key = collection.uuid ?? collection.name.lowercased()
-                if collectionsByKey[key] == nil {
-                    collectionsByKey[key] = collection
+                if collectionsBySourceAndKey[book.id.sourceID]?[key] == nil {
+                    collectionsBySourceAndKey[book.id.sourceID, default: [:]][key] = collection
                 }
             }
         }
-        libraryCollections = collectionsByKey.values.sorted {
-            $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+        libraryCollectionsBySourceID = collectionsBySourceAndKey.mapValues { collections in
+            collections.values.sorted {
+                $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+            }
         }
-        rebuildLibraryCollectionCaches()
-        deletedCollectionUuids.removeAll()
     }
 
-    func refreshLibraryCollectionsFromServer(for bookId: String) async {
-        guard let sourceID = sourceID(forBookID: bookId),
-            let collections = await BookServiceActor.shared.fetchCollections(sourceID: sourceID)
+    func refreshLibraryCollectionsFromServer(for bookId: BookID) async {
+        let sourceID = bookId.sourceID
+        guard let collections = await BookServiceActor.shared.fetchCollections(sourceID: sourceID)
         else { return }
 
-        libraryCollections =
+        libraryCollectionsBySourceID[sourceID] =
             collections
-            .filter { !deletedCollectionUuids.contains($0.uuid) }
+            .filter { !deletedCollectionUuidsBySourceID[sourceID, default: []].contains($0.uuid) }
             .map {
                 BookCollectionSummary(
                     uuid: $0.uuid,
@@ -306,12 +309,12 @@ final class MetadataEditorViewModel {
                     updatedAt: $0.updatedAt,
                 )
             }
-        rebuildLibraryCollectionCaches()
     }
 
-    func createCollection(named name: String, for bookId: String) async -> String? {
+    func createCollection(named name: String, for bookId: BookID) async -> String? {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, let sourceID = sourceID(forBookID: bookId) else { return nil }
+        guard !trimmed.isEmpty else { return nil }
+        let sourceID = bookId.sourceID
 
         let created = await BookServiceActor.shared.createCollection(
             StorytellerCollectionCreatePayload(
@@ -325,6 +328,7 @@ final class MetadataEditorViewModel {
         guard let created else { return nil }
 
         upsertLibraryCollection(
+            sourceID: sourceID,
             uuid: created.uuid,
             name: created.name,
             description: created.description,
@@ -333,19 +337,19 @@ final class MetadataEditorViewModel {
             createdAt: created.createdAt,
             updatedAt: created.updatedAt,
         )
-        deletedCollectionUuids.remove(created.uuid)
+        deletedCollectionUuidsBySourceID[sourceID, default: []].remove(created.uuid)
         await BookServiceActor.shared.fetchLibraryInformation()
         return created.uuid
     }
 
-    func deleteCollection(uuid: String, for bookId: String) async -> Bool {
-        guard let sourceID = sourceID(forBookID: bookId),
-            await BookServiceActor.shared.deleteCollection(uuid: uuid, sourceID: sourceID)
+    func deleteCollection(uuid: String, for bookId: BookID) async -> Bool {
+        let sourceID = bookId.sourceID
+        guard await BookServiceActor.shared.deleteCollection(uuid: uuid, sourceID: sourceID)
         else { return false }
 
-        deletedCollectionUuids.insert(uuid)
-        removeLibraryCollection(uuid: uuid)
-        for index in books.indices {
+        deletedCollectionUuidsBySourceID[sourceID, default: []].insert(uuid)
+        removeLibraryCollection(sourceID: sourceID, uuid: uuid)
+        for index in books.indices where books[index].id.sourceID == sourceID {
             books[index].collectionUuids.removeAll { $0 == uuid }
         }
         await BookServiceActor.shared.fetchLibraryInformation()
@@ -353,6 +357,7 @@ final class MetadataEditorViewModel {
     }
 
     private func upsertLibraryCollection(
+        sourceID: BookSourceID,
         uuid: String,
         name: String,
         description: String?,
@@ -370,33 +375,48 @@ final class MetadataEditorViewModel {
             createdAt: createdAt,
             updatedAt: updatedAt,
         )
-        libraryCollections.removeAll { $0.uuid == uuid }
-        libraryCollections.append(summary)
-        rebuildLibraryCollectionCaches()
+        libraryCollectionsBySourceID[sourceID, default: []].removeAll { $0.uuid == uuid }
+        libraryCollectionsBySourceID[sourceID, default: []].append(summary)
+        sortLibraryCollections(sourceID: sourceID)
     }
 
-    private func removeLibraryCollection(uuid: String) {
-        libraryCollections.removeAll { $0.uuid == uuid }
-        rebuildLibraryCollectionCaches()
+    private func removeLibraryCollection(sourceID: BookSourceID, uuid: String) {
+        libraryCollectionsBySourceID[sourceID, default: []].removeAll { $0.uuid == uuid }
     }
 
-    private func rebuildLibraryCollectionCaches() {
-        libraryCollections.sort {
+    private func sortLibraryCollections(sourceID: BookSourceID) {
+        libraryCollectionsBySourceID[sourceID, default: []].sort {
             $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
         }
-        libraryCollectionNamesByUuid = Dictionary(
-            uniqueKeysWithValues: libraryCollections.compactMap { collection in
-                guard let uuid = collection.uuid else { return nil }
-                return (uuid, collection.name)
-            }
-        )
-        libraryCollectionChoices = libraryCollections.enumerated().compactMap { index, collection in
-            guard let uuid = collection.uuid else { return nil }
-            return CollectionChoice(id: index, uuid: uuid, name: collection.name)
-        }
     }
 
-    func removeBooks(ids: Set<String>) {
+    func libraryCollectionNamesByUuid(for bookID: BookID) -> [String: String] {
+        Dictionary(
+            uniqueKeysWithValues: libraryCollectionsBySourceID[bookID.sourceID, default: []]
+                .compactMap { collection in
+                    guard let uuid = collection.uuid else { return nil }
+                    return (uuid, collection.name)
+                }
+        )
+    }
+
+    func libraryCollectionChoices(for bookID: BookID) -> [CollectionChoice] {
+        libraryCollectionsBySourceID[bookID.sourceID, default: []]
+            .enumerated().compactMap { index, collection in
+                guard let uuid = collection.uuid else { return nil }
+                return CollectionChoice(id: index, uuid: uuid, name: collection.name)
+            }
+    }
+
+    func availableStatuses(for bookID: BookID) -> [BookStatus] {
+        availableStatusesBySourceID[bookID.sourceID] ?? []
+    }
+
+    func setAvailableStatuses(_ statuses: [BookStatus], sourceID: BookSourceID) {
+        availableStatusesBySourceID[sourceID] = statuses
+    }
+
+    func removeBooks(ids: Set<BookID>) {
         guard !ids.isEmpty else { return }
         let previousSelected = selectedBookId
         books.removeAll { ids.contains($0.id) }
@@ -419,7 +439,7 @@ final class MetadataEditorViewModel {
         searchingItunesBookIds.removeAll()
     }
 
-    func markDirty(field: String, for bookId: String) {
+    func markDirty(field: String, for bookId: BookID) {
         guard let index = books.firstIndex(where: { $0.id == bookId }) else { return }
         let book = books[index]
         let orig = book.originalMetadata
@@ -482,11 +502,11 @@ final class MetadataEditorViewModel {
         }
     }
 
-    func isDirty(field: String, for bookId: String) -> Bool {
+    func isDirty(field: String, for bookId: BookID) -> Bool {
         books.first { $0.id == bookId }?.dirtyFields.contains(field) ?? false
     }
 
-    func fieldDiffDisplay(field: String, for bookId: String) -> FieldDiffDisplay? {
+    func fieldDiffDisplay(field: String, for bookId: BookID) -> FieldDiffDisplay? {
         guard let book = books.first(where: { $0.id == bookId }) else { return nil }
         let original = originalDisplayValue(field: field, for: book)
         let current = currentDisplayValue(field: field, for: book)
@@ -587,9 +607,10 @@ final class MetadataEditorViewModel {
                     }
                 )
             case "collections":
+                let namesByUuid = libraryCollectionNamesByUuid(for: book.id)
                 return displayList(
                     book.collectionUuids.map { uuid in
-                        libraryCollectionNamesByUuid[uuid] ?? uuid
+                        namesByUuid[uuid] ?? uuid
                     }
                 )
             default:
@@ -660,7 +681,7 @@ final class MetadataEditorViewModel {
         let message: String
     }
 
-    func validationErrors(for bookId: String) -> [ValidationError] {
+    func validationErrors(for bookId: BookID) -> [ValidationError] {
         guard let book = books.first(where: { $0.id == bookId }) else { return [] }
         var errors: [ValidationError] = []
 
@@ -689,7 +710,7 @@ final class MetadataEditorViewModel {
 
         if book.dirtyFields.contains("status") {
             let statusUuid = book.statusUuid.trimmingCharacters(in: .whitespacesAndNewlines)
-            let validStatusUuids = Set(availableStatuses.compactMap(\.uuid))
+            let validStatusUuids = Set(availableStatuses(for: book.id).compactMap(\.uuid))
             if statusUuid.isEmpty || !validStatusUuids.contains(statusUuid) {
                 errors.append(
                     ValidationError(
@@ -720,7 +741,7 @@ final class MetadataEditorViewModel {
         return errors
     }
 
-    func hasValidationErrors(for bookId: String) -> Bool {
+    func hasValidationErrors(for bookId: BookID) -> Bool {
         !validationErrors(for: bookId).isEmpty
     }
 
@@ -742,7 +763,7 @@ final class MetadataEditorViewModel {
 
     func buildPayload(for book: EditableBook) -> StorytellerBookUpdatePayload? {
         guard book.hasDirtyFields else { return nil }
-        var payload = StorytellerBookUpdatePayload(uuid: book.id)
+        var payload = StorytellerBookUpdatePayload(uuid: book.id.uuid)
 
         if book.dirtyFields.contains("title") {
             payload.title = book.title
@@ -861,7 +882,7 @@ final class MetadataEditorViewModel {
             } else {
                 saveResults[book.id] = false
                 let serverError = await BookServiceActor.shared.lastUpdateBookError(
-                    sourceID: sourceID(for: book)
+                    sourceID: book.id.sourceID
                 )
                 saveError =
                     "\(book.displayTitle): \(serverError ?? "Unknown error")"
@@ -871,7 +892,7 @@ final class MetadataEditorViewModel {
         isSaving = false
     }
 
-    func saveSingle(_ bookId: String, mediaViewModel _: MediaViewModel) async {
+    func saveSingle(_ bookId: BookID, mediaViewModel _: MediaViewModel) async {
         guard let book = books.first(where: { $0.id == bookId }),
             book.hasDirtyFields
         else { return }
@@ -895,7 +916,7 @@ final class MetadataEditorViewModel {
         } else {
             saveResults[bookId] = false
             let serverError = await BookServiceActor.shared.lastUpdateBookError(
-                sourceID: sourceID(for: book)
+                sourceID: book.id.sourceID
             )
             saveError =
                 "\(book.displayTitle): \(serverError ?? "Unknown error")"
@@ -919,10 +940,10 @@ final class MetadataEditorViewModel {
         let covers = coverUploads(for: book)
         let hasMetadataChanges = !book.dirtyFields.isEmpty
 
-        let payload = buildPayload(for: book) ?? StorytellerBookUpdatePayload(uuid: book.id)
+        let payload = buildPayload(for: book) ?? StorytellerBookUpdatePayload(uuid: book.id.uuid)
         let result = await BookServiceActor.shared.updateBook(
             payload,
-            sourceID: sourceID(for: book),
+            bookID: book.id,
             textCover: covers.text,
             audioCover: covers.audio,
         )
@@ -934,18 +955,10 @@ final class MetadataEditorViewModel {
         )
     }
 
-    private func sourceID(for book: EditableBook) -> BookSourceID? {
-        book.originalMetadata.sourceID
-    }
-
-    private func sourceID(forBookID bookId: String) -> BookSourceID? {
-        books.first(where: { $0.id == bookId })?.originalMetadata.sourceID
-    }
-
     func applyImport(
         imports: [HardcoverImportSource: HardcoverBookDetails],
         fields: Set<String>,
-        for bookId: String,
+        for bookId: BookID,
     ) {
         guard !imports.isEmpty else { return }
         for (source, details) in imports {
@@ -957,7 +970,7 @@ final class MetadataEditorViewModel {
         details: HardcoverBookDetails,
         source: HardcoverImportSource = .text,
         fields: Set<String>,
-        for bookId: String,
+        for bookId: BookID,
     ) {
         guard let index = books.firstIndex(where: { $0.id == bookId }) else { return }
 
@@ -1111,7 +1124,7 @@ final class MetadataEditorViewModel {
         return name
     }
 
-    func rawHardcoverDataDump(for bookId: String) -> String {
+    func rawHardcoverDataDump(for bookId: BookID) -> String {
         guard let book = books.first(where: { $0.id == bookId }) else {
             return "No book selected."
         }
@@ -1181,7 +1194,7 @@ final class MetadataEditorViewModel {
         return lines.joined(separator: "\n")
     }
 
-    func revertFieldToOriginal(field: String, for bookId: String) {
+    func revertFieldToOriginal(field: String, for bookId: BookID) {
         guard let index = books.firstIndex(where: { $0.id == bookId }) else { return }
         let orig = books[index].originalMetadata
 
@@ -1239,7 +1252,7 @@ final class MetadataEditorViewModel {
         books[index].dirtyFields.remove(field)
     }
 
-    func revertAllFields(for bookId: String) {
+    func revertAllFields(for bookId: BookID) {
         guard let index = books.firstIndex(where: { $0.id == bookId }) else { return }
         let orig = books[index].originalMetadata
         books[index].title = orig.title

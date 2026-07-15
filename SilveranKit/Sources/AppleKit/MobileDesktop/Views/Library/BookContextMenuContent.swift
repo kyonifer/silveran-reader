@@ -5,7 +5,7 @@ import SwiftUI
 struct BookContextMenuContent: View {
     let item: BookMetadata
     var onInfo: ((BookMetadata) -> Void)? = nil
-    var onEditMetadata: (([String]) -> Void)? = nil
+    var onEditMetadata: (([BookID]) -> Void)? = nil
     @Environment(MediaViewModel.self) private var mediaViewModel
     @Environment(\.openWindow) private var openWindow
 
@@ -20,7 +20,7 @@ struct BookContextMenuContent: View {
 
         if let onEditMetadata {
             Button {
-                onEditMetadata([item.uuid])
+                onEditMetadata([item.id])
             } label: {
                 Label("Edit Metadata...", systemImage: "pencil")
             }
@@ -71,21 +71,20 @@ struct BookContextMenuContent: View {
     }
 
     private var currentItem: BookMetadata {
-        mediaViewModel.library.bookMetaData.first { $0.uuid == item.uuid } ?? item
+        mediaViewModel.library.bookMetaData.first { $0.id == item.id } ?? item
     }
 
     private var sortedStatuses: [BookStatus] {
-        guard let currentSourceID else { return [] }
         return mediaViewModel.availableStatusesBySourceID[currentSourceID] ?? []
     }
 
-    private var currentSourceID: BookSourceID? {
-        currentItem.sourceID ?? item.sourceID
+    private var currentSourceID: BookSourceID {
+        currentItem.sourceID
     }
 
     @ViewBuilder
     private var statusSection: some View {
-        if currentSourceID != nil, !sortedStatuses.isEmpty {
+        if !sortedStatuses.isEmpty {
             Divider()
 
             Menu {
@@ -111,8 +110,7 @@ struct BookContextMenuContent: View {
         guard name != currentItem.status?.name else { return }
         Task {
             let success = await BookServiceActor.shared.updateStatus(
-                forBooks: [item.uuid],
-                sourceID: currentSourceID,
+                forBooks: [item.id],
                 toStatusNamed: name,
             )
             if !success {
@@ -206,8 +204,7 @@ struct BookContextMenuContent: View {
             Button {
                 Task {
                     _ = await BookServiceActor.shared.cancelAlignment(
-                        for: item.uuid,
-                        sourceID: item.sourceID,
+                        for: item.id,
                     )
                     await BookServiceActor.shared.fetchLibraryInformation()
                 }
@@ -218,8 +215,7 @@ struct BookContextMenuContent: View {
             Button {
                 Task {
                     _ = await BookServiceActor.shared.startAlignment(
-                        for: item.uuid,
-                        sourceID: item.sourceID,
+                        for: item.id,
                         restart: .sync,
                     )
                     await BookServiceActor.shared.fetchLibraryInformation()
@@ -231,8 +227,7 @@ struct BookContextMenuContent: View {
             Button {
                 Task {
                     _ = await BookServiceActor.shared.startAlignment(
-                        for: item.uuid,
-                        sourceID: item.sourceID,
+                        for: item.id,
                         restart: .transcription,
                     )
                     await BookServiceActor.shared.fetchLibraryInformation()
@@ -244,8 +239,7 @@ struct BookContextMenuContent: View {
             Button {
                 Task {
                     _ = await BookServiceActor.shared.startAlignment(
-                        for: item.uuid,
-                        sourceID: item.sourceID,
+                        for: item.id,
                         restart: .full,
                     )
                     await BookServiceActor.shared.fetchLibraryInformation()
@@ -257,8 +251,7 @@ struct BookContextMenuContent: View {
             Button {
                 Task {
                     _ = await BookServiceActor.shared.startAlignment(
-                        for: item.uuid,
-                        sourceID: item.sourceID,
+                        for: item.id,
                         restart: .full,
                     )
                     await BookServiceActor.shared.fetchLibraryInformation()
@@ -270,8 +263,7 @@ struct BookContextMenuContent: View {
             Button {
                 Task {
                     _ = await BookServiceActor.shared.startAlignment(
-                        for: item.uuid,
-                        sourceID: item.sourceID,
+                        for: item.id,
                         restart: .sync,
                     )
                     await BookServiceActor.shared.fetchLibraryInformation()
@@ -283,8 +275,7 @@ struct BookContextMenuContent: View {
             Button {
                 Task {
                     _ = await BookServiceActor.shared.startAlignment(
-                        for: item.uuid,
-                        sourceID: item.sourceID,
+                        for: item.id,
                     )
                     await BookServiceActor.shared.fetchLibraryInformation()
                 }
@@ -303,8 +294,7 @@ struct BookContextMenuContent: View {
             Button {
                 Task {
                     _ = await BookServiceActor.shared.upgradeEpub(
-                        for: item.uuid,
-                        sourceID: item.sourceID,
+                        for: item.id,
                     )
                     await BookServiceActor.shared.fetchLibraryInformation()
                 }
@@ -410,7 +400,7 @@ struct BookContextMenuContent: View {
     }
 
     private func confirmDeleteSourceAsset(_ format: StorytellerBookFormat) {
-        let label = sourceAssetLabel(format)
+        let label = mediaViewModel.folderAssetLabel(format)
         guard
             confirmDestructiveAction(
                 title: "Delete \(label) from Folder?",
@@ -420,26 +410,7 @@ struct BookContextMenuContent: View {
             )
         else { return }
         Task {
-            let result = await BookServiceActor.shared.deleteBookAsset(
-                item.id,
-                sourceID: item.sourceID,
-                type: format,
-            )
-            await mediaViewModel.refreshMetadata(source: "BookContextMenuContent.deleteSourceAsset")
-            let didDelete = {
-                if case DeleteAssetResult.success = result {
-                    return true
-                }
-                return false
-            }()
-            mediaViewModel.showSyncNotification(
-                SyncNotification(
-                    message: didDelete
-                        ? "Deleted \(label.lowercased()) from folder source"
-                        : "Failed to delete \(label.lowercased())",
-                    type: didDelete ? .success : .error,
-                )
-            )
+            _ = await mediaViewModel.deleteFolderAsset(for: item, format: format)
         }
     }
 
@@ -453,15 +424,7 @@ struct BookContextMenuContent: View {
             )
         else { return }
         Task {
-            let success = await mediaViewModel.deleteBookFromSource(item)
-            mediaViewModel.showSyncNotification(
-                SyncNotification(
-                    message: success
-                        ? "Deleted \(item.title) from folder source"
-                        : "Failed to delete \(item.title)",
-                    type: success ? .success : .error,
-                )
-            )
+            _ = await mediaViewModel.deleteFolderBook(item)
         }
     }
 
@@ -476,16 +439,6 @@ struct BookContextMenuContent: View {
         }
     }
 
-    private func sourceAssetLabel(_ format: StorytellerBookFormat) -> String {
-        switch format {
-            case .ebook:
-                return "Ebook"
-            case .audiobook:
-                return "Audiobook"
-            case .readaloud:
-                return "Readaloud"
-        }
-    }
 
     private func confirmDestructiveAction(
         title: String,

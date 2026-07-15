@@ -6,7 +6,7 @@ import AppKit
 #endif
 
 public struct MetadataEditorView: View {
-    public let initialBookIds: [String]
+    public let initialBookIds: [BookID]
     private let hasUnsavedChanges: Binding<Bool>?
     @Environment(MediaViewModel.self) private var mediaViewModel
     @State private var viewModel = MetadataEditorViewModel()
@@ -19,13 +19,13 @@ public struct MetadataEditorView: View {
     @State private var showCoverImportSheet = false
     @State private var showHardcoverDataDump = false
     @State private var showErrorDetail = false
-    @State private var pendingRevertBookId: String?
-    @State private var pendingSaveBookId: String?
-    @State private var selectedSidebarBookIds: Set<String> = []
-    @State private var sidebarSelectionAnchorId: String?
-    @State private var selectedSidebarListBookId: String?
+    @State private var pendingRevertBookId: BookID?
+    @State private var pendingSaveBookId: BookID?
+    @State private var selectedSidebarBookIds: Set<BookID> = []
+    @State private var sidebarSelectionAnchorId: BookID?
+    @State private var selectedSidebarListBookId: BookID?
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
-    @State private var iOSNavigationPath: [String] = []
+    @State private var iOSNavigationPath: [BookID] = []
     @FocusState private var isSidebarFocused: Bool
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
@@ -37,7 +37,7 @@ public struct MetadataEditorView: View {
         #endif
     }
 
-    public init(initialBookIds: [String], hasUnsavedChanges: Binding<Bool>? = nil) {
+    public init(initialBookIds: [BookID], hasUnsavedChanges: Binding<Bool>? = nil) {
         self.initialBookIds = initialBookIds
         self.hasUnsavedChanges = hasUnsavedChanges
     }
@@ -95,8 +95,6 @@ public struct MetadataEditorView: View {
         )
         #if os(macOS)
         .frame(minWidth: 700, minHeight: 560)
-        #else
-        .frame(minHeight: 560)
         #endif
         .navigationTitle(viewModel.selectedBook?.displayTitle ?? "Edit Metadata")
         #if os(macOS)
@@ -117,7 +115,6 @@ public struct MetadataEditorView: View {
         .onAppear {
             columnVisibility = .all
             viewModel.addBooks(ids: initialBookIds, from: mediaViewModel.library)
-            viewModel.availableStatuses = mediaViewModel.availableStatuses
             if let selectedBookId = viewModel.selectedBookId {
                 selectedSidebarBookIds = [selectedBookId]
             }
@@ -125,7 +122,6 @@ public struct MetadataEditorView: View {
             #if os(macOS)
             MetadataEditorWindowRegistry.register { bookIds in
                 viewModel.addBooks(ids: bookIds, from: mediaViewModel.library)
-                viewModel.availableStatuses = mediaViewModel.availableStatuses
                 if let firstBookId = bookIds.first {
                     viewModel.selectedBookId = firstBookId
                     selectedSidebarBookIds = [firstBookId]
@@ -133,7 +129,7 @@ public struct MetadataEditorView: View {
             }
             #endif
         }
-        .task {
+        .task(id: viewModel.selectedBookId?.sourceID) {
             await loadAvailableStatusesIfNeeded()
         }
         .onChange(of: viewModel.hasAnyDirtyBooks) { _, isDirty in
@@ -173,24 +169,6 @@ public struct MetadataEditorView: View {
             Text(
                 "This restores the book to the Storyteller metadata loaded when the editor opened."
             )
-        }
-        .alert("Save metadata to Storyteller?", isPresented: saveConfirmationBinding) {
-            Button("Save") {
-                if let pendingSaveBookId {
-                    Task { @MainActor in
-                        await viewModel.saveSingle(
-                            pendingSaveBookId,
-                            mediaViewModel: mediaViewModel,
-                        )
-                    }
-                }
-                pendingSaveBookId = nil
-            }
-            Button("Cancel", role: .cancel) {
-                pendingSaveBookId = nil
-            }
-        } message: {
-            Text("This writes the current book's staged metadata changes to Storyteller.")
         }
         .background {
             Button("Select All Sidebar Books") {
@@ -394,7 +372,7 @@ public struct MetadataEditorView: View {
         #endif
     }
 
-    private func selectSidebarBook(id: String) {
+    private func selectSidebarBook(id: BookID) {
         isSidebarFocused = true
         #if os(macOS)
         let isMultiSelect = NSEvent.modifierFlags.contains(.command)
@@ -436,7 +414,7 @@ public struct MetadataEditorView: View {
         sidebarSelectionAnchorId = viewModel.selectedBookId ?? viewModel.books.first?.id
     }
 
-    private func sidebarBookIdRange(from anchorId: String?, to id: String) -> Set<String>? {
+    private func sidebarBookIdRange(from anchorId: BookID?, to id: BookID) -> Set<BookID>? {
         let ids = viewModel.books.map(\.id)
         guard let anchorId, let start = ids.firstIndex(of: anchorId),
             let end = ids.firstIndex(of: id)
@@ -447,12 +425,12 @@ public struct MetadataEditorView: View {
         return Set(range.map { ids[$0] })
     }
 
-    private func removeSidebarBook(id: String) {
+    private func removeSidebarBook(id: BookID) {
         let ids = selectedSidebarBookIds.contains(id) ? selectedSidebarBookIds : [id]
         removeSidebarBooks(ids)
     }
 
-    private func removeSidebarBooks(_ ids: Set<String>) {
+    private func removeSidebarBooks(_ ids: Set<BookID>) {
         viewModel.removeBooks(ids: ids)
         if let selectedBookId = viewModel.selectedBookId {
             selectedSidebarBookIds = [selectedBookId]
@@ -483,18 +461,9 @@ public struct MetadataEditorView: View {
     }
 
     private func loadAvailableStatusesIfNeeded() async {
-        if let sourceID = viewModel.selectedBook?.originalMetadata.sourceID {
-            viewModel.availableStatuses = await BookServiceActor.shared.getAvailableStatuses(
-                sourceID: sourceID
-            )
-            return
-        }
-
-        if !mediaViewModel.availableStatuses.isEmpty {
-            viewModel.availableStatuses = mediaViewModel.availableStatuses
-            return
-        }
-        viewModel.availableStatuses = await BookServiceActor.shared.getAvailableStatuses()
+        guard let sourceID = viewModel.selectedBookId?.sourceID else { return }
+        let statuses = await BookServiceActor.shared.getAvailableStatuses(sourceID: sourceID)
+        viewModel.setAvailableStatuses(statuses, sourceID: sourceID)
     }
 
     private func resetEditorSession() {
@@ -727,7 +696,8 @@ public struct MetadataEditorView: View {
                 viewModel.isSaving || viewModel.selectedBookId == nil
                     || !(viewModel.books.first { $0.id == viewModel.selectedBookId }?.hasDirtyFields
                         ?? false)
-                    || viewModel.hasValidationErrors(for: viewModel.selectedBookId ?? "")
+                    || viewModel.selectedBookId.map { viewModel.hasValidationErrors(for: $0) }
+                        ?? true
             )
             .keyboardShortcut("s", modifiers: .command)
 
@@ -746,33 +716,102 @@ public struct MetadataEditorView: View {
     }
 
     private var iOSCompactBottomBar: some View {
-        HStack(alignment: .top, spacing: 10) {
-            iOSBottomBarButton("Import Metadata", systemImage: "square.and.arrow.down") {
-                showHardcoverImportSheet = true
-            }
-            .disabled(viewModel.selectedBookId == nil)
+        VStack(spacing: 6) {
+            iOSStatusLine
 
-            iOSBottomBarButton("Import Covers", systemImage: "photo.on.rectangle") {
-                showCoverImportSheet = true
-            }
-            .disabled(viewModel.selectedBook == nil)
+            HStack(alignment: .top, spacing: 10) {
+                if viewModel.isSaving {
+                    ProgressView()
+                        .controlSize(.small)
+                }
 
-            iOSBottomBarButton("Save to Storyteller", systemImage: "tray.and.arrow.up") {
-                pendingSaveBookId = viewModel.selectedBookId
+                iOSBottomBarButton("Import Metadata", systemImage: "square.and.arrow.down") {
+                    showHardcoverImportSheet = true
+                }
+                .disabled(viewModel.selectedBookId == nil)
+
+                iOSBottomBarButton("Import Covers", systemImage: "photo.on.rectangle") {
+                    showCoverImportSheet = true
+                }
+                .disabled(viewModel.selectedBook == nil)
+
+                iOSBottomBarButton("Save to Storyteller", systemImage: "tray.and.arrow.up") {
+                    pendingSaveBookId = viewModel.selectedBookId
+                }
+                .disabled(
+                    viewModel.isSaving || viewModel.selectedBookId == nil
+                        || !(viewModel.books.first { $0.id == viewModel.selectedBookId }?
+                            .hasDirtyFields
+                            ?? false)
+                        || (viewModel.selectedBookId.map {
+                            viewModel.hasValidationErrors(for: $0)
+                        } ?? true)
+                )
             }
-            .disabled(
-                viewModel.isSaving || viewModel.selectedBookId == nil
-                    || !(viewModel.books.first { $0.id == viewModel.selectedBookId }?.hasDirtyFields
-                        ?? false)
-                    || viewModel.hasValidationErrors(for: viewModel.selectedBookId ?? "")
-            )
         }
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
+        .alert("Save metadata to Storyteller?", isPresented: saveConfirmationBinding) {
+            Button("Save") {
+                if let pendingSaveBookId {
+                    Task { @MainActor in
+                        await viewModel.saveSingle(
+                            pendingSaveBookId,
+                            mediaViewModel: mediaViewModel,
+                        )
+                    }
+                }
+                pendingSaveBookId = nil
+            }
+            Button("Cancel", role: .cancel) {
+                pendingSaveBookId = nil
+            }
+        } message: {
+            Text("This writes the current book's staged metadata changes to Storyteller.")
+        }
+    }
+
+    @ViewBuilder
+    private var iOSStatusLine: some View {
+        if let error = viewModel.saveError {
+            Label(error, systemImage: "exclamationmark.triangle")
+                .foregroundStyle(.red)
+                .font(.caption)
+                .lineLimit(3)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        } else if !currentBookErrors.isEmpty {
+            Label(
+                currentBookErrors.map(\.message).joined(separator: "; "),
+                systemImage: "exclamationmark.triangle",
+            )
+            .foregroundStyle(.red)
+            .font(.caption)
+            .lineLimit(3)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else if let bookId = viewModel.selectedBookId,
+            viewModel.saveResults[bookId] == true,
+            !(viewModel.books.first { $0.id == bookId }?.hasDirtyFields ?? false)
+        {
+            Label("Saved to Storyteller", systemImage: "checkmark.circle")
+                .foregroundStyle(.green)
+                .font(.caption)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 
     private var iOSBottomBar: some View {
+        VStack(spacing: 6) {
+            iOSStatusLine
+
+            iOSBottomBarRegularButtons
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 8)
+    }
+
+    private var iOSBottomBarRegularButtons: some View {
         HStack(alignment: .top, spacing: 10) {
             if viewModel.isSaving {
                 ProgressView()
@@ -799,7 +838,8 @@ public struct MetadataEditorView: View {
                 viewModel.isSaving || viewModel.selectedBookId == nil
                     || !(viewModel.books.first { $0.id == viewModel.selectedBookId }?.hasDirtyFields
                         ?? false)
-                    || viewModel.hasValidationErrors(for: viewModel.selectedBookId ?? "")
+                    || viewModel.selectedBookId.map { viewModel.hasValidationErrors(for: $0) }
+                        ?? true
             )
 
             iOSBottomBarButton("Save All", systemImage: "tray.full") {
@@ -812,9 +852,6 @@ public struct MetadataEditorView: View {
                     || viewModel.hasAnyValidationErrors
             )
         }
-        .frame(maxWidth: .infinity)
-        .padding(.horizontal, 18)
-        .padding(.vertical, 8)
     }
 
     private func iOSBottomBarButton(

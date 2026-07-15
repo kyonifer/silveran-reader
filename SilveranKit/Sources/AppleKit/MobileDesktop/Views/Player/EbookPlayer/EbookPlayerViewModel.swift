@@ -434,8 +434,7 @@ class EbookPlayerViewModel {
                 do {
                     let prepStarted = CFAbsoluteTimeGetCurrent()
                     let prepared = try await BookServiceActor.shared.prepareEbookForReading(
-                        bookID: data.metadata.uuid,
-                        sourceID: data.metadata.sourceID,
+                        bookID: data.metadata.id,
                         category: data.category,
                     )
                     let afterPrepare = CFAbsoluteTimeGetCurrent()
@@ -463,7 +462,7 @@ class EbookPlayerViewModel {
                 }
             }
 
-            registerIncomingPositionObserver(bookId: data.metadata.uuid)
+            registerIncomingPositionObserver(bookId: data.metadata.id)
         }
     }
 
@@ -487,8 +486,7 @@ class EbookPlayerViewModel {
         progressManager = EbookProgressManager(
             bridge: nil,
             settingsVM: settingsVM,
-            bookId: bookData?.metadata.uuid,
-            sourceID: bookData?.metadata.sourceID,
+            bookID: bookData?.metadata.id,
             initialLocator: bookData?.metadata.position?.locator,
         )
         progressManager?.bookStructure = bookStructure
@@ -530,7 +528,7 @@ class EbookPlayerViewModel {
         progressManager?.handleNativePageSelected(index)
     }
 
-    private func registerIncomingPositionObserver(bookId: String) {
+    private func registerIncomingPositionObserver(bookId: BookID) {
         Task {
             incomingPositionObserverId = await ProgressSyncActor.shared.addIncomingPositionObserver(
                 for: bookId
@@ -583,12 +581,15 @@ class EbookPlayerViewModel {
     }
 
     private func loadBookIntoActor(epubPath: URL) async {
-        let currentBookId = bookData?.metadata.uuid ?? "unknown"
-        let loadedBookId = await SMILPlayerActor.shared.getLoadedBookId()
+        guard let currentBookID = bookData?.metadata.id else {
+            debugLog("[EbookPlayerViewModel] Cannot load SMIL actor without book identity")
+            return
+        }
+        let loadedBookID = await SMILPlayerActor.shared.getLoadedBookID()
         let currentState = await SMILPlayerActor.shared.getCurrentState()
         let isPlaying = currentState?.isPlaying ?? false
 
-        if loadedBookId == currentBookId && isPlaying {
+        if loadedBookID == currentBookID && isPlaying {
             debugLog(
                 "[EbookPlayerViewModel] Book already loaded and playing in SMILPlayerActor, joining existing session"
             )
@@ -600,7 +601,7 @@ class EbookPlayerViewModel {
             return
         }
 
-        if loadedBookId == currentBookId {
+        if loadedBookID == currentBookID {
             debugLog(
                 "[EbookPlayerViewModel] Book loaded but paused, reloading fresh from PSA"
             )
@@ -614,7 +615,7 @@ class EbookPlayerViewModel {
         do {
             try await SMILPlayerActor.shared.loadBook(
                 epubPath: epubPath,
-                bookId: currentBookId,
+                bookID: currentBookID,
                 title: bookData?.metadata.title,
                 author: bookData?.metadata.authors?.first?.name,
             )
@@ -631,7 +632,7 @@ class EbookPlayerViewModel {
             #if os(iOS)
             if let metadata = bookData?.metadata {
                 if let coverData = await BookServiceActor.shared.cachedCoverData(
-                    for: metadata.uuid,
+                    for: metadata.id,
                     audio: false,
                 ) {
                     await SMILPlayerActor.shared.setCoverImage(coverData)
@@ -785,8 +786,7 @@ class EbookPlayerViewModel {
         progressManager = EbookProgressManager(
             bridge: bridge,
             settingsVM: settingsVM,
-            bookId: bookData?.metadata.uuid,
-            sourceID: bookData?.metadata.sourceID,
+            bookID: bookData?.metadata.id,
             initialLocator: bookData?.metadata.position?.locator,
         )
 
@@ -796,7 +796,7 @@ class EbookPlayerViewModel {
 
             Task {
                 if let coverData = await BookServiceActor.shared.cachedCoverData(
-                    for: metadata.uuid,
+                    for: metadata.id,
                     audio: false,
                 ) {
                     await MainActor.run {
@@ -863,10 +863,15 @@ class EbookPlayerViewModel {
                     let hasMediaOverlay = structureToUse.contains { !$0.mediaOverlay.isEmpty }
 
                     if hasMediaOverlay {
-                        let currentBookId = self.bookData?.metadata.uuid ?? "unknown"
+                        guard let currentBookID = self.bookData?.metadata.id else {
+                            debugLog(
+                                "[EbookPlayerViewModel] Cannot create media overlay manager without book identity"
+                            )
+                            return
+                        }
                         let manager = MediaOverlayManager(
                             bookStructure: structureToUse,
-                            bookId: currentBookId,
+                            bookID: currentBookID,
                             bridge: bridge,
                             settingsVM: self.settingsVM,
                             reloadBookIntoActor: { [weak self] in
@@ -1059,10 +1064,10 @@ class EbookPlayerViewModel {
     // MARK: - Highlights / Bookmarks
 
     func loadHighlights() async {
-        guard let bookId = bookData?.metadata.uuid else { return }
+        guard let bookID = bookData?.metadata.id else { return }
 
-        highlights = await BookmarkActor.shared.getHighlights(bookId: bookId)
-        debugLog("[EbookPlayerViewModel] Loaded \(highlights.count) highlights for book \(bookId)")
+        highlights = await BookmarkActor.shared.getHighlights(bookID: bookID)
+        debugLog("[EbookPlayerViewModel] Loaded \(highlights.count) highlights for book \(bookID)")
 
         await sendHighlightsToJS()
     }
@@ -1072,7 +1077,7 @@ class EbookPlayerViewModel {
         color: HighlightColor?,
         note: String? = nil,
     ) async {
-        guard let bookId = bookData?.metadata.uuid else { return }
+        guard let bookID = bookData?.metadata.id else { return }
 
         let locator = BookLocator(
             href: selection.href,
@@ -1106,7 +1111,7 @@ class EbookPlayerViewModel {
         )
 
         let highlight = Highlight(
-            bookId: bookId,
+            bookID: bookID,
             locator: locator,
             text: selection.text,
             color: color,
@@ -1114,7 +1119,7 @@ class EbookPlayerViewModel {
         )
 
         await BookmarkActor.shared.addHighlight(highlight)
-        highlights = await BookmarkActor.shared.getHighlights(bookId: bookId)
+        highlights = await BookmarkActor.shared.getHighlights(bookID: bookID)
 
         pendingSelection = nil
 
@@ -1124,10 +1129,10 @@ class EbookPlayerViewModel {
     }
 
     func deleteHighlight(_ highlight: Highlight) async {
-        guard let bookId = bookData?.metadata.uuid else { return }
+        guard let bookID = bookData?.metadata.id else { return }
 
-        await BookmarkActor.shared.deleteHighlight(id: highlight.id, bookId: bookId)
-        highlights = await BookmarkActor.shared.getHighlights(bookId: bookId)
+        await BookmarkActor.shared.deleteHighlight(id: highlight.id, bookID: bookID)
+        highlights = await BookmarkActor.shared.getHighlights(bookID: bookID)
 
         if let bridge = commsBridge {
             do {
@@ -1223,8 +1228,12 @@ class EbookPlayerViewModel {
                 let color = highlight.color
             else { return nil }
 
-            let sectionIndex =
-                findSectionIndex(for: highlight.locator.href, in: bookStructure) ?? 0
+            guard
+                let sectionIndex = findSectionIndex(
+                    for: highlight.locator.href,
+                    in: bookStructure,
+                )
+            else { return nil }
 
             return HighlightRenderData(
                 id: highlight.id.uuidString,
@@ -1248,7 +1257,7 @@ class EbookPlayerViewModel {
     }
 
     func handleHighlightSetColor(id: String, colorId: String) async {
-        guard let bookId = bookData?.metadata.uuid,
+        guard let bookID = bookData?.metadata.id,
             let uuid = UUID(uuidString: id),
             let existing = highlights.first(where: { $0.id == uuid }),
             let color = HighlightColor(rawValue: colorId)
@@ -1256,7 +1265,7 @@ class EbookPlayerViewModel {
 
         let updated = Highlight(
             id: existing.id,
-            bookId: existing.bookId,
+            bookID: existing.bookID,
             locator: existing.locator,
             text: existing.text,
             color: color,
@@ -1265,7 +1274,7 @@ class EbookPlayerViewModel {
         )
 
         await BookmarkActor.shared.updateHighlight(updated)
-        highlights = await BookmarkActor.shared.getHighlights(bookId: bookId)
+        highlights = await BookmarkActor.shared.getHighlights(bookID: bookID)
         await sendHighlightsToJS()
     }
 
@@ -1284,10 +1293,10 @@ class EbookPlayerViewModel {
     }
 
     func saveEditedHighlight(_ original: Highlight, color: HighlightColor?, note: String?) async {
-        guard let bookId = bookData?.metadata.uuid else { return }
+        guard let bookID = bookData?.metadata.id else { return }
         let updated = Highlight(
             id: original.id,
-            bookId: original.bookId,
+            bookID: original.bookID,
             locator: original.locator,
             text: original.text,
             color: color,
@@ -1295,7 +1304,7 @@ class EbookPlayerViewModel {
             createdAt: original.createdAt,
         )
         await BookmarkActor.shared.updateHighlight(updated)
-        highlights = await BookmarkActor.shared.getHighlights(bookId: bookId)
+        highlights = await BookmarkActor.shared.getHighlights(bookID: bookID)
         await sendHighlightsToJS()
         pendingEditHighlight = nil
     }
@@ -1309,7 +1318,7 @@ class EbookPlayerViewModel {
     }
 
     func addBookmarkAtCurrentPage() async {
-        guard let bookId = bookData?.metadata.uuid else {
+        guard let bookID = bookData?.metadata.id else {
             debugLog("[EbookPlayerViewModel] Cannot add bookmark - missing book ID")
             return
         }
@@ -1338,7 +1347,7 @@ class EbookPlayerViewModel {
         )
 
         let highlight = Highlight(
-            bookId: bookId,
+            bookID: bookID,
             locator: locator,
             text: position.text,
             color: nil,
@@ -1346,7 +1355,7 @@ class EbookPlayerViewModel {
         )
 
         await BookmarkActor.shared.addHighlight(highlight)
-        highlights = await BookmarkActor.shared.getHighlights(bookId: bookId)
+        highlights = await BookmarkActor.shared.getHighlights(bookID: bookID)
 
         debugLog("[EbookPlayerViewModel] Added bookmark: \(position.text.prefix(50))...")
     }
