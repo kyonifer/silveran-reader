@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.1-117]
+## [0.1-118]
 
 ### Features
 - Added Home and Lock Screen widgets for quickly returning to recent books on macOS and iOS.
@@ -9,9 +9,11 @@
 - Added Apple SpeechAnalyzer as a readaloud transcription option on supported systems.
 - Added a persistent transcription cache so repeated readaloud alignment work can reuse prior results.
 - Redesigned Add Book on macOS and iOS, and added standalone readaloud alignment on iOS.
+- Added iOS controls for deleting an entire book or an individual media format from a folder source.
+- Apple Watch login sync now lets you choose between multiple Storyteller servers.
 
 ### Platform
-- Added an initial Android proof of concept.
+- Added an Android proof of concept with securely persisted Storyteller server setup, searchable Home, Library, and Downloaded views, cover artwork, book details, media download management, and system light/dark support.
 
 ### Bug Fixes
 - Fixed tvOS reader scrolling and long-paragraph navigation issues.
@@ -20,6 +22,11 @@
 - Fixed library sidebar animation and table column-width persistence issues on macOS.
 - Fixed overlapping group highlights unexpectedly turning the page backward.
 - Fixed local-folder descriptions displaying markup instead of readable text.
+- Books with matching IDs in different sources now remain distinct across reading progress, highlights, downloads, widgets, CarPlay, and Apple Watch, with existing progress and highlights migrated to the source-aware format.
+- Fixed iOS readaloud file selection and output, along with compact metadata import and editor workflows.
+- Fixed folder-library scans crashing or producing duplicate books when media identifiers collide.
+- Fixed completed downloads remaining active after relaunch.
+- Fixed playback stopping while backgrounded at chapter or page boundaries.
 
 ---
 
