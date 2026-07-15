@@ -190,12 +190,14 @@ actor AVPlayerAudioEngine: AudioPlaying {
     private let sessionObserverBag = NotificationObserverBag()
     #endif
 
-    func load(url: URL) async throws -> TimeInterval {
+    // Keep this path synchronous and install the player item immediately. Awaiting
+    // asset metadata here can stall playback at audio-file boundaries while iOS is
+    // locked/backgrounded. The duration may therefore be unavailable and return 0.
+    func load(url: URL) throws -> TimeInterval {
         teardownPlayer()
         configureSessionObserversIfNeeded()
 
-        let asset = AVURLAsset(url: url)
-        let playerItem = AVPlayerItem(asset: asset)
+        let playerItem = AVPlayerItem(url: url)
         let newPlayer = AVPlayer(playerItem: playerItem)
         newPlayer.rate = 0  // Start paused
         newPlayer.volume = Float(desiredVolume)
@@ -214,11 +216,10 @@ actor AVPlayerAudioEngine: AudioPlaying {
 
         player = newPlayer
 
-        let duration = (try? await asset.load(.duration)).map(CMTimeGetSeconds) ?? 0
-        debugLog(
-            "[AVPlayerAudioEngine] Audio loaded, duration: \(duration.isNaN ? 0 : duration)s"
-        )
-        return duration.isFinite && duration > 0 ? duration : 0
+        let duration = playerItem.duration.seconds
+        let normalizedDuration = duration.isFinite && duration > 0 ? duration : 0
+        debugLog("[AVPlayerAudioEngine] Audio loaded, duration: \(normalizedDuration)s")
+        return normalizedDuration
     }
 
     func play() {
