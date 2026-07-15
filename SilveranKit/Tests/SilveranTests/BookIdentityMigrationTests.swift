@@ -94,6 +94,37 @@ private struct MigrationFixture {
             .appendingPathComponent("MigrationSentinels", isDirectory: true)
             .appendingPathComponent(BookIdentityMigration.sentinelName, isDirectory: false)
     }
+
+    var internalFolderSource: URL {
+        applicationSupport.appendingPathComponent("InternalFolderSource", isDirectory: true)
+    }
+
+    var legacyLocalProgressStash: URL {
+        config.appendingPathComponent(
+            BookIdentityMigration.legacyLocalProgressStashName,
+            isDirectory: false,
+        )
+    }
+
+    var internalFolderMigration: BookIdentityMigration {
+        BookIdentityMigration(
+            applicationSupportDirectory: applicationSupport,
+            documentsDirectory: documents,
+            sources: [
+                BookIdentityMigration.Source(
+                    id: "internal-source",
+                    kind: .localFolder,
+                    cacheDirectory:
+                        applicationSupport
+                        .appendingPathComponent("SourceCache", isDirectory: true)
+                        .appendingPathComponent("internal-source", isDirectory: true),
+                    folderDirectory: internalFolderSource,
+                    isInternalFolder: true,
+                )
+            ],
+            defaults: defaults,
+        )
+    }
 }
 
 @Test func runtimeStateRetriesFailuresAndCachesSuccess() async {
@@ -648,6 +679,82 @@ private struct MigrationFixture {
     #expect(saved.works.first?.uuid == "legacy-book")
     #expect(saved.works.first?.position?.timestamp == 4242)
     #expect(FileManager.default.fileExists(atPath: fixture.sentinel.path))
+}
+
+@Test func bookIdentityPreflightEvacuatesLegacyInternalArrayOnRetry() throws {
+    let fixture = try MigrationFixture()
+    defer { try? FileManager.default.removeItem(at: fixture.root) }
+    let metadataURL = fixture.internalFolderSource.appendingPathComponent(
+        "library_metadata.json",
+        isDirectory: false,
+    )
+
+    var liveObject = try #require(
+        JSONSerialization.jsonObject(
+            with: JSONEncoder().encode(migrationLegacyBook())
+        ) as? [String: Any]
+    )
+    liveObject.removeValue(forKey: "id")
+    liveObject["uuid"] = "live-legacy-book"
+    try writeJSON([liveObject], to: metadataURL)
+
+    try FileManager.default.createDirectory(
+        at: fixture.config,
+        withIntermediateDirectories: true,
+    )
+    try JSONEncoder().encode([migrationLegacyBook()]).write(
+        to: fixture.legacyLocalProgressStash,
+        options: .atomic,
+    )
+
+    try fixture.internalFolderMigration.prepareLegacyLocalProgress()
+
+    #expect(!FileManager.default.fileExists(atPath: metadataURL.path))
+    let stashed = try JSONDecoder().decode(
+        [BookMetadata].self,
+        from: Data(contentsOf: fixture.legacyLocalProgressStash),
+    )
+    #expect(stashed.map(\.id) == [BookID(sourceID: "internal-source", uuid: "live-legacy-book")])
+}
+
+@Test func bookIdentityPreflightEvacuatesEmptyLegacyInternalArray() throws {
+    let fixture = try MigrationFixture()
+    defer { try? FileManager.default.removeItem(at: fixture.root) }
+    let metadataURL = fixture.internalFolderSource.appendingPathComponent(
+        "library_metadata.json",
+        isDirectory: false,
+    )
+    try writeJSON([], to: metadataURL)
+
+    try fixture.internalFolderMigration.prepareLegacyLocalProgress()
+
+    #expect(!FileManager.default.fileExists(atPath: metadataURL.path))
+    let stashed = try JSONDecoder().decode(
+        [BookMetadata].self,
+        from: Data(contentsOf: fixture.legacyLocalProgressStash),
+    )
+    #expect(stashed.isEmpty)
+}
+
+@Test func bookIdentityPreflightLeavesCurrentInternalStateByteForByteUntouched() throws {
+    let fixture = try MigrationFixture()
+    defer { try? FileManager.default.removeItem(at: fixture.root) }
+    let metadataURL = fixture.internalFolderSource.appendingPathComponent(
+        "library_metadata.json",
+        isDirectory: false,
+    )
+    try FileManager.default.createDirectory(
+        at: fixture.internalFolderSource,
+        withIntermediateDirectories: true,
+    )
+    let state = FolderSourceLibraryState(sourceID: "internal-source")
+    let original = try JSONEncoder().encode(state)
+    try original.write(to: metadataURL, options: .atomic)
+
+    try fixture.internalFolderMigration.prepareLegacyLocalProgress()
+
+    #expect(try Data(contentsOf: metadataURL) == original)
+    #expect(!FileManager.default.fileExists(atPath: fixture.legacyLocalProgressStash.path))
 }
 
 @Test func terminalBookIdentityMigrationDiscardsUnusableLegacyLocalProgress() throws {

@@ -129,13 +129,17 @@ struct BookIdentityMigration {
             return
         }
 
+        let internalFolderMetadataURL =
+            applicationSupportDirectory
+            .appendingPathComponent("InternalFolderSource", isDirectory: true)
+            .appendingPathComponent("library_metadata.json", isDirectory: false)
         let candidates = [
+            // Intermediate development builds wrote the legacy array at the path now owned by
+            // FolderSourceLibraryState. Prefer that live copy over a stash left by a failed retry.
+            internalFolderMetadataURL,
             legacyLocalProgressStashURL,
             applicationSupportDirectory
                 .appendingPathComponent("local_media", isDirectory: true)
-                .appendingPathComponent("library_metadata.json", isDirectory: false),
-            applicationSupportDirectory
-                .appendingPathComponent("InternalFolderSource", isDirectory: true)
                 .appendingPathComponent("library_metadata.json", isDirectory: false),
         ]
         for input in candidates where files.fileExists(atPath: input.path) {
@@ -157,6 +161,13 @@ struct BookIdentityMigration {
                 continue
             }
             try writeBooks(books, to: legacyLocalProgressStashURL)
+            if input == internalFolderMetadataURL {
+                // The folder scanner expects a top-level FolderSourceLibraryState object here.
+                // Remove only a confirmed legacy array, and only after the atomic stash can be
+                // decoded by the later merge step, so a failed startup remains retryable.
+                try validateLegacyLocalProgressStash()
+                try removeIfPresent(input)
+            }
             return
         }
     }
@@ -187,6 +198,13 @@ struct BookIdentityMigration {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         try encoder.encode(books).write(to: url, options: .atomic)
+    }
+
+    private func validateLegacyLocalProgressStash() throws {
+        let data = try Data(contentsOf: legacyLocalProgressStashURL)
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        _ = try decoder.decode([BookMetadata].self, from: data)
     }
 
     private func decodeBook(_ object: [String: Any], sourceID: BookSourceID) -> BookMetadata? {
