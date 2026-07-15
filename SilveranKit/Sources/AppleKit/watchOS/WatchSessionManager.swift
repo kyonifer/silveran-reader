@@ -8,15 +8,16 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
 
     private var session: WCSession?
     nonisolated(unsafe) private var cachedBookInfos: [WatchBookInfo] = []
+    nonisolated(unsafe) private var latestPhoneSourceList = PhoneSourceList(sources: [])
 
     nonisolated(unsafe) var onTransferProgress: ((String, Int, Int) -> Void)?
     nonisolated(unsafe) var onTransferComplete: ((BookID, String) -> Void)?
     nonisolated(unsafe) var onImportComplete: ((Bool) -> Void)?
     nonisolated(unsafe) var onBookDeleted: (() -> Void)?
     nonisolated(unsafe) var onPlaybackStateReceived: ((RemotePlaybackState?) -> Void)?
-    nonisolated(unsafe) var onCredentialSourcesReceived:
-        (([WatchCredentialSourceInfo]) -> Void)?
+    nonisolated(unsafe) var onCredentialSourcesReceived: (([PhoneSource]) -> Void)?
     nonisolated(unsafe) var onCredentialsReceived: ((WatchCredentialReply) -> Void)?
+    nonisolated(unsafe) private var retriedTerminalTransferIDs: Set<UUID> = []
 
     private override init() {
         super.init()
@@ -35,10 +36,20 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
         session = wcSession
 
         refreshCachedBooks()
+        let receivedSourceList = protocolContext(
+            from: wcSession.receivedApplicationContext
+        )?.phoneSourceList
         Task {
+            if let stored = try? await WatchStateStore.loadPhoneSourceList() {
+                latestPhoneSourceList = stored
+            }
+            if let receivedSourceList {
+                await storePhoneSourceList(receivedSourceList)
+            }
             _ = await ProgressSyncActor.shared.addObserver {
                 Task { await WatchSessionManager.shared.relayPendingProgress() }
             }
+            await relayPendingProgress()
         }
     }
 
@@ -67,14 +78,10 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
 
     public func publishProtocolContext() async {
         guard let session else { return }
-        let sourceIDs = await BookServiceActor.shared.bookSources
-            .filter { $0.kind == .storyteller }
-            .map(\.id)
-            .sorted()
         do {
             try session.updateApplicationContext(
                 try WatchProtocolMessage.context(
-                    WatchProtocolContext(sourceIDs: sourceIDs)
+                    WatchProtocolContext()
                 ).encode()
             )
         } catch {
@@ -92,17 +99,38 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
             return
         }
         guard activationState == .activated else { return }
-        Task { await publishProtocolContext() }
+        let receivedSourceList = protocolContext(
+            from: session.receivedApplicationContext
+        )?.phoneSourceList
+        Task {
+            await publishProtocolContext()
+            if let receivedSourceList {
+                await storePhoneSourceList(receivedSourceList)
+            }
+            await relayPendingProgress()
+        }
     }
 
     public func session(
         _ session: WCSession,
         didReceiveApplicationContext applicationContext: [String: Any],
     ) {
-        guard protocolContext(from: applicationContext) != nil else {
+        guard let context = protocolContext(from: applicationContext) else {
             print("[WatchSessionManager] Ignored non-v2 application context")
             return
         }
+        let receivedSourceList = context.phoneSourceList
+        Task {
+            if let receivedSourceList {
+                await storePhoneSourceList(receivedSourceList)
+            }
+            await relayPendingProgress()
+        }
+    }
+
+    public func sessionReachabilityDidChange(_ session: WCSession) {
+        guard session.isReachable else { return }
+        Task { await relayPendingProgress() }
     }
 
     public func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
@@ -137,6 +165,8 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
             WatchStorageManager.shared.cancelChunkedTransfer(
                 transferID: reference.transferID
             )
+            let callback = onImportComplete
+            Task { @MainActor in callback?(false) }
             reply(.acknowledgement, to: replyHandler)
             return
         }
@@ -152,15 +182,26 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
             case .cancelTransfer:
                 return
             case .watchLibraryRequest:
-                reply(
-                    .watchLibrary(WatchLibrary(books: cachedBookInfos)),
-                    to: replyHandler,
-                )
+                let sendableReply = replyHandler.map(SendableWatchReplyHandler.init)
+                Task {
+                    let library = await currentWatchLibrary()
+                    sendableReply?.reply(
+                        try? WatchProtocolMessage.watchLibrary(library).encode()
+                    )
+                }
             case .playbackState(let state):
                 onPlaybackStateReceived?(state)
                 reply(.acknowledgement, to: replyHandler)
             case .noPlaybackState:
                 onPlaybackStateReceived?(nil)
+                reply(.acknowledgement, to: replyHandler)
+            case .progressReceived(let receipt):
+                Task {
+                    await ProgressSyncActor.shared.confirmUpload(
+                        bookID: receipt.watchBookID,
+                        timestamp: receipt.timestamp,
+                    )
+                }
                 reply(.acknowledgement, to: replyHandler)
             case .ping:
                 reply(.pong, to: replyHandler)
@@ -178,20 +219,6 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
     ) {
         let sendableReply = replyHandler.map(SendableWatchReplyHandler.init)
         Task {
-            let sourceIDs = Set(
-                await BookServiceActor.shared.bookSources
-                    .filter { $0.kind == .storyteller }
-                    .map(\.id)
-            )
-            guard sourceIDs.contains(payload.bookID.sourceID) else {
-                sendableReply?.reply(
-                    try? WatchProtocolMessage.failure(
-                        WatchFailure(message: "Unknown book source")
-                    ).encode()
-                )
-                return
-            }
-
             do {
                 try await BookServiceActor.shared.deleteCachedMedia(
                     for: payload.bookID,
@@ -212,29 +239,41 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
 
     public func requestCredentialSourcesFromPhone() {
         sendRequest(.sourceCatalogRequest) { [weak self] response in
-            guard case .sourceCatalog(let catalog) = response, let self else {
+            guard case .sourceCatalog(let sourceList) = response, let self else {
                 self?.deliverCredentialSources([])
                 return
             }
-            let sourceIDs = catalog.sources.map(\.sourceID)
+            let sourceIDs = sourceList.sources.map(\.sourceID)
             guard sourceIDs.allSatisfy({ !$0.isEmpty }), Set(sourceIDs).count == sourceIDs.count
             else {
                 self.deliverCredentialSources([])
                 return
             }
-            self.deliverCredentialSources(catalog.sources)
+            Task {
+                await self.storePhoneSourceList(sourceList)
+                self.deliverCredentialSources(
+                    sourceList.sources.filter {
+                        $0.kind == .storyteller && $0.serverURL != nil && $0.username != nil
+                    }
+                )
+            }
         } onError: { [weak self] error in
             print("[WatchSessionManager] Source catalog request failed: \(error)")
-            self?.deliverCredentialSources([])
+            guard let self else { return }
+            self.deliverCredentialSources(
+                self.latestPhoneSourceList.sources.filter {
+                    $0.kind == .storyteller && $0.serverURL != nil && $0.username != nil
+                }
+            )
         }
     }
 
     public func requestCredentialsFromPhone(sourceID: BookSourceID) {
         sendRequest(
-            .credentialRequest(WatchCredentialRequest(sourceID: sourceID))
+            .credentialRequest(WatchCredentialRequest(phoneSourceID: sourceID))
         ) { [weak self] response in
             guard case .credentialReply(let credentials) = response,
-                credentials.sourceID == sourceID
+                credentials.phoneSourceID == sourceID
             else {
                 print("[WatchSessionManager] Invalid credential reply")
                 return
@@ -246,7 +285,7 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
         }
     }
 
-    private func deliverCredentialSources(_ sources: [WatchCredentialSourceInfo]) {
+    private func deliverCredentialSources(_ sources: [PhoneSource]) {
         let callback = onCredentialSourcesReceived
         Task { @MainActor in callback?(sources) }
     }
@@ -254,10 +293,17 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
     public func session(_ session: WCSession, didReceive file: WCSessionFile) {
         guard let envelope = file.metadata,
             let message = try? WatchProtocolMessage.decode(from: envelope),
-            case .chunkTransfer(let payload) = message,
-            validIncomingChunk(payload)
+            case .chunkTransfer(let payload) = message
         else {
             print("[WatchSessionManager] Rejected non-v2 or invalid file transfer")
+            return
+        }
+        guard validIncomingChunk(payload) else {
+            rejectTransfer(
+                payload,
+                message: "Invalid transfer metadata",
+                deleting: file.fileURL,
+            )
             return
         }
 
@@ -272,6 +318,11 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
             try FileManager.default.moveItem(at: file.fileURL, to: quarantinedURL)
         } catch {
             print("[WatchSessionManager] Failed to retain received chunk: \(error)")
+            rejectTransfer(
+                payload,
+                message: "Could not retain a transfer chunk",
+                deleting: file.fileURL,
+            )
             return
         }
 
@@ -281,7 +332,7 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
     }
 
     private func validIncomingChunk(_ payload: WatchChunkTransferPayload) -> Bool {
-        payload.bookMetadata.id == payload.bookID
+        payload.bookMetadata.id == payload.phoneBookID
             && payload.totalChunks > 0
             && payload.chunkIndex >= 0
             && payload.chunkIndex < payload.totalChunks
@@ -293,14 +344,12 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
         at quarantinedURL: URL,
         payload: WatchChunkTransferPayload,
     ) async {
-        let sourceIDs = Set(
-            await BookServiceActor.shared.bookSources
-                .filter { $0.kind == .storyteller }
-                .map(\.id)
-        )
-        guard sourceIDs.contains(payload.bookID.sourceID), validIncomingChunk(payload)
-        else {
-            try? FileManager.default.removeItem(at: quarantinedURL)
+        guard validIncomingChunk(payload) else {
+            rejectTransfer(
+                payload,
+                message: "Invalid transfer metadata",
+                deleting: quarantinedURL,
+            )
             return
         }
 
@@ -309,7 +358,11 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
             payload: payload,
         )
         guard result.accepted else {
-            try? FileManager.default.removeItem(at: quarantinedURL)
+            rejectTransfer(
+                payload,
+                message: "Apple Watch rejected a transfer chunk",
+                deleting: quarantinedURL,
+            )
             return
         }
 
@@ -320,24 +373,27 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
         )
 
         guard result.isComplete, let manifest = result.manifest else { return }
-        onTransferComplete?(manifest.bookID, manifest.title)
 
-        let success = await importTransferredBook(manifest)
-        await MainActor.run { onImportComplete?(success) }
-        guard success else { return }
-        notifyPhoneTransferComplete(transferID: manifest.transferID)
+        do {
+            let localBookID = try await importTransferredBook(manifest)
+            onTransferComplete?(localBookID, manifest.title)
+            await MainActor.run { onImportComplete?(true) }
+            notifyPhoneTransferComplete(transferID: manifest.transferID)
+        } catch {
+            print("[WatchSessionManager] Failed to import transfer: \(error)")
+            rejectTransfer(payload, message: error.localizedDescription)
+        }
     }
 
-    private func importTransferredBook(_ manifest: WatchTransferManifest) async -> Bool {
-        let sourceIDs = Set(
-            await BookServiceActor.shared.bookSources
-                .filter { $0.kind == .storyteller }
-                .map(\.id)
-        )
-        guard sourceIDs.contains(manifest.bookID.sourceID),
-            manifest.bookMetadata.id == manifest.bookID,
+    private func importTransferredBook(_ manifest: WatchTransferManifest) async throws -> BookID {
+        guard manifest.bookMetadata.id == manifest.phoneBookID else {
+            throw WatchTransferImportError.bookIdentityMismatch
+        }
+        guard
             let tempURL = WatchStorageManager.shared.assembleChunksToTempFile(manifest: manifest)
-        else { return false }
+        else {
+            throw WatchTransferImportError.assemblyFailed
+        }
 
         do {
             try await mergeBookMetadataIntoLibrary(manifest.bookMetadata)
@@ -348,12 +404,27 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
                 filename: "book.\(manifest.fileExtension)",
             )
             refreshCachedBooks()
-            return true
+            return manifest.phoneBookID
         } catch {
             try? FileManager.default.removeItem(at: tempURL)
-            print("[WatchSessionManager] Failed to import transfer: \(error)")
-            return false
+            throw error
         }
+    }
+
+    private func rejectTransfer(
+        _ payload: WatchChunkTransferPayload,
+        message: String,
+        deleting fileURL: URL? = nil,
+    ) {
+        if let fileURL {
+            try? FileManager.default.removeItem(at: fileURL)
+        }
+        WatchStorageManager.shared.cancelChunkedTransfer(transferID: payload.transferID)
+        notifyPhoneTransferFailed(
+            transferID: payload.transferID,
+            message: message,
+        )
+        onImportComplete?(false)
     }
 
     private func mergeBookMetadataIntoLibrary(_ book: BookMetadata) async throws {
@@ -409,19 +480,30 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
     }
 
     private func mergePhoneMetadata(_ phoneBooks: [BookMetadata]) async -> Bool {
-        let configured = Set(
-            await BookServiceActor.shared.bookSources
-                .filter { $0.kind == .storyteller }
-                .map(\.id)
-        )
-        guard phoneBooks.allSatisfy({ configured.contains($0.sourceID) }) else {
-            print("[WatchSessionManager] Rejected metadata for an unknown source")
-            return false
+        let cached = await BookServiceActor.shared.librarySnapshot(policy: .cachedOnly).books
+        var translatedBySource: [BookSourceID: [BookMetadata]] = [:]
+        for phoneBook in phoneBooks {
+            guard let phoneSource = latestPhoneSourceList.source(id: phoneBook.sourceID) else {
+                continue
+            }
+
+            let localBookID: BookID?
+            if cached.contains(where: { $0.id == phoneBook.id }) {
+                localBookID = phoneBook.id
+            } else if let watchSourceID = await watchSourceID(matching: phoneSource) {
+                localBookID = BookID(sourceID: watchSourceID, uuid: phoneBook.uuid)
+            } else {
+                localBookID = nil
+            }
+
+            guard let localBookID else { continue }
+            translatedBySource[localBookID.sourceID, default: []].append(
+                phoneBook.withBookID(localBookID)
+            )
         }
 
-        let cached = await BookServiceActor.shared.librarySnapshot(policy: .cachedOnly).books
         do {
-            for (sourceID, incomingBooks) in Dictionary(grouping: phoneBooks, by: \.sourceID) {
+            for (sourceID, incomingBooks) in translatedBySource {
                 var sourceBooks = cached.filter { $0.sourceID == sourceID }
                 for incoming in incomingBooks {
                     if let index = sourceBooks.firstIndex(where: { $0.id == incoming.id }) {
@@ -438,40 +520,83 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
                 )
             }
             refreshCachedBooks()
-            return true
+            return !translatedBySource.isEmpty
         } catch {
             print("[WatchSessionManager] Failed to merge phone metadata: \(error)")
             return false
         }
     }
 
+    private func currentWatchLibrary() async -> WatchLibrary {
+        var phoneSourceByWatchSource: [BookSourceID: BookSourceID] = [:]
+        let watchSources = await BookServiceActor.shared.bookSources
+            .filter { $0.kind == .storyteller }
+        for source in watchSources {
+            guard
+                let credentials = try? await AuthenticationActor.shared.loadCredentials(
+                    sourceID: source.id
+                ),
+                let phoneSource = latestPhoneSourceList.matchingServer(
+                    serverURL: credentials.url,
+                    username: credentials.username,
+                )
+            else { continue }
+            phoneSourceByWatchSource[source.id] = phoneSource.sourceID
+        }
+
+        var books: [WatchBookInfo] = []
+        for book in cachedBookInfos {
+            let phoneSourceID =
+                latestPhoneSourceList.source(id: book.bookID.sourceID)?.sourceID
+                ?? phoneSourceByWatchSource[book.bookID.sourceID]
+            let phoneBookID = phoneSourceID.map {
+                BookID(sourceID: $0, uuid: book.bookID.uuid)
+            }
+            books.append(
+                WatchBookInfo(
+                    bookID: book.bookID,
+                    phoneBookID: phoneBookID,
+                    title: book.title,
+                    authorNames: book.authorNames,
+                    category: book.category,
+                    sizeBytes: book.sizeBytes,
+                )
+            )
+        }
+        return WatchLibrary(books: books)
+    }
+
     public func relayPendingProgress() async {
         guard let session, canSendToPhone else { return }
-        let advertisedSources = phoneSourceIDs
         let outstanding = session.outstandingUserInfoTransfers
         let pending = await ProgressSyncActor.shared.getPendingProgressSyncs()
             .filter { !$0.syncedToStoryteller }
 
-        for item in pending where advertisedSources.contains(item.bookID.sourceID) {
+        for item in pending {
+            let phoneBookID = await progressRelayTarget(for: item)
             var alreadyQueued = false
             for transfer in outstanding {
                 guard let message = try? WatchProtocolMessage.decode(from: transfer.userInfo),
                     case .progress(let queued) = message,
-                    queued.bookID == item.bookID
+                    queued.watchBookID == item.bookID
                 else { continue }
 
-                if queued.timestamp >= item.timestamp {
+                if let phoneBookID,
+                    queued.phoneBookID == phoneBookID,
+                    queued.timestamp >= item.timestamp
+                {
                     alreadyQueued = true
                 } else {
                     transfer.cancel()
                 }
             }
-            guard !alreadyQueued else { continue }
+            guard let phoneBookID, !alreadyQueued else { continue }
 
             do {
                 let envelope = try WatchProtocolMessage.progress(
                     WatchProgressPayload(
-                        bookID: item.bookID,
+                        watchBookID: item.bookID,
+                        phoneBookID: phoneBookID,
                         locator: item.locator,
                         timestamp: item.timestamp,
                     )
@@ -483,26 +608,133 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
         }
     }
 
+    private func progressRelayTarget(for item: PendingProgressSync) async -> BookID? {
+        let watchSource = await BookServiceActor.shared.bookSources.first {
+            $0.id == item.bookID.sourceID && $0.kind == .storyteller
+        }
+
+        if watchSource == nil,
+            let phoneSource = latestPhoneSourceList.source(id: item.bookID.sourceID)
+        {
+            if let watchSourceID = await watchSourceID(matching: phoneSource) {
+                let result = await BookServiceActor.shared.sendProgressToServer(
+                    bookID: BookID(sourceID: watchSourceID, uuid: item.bookID.uuid),
+                    locator: item.locator,
+                    timestamp: item.timestamp,
+                )
+                if result == .success {
+                    await ProgressSyncActor.shared.confirmUpload(
+                        bookID: item.bookID,
+                        timestamp: item.timestamp,
+                    )
+                    return nil
+                }
+            }
+            return item.bookID
+        }
+
+        guard let watchSource else { return nil }
+        if let phoneSource = latestPhoneSourceList.source(id: watchSource.id) {
+            return BookID(sourceID: phoneSource.sourceID, uuid: item.bookID.uuid)
+        }
+        guard
+            let credentials = try? await AuthenticationActor.shared.loadCredentials(
+                sourceID: watchSource.id
+            ),
+            let phoneSource = latestPhoneSourceList.matchingServer(
+                serverURL: credentials.url,
+                username: credentials.username,
+            )
+        else { return nil }
+        return BookID(sourceID: phoneSource.sourceID, uuid: item.bookID.uuid)
+    }
+
+    private func watchSourceID(matching phoneSource: PhoneSource) async -> BookSourceID? {
+        guard phoneSource.serverURL != nil, phoneSource.username != nil else {
+            return nil
+        }
+        let sources = await BookServiceActor.shared.bookSources
+            .filter { $0.kind == .storyteller }
+            .sorted { $0.id < $1.id }
+        for source in sources {
+            guard
+                let credentials = try? await AuthenticationActor.shared.loadCredentials(
+                    sourceID: source.id
+                ),
+                phoneSource.matchesServer(
+                    serverURL: credentials.url,
+                    username: credentials.username,
+                    serverUUID: nil,
+                )
+            else { continue }
+            return source.id
+        }
+        return nil
+    }
+
     public func session(
         _ session: WCSession,
         didFinish userInfoTransfer: WCSessionUserInfoTransfer,
         error: Error?,
     ) {
         guard let error else { return }
-        let kind = try? WatchProtocolMessage.decode(from: userInfoTransfer.userInfo).kind
-        print("[WatchSessionManager] \(kind?.rawValue ?? "invalid") transfer failed: \(error)")
+        guard let message = try? WatchProtocolMessage.decode(from: userInfoTransfer.userInfo)
+        else {
+            print("[WatchSessionManager] Invalid user info transfer failed: \(error)")
+            return
+        }
+        print("[WatchSessionManager] \(message.kind.rawValue) transfer failed: \(error)")
+        let transferID: UUID
+        switch message {
+            case .transferComplete(let reference):
+                transferID = reference.transferID
+            case .transferFailed(let failure):
+                transferID = failure.transferID
+            default:
+                return
+        }
+        guard retriedTerminalTransferIDs.insert(transferID).inserted else { return }
+        sendTerminalTransferMessage(message)
     }
 
     private func notifyPhoneTransferComplete(transferID: UUID) {
+        sendTerminalTransferMessage(
+            .transferComplete(WatchTransferReference(transferID: transferID))
+        )
+    }
+
+    private func notifyPhoneTransferFailed(
+        transferID: UUID,
+        message: String,
+    ) {
+        sendTerminalTransferMessage(
+            .transferFailed(
+                WatchTransferFailure(
+                    transferID: transferID,
+                    message: message,
+                )
+            )
+        )
+    }
+
+    private func sendTerminalTransferMessage(_ message: WatchProtocolMessage) {
         guard let session, session.activationState == .activated else { return }
         do {
-            session.transferUserInfo(
-                try WatchProtocolMessage.transferComplete(
-                    WatchTransferReference(transferID: transferID)
-                ).encode()
-            )
+            let envelope = try message.encode()
+            session.transferUserInfo(envelope)
+            if session.isReachable, canSendToPhone {
+                session.sendMessage(
+                    envelope,
+                    replyHandler: nil,
+                    errorHandler: { error in
+                        print(
+                            "[WatchSessionManager] Immediate terminal transfer message failed: \(error)"
+                        )
+                    },
+                )
+            }
         } catch {
-            print("[WatchSessionManager] Failed to report completed transfer: \(error)")
+            print("[WatchSessionManager] Failed to report terminal transfer state: \(error)")
         }
     }
 
@@ -531,18 +763,23 @@ public final class WatchSessionManager: NSObject, WCSessionDelegate, @unchecked 
         return true
     }
 
-    private var phoneSourceIDs: Set<BookSourceID> {
-        guard let session,
-            let context = protocolContext(from: session.receivedApplicationContext)
-        else { return [] }
-        return Set(context.sourceIDs)
-    }
-
     private func protocolContext(from envelope: [String: Any]) -> WatchProtocolContext? {
         guard let message = try? WatchProtocolMessage.decode(from: envelope),
             case .context(let context) = message
         else { return nil }
         return context
+    }
+
+    private func storePhoneSourceList(_ sourceList: PhoneSourceList) async {
+        latestPhoneSourceList = sourceList
+        do {
+            try await WatchStateStore.savePhoneSourceList(sourceList)
+        } catch {
+            print("[WatchSessionManager] Failed to persist phone source list: \(error)")
+        }
+        if session?.isReachable == true {
+            send(.watchLibrary(await currentWatchLibrary()))
+        }
     }
 
     private func send(_ message: WatchProtocolMessage) {
@@ -610,5 +847,17 @@ private struct SendableWatchReplyHandler: @unchecked Sendable {
 
 private enum WatchSessionError: Error {
     case phoneUnavailable
+}
+
+private enum WatchTransferImportError: LocalizedError {
+    case bookIdentityMismatch
+    case assemblyFailed
+
+    var errorDescription: String? {
+        switch self {
+            case .bookIdentityMismatch: "Transferred book identity does not match"
+            case .assemblyFailed: "Could not assemble the transferred book"
+        }
+    }
 }
 #endif

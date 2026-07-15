@@ -194,7 +194,7 @@ public actor ProgressUploadManager {
 
         switch statusCode {
             case 204:
-                await ProgressSyncActor.shared.confirmBackgroundUpload(
+                await ProgressSyncActor.shared.confirmUpload(
                     bookID: descriptor.bookID,
                     timestamp: Double(descriptor.timestampMillis),
                 )

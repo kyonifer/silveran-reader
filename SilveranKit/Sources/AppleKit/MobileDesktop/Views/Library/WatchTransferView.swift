@@ -174,7 +174,11 @@ struct WatchTransferView: View {
     @MainActor
     private func handleEvent(_ event: WatchTransferEvent) {
         switch event {
-            case .stateChanged:
+            case .stateChanged(let item):
+                if case .failed(let message) = item.state {
+                    transferErrorMessage = message
+                    showTransferError = true
+                }
                 Task { await refreshState() }
             case .transfersUpdated(let items):
                 pendingTransfers = items
@@ -302,6 +306,8 @@ struct TransferItemRow: View {
                 return "Transferring \(String(format: "%.0f", progress * 100))%"
             case .completed:
                 return "Completed"
+            case .cancelled:
+                return "Cancelled"
             case .failed(let message):
                 return "Failed: \(message)"
         }
@@ -311,7 +317,7 @@ struct TransferItemRow: View {
         switch item.state {
             case .queued, .transferring:
                 return true
-            case .completed, .failed:
+            case .completed, .cancelled, .failed:
                 return false
         }
     }
@@ -477,7 +483,7 @@ struct WatchBookSearchSheet: View {
     }
 
     private func isOnWatch(_ bookID: BookID, category: LocalMediaCategory) -> Bool {
-        watchBooks.contains { $0.bookID == bookID && $0.category == category }
+        watchBooks.contains { $0.phoneBookID == bookID && $0.category == category }
     }
 }
 

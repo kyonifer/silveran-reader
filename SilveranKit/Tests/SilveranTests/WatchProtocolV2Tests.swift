@@ -1,10 +1,12 @@
 import Foundation
 import Testing
 
+@testable import SilveranAppleKit
 @testable import SilveranKit
 
 @Test func watchProtocolRoundTripsTypedProgressEnvelope() throws {
-    let bookID = BookID(sourceID: "source-a", uuid: "shared-book")
+    let watchBookID = BookID(sourceID: "watch-source", uuid: "shared-book")
+    let phoneBookID = BookID(sourceID: "phone-source", uuid: "shared-book")
     let locator = BookLocator(
         href: "chapter.xhtml",
         type: "text/html",
@@ -13,7 +15,12 @@ import Testing
         text: nil,
     )
     let original = WatchProtocolMessage.progress(
-        WatchProgressPayload(bookID: bookID, locator: locator, timestamp: 42)
+        WatchProgressPayload(
+            watchBookID: watchBookID,
+            phoneBookID: phoneBookID,
+            locator: locator,
+            timestamp: 42,
+        )
     )
 
     let envelope = try original.encode()
@@ -53,6 +60,25 @@ import Testing
     #expect(Set([firstSource, secondSource, secondCategory]).count == 3)
 }
 
+@Test func watchLibraryKeepsWatchAndPhoneBookIdentitiesSeparate() throws {
+    let watchBookID = BookID(sourceID: "watch-source", uuid: "shared")
+    let phoneBookID = BookID(sourceID: "phone-source", uuid: "shared")
+    let original = WatchProtocolMessage.watchLibrary(
+        WatchLibrary(books: [
+            WatchBookInfo(
+                bookID: watchBookID,
+                phoneBookID: phoneBookID,
+                title: "Book",
+                authorNames: [],
+                category: .synced,
+                sizeBytes: 1,
+            )
+        ])
+    )
+
+    #expect(try WatchProtocolMessage.decode(from: original.encode()) == original)
+}
+
 @Test func watchProtocolRoundTripsRequiredChunkIdentityAndMetadata() throws {
     let bookID = BookID(sourceID: "source-a", uuid: "book-a")
     let metadata = BookMetadata(
@@ -81,7 +107,7 @@ import Testing
     let original = WatchProtocolMessage.chunkTransfer(
         WatchChunkTransferPayload(
             transferID: transferID,
-            bookID: bookID,
+            phoneBookID: bookID,
             category: .ebook,
             chunkIndex: 0,
             totalChunks: 2,
@@ -94,6 +120,81 @@ import Testing
     )
 
     #expect(try WatchProtocolMessage.decode(from: original.encode()) == original)
+}
+
+@Test func watchProtocolRoundTripsTransferFailure() throws {
+    let original = WatchProtocolMessage.transferFailed(
+        WatchTransferFailure(
+            transferID: UUID(),
+            message: "Could not import transferred book",
+        )
+    )
+
+    #expect(try WatchProtocolMessage.decode(from: original.encode()) == original)
+}
+
+@Test func watchProtocolRoundTripsCompletePhoneSourceList() throws {
+    let list = PhoneSourceList(sources: [
+        PhoneSource(
+            sourceID: "remote",
+            name: "Server",
+            kind: .storyteller,
+            serverURL: "https://books.example:8443/base",
+            username: "reader",
+            serverUUID: "server-uuid",
+        ),
+        PhoneSource(sourceID: "folder", name: "Folder", kind: .localFolder),
+    ])
+    let original = WatchProtocolMessage.context(
+        WatchProtocolContext(phoneSourceList: list)
+    )
+
+    #expect(try WatchProtocolMessage.decode(from: original.encode()) == original)
+}
+
+@Test func phoneSourceMatchingIncludesPortPathAndUsername() {
+    let source = PhoneSource(
+        sourceID: "source",
+        name: "Server",
+        kind: .storyteller,
+        serverURL: "https://BOOKS.example/library/",
+        username: "reader",
+    )
+
+    #expect(
+        source.matchesServer(serverURL: "https://books.example:443/library", username: "reader")
+    )
+    #expect(
+        !source.matchesServer(serverURL: "https://books.example:8443/library", username: "reader")
+    )
+    #expect(!source.matchesServer(serverURL: "https://books.example/other", username: "reader"))
+    #expect(!source.matchesServer(serverURL: "https://books.example/library", username: "other"))
+}
+
+@Test func phoneSourceMatchingUsesServerUUIDWhenBothDevicesKnowIt() {
+    let source = PhoneSource(
+        sourceID: "source",
+        name: "Server",
+        kind: .storyteller,
+        serverURL: "https://internal.example:8443",
+        username: "reader",
+        serverUUID: "same-server",
+    )
+
+    #expect(
+        source.matchesServer(
+            serverURL: "https://public.example",
+            username: "reader",
+            serverUUID: "same-server",
+        )
+    )
+    #expect(
+        !source.matchesServer(
+            serverURL: "https://public.example",
+            username: "reader",
+            serverUUID: "different-server",
+        )
+    )
 }
 
 @Test func remotePlaybackCommandUsesTypedCodablePayload() throws {

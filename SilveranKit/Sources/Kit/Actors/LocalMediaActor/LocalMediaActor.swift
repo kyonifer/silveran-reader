@@ -375,19 +375,28 @@ public actor LocalMediaActor: GlobalActor {
     private func loadSourceCache() async throws {
         try await filesystem.ensureLocalStorageDirectories()
         let bookSources = try await filesystem.loadOrCreateBookSources()
+        let registeredSourceIDs = Set(
+            bookSources.filter { $0.kind != .localFolder }.map(\.id)
+        )
+        #if os(watchOS)
+        let sourceIDs = registeredSourceIDs.union(
+            (try? await filesystem.sourceCacheSourceIDs()) ?? []
+        )
+        #else
+        let sourceIDs = registeredSourceIDs
+        #endif
 
         var cachedMetadata: [BookMetadata] = []
         var ledgers: [BookSourceID: [String: DownloadedMediaRecord]] = [:]
-        for source in bookSources {
-            guard source.kind != .localFolder else { continue }
+        for sourceID in sourceIDs.sorted() {
             guard
                 let loadedMetadata = try await filesystem.loadSourceCacheLibraryMetadata(
-                    sourceID: source.id
+                    sourceID: sourceID
                 )
             else { continue }
             cachedMetadata.append(contentsOf: loadedMetadata)
-            if let ledger = try? await filesystem.loadDownloadedMediaLedger(sourceID: source.id) {
-                ledgers[source.id] = ledger
+            if let ledger = try? await filesystem.loadDownloadedMediaLedger(sourceID: sourceID) {
+                ledgers[sourceID] = ledger
             } else {
                 ledgerBootstrapNeeded = true
             }
@@ -613,8 +622,8 @@ public actor LocalMediaActor: GlobalActor {
         try await filesystem.ensureLocalStorageDirectories()
     }
 
-    /// Import a pre-downloaded file into LMA storage. Used by watch for background downloads
-    /// and iPhone transfers. Uses moveItem (not copy) to avoid doubling storage usage.
+    /// Imports a pre-downloaded file into LMA storage. Uses moveItem (not copy) to avoid
+    /// doubling storage usage.
     public func importDownloadedFile(
         from tempURL: URL,
         metadata: BookMetadata,

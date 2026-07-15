@@ -42,9 +42,16 @@ public enum SilveranRuntime {
             await runKeychainAccessibilityMigrations(using: filesystem, sources: sources)
             try await filesystem.prepareBookIdentityMigrationBeforeStorage(for: sources)
             try await filesystem.runStorageMigrations(for: sources)
-            try await filesystem.runBookIdentityMigration(for: sources)
+            #if os(watchOS)
+            let identitySources = try await filesystem.watchIdentityMigrationSources(
+                including: sources
+            )
+            #else
+            let identitySources = sources
+            #endif
+            try await filesystem.runBookIdentityMigration(for: identitySources)
             do {
-                try await filesystem.runBookHighlightsMigration(for: sources)
+                try await filesystem.runBookHighlightsMigration(for: identitySources)
             } catch {
                 debugLog("[SilveranMigrations] Highlight migration deferred: \(error)")
             }
@@ -89,3 +96,28 @@ public enum SilveranRuntime {
         }
     }
 }
+
+#if os(watchOS)
+extension FilesystemActor {
+    fileprivate func watchIdentityMigrationSources(
+        including registeredSources: [BookSourceRecord]
+    ) throws -> [BookSourceRecord] {
+        guard
+            !migrationSentinelExists(BookIdentityMigration.sentinelName)
+                || !migrationSentinelExists(BookHighlightsMigration.sentinelName)
+        else { return registeredSources }
+
+        let registeredIDs = Set(registeredSources.map(\.id))
+        let discoveredIDs = try sourceCacheSourceIDs().subtracting(registeredIDs)
+        let discovered = discoveredIDs.sorted().map { sourceID in
+            BookSourceRecord(
+                id: sourceID,
+                name: "Sideloaded from iPhone",
+                kind: .storyteller,
+                capabilities: .storyteller,
+            )
+        }
+        return registeredSources + discovered
+    }
+}
+#endif

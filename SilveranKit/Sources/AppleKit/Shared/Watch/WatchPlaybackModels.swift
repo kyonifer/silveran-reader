@@ -1,4 +1,5 @@
 import Foundation
+import SilveranKit
 
 public struct RemotePlaybackState: Codable, Hashable, Sendable {
     public let bookTitle: String

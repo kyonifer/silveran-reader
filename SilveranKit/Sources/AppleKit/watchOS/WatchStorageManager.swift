@@ -79,12 +79,12 @@ public final class WatchStorageManager: @unchecked Sendable {
         transferLock.lock()
         defer { transferLock.unlock() }
 
+        let destination = fileManager.temporaryDirectory
+            .appendingPathComponent(manifest.transferID.uuidString)
+            .appendingPathExtension(manifest.fileExtension)
         do {
             try validate(manifest)
 
-            let destination = fileManager.temporaryDirectory
-                .appendingPathComponent(manifest.transferID.uuidString)
-                .appendingPathExtension(manifest.fileExtension)
             if fileManager.fileExists(atPath: destination.path) {
                 try fileManager.removeItem(at: destination)
             }
@@ -115,6 +115,7 @@ public final class WatchStorageManager: @unchecked Sendable {
             try fileManager.removeItem(at: chunkDirectory(for: manifest.transferID))
             return destination
         } catch {
+            try? fileManager.removeItem(at: destination)
             print("[WatchStorageManager] Failed to assemble transfer: \(error)")
             return nil
         }
@@ -143,7 +144,7 @@ public final class WatchStorageManager: @unchecked Sendable {
 
         return WatchTransferManifest(
             transferID: payload.transferID,
-            bookID: payload.bookID,
+            phoneBookID: payload.phoneBookID,
             category: payload.category,
             title: payload.title,
             authors: payload.authors,
@@ -161,7 +162,7 @@ public final class WatchStorageManager: @unchecked Sendable {
     }
 
     private func validate(_ payload: WatchChunkTransferPayload) throws {
-        guard payload.bookMetadata.id == payload.bookID else {
+        guard payload.bookMetadata.id == payload.phoneBookID else {
             throw WatchStorageError.bookIdentityMismatch
         }
         guard payload.totalChunks > 0,
@@ -182,7 +183,7 @@ public final class WatchStorageManager: @unchecked Sendable {
     }
 
     private func validatePartial(_ manifest: WatchTransferManifest) throws {
-        guard manifest.bookMetadata.id == manifest.bookID else {
+        guard manifest.bookMetadata.id == manifest.phoneBookID else {
             throw WatchStorageError.bookIdentityMismatch
         }
         guard manifest.totalChunks > 0,
@@ -212,7 +213,7 @@ public final class WatchStorageManager: @unchecked Sendable {
 
 public struct WatchTransferManifest: Codable, Sendable {
     public let transferID: UUID
-    public let bookID: BookID
+    public let phoneBookID: BookID
     public let category: LocalMediaCategory
     public let title: String
     public let authors: [String]
@@ -224,7 +225,7 @@ public struct WatchTransferManifest: Codable, Sendable {
 
     fileprivate func matches(_ payload: WatchChunkTransferPayload) -> Bool {
         transferID == payload.transferID
-            && bookID == payload.bookID
+            && phoneBookID == payload.phoneBookID
             && category == payload.category
             && title == payload.title
             && authors == payload.authors
@@ -232,7 +233,7 @@ public struct WatchTransferManifest: Codable, Sendable {
             && totalFileSize == payload.totalFileSize
             && fileExtension == payload.fileExtension
             && bookMetadata == payload.bookMetadata
-            && payload.bookMetadata.id == payload.bookID
+            && payload.bookMetadata.id == payload.phoneBookID
     }
 }
 

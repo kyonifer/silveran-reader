@@ -82,6 +82,28 @@ public actor FilesystemActor {
             .appendingPathComponent(sanitizedPathComponent(from: sourceID), isDirectory: true)
     }
 
+    func sourceCacheSourceIDs() throws -> Set<BookSourceID> {
+        let root = sourceCacheRootDirectory()
+        try ensureDirectoryExists(at: root)
+        let directories = try FileManager.default.contentsOfDirectory(
+            at: root,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles],
+        )
+
+        var sourceIDs: Set<BookSourceID> = []
+        for directory in directories {
+            guard
+                (try? directory.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+            else { continue }
+            let sourceID = directory.lastPathComponent
+            if !sourceID.isEmpty {
+                sourceIDs.insert(sourceID)
+            }
+        }
+        return sourceIDs
+    }
+
     public func internalFolderSourceRootDirectory() -> URL {
         applicationSupportBaseDirectory()
             .appendingPathComponent("InternalFolderSource", isDirectory: true)

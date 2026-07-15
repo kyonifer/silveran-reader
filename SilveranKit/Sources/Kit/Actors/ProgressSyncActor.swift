@@ -283,21 +283,20 @@ public actor ProgressSyncActor {
         }
     }
 
-    /// Called by ProgressUploadManager when a background upload task returns 204.
-    /// The upload may have raced a newer local position: only confirm the entry
-    /// if it still carries the timestamp that was uploaded.
-    public func confirmBackgroundUpload(bookID: BookID, timestamp: Double) async {
+    /// Marks a queued position as uploaded. The upload may have raced a newer local
+    /// position, so only confirm the entry if its timestamp still matches.
+    public func confirmUpload(bookID: BookID, timestamp: Double) async {
         guard await ensureQueueLoaded() else { return }
 
         guard let index = pendingProgressQueue.firstIndex(where: { $0.bookID == bookID }) else {
-            debugLog("[PSA] confirmBackgroundUpload: no queue entry for \(bookID)")
+            debugLog("[PSA] confirmUpload: no queue entry for \(bookID)")
             return
         }
 
         var pending = pendingProgressQueue[index]
         guard abs(pending.timestamp - timestamp) < 1.0 else {
             debugLog(
-                "[PSA] confirmBackgroundUpload: queue moved on for \(bookID) (queued=\(pending.timestamp), uploaded=\(timestamp))"
+                "[PSA] confirmUpload: queue moved on for \(bookID) (queued=\(pending.timestamp), uploaded=\(timestamp))"
             )
             return
         }
@@ -317,7 +316,7 @@ public actor ProgressSyncActor {
             result: .sent,
         )
         await notifyObservers()
-        debugLog("[PSA] confirmBackgroundUpload: confirmed \(bookID) ts=\(pending.timestamp)")
+        debugLog("[PSA] confirmUpload: confirmed \(bookID) ts=\(pending.timestamp)")
     }
 
     public func getPendingProgressSyncs() async -> [PendingProgressSync] {

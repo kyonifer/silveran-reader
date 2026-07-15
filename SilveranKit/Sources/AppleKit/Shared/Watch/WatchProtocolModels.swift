@@ -1,4 +1,5 @@
 import Foundation
+import SilveranKit
 
 public enum WatchProtocolV2 {
     public static let version = 2
@@ -16,11 +17,116 @@ public enum WatchProtocolError: Error, Equatable {
 }
 
 public struct WatchProtocolContext: Codable, Hashable, Sendable {
-    public let sourceIDs: [BookSourceID]
+    public let phoneSourceList: PhoneSourceList?
 
-    public init(sourceIDs: [BookSourceID]) {
-        self.sourceIDs = sourceIDs
+    public init(phoneSourceList: PhoneSourceList? = nil) {
+        self.phoneSourceList = phoneSourceList
     }
+}
+
+public struct PhoneSource: Codable, Hashable, Sendable, Identifiable {
+    public let sourceID: BookSourceID
+    public let name: String
+    public let kind: BookSourceKind
+    public let serverURL: String?
+    public let username: String?
+    public let serverUUID: String?
+
+    public var id: BookSourceID { sourceID }
+
+    public init(
+        sourceID: BookSourceID,
+        name: String,
+        kind: BookSourceKind,
+        serverURL: String? = nil,
+        username: String? = nil,
+        serverUUID: String? = nil,
+    ) {
+        self.sourceID = sourceID
+        self.name = name
+        self.kind = kind
+        self.serverURL = serverURL
+        self.username = username
+        self.serverUUID = serverUUID
+    }
+
+    public func matchesServer(
+        serverURL: String,
+        username: String,
+        serverUUID: String? = nil,
+    ) -> Bool {
+        guard kind == .storyteller,
+            self.username?.trimmingCharacters(in: .whitespacesAndNewlines)
+                == username.trimmingCharacters(in: .whitespacesAndNewlines)
+        else { return false }
+
+        let lhsUUID = self.serverUUID?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let rhsUUID = serverUUID?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let lhsUUID, !lhsUUID.isEmpty, let rhsUUID, !rhsUUID.isEmpty {
+            return lhsUUID == rhsUUID
+        }
+
+        guard let ownURL = self.serverURL else { return false }
+        return canonicalWatchServerURL(ownURL) == canonicalWatchServerURL(serverURL)
+    }
+}
+
+public struct PhoneSourceList: Codable, Hashable, Sendable {
+    public let sources: [PhoneSource]
+
+    public init(sources: [PhoneSource]) {
+        self.sources = sources
+    }
+
+    public func source(id: BookSourceID) -> PhoneSource? {
+        sources.first { $0.sourceID == id }
+    }
+
+    public func matchingServer(
+        serverURL: String,
+        username: String,
+        serverUUID: String? = nil,
+    ) -> PhoneSource? {
+        sources
+            .filter {
+                $0.matchesServer(
+                    serverURL: serverURL,
+                    username: username,
+                    serverUUID: serverUUID,
+                )
+            }
+            .sorted { $0.sourceID < $1.sourceID }
+            .first
+    }
+}
+
+private func canonicalWatchServerURL(_ rawValue: String) -> String? {
+    let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty, var components = URLComponents(string: trimmed) else { return nil }
+
+    components.scheme = components.scheme?.lowercased()
+    components.host = components.host?.lowercased()
+    guard let scheme = components.scheme, let host = components.host else { return nil }
+
+    let effectivePort: Int?
+    if let port = components.port {
+        effectivePort = port
+    } else {
+        switch scheme {
+            case "http": effectivePort = 80
+            case "https": effectivePort = 443
+            default: effectivePort = nil
+        }
+    }
+
+    var path = components.percentEncodedPath
+    while path.count > 1, path.hasSuffix("/") {
+        path.removeLast()
+    }
+    if path == "/" { path = "" }
+
+    return [scheme, host, effectivePort.map(String.init) ?? "", path]
+        .joined(separator: "|")
 }
 
 public struct WatchFailure: Codable, Hashable, Sendable {
@@ -32,13 +138,30 @@ public struct WatchFailure: Codable, Hashable, Sendable {
 }
 
 public struct WatchProgressPayload: Codable, Hashable, Sendable {
-    public let bookID: BookID
+    public let watchBookID: BookID
+    public let phoneBookID: BookID
     public let locator: BookLocator
     public let timestamp: Double
 
-    public init(bookID: BookID, locator: BookLocator, timestamp: Double) {
-        self.bookID = bookID
+    public init(
+        watchBookID: BookID,
+        phoneBookID: BookID,
+        locator: BookLocator,
+        timestamp: Double,
+    ) {
+        self.watchBookID = watchBookID
+        self.phoneBookID = phoneBookID
         self.locator = locator
+        self.timestamp = timestamp
+    }
+}
+
+public struct WatchProgressReceipt: Codable, Hashable, Sendable {
+    public let watchBookID: BookID
+    public let timestamp: Double
+
+    public init(watchBookID: BookID, timestamp: Double) {
+        self.watchBookID = watchBookID
         self.timestamp = timestamp
     }
 }
@@ -61,9 +184,19 @@ public struct WatchTransferReference: Codable, Hashable, Sendable {
     }
 }
 
+public struct WatchTransferFailure: Codable, Hashable, Sendable {
+    public let transferID: UUID
+    public let message: String
+
+    public init(transferID: UUID, message: String) {
+        self.transferID = transferID
+        self.message = message
+    }
+}
+
 public struct WatchChunkTransferPayload: Codable, Hashable, Sendable {
     public let transferID: UUID
-    public let bookID: BookID
+    public let phoneBookID: BookID
     public let category: LocalMediaCategory
     public let chunkIndex: Int
     public let totalChunks: Int
@@ -75,7 +208,7 @@ public struct WatchChunkTransferPayload: Codable, Hashable, Sendable {
 
     public init(
         transferID: UUID,
-        bookID: BookID,
+        phoneBookID: BookID,
         category: LocalMediaCategory,
         chunkIndex: Int,
         totalChunks: Int,
@@ -86,7 +219,7 @@ public struct WatchChunkTransferPayload: Codable, Hashable, Sendable {
         bookMetadata: BookMetadata,
     ) {
         self.transferID = transferID
-        self.bookID = bookID
+        self.phoneBookID = phoneBookID
         self.category = category
         self.chunkIndex = chunkIndex
         self.totalChunks = totalChunks
@@ -98,57 +231,36 @@ public struct WatchChunkTransferPayload: Codable, Hashable, Sendable {
     }
 }
 
-public struct WatchCredentialSourceInfo: Codable, Hashable, Sendable, Identifiable {
-    public let sourceID: BookSourceID
-    public let name: String
-    public let url: String
-    public let username: String
-
-    public var id: BookSourceID { sourceID }
-
-    public init(sourceID: BookSourceID, name: String, url: String, username: String) {
-        self.sourceID = sourceID
-        self.name = name
-        self.url = url
-        self.username = username
-    }
-}
-
-public struct WatchSourceCatalog: Codable, Hashable, Sendable {
-    public let sources: [WatchCredentialSourceInfo]
-
-    public init(sources: [WatchCredentialSourceInfo]) {
-        self.sources = sources
-    }
-}
-
 public struct WatchCredentialRequest: Codable, Hashable, Sendable {
-    public let sourceID: BookSourceID
+    public let phoneSourceID: BookSourceID
 
-    public init(sourceID: BookSourceID) {
-        self.sourceID = sourceID
+    public init(phoneSourceID: BookSourceID) {
+        self.phoneSourceID = phoneSourceID
     }
 }
 
 public struct WatchCredentialReply: Codable, Hashable, Sendable {
-    public let sourceID: BookSourceID
+    public let phoneSourceID: BookSourceID
     public let name: String
-    public let url: String
+    public let serverURL: String
     public let username: String
     public let password: String
+    public let serverUUID: String?
 
     public init(
-        sourceID: BookSourceID,
+        phoneSourceID: BookSourceID,
         name: String,
-        url: String,
+        serverURL: String,
         username: String,
         password: String,
+        serverUUID: String? = nil,
     ) {
-        self.sourceID = sourceID
+        self.phoneSourceID = phoneSourceID
         self.name = name
-        self.url = url
+        self.serverURL = serverURL
         self.username = username
         self.password = password
+        self.serverUUID = serverUUID
     }
 }
 
@@ -164,6 +276,7 @@ public struct WatchBookInfo: Codable, Hashable, Sendable, Identifiable {
     }
 
     public let id: ID
+    public let phoneBookID: BookID?
     public let title: String
     public let authorNames: [String]
     public let sizeBytes: Int64
@@ -174,12 +287,14 @@ public struct WatchBookInfo: Codable, Hashable, Sendable, Identifiable {
 
     public init(
         bookID: BookID,
+        phoneBookID: BookID? = nil,
         title: String,
         authorNames: [String],
         category: LocalMediaCategory,
         sizeBytes: Int64,
     ) {
         id = ID(bookID: bookID, category: category)
+        self.phoneBookID = phoneBookID
         self.title = title
         self.authorNames = authorNames
         self.sizeBytes = sizeBytes
@@ -210,9 +325,11 @@ public enum WatchProtocolMessage: Hashable, Sendable {
         case acknowledgement
         case failure
         case progress
+        case progressReceived
         case deleteBook
         case cancelTransfer
         case transferComplete
+        case transferFailed
         case chunkTransfer
         case sourceCatalogRequest
         case sourceCatalog
@@ -234,12 +351,14 @@ public enum WatchProtocolMessage: Hashable, Sendable {
     case acknowledgement
     case failure(WatchFailure)
     case progress(WatchProgressPayload)
+    case progressReceived(WatchProgressReceipt)
     case deleteBook(WatchDeleteBookPayload)
     case cancelTransfer(WatchTransferReference)
     case transferComplete(WatchTransferReference)
+    case transferFailed(WatchTransferFailure)
     case chunkTransfer(WatchChunkTransferPayload)
     case sourceCatalogRequest
-    case sourceCatalog(WatchSourceCatalog)
+    case sourceCatalog(PhoneSourceList)
     case credentialRequest(WatchCredentialRequest)
     case credentialReply(WatchCredentialReply)
     case watchLibraryRequest
@@ -259,9 +378,11 @@ public enum WatchProtocolMessage: Hashable, Sendable {
             case .acknowledgement: .acknowledgement
             case .failure: .failure
             case .progress: .progress
+            case .progressReceived: .progressReceived
             case .deleteBook: .deleteBook
             case .cancelTransfer: .cancelTransfer
             case .transferComplete: .transferComplete
+            case .transferFailed: .transferFailed
             case .chunkTransfer: .chunkTransfer
             case .sourceCatalogRequest: .sourceCatalogRequest
             case .sourceCatalog: .sourceCatalog
@@ -291,9 +412,13 @@ public enum WatchProtocolMessage: Hashable, Sendable {
                 payload = try encoder.encode(value)
             case .progress(let value):
                 payload = try encoder.encode(value)
+            case .progressReceived(let value):
+                payload = try encoder.encode(value)
             case .deleteBook(let value):
                 payload = try encoder.encode(value)
             case .cancelTransfer(let value), .transferComplete(let value):
+                payload = try encoder.encode(value)
+            case .transferFailed(let value):
                 payload = try encoder.encode(value)
             case .chunkTransfer(let value):
                 payload = try encoder.encode(value)
@@ -356,6 +481,10 @@ public enum WatchProtocolMessage: Hashable, Sendable {
                 return .failure(try decoder.decode(WatchFailure.self, from: payload))
             case .progress:
                 return .progress(try decoder.decode(WatchProgressPayload.self, from: payload))
+            case .progressReceived:
+                return .progressReceived(
+                    try decoder.decode(WatchProgressReceipt.self, from: payload)
+                )
             case .deleteBook:
                 return .deleteBook(
                     try decoder.decode(WatchDeleteBookPayload.self, from: payload)
@@ -368,6 +497,10 @@ public enum WatchProtocolMessage: Hashable, Sendable {
                 return .transferComplete(
                     try decoder.decode(WatchTransferReference.self, from: payload)
                 )
+            case .transferFailed:
+                return .transferFailed(
+                    try decoder.decode(WatchTransferFailure.self, from: payload)
+                )
             case .chunkTransfer:
                 return .chunkTransfer(
                     try decoder.decode(WatchChunkTransferPayload.self, from: payload)
@@ -376,7 +509,7 @@ public enum WatchProtocolMessage: Hashable, Sendable {
                 _ = try decoder.decode(EmptyPayload.self, from: payload)
                 return .sourceCatalogRequest
             case .sourceCatalog:
-                return .sourceCatalog(try decoder.decode(WatchSourceCatalog.self, from: payload))
+                return .sourceCatalog(try decoder.decode(PhoneSourceList.self, from: payload))
             case .credentialRequest:
                 return .credentialRequest(
                     try decoder.decode(WatchCredentialRequest.self, from: payload)

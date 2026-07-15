@@ -51,6 +51,9 @@ public final class WatchViewModel {
         WatchSessionManager.shared.onImportComplete = { [weak self] success in
             Task { @MainActor in
                 if !success {
+                    self?.receivingTitle = nil
+                    self?.receivedChunks = 0
+                    self?.totalChunks = 0
                     self?.savingBook = nil
                 }
                 self?.loadBooks()

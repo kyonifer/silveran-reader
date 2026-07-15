@@ -11,8 +11,7 @@ struct WatchSettingsView: View {
     @State private var sourceName: String = BookSourceKind.storyteller.defaultName
     @State private var storytellerSources: [BookSourceRecord] = []
     @State private var selectedSourceID: BookSourceID?
-    @State private var phoneSourceID: BookSourceID?
-    @State private var phoneSources: [WatchCredentialSourceInfo] = []
+    @State private var phoneSources: [PhoneSource] = []
     @State private var showPhoneSourcePicker = false
     @State private var isAddingSource = false
     @State private var isConnecting = false
@@ -261,7 +260,7 @@ struct WatchSettingsView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(source.name)
                             .font(.caption2)
-                        Text(source.url)
+                        Text(source.serverURL ?? "")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
@@ -347,7 +346,6 @@ struct WatchSettingsView: View {
     }
 
     private func openSource(_ source: BookSourceRecord) async {
-        phoneSourceID = nil
         selectedSourceID = source.id
         showManualEntry = true
         await loadCredentialsForSelectedSource()
@@ -399,7 +397,6 @@ struct WatchSettingsView: View {
         isAddingSource = true
         phoneSyncRequestID = nil
         requestedPhoneSourceID = nil
-        phoneSourceID = nil
         phoneSources = []
         showPhoneSourcePicker = false
         selectedSourceID = nil
@@ -418,7 +415,6 @@ struct WatchSettingsView: View {
         phoneSyncRequestID = nil
         requestedPhoneSourceID = nil
         isSyncingFromPhone = false
-        phoneSourceID = nil
         phoneSources = []
         showPhoneSourcePicker = false
         showManualEntry = false
@@ -458,20 +454,17 @@ struct WatchSettingsView: View {
         WatchSessionManager.shared.onCredentialsReceived = { credentials in
             Task { @MainActor in
                 guard phoneSyncRequestID != nil,
-                    requestedPhoneSourceID == credentials.sourceID
+                    requestedPhoneSourceID == credentials.phoneSourceID
                 else { return }
                 phoneSyncRequestID = nil
                 requestedPhoneSourceID = nil
-                phoneSourceID = credentials.sourceID
-                selectedSourceID = credentials.sourceID
                 sourceName = credentials.name
-                serverURL = credentials.url
+                serverURL = credentials.serverURL
                 username = credentials.username
                 password = credentials.password
                 hasCredentials = true
-                isAddingSource = !storytellerSources.contains {
-                    $0.id == credentials.sourceID
-                }
+                selectedSourceID = await matchingWatchSourceID(for: credentials)
+                isAddingSource = selectedSourceID == nil
                 isSyncingFromPhone = false
                 showPhoneSourcePicker = false
                 showManualEntry = true
@@ -564,35 +557,6 @@ struct WatchSettingsView: View {
             password: password,
         )
 
-        if let phoneSourceID {
-            let existing = await BookServiceActor.shared.bookSources.first {
-                $0.id == phoneSourceID
-            }
-            let saved: Bool
-            if let existing {
-                guard existing.kind == .storyteller else {
-                    throw WatchSettingsError.saveFailed
-                }
-                saved = await BookServiceActor.shared.updateBookSource(
-                    id: phoneSourceID,
-                    configuration: configuration,
-                )
-            } else {
-                saved = await BookServiceActor.shared.createBookSource(
-                    id: phoneSourceID,
-                    configuration: configuration,
-                ) != nil
-            }
-            guard saved else { throw WatchSettingsError.saveFailed }
-
-            selectedSourceID = phoneSourceID
-            self.phoneSourceID = nil
-            isAddingSource = false
-            await loadExistingCredentials()
-            await WatchSessionManager.shared.publishProtocolContext()
-            return phoneSourceID
-        }
-
         if isAddingSource || selectedSourceID == nil {
             guard
                 let record = await BookServiceActor.shared.createBookSource(configuration)
@@ -620,6 +584,32 @@ struct WatchSettingsView: View {
         await loadExistingCredentials()
         await WatchSessionManager.shared.publishProtocolContext()
         return selectedSourceID
+    }
+
+    private func matchingWatchSourceID(
+        for credentials: WatchCredentialReply
+    ) async -> BookSourceID? {
+        let phoneSource = PhoneSource(
+            sourceID: credentials.phoneSourceID,
+            name: credentials.name,
+            kind: .storyteller,
+            serverURL: credentials.serverURL,
+            username: credentials.username,
+            serverUUID: credentials.serverUUID,
+        )
+        for source in storytellerSources.sorted(by: { $0.id < $1.id }) {
+            guard
+                let local = try? await AuthenticationActor.shared.loadCredentials(
+                    sourceID: source.id
+                ),
+                phoneSource.matchesServer(
+                    serverURL: local.url,
+                    username: local.username,
+                )
+            else { continue }
+            return source.id
+        }
+        return nil
     }
 
     private enum WatchSettingsError: LocalizedError {
