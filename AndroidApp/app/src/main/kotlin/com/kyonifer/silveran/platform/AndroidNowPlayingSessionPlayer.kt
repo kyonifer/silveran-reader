@@ -232,6 +232,7 @@ private fun AndroidNowPlayingSnapshot.normalizedRate(): Double =
 private fun Double?.secondsToMilliseconds(): Long =
     this?.takeIf { it.isFinite() }?.coerceAtLeast(0.0)?.times(1_000.0)?.toLong() ?: 0L
 
+@OptIn(UnstableApi::class)
 private fun Double?.secondsToMicrosecondsOrUnset(): Long =
     this?.takeIf { it.isFinite() && it >= 0.0 }?.times(C.MICROS_PER_SECOND)?.toLong()
         ?: C.TIME_UNSET

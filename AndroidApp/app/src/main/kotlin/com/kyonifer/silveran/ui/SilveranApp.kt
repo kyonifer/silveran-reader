@@ -26,7 +26,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import com.kyonifer.silveran.model.BookID
-import com.kyonifer.silveran.platform.AndroidNowPlayingBridge
 
 private enum class Screen {
     Library,
@@ -186,10 +185,9 @@ fun SilveranApp(viewModel: SilveranViewModel) {
                 }
                 Screen.Reader -> selectedBook?.let { book ->
                     if (readerMode == "audio") {
-                        AudiobookPlayerScreen(
+                        MediaSessionAudiobookPlayerScreen(
                             book = book,
                             loading = state.audiobookLoading,
-                            player = remember { AndroidNowPlayingBridge.sessionPlayer() },
                             modifier = Modifier.padding(padding),
                         )
                     } else {

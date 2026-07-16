@@ -106,6 +106,7 @@ dependencies {
     implementation(files("libs/swiftkit-core.jar"))
     implementation("androidx.media3:media3-common:$media3Version")
     implementation("androidx.media3:media3-exoplayer:$media3Version")
+    implementation("androidx.media3:media3-session:$media3Version")
     implementation(platform("androidx.compose:compose-bom:2025.06.01"))
     implementation("androidx.activity:activity-compose:1.10.1")
     implementation("androidx.compose.material:material-icons-core")
