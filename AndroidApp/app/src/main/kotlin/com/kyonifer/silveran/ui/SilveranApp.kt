@@ -26,6 +26,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import com.kyonifer.silveran.model.BookID
+import com.kyonifer.silveran.platform.AndroidNowPlayingBridge
 
 private enum class Screen {
     Library,
@@ -51,6 +52,9 @@ fun SilveranApp(viewModel: SilveranViewModel) {
     val canNavigateBack = screen == Screen.Details || screen == Screen.Reader ||
         (screen == Screen.Settings && state.settings.configured)
     val navigateBack = {
+        if (screen == Screen.Reader && readerMode == "audio") {
+            viewModel.closeAudiobook()
+        }
         screenName = when (screen) {
             Screen.Reader -> Screen.Details.name
             else -> Screen.Library.name
@@ -73,7 +77,15 @@ fun SilveranApp(viewModel: SilveranViewModel) {
             (screen == Screen.Details || screen == Screen.Reader) &&
             selectedBook == null
         ) {
+            if (screen == Screen.Reader && readerMode == "audio") {
+                viewModel.closeAudiobook()
+            }
             screenName = Screen.Library.name
+        }
+    }
+    LaunchedEffect(screen, readerMode, selectedBook?.id) {
+        if (screen == Screen.Reader && readerMode == "audio") {
+            selectedBook?.let(viewModel::openAudiobook)
         }
     }
     LaunchedEffect(state.successfulSettingsSaves) {
@@ -173,11 +185,20 @@ fun SilveranApp(viewModel: SilveranViewModel) {
                     )
                 }
                 Screen.Reader -> selectedBook?.let { book ->
-                    ReaderPlaceholderScreen(
-                        book = book,
-                        mode = readerMode,
-                        modifier = Modifier.padding(padding),
-                    )
+                    if (readerMode == "audio") {
+                        AudiobookPlayerScreen(
+                            book = book,
+                            loading = state.audiobookLoading,
+                            player = remember { AndroidNowPlayingBridge.sessionPlayer() },
+                            modifier = Modifier.padding(padding),
+                        )
+                    } else {
+                        ReaderPlaceholderScreen(
+                            book = book,
+                            mode = readerMode,
+                            modifier = Modifier.padding(padding),
+                        )
+                    }
                 }
             }
         }

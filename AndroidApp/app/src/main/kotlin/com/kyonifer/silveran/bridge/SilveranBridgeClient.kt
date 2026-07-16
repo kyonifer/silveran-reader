@@ -89,6 +89,17 @@ class SilveranBridgeClient(context: Context) {
         ).awaitResult()
     }
 
+    suspend fun openAudiobook(book: Book) {
+        SilveranAndroidBridge.openAudiobook(
+            book.id.uuid,
+            book.id.sourceID,
+        ).awaitResult()
+    }
+
+    suspend fun closeAudiobook() {
+        SilveranAndroidBridge.closeAudiobook().awaitResult()
+    }
+
     suspend fun cover(book: Book, audio: Boolean, width: Int, height: Int): Bitmap? {
         val cacheKey = CoverCacheKey(book.id, book.coverVersion, audio, width, height)
         val missingKey = MissingCoverKey(book.id, book.coverVersion, audio)

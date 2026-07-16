@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.kyonifer.silveran.bridge.SilveranBridgeClient
 import com.kyonifer.silveran.model.Book
+import com.kyonifer.silveran.model.BookID
 import com.kyonifer.silveran.model.DownloadOperation
 import com.kyonifer.silveran.model.HomeSection
 import com.kyonifer.silveran.model.StorytellerSettings
@@ -31,6 +32,7 @@ data class SilveranUiState(
     val refreshingLibrary: Boolean = false,
     val savingSettings: Boolean = false,
     val pendingDownloads: Set<DownloadOperation> = emptySet(),
+    val audiobookLoading: Boolean = false,
     val successfulSettingsSaves: Int = 0,
     val error: String? = null,
 )
@@ -42,7 +44,10 @@ class SilveranViewModel private constructor(
     val state: StateFlow<SilveranUiState> = mutableState.asStateFlow()
 
     private val refreshMutex = Mutex()
+    private val audiobookMutex = Mutex()
     private val libraryChanges = Channel<Unit>(Channel.CONFLATED)
+    private var currentAudiobookID: BookID? = null
+    private var audiobookRequest = 0L
 
     init {
         viewModelScope.launch {
@@ -136,6 +141,33 @@ class SilveranViewModel private constructor(
                 client.deleteDownload(book, category)
                 refreshLibraryNow(refresh = false)
             }.onFailure(::showError)
+        }
+    }
+
+    fun openAudiobook(book: Book) {
+        if (currentAudiobookID == book.id) return
+        currentAudiobookID = book.id
+        val request = ++audiobookRequest
+        mutableState.value = mutableState.value.copy(audiobookLoading = true, error = null)
+        viewModelScope.launch {
+            val result = runCatching {
+                audiobookMutex.withLock { client.openAudiobook(book) }
+            }
+            if (request != audiobookRequest) return@launch
+            result.onFailure(::showError)
+            mutableState.value = mutableState.value.copy(audiobookLoading = false)
+        }
+    }
+
+    fun closeAudiobook() {
+        currentAudiobookID = null
+        val request = ++audiobookRequest
+        mutableState.value = mutableState.value.copy(audiobookLoading = false)
+        viewModelScope.launch {
+            val result = runCatching {
+                audiobookMutex.withLock { client.closeAudiobook() }
+            }
+            if (request == audiobookRequest) result.onFailure(::showError)
         }
     }
 

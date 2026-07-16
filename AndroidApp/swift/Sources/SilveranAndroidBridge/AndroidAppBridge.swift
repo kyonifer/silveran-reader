@@ -322,6 +322,35 @@ public func deleteBookDownload(
     )
 }
 
+public func openAudiobook(bookID: String, sourceID: String) async throws {
+    try requireAndroidBootstrap()
+    let bookID = BookID(sourceID: sourceID, uuid: bookID)
+    guard
+        let media = await BookServiceActor.shared.resolveLocalMedia(
+            for: bookID,
+            category: .audio,
+        )
+    else {
+        throw AndroidBridgeError.localMediaUnavailable(category: "audio", bookID: bookID.uuid)
+    }
+
+    if await SMILPlayerActor.shared.activeAudioPlayer == .smil {
+        await SMILPlayerActor.shared.cleanup()
+    }
+    await AudiobookActor.shared.cleanup()
+    do {
+        _ = try await AudiobookActor.shared.validateAndLoadAudiobook(url: media.url)
+        try await AudiobookActor.shared.preparePlayer()
+    } catch {
+        await AudiobookActor.shared.cleanup()
+        throw error
+    }
+}
+
+public func closeAudiobook() async {
+    await AudiobookActor.shared.cleanup()
+}
+
 public func startLibraryObservation() async throws {
     try requireAndroidBootstrap()
     guard androidObserverStore.claimInstallation() else { return }
@@ -524,6 +553,7 @@ enum AndroidBridgeError: Error, LocalizedError, CustomStringConvertible {
     case invalidMediaCategory(String)
     case bookNotFound(String)
     case mediaUnavailable(category: String, bookID: String)
+    case localMediaUnavailable(category: String, bookID: String)
     case secureStorageFailure(String)
 
     var errorDescription: String? {
@@ -554,6 +584,8 @@ enum AndroidBridgeError: Error, LocalizedError, CustomStringConvertible {
                 return "Book \(bookID) is no longer in the library."
             case .mediaUnavailable(let category, let bookID):
                 return "Book \(bookID) has no \(category) available to download."
+            case .localMediaUnavailable(let category, let bookID):
+                return "Book \(bookID) has no downloaded \(category)."
             case .secureStorageFailure(let account):
                 return "Android secure storage failed for account \(account)."
         }
