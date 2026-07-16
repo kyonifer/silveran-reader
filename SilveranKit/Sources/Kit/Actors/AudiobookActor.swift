@@ -140,8 +140,8 @@ public actor AudiobookActor {
     private var currentTrackIndex: Int = 0
     private var desiredPlaybackRate: Float = 1.0
     private var desiredVolume: Float = 1.0
-    // The engine has no isPlaying accessor; the actor is the source of truth
-    // for play/pause intent (engines only emit events, never auto-pause).
+    // AudioPlaying has no isPlaying accessor; the actor is the source of truth
+    // for play/pause intent (players only emit events, never auto-pause).
     private var isPlaying = false
     private var stateObservers: [UUID: @Sendable @MainActor (AudiobookPlaybackState) -> Void] = [:]
     private var artworkData: Data?
@@ -465,14 +465,14 @@ public actor AudiobookActor {
         guard let metadata, metadata.tracks.indices.contains(currentTrackIndex) else {
             throw AudiobookError.failedToLoadMetadata
         }
-        guard let provider = SilveranPlatform.audioPlayers else {
+        guard let factory = SilveranPlatform.audioPlayerFactory else {
             throw AudiobookError.playbackUnavailable
         }
 
-        try? await provider.prepareSession(longForm: true)
+        try? await factory.prepareSession(longForm: true)
 
         let track = metadata.tracks[currentTrackIndex]
-        let player = self.player ?? provider.makePlayer(profile: .audiobookTrack)
+        let player = self.player ?? factory.makePlayer(profile: .audiobookTrack)
         do {
             _ = try await player.load(url: track.url)
         } catch {
@@ -482,7 +482,7 @@ public actor AudiobookActor {
         await player.setVolume(Double(desiredVolume))
         await player.setEventHandler { event in
             Task { @AudiobookActor in
-                await AudiobookActor.shared.handleEngineEvent(event)
+                await AudiobookActor.shared.handlePlayerEvent(event)
             }
         }
         self.player = player
@@ -502,7 +502,7 @@ public actor AudiobookActor {
             }
         }
 
-        try? await SilveranPlatform.audioPlayers?.prepareSession(longForm: true)
+        try? await SilveranPlatform.audioPlayerFactory?.prepareSession(longForm: true)
         await player?.play()
         isPlaying = true
         await notifyStateChange()
@@ -674,7 +674,7 @@ public actor AudiobookActor {
         return tracks.count - 1
     }
 
-    private func handleEngineEvent(_ event: AudioEngineEvent) async {
+    private func handlePlayerEvent(_ event: AudioPlayerEvent) async {
         switch event {
             case .didFinishPlaying:
                 await advanceToNextTrack()
@@ -902,6 +902,6 @@ public actor AudiobookActor {
         if await SMILPlayerActor.shared.activeAudioPlayer == .audiobook {
             await SMILPlayerActor.shared.setActiveAudioPlayer(.none)
         }
-        await SilveranPlatform.audioPlayers?.deactivateSession()
+        await SilveranPlatform.audioPlayerFactory?.deactivateSession()
     }
 }

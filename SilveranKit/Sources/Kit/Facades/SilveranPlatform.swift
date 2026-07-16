@@ -8,7 +8,7 @@ import Foundation
 public enum SilveranPlatform {
     // nonisolated(unsafe) is sound here: bootstrap() runs once at launch
     // before any concurrent reader exists, and the values never change after.
-    public private(set) nonisolated(unsafe) static var audioPlayers: (any AudioPlayerProviding)?
+    public private(set) nonisolated(unsafe) static var audioPlayerFactory: (any AudioPlayerFactory)?
     public private(set) nonisolated(unsafe) static var nowPlaying: (any NowPlayingPresenting)?
     public private(set) nonisolated(unsafe) static var audioMetadata: (any AudioMetadataProbing)?
     public private(set) nonisolated(unsafe) static var keychain: (any KeychainStoring)?
@@ -21,7 +21,7 @@ public enum SilveranPlatform {
     public private(set) nonisolated(unsafe) static var isBootstrapped = false
 
     public static func bootstrap(
-        audioPlayers: (any AudioPlayerProviding)? = nil,
+        audioPlayerFactory: (any AudioPlayerFactory)? = nil,
         nowPlaying: (any NowPlayingPresenting)? = nil,
         audioMetadata: (any AudioMetadataProbing)? = nil,
         keychain: (any KeychainStoring)? = nil,
@@ -29,7 +29,7 @@ public enum SilveranPlatform {
         folderWatcher: (any FolderWatching)? = nil,
         applicationStorage: (any ApplicationStorageProviding)? = nil,
     ) {
-        Self.audioPlayers = audioPlayers
+        Self.audioPlayerFactory = audioPlayerFactory
         Self.nowPlaying = nowPlaying
         Self.audioMetadata = audioMetadata
         Self.keychain = keychain

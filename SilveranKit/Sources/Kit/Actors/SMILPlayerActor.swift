@@ -151,14 +151,14 @@ public actor SMILPlayerActor {
             "[SMILPlayerActor] Loading book: \(bookID) from \(epubPath.path) (existingBookID=\(self.bookID?.description ?? "nil"), structureCount=\(bookStructure.count))"
         )
 
-        guard let provider = SilveranPlatform.audioPlayers else {
+        guard let factory = SilveranPlatform.audioPlayerFactory else {
             throw SMILPlayerError.playbackUnavailable
         }
 
         if self.bookID == bookID && !bookStructure.isEmpty {
             debugLog("[SMILPlayerActor] Same book already loaded, skipping reload")
             sessionID = UUID()
-            try? await provider.prepareSession(longForm: true)
+            try? await factory.prepareSession(longForm: true)
             await notifyStateChange()
             return
         }
@@ -183,7 +183,7 @@ public actor SMILPlayerActor {
 
         computeCachedTotals()
 
-        try? await provider.prepareSession(longForm: true)
+        try? await factory.prepareSession(longForm: true)
         await setupNowPlaying()
 
         debugLog("[SMILPlayerActor] Book loaded with \(result.sections.count) sections")
@@ -224,8 +224,8 @@ public actor SMILPlayerActor {
             throw SMILPlayerError.audioLoadFailed("Player not initialized")
         }
 
-        if let provider = SilveranPlatform.audioPlayers {
-            try? await provider.prepareSession(longForm: true)
+        if let factory = SilveranPlatform.audioPlayerFactory {
+            try? await factory.prepareSession(longForm: true)
         }
 
         await player.setRate(playbackRate)
@@ -508,7 +508,7 @@ public actor SMILPlayerActor {
         if activeAudioPlayer == .smil {
             activeAudioPlayer = .none
         }
-        await SilveranPlatform.audioPlayers?.deactivateSession()
+        await SilveranPlatform.audioPlayerFactory?.deactivateSession()
         coverImageData = nil
         #endif
     }
@@ -635,33 +635,33 @@ public actor SMILPlayerActor {
 
             debugLog("[SMILPlayerActor] Extracted to temp file: \(tempFile.path)")
 
-            let engine: any AudioPlaying
+            let audioPlayer: any AudioPlaying
             if let existing = player {
-                engine = existing
+                audioPlayer = existing
             } else {
-                guard let provider = SilveranPlatform.audioPlayers else {
-                    debugLog("[SMILPlayerActor] No audio player provider available")
+                guard let factory = SilveranPlatform.audioPlayerFactory else {
+                    debugLog("[SMILPlayerActor] No audio player factory available")
                     return
                 }
-                engine = provider.makePlayer(profile: .smilSegment)
-                await engine.setEventHandler { event in
+                audioPlayer = factory.makePlayer(profile: .smilSegment)
+                await audioPlayer.setEventHandler { event in
                     Task { @SMILPlayerActor in
-                        await SMILPlayerActor.shared.handleEngineEvent(event)
+                        await SMILPlayerActor.shared.handlePlayerEvent(event)
                     }
                 }
-                player = engine
+                player = audioPlayer
             }
 
-            await engine.setVolume(volume)
-            await engine.setRate(playbackRate)
-            let duration = try await engine.load(url: tempFile)
+            await audioPlayer.setVolume(volume)
+            await audioPlayer.setRate(playbackRate)
+            let duration = try await audioPlayer.load(url: tempFile)
             debugLog("[SMILPlayerActor] Audio loaded, duration: \(duration)s")
         } catch {
             debugLog("[SMILPlayerActor] Failed to load audio: \(error)")
         }
     }
 
-    private func handleEngineEvent(_ event: AudioEngineEvent) async {
+    private func handlePlayerEvent(_ event: AudioPlayerEvent) async {
         switch event {
             case .didFinishPlaying:
                 debugLog("[SMILPlayerActor] Audio finished playing")

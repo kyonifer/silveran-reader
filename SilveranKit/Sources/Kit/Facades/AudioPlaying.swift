@@ -1,6 +1,6 @@
 import Foundation
 
-/// Which playback pipeline the caller is driving. Apple engines map these to
+/// Which playback pipeline the caller is driving. Apple players map these to
 /// AVPlayer (SMIL segment files) and AVAudioPlayer (audiobook tracks) to keep
 /// the previous behavior of each; other platforms may ignore the distinction.
 public enum AudioPlaybackProfile: Sendable {
@@ -8,7 +8,7 @@ public enum AudioPlaybackProfile: Sendable {
     case audiobookTrack
 }
 
-public enum AudioEngineEvent: Sendable {
+public enum AudioPlayerEvent: Sendable {
     case didFinishPlaying
     case interruptionBegan
     case interruptionEnded(shouldResume: Bool)
@@ -17,7 +17,7 @@ public enum AudioEngineEvent: Sendable {
 }
 
 /// One playback instance. Implementations own the underlying player and the
-/// delivery of engine events; orchestration (entry state machines, chapter
+/// delivery of player events; orchestration (entry state machines, chapter
 /// logic, progress) lives in the core actors that drive this protocol.
 public protocol AudioPlaying: AnyObject, Sendable {
     /// Loads a local audio file and returns its duration.
@@ -31,12 +31,12 @@ public protocol AudioPlaying: AnyObject, Sendable {
     /// Desired rate; applies immediately if playing, otherwise on next play.
     func setRate(_ rate: Double) async
     func setVolume(_ volume: Double) async
-    func setEventHandler(_ handler: @escaping @Sendable (AudioEngineEvent) -> Void) async
+    func setEventHandler(_ handler: @escaping @Sendable (AudioPlayerEvent) -> Void) async
 }
 
 /// Factory plus audio-session lifecycle. Session state is process-wide on
 /// Apple platforms, so it lives here rather than on individual players.
-public protocol AudioPlayerProviding: Sendable {
+public protocol AudioPlayerFactory: Sendable {
     func makePlayer(profile: AudioPlaybackProfile) -> any AudioPlaying
     /// Activates the platform audio session for playback. `longForm` selects
     /// the long-form route policy where the platform distinguishes (watchOS).

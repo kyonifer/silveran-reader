@@ -10,7 +10,7 @@ public func bootstrapApplePlatformDefaultsIfNeeded() {
     )
     guard !SilveranPlatform.isBootstrapped else { return }
     SilveranPlatform.bootstrap(
-        audioPlayers: ApplePlayerProvider(),
+        audioPlayerFactory: AppleAudioPlayerFactory(),
         nowPlaying: MediaNowPlayingPresenter(),
         audioMetadata: AVAssetMetadataProbe(),
         keychain: SecurityKeychainStore(),

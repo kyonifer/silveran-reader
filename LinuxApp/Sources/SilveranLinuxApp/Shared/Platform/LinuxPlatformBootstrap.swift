@@ -6,7 +6,7 @@ public func bootstrapLinuxPlatformDefaultsIfNeeded() {
     guard !SilveranPlatform.isBootstrapped else { return }
     #if canImport(CMpv)
     SilveranPlatform.bootstrap(
-        audioPlayers: MpvPlayerProvider(),
+        audioPlayerFactory: MpvAudioPlayerFactory(),
         folderWatcher: PollingFolderWatcher(),
     )
     #else

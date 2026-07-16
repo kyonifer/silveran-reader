@@ -3,16 +3,16 @@ import CMpv
 import Foundation
 import SilveranKit
 
-enum MpvEngineError: Error {
+enum MpvAudioPlayerError: Error {
     case createFailed
     case loadFailed(String)
 }
 
-public struct MpvPlayerProvider: AudioPlayerProviding {
+public struct MpvAudioPlayerFactory: AudioPlayerFactory {
     public init() {}
 
     public func makePlayer(profile: AudioPlaybackProfile) -> any AudioPlaying {
-        MpvAudioEngine()
+        MpvAudioPlayer()
     }
 
     public func prepareSession(longForm: Bool) async throws {}
@@ -20,9 +20,9 @@ public struct MpvPlayerProvider: AudioPlayerProviding {
     public func deactivateSession() async {}
 }
 
-actor MpvAudioEngine: AudioPlaying {
+actor MpvAudioPlayer: AudioPlaying {
     nonisolated(unsafe) private let ctx: OpaquePointer?
-    private var handler: (@Sendable (AudioEngineEvent) -> Void)?
+    private var handler: (@Sendable (AudioPlayerEvent) -> Void)?
     private var loadContinuation: CheckedContinuation<Void, any Error>?
 
     init() {
@@ -39,7 +39,7 @@ actor MpvAudioEngine: AudioPlaying {
             return
         }
         self.ctx = ctx
-        Self.startEventThread(ctx: ctx, engine: self)
+        Self.startEventThread(ctx: ctx, player: self)
     }
 
     deinit {
@@ -50,7 +50,7 @@ actor MpvAudioEngine: AudioPlaying {
     }
 
     func load(url: URL) async throws -> TimeInterval {
-        guard let ctx else { throw MpvEngineError.createFailed }
+        guard let ctx else { throw MpvAudioPlayerError.createFailed }
         let ctxAddress = UInt(bitPattern: ctx)
         let path = url.path
         mpv_set_property_string(ctx, "pause", "yes")
@@ -104,7 +104,7 @@ actor MpvAudioEngine: AudioPlaying {
         Self.setDouble(ctx, "volume", volume * 100)
     }
 
-    func setEventHandler(_ handler: @escaping @Sendable (AudioEngineEvent) -> Void) {
+    func setEventHandler(_ handler: @escaping @Sendable (AudioPlayerEvent) -> Void) {
         self.handler = handler
     }
 
@@ -117,7 +117,7 @@ actor MpvAudioEngine: AudioPlaying {
         if let continuation = loadContinuation {
             loadContinuation = nil
             continuation.resume(
-                throwing: MpvEngineError.loadFailed("end-file reason \(reason.rawValue)")
+                throwing: MpvAudioPlayerError.loadFailed("end-file reason \(reason.rawValue)")
             )
             return
         }
@@ -126,8 +126,8 @@ actor MpvAudioEngine: AudioPlaying {
         }
     }
 
-    private static func startEventThread(ctx: OpaquePointer, engine: MpvAudioEngine) {
-        let box = WeakEngineBox(engine)
+    private static func startEventThread(ctx: OpaquePointer, player: MpvAudioPlayer) {
+        let box = WeakAudioPlayerBox(player)
         let ctxAddress = UInt(bitPattern: ctx)
         Thread.detachNewThread {
             let ctx = OpaquePointer(bitPattern: ctxAddress)!
@@ -138,20 +138,20 @@ actor MpvAudioEngine: AudioPlaying {
                     mpv_terminate_destroy(ctx)
                     return
                 }
-                guard let engine = box.engine else {
+                guard let player = box.player else {
                     mpv_terminate_destroy(ctx)
                     return
                 }
                 switch id {
                     case MPV_EVENT_FILE_LOADED:
-                        Task { await engine.handleFileLoaded() }
+                        Task { await player.handleFileLoaded() }
                     case MPV_EVENT_END_FILE:
                         var reason = MPV_END_FILE_REASON_ERROR
                         if let data = event.pointee.data {
                             reason =
                                 data.assumingMemoryBound(to: mpv_event_end_file.self).pointee.reason
                         }
-                        Task { await engine.handleEndFile(reason: reason) }
+                        Task { await player.handleEndFile(reason: reason) }
                     default:
                         break
                 }
@@ -181,11 +181,11 @@ actor MpvAudioEngine: AudioPlaying {
     }
 }
 
-private final class WeakEngineBox: @unchecked Sendable {
-    weak var engine: MpvAudioEngine?
+private final class WeakAudioPlayerBox: @unchecked Sendable {
+    weak var player: MpvAudioPlayer?
 
-    init(_ engine: MpvAudioEngine) {
-        self.engine = engine
+    init(_ player: MpvAudioPlayer) {
+        self.player = player
     }
 }
 #endif

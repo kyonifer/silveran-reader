@@ -13,7 +13,7 @@ public enum AudioSessionError: Error, LocalizedError {
     }
 }
 
-public actor ApplePlayerProvider: AudioPlayerProviding {
+public actor AppleAudioPlayerFactory: AudioPlayerFactory {
     #if os(watchOS)
     private var longFormUnavailable = false
     #endif
@@ -23,9 +23,9 @@ public actor ApplePlayerProvider: AudioPlayerProviding {
     nonisolated public func makePlayer(profile: AudioPlaybackProfile) -> any AudioPlaying {
         switch profile {
             case .smilSegment:
-                return AVPlayerAudioEngine()
+                return AppleSMILAudioPlayer()
             case .audiobookTrack:
-                return AVAudioPlayerAudioEngine()
+                return AppleAudiobookAudioPlayer()
         }
     }
 
@@ -55,14 +55,14 @@ public actor ApplePlayerProvider: AudioPlayerProviding {
                         }
                     }
                 }
-                debugLog("[ApplePlayerProvider] Long-form audio session activated")
+                debugLog("[AppleAudioPlayerFactory] Long-form audio session activated")
                 return
             } catch {
                 // No eligible long-form route (older watch hardware with no Bluetooth
                 // device paired). Fall back to the default policy so speaker playback
                 // still works, accepting that audio stops when the app backgrounds.
                 debugLog(
-                    "[ApplePlayerProvider] Long-form activation failed, using default policy: \(error)"
+                    "[AppleAudioPlayerFactory] Long-form activation failed, using default policy: \(error)"
                 )
                 longFormUnavailable = true
             }
@@ -71,18 +71,18 @@ public actor ApplePlayerProvider: AudioPlayerProviding {
         do {
             try session.setCategory(.playback, mode: .spokenAudio, options: [])
             try session.setActive(true)
-            debugLog("[ApplePlayerProvider] Audio session activated")
+            debugLog("[AppleAudioPlayerFactory] Audio session activated")
         } catch {
-            debugLog("[ApplePlayerProvider] Failed to activate audio session: \(error)")
+            debugLog("[AppleAudioPlayerFactory] Failed to activate audio session: \(error)")
         }
         #elseif os(iOS) || os(tvOS)
         do {
             let session = AVAudioSession.sharedInstance()
             try session.setCategory(.playback, mode: .spokenAudio, options: [])
             try session.setActive(true)
-            debugLog("[ApplePlayerProvider] Audio session activated")
+            debugLog("[AppleAudioPlayerFactory] Audio session activated")
         } catch {
-            debugLog("[ApplePlayerProvider] Failed to activate audio session: \(error)")
+            debugLog("[AppleAudioPlayerFactory] Failed to activate audio session: \(error)")
         }
         #endif
     }
@@ -95,14 +95,14 @@ public actor ApplePlayerProvider: AudioPlayerProviding {
                 options: .notifyOthersOnDeactivation,
             )
         } catch {
-            debugLog("[ApplePlayerProvider] Failed to deactivate audio session: \(error)")
+            debugLog("[AppleAudioPlayerFactory] Failed to deactivate audio session: \(error)")
         }
         #endif
     }
 }
 
 #if os(iOS) || os(watchOS) || os(tvOS)
-private func audioInterruptionEvent(from notification: Notification) -> AudioEngineEvent? {
+private func audioInterruptionEvent(from notification: Notification) -> AudioPlayerEvent? {
     guard let userInfo = notification.userInfo,
         let typeValue = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,
         let type = AVAudioSession.InterruptionType(rawValue: typeValue)
@@ -127,7 +127,7 @@ private func audioInterruptionEvent(from notification: Notification) -> AudioEng
     }
 }
 
-private func audioRouteChangeEvent(from notification: Notification) -> AudioEngineEvent? {
+private func audioRouteChangeEvent(from notification: Notification) -> AudioPlayerEvent? {
     guard let userInfo = notification.userInfo,
         let reasonValue = userInfo[AVAudioSessionRouteChangeReasonKey] as? UInt,
         let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue)
@@ -144,9 +144,9 @@ private func audioRouteChangeEvent(from notification: Notification) -> AudioEngi
 }
 #endif
 
-// Notification tokens live here rather than on the engine actors because actor
+// Notification tokens live here rather than on the player actors because actor
 // deinits cannot touch non-Sendable stored state; the bag's own deinit removes
-// the observers when the engine deallocates.
+// the observers when the player deallocates.
 private final class NotificationObserverBag: @unchecked Sendable {
     private let lock = NSLock()
     private var tokens: [NSObjectProtocol] = []
@@ -178,13 +178,13 @@ private final class NotificationObserverBag: @unchecked Sendable {
     }
 }
 
-actor AVPlayerAudioEngine: AudioPlaying {
+actor AppleSMILAudioPlayer: AudioPlaying {
     private var player: AVPlayer?
     private let endObserverBag = NotificationObserverBag()
     private var desiredRate: Double = 1.0
     private var desiredVolume: Double = 1.0
     private var isPlaying = false
-    private var eventHandler: (@Sendable (AudioEngineEvent) -> Void)?
+    private var eventHandler: (@Sendable (AudioPlayerEvent) -> Void)?
 
     #if os(iOS) || os(watchOS) || os(tvOS)
     private let sessionObserverBag = NotificationObserverBag()
@@ -208,7 +208,7 @@ actor AVPlayerAudioEngine: AudioPlaying {
                 object: playerItem,
                 queue: nil,
             ) { [weak self] _ in
-                debugLog("[AVPlayerAudioEngine] Audio finished playing")
+                debugLog("[AppleSMILAudioPlayer] Audio finished playing")
                 guard let self else { return }
                 Task { await self.emit(.didFinishPlaying) }
             }
@@ -218,7 +218,7 @@ actor AVPlayerAudioEngine: AudioPlaying {
 
         let duration = playerItem.duration.seconds
         let normalizedDuration = duration.isFinite && duration > 0 ? duration : 0
-        debugLog("[AVPlayerAudioEngine] Audio loaded, duration: \(normalizedDuration)s")
+        debugLog("[AppleSMILAudioPlayer] Audio loaded, duration: \(normalizedDuration)s")
         return normalizedDuration
     }
 
@@ -264,11 +264,11 @@ actor AVPlayerAudioEngine: AudioPlaying {
         player?.volume = Float(volume)
     }
 
-    func setEventHandler(_ handler: @escaping @Sendable (AudioEngineEvent) -> Void) {
+    func setEventHandler(_ handler: @escaping @Sendable (AudioPlayerEvent) -> Void) {
         eventHandler = handler
     }
 
-    private func emit(_ event: AudioEngineEvent) {
+    private func emit(_ event: AudioPlayerEvent) {
         eventHandler?(event)
     }
 
@@ -311,7 +311,7 @@ actor AVPlayerAudioEngine: AudioPlaying {
             }
         )
 
-        debugLog("[AVPlayerAudioEngine] Audio session observers registered")
+        debugLog("[AppleSMILAudioPlayer] Audio session observers registered")
     }
     #else
     private func configureSessionObserversIfNeeded() {}
@@ -326,12 +326,12 @@ private final class AudioPlayerFinishRelay: NSObject, AVAudioPlayerDelegate, @un
     }
 }
 
-actor AVAudioPlayerAudioEngine: AudioPlaying {
+actor AppleAudiobookAudioPlayer: AudioPlaying {
     private var player: AVAudioPlayer?
     private let finishRelay = AudioPlayerFinishRelay()
     private var desiredRate: Float = 1.0
     private var desiredVolume: Float = 1.0
-    private var eventHandler: (@Sendable (AudioEngineEvent) -> Void)?
+    private var eventHandler: (@Sendable (AudioPlayerEvent) -> Void)?
 
     #if os(iOS) || os(watchOS) || os(tvOS)
     private let sessionObserverBag = NotificationObserverBag()
@@ -344,7 +344,7 @@ actor AVAudioPlayerAudioEngine: AudioPlaying {
 
         if finishRelay.onFinish == nil {
             finishRelay.onFinish = { [weak self] in
-                debugLog("[AVAudioPlayerAudioEngine] Audio finished playing")
+                debugLog("[AppleAudiobookAudioPlayer] Audio finished playing")
                 guard let self else { return }
                 Task { await self.emit(.didFinishPlaying) }
             }
@@ -396,11 +396,11 @@ actor AVAudioPlayerAudioEngine: AudioPlaying {
         player?.volume = Float(volume)
     }
 
-    func setEventHandler(_ handler: @escaping @Sendable (AudioEngineEvent) -> Void) {
+    func setEventHandler(_ handler: @escaping @Sendable (AudioPlayerEvent) -> Void) {
         eventHandler = handler
     }
 
-    private func emit(_ event: AudioEngineEvent) {
+    private func emit(_ event: AudioPlayerEvent) {
         eventHandler?(event)
     }
 
@@ -436,7 +436,7 @@ actor AVAudioPlayerAudioEngine: AudioPlaying {
             }
         )
 
-        debugLog("[AVAudioPlayerAudioEngine] Audio session observers registered")
+        debugLog("[AppleAudiobookAudioPlayer] Audio session observers registered")
     }
     #else
     private func configureSessionObserversIfNeeded() {}
