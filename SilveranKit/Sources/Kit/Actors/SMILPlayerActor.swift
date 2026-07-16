@@ -503,14 +503,12 @@ public actor SMILPlayerActor {
         debugLog("[SMILPlayerActor] Cleanup: activeAudioPlayer=\(activeAudioPlayer)")
         await clearBookState()
 
-        #if os(iOS)
         await teardownNowPlaying()
         if activeAudioPlayer == .smil {
             activeAudioPlayer = .none
         }
         await SilveranPlatform.audioPlayerFactory?.deactivateSession()
         coverImageData = nil
-        #endif
     }
 
     private func setCurrentEntry(
