@@ -98,10 +98,14 @@ androidComponents {
 }
 
 dependencies {
+    val media3Version = "1.10.1"
+
     // swift-java's Java runtime (org.swift.swiftkit.core), built from the
     // resolved swift-java checkout by scripts/androidbuild. Consumed as a jar
     // because its sources reference jdk.jfr, which android.jar lacks.
     implementation(files("libs/swiftkit-core.jar"))
+    implementation("androidx.media3:media3-common:$media3Version")
+    implementation("androidx.media3:media3-exoplayer:$media3Version")
     implementation(platform("androidx.compose:compose-bom:2025.06.01"))
     implementation("androidx.activity:activity-compose:1.10.1")
     implementation("androidx.compose.material:material-icons-core")

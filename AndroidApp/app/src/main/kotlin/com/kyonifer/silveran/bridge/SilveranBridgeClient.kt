@@ -11,6 +11,7 @@ import com.kyonifer.silveran.model.BookMedia
 import com.kyonifer.silveran.model.HomeSection
 import com.kyonifer.silveran.model.LibrarySnapshot
 import com.kyonifer.silveran.model.StorytellerSettings
+import com.kyonifer.silveran.platform.AndroidAudioPlayerBridge
 import com.kyonifer.silveran.platform.AndroidSecureStore
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
@@ -36,6 +37,7 @@ class SilveranBridgeClient(context: Context) {
 
     suspend fun bootstrap() {
         AndroidSecureStore.initialize(applicationContext)
+        AndroidAudioPlayerBridge.initialize(applicationContext)
         SilveranAndroidBridge.bootstrapAndroid(filesDirectory).awaitResult()
     }
 

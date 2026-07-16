@@ -48,6 +48,7 @@ enum AndroidPlatformBootstrap {
             }
 
             SilveranPlatform.bootstrap(
+                audioPlayerFactory: AndroidAudioPlayerFactory(),
                 keychain: AndroidKeychainStore(),
                 applicationStorage: AndroidApplicationStorageProvider(
                     applicationSupportDirectory: directory
