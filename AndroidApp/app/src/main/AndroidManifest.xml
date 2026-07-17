@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -8,7 +10,17 @@
 
     <application
         android:allowBackup="false"
-        android:label="Silveran">
+        android:icon="@mipmap/app_icon"
+        android:name=".SilveranApplication"
+        android:label="Silveran"
+        tools:ignore="MissingIntentFilterForMediaSearch">
+        <!-- Voice play-from-search is TBD. -->
+        <meta-data
+            android:name="com.google.android.gms.car.application"
+            android:resource="@xml/automotive_app_desc" />
+        <meta-data
+            android:name="androidx.car.app.TintableAttributionIcon"
+            android:resource="@drawable/ic_readaloud" />
         <activity
             android:name=".MainActivity"
             android:theme="@style/AppTheme"

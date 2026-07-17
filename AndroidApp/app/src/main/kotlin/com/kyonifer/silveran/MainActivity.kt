@@ -1,7 +1,6 @@
 package com.kyonifer.silveran
 
 import android.os.Bundle
-import android.system.Os
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -21,7 +20,6 @@ class MainActivity : ComponentActivity() {
             cleanupAbandonedSwiftDownloads(cacheDir)
             didCleanDownloadTemps = true
         }
-        configureSwiftNetworking(filesDir)
         enableEdgeToEdge()
 
         val viewModel = ViewModelProvider(
@@ -43,22 +41,4 @@ private fun cleanupAbandonedSwiftDownloads(cacheDirectory: File) {
             file.delete()
         }
     }
-}
-
-private fun configureSwiftNetworking(filesDirectory: File) {
-    val bundle = File(filesDirectory, "android-system-cacerts.pem")
-    if (!bundle.exists()) {
-        val certificates = File("/system/etc/security/cacerts")
-            .listFiles()
-            ?.sortedBy { it.name }
-            .orEmpty()
-        bundle.outputStream().buffered().use { output ->
-            certificates.forEach { certificate ->
-                certificate.inputStream().use { it.copyTo(output) }
-                output.write('\n'.code)
-            }
-        }
-    }
-    // AndroidBootstrap adds another JNI runtime; CAINFO must be set before Swift loads.
-    Os.setenv("URLSessionCertificateAuthorityInfoFile", bundle.absolutePath, true)
 }

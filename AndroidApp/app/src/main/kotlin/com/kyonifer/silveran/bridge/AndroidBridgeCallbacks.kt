@@ -16,10 +16,8 @@ object AndroidBridgeCallbacks {
         listener = onChange
     }
 
-    fun clear() {
+    fun clearObserver() {
         listener = null
-        payloadRequests.values.forEach { it.cancel() }
-        payloadRequests.clear()
     }
 
     @JvmStatic

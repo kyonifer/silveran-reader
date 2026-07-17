@@ -19,7 +19,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import org.json.JSONObject
 
@@ -47,7 +49,7 @@ class SilveranBridgeClient(context: Context) {
     }
 
     fun close() {
-        AndroidBridgeCallbacks.clear()
+        AndroidBridgeCallbacks.clearObserver()
     }
 
     suspend fun storytellerSettings(): StorytellerSettings {
@@ -90,14 +92,22 @@ class SilveranBridgeClient(context: Context) {
     }
 
     suspend fun openAudiobook(book: Book) {
-        SilveranAndroidBridge.openAudiobook(
-            book.id.uuid,
-            book.id.sourceID,
-        ).awaitResult()
+        openAudiobook(book.id)
+    }
+
+    suspend fun openAudiobook(bookID: BookID) {
+        audiobookOperations.withLock {
+            SilveranAndroidBridge.openAudiobook(
+                bookID.uuid,
+                bookID.sourceID,
+            ).awaitResult()
+        }
     }
 
     suspend fun closeAudiobook() {
-        SilveranAndroidBridge.closeAudiobook().awaitResult()
+        audiobookOperations.withLock {
+            SilveranAndroidBridge.closeAudiobook().awaitResult()
+        }
     }
 
     suspend fun cover(book: Book, audio: Boolean, width: Int, height: Int): Bitmap? {
@@ -262,6 +272,12 @@ class SilveranBridgeClient(context: Context) {
             sourceStatus = root.optString("sourceStatus", "notConfigured"),
             sourceMessage = root.optionalString("sourceMessage"),
         )
+    }
+
+    private companion object {
+        // The activity and media service use separate clients but share one
+        // Swift audiobook actor and Android audio backend.
+        val audiobookOperations = Mutex()
     }
 }
 

@@ -1,6 +1,7 @@
 package com.kyonifer.silveran.platform
 
 import android.os.Looper
+import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -13,6 +14,20 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(manifest = Config.NONE, sdk = [28])
 class AndroidNowPlayingSessionPlayerTest {
+    @Test
+    fun acceptsSessionPreparationWhileTheMirrorIsEmpty() {
+        val player = AndroidNowPlayingSessionPlayer(Looper.getMainLooper()) { _, _, _ -> }
+
+        assertTrue(player.isCommandAvailable(Player.COMMAND_SET_MEDIA_ITEM))
+        assertTrue(player.isCommandAvailable(Player.COMMAND_PREPARE))
+
+        player.setMediaItem(MediaItem.Builder().setMediaId("book").build())
+        player.prepare()
+
+        assertEquals(Player.STATE_IDLE, player.playbackState)
+        assertEquals(0, player.mediaItemCount)
+    }
+
     @Test
     fun publishesChapterStateAndForwardsCommands() {
         val commands = mutableListOf<ReceivedCommand>()

@@ -52,6 +52,9 @@ android {
 
 abstract class GenerateSharedResources : DefaultTask() {
     @get:InputFile
+    abstract val appIcon: RegularFileProperty
+
+    @get:InputFile
     abstract val readaloudIcon: RegularFileProperty
 
     @get:InputFile
@@ -62,6 +65,10 @@ abstract class GenerateSharedResources : DefaultTask() {
 
     @TaskAction
     fun generate() {
+        val appIconOutput = outputDirectory.file("mipmap/app_icon.png").get().asFile
+        appIconOutput.parentFile.mkdirs()
+        appIcon.get().asFile.copyTo(appIconOutput, overwrite = true)
+
         val iconOutput = outputDirectory.file("drawable/ic_readaloud.xml").get().asFile
         iconOutput.parentFile.mkdirs()
         iconOutput.outputStream().use { stream ->
@@ -76,6 +83,11 @@ abstract class GenerateSharedResources : DefaultTask() {
 }
 
 val generateSharedResources = tasks.register<GenerateSharedResources>("generateSharedResources") {
+    appIcon.set(
+        rootProject.layout.projectDirectory.file(
+            "../XCodeApps/Assets.xcassets/AppIcon.appiconset/icon_1024x1024.png"
+        )
+    )
     readaloudIcon.set(
         rootProject.layout.projectDirectory.file(
             "../XCodeApps/Assets.xcassets/readalong.imageset/readaloud.svg"

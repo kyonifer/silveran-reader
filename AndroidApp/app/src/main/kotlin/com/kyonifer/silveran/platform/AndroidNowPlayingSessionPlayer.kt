@@ -139,6 +139,14 @@ internal class AndroidNowPlayingSessionPlayer(
         return immediateVoidFuture()
     }
 
+    override fun handleSetMediaItems(
+        mediaItems: List<MediaItem>,
+        startIndex: Int,
+        startPositionMs: Long,
+    ): ListenableFuture<Any> = immediateVoidFuture()
+
+    override fun handlePrepare(): ListenableFuture<Any> = immediateVoidFuture()
+
     override fun handleSeek(
         mediaItemIndex: Int,
         positionMs: Long,
@@ -188,6 +196,10 @@ internal class AndroidNowPlayingSessionPlayer(
             .add(Player.COMMAND_GET_CURRENT_MEDIA_ITEM)
             .add(Player.COMMAND_GET_METADATA)
             .add(Player.COMMAND_GET_TIMELINE)
+            // The MediaLibrarySession callback resolves and prepares selected
+            // Silveran books before these no-op mirror-player operations run.
+            .add(Player.COMMAND_SET_MEDIA_ITEM)
+            .add(Player.COMMAND_PREPARE)
 
         if (hasSnapshot && configuration != null) {
             commands

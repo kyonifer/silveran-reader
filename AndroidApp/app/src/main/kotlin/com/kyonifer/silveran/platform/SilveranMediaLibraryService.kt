@@ -2,6 +2,9 @@ package com.kyonifer.silveran.platform
 
 import android.app.PendingIntent
 import android.content.Intent
+import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import androidx.annotation.OptIn
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
@@ -17,15 +20,35 @@ import androidx.media3.session.SessionError
 import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
+import com.google.common.util.concurrent.SettableFuture
 import com.kyonifer.silveran.MainActivity
+import com.kyonifer.silveran.bridge.SilveranBridgeClient
+import com.kyonifer.silveran.model.Book
+import com.kyonifer.silveran.model.BookID
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlin.coroutines.resume
 
-/** Hosts Silveran's now-playing Player for system media clients and future Android Auto browsing. */
+/** Hosts Silveran's now-playing Player and downloaded audiobook catalog for Android Auto. */
 @OptIn(UnstableApi::class)
 class SilveranMediaLibraryService : MediaLibraryService() {
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val bootstrapMutex = Mutex()
     private var session: MediaLibrarySession? = null
+    private var bootstrapped = false
+    private lateinit var client: SilveranBridgeClient
 
     override fun onCreate() {
         super.onCreate()
+        client = SilveranBridgeClient(applicationContext)
         val sessionActivity = PendingIntent.getActivity(
             this,
             0,
@@ -48,48 +71,146 @@ class SilveranMediaLibraryService : MediaLibraryService() {
     override fun onDestroy() {
         session?.release()
         session = null
+        serviceScope.cancel()
         super.onDestroy()
     }
 
-    private companion object {
-        const val ROOT_MEDIA_ID = "silveran-root"
+    private val libraryCallback = object : MediaLibrarySession.Callback {
+        override fun onGetLibraryRoot(
+            session: MediaLibrarySession,
+            browser: MediaSession.ControllerInfo,
+            params: LibraryParams?,
+        ): ListenableFuture<LibraryResult<MediaItem>> =
+            Futures.immediateFuture(LibraryResult.ofItem(rootMediaItem, params))
 
-        val rootMediaItem: MediaItem = MediaItem.Builder()
-            .setMediaId(ROOT_MEDIA_ID)
-            .setMediaMetadata(
-                MediaMetadata.Builder()
-                    .setTitle("Silveran")
-                    .setIsBrowsable(true)
-                    .setIsPlayable(false)
-                    .build(),
-            )
-            .build()
-
-        val libraryCallback = object : MediaLibrarySession.Callback {
-            override fun onGetLibraryRoot(
-                session: MediaLibrarySession,
-                browser: MediaSession.ControllerInfo,
-                params: LibraryParams?,
-            ): ListenableFuture<LibraryResult<MediaItem>> =
-                Futures.immediateFuture(LibraryResult.ofItem(rootMediaItem, params))
-
-            override fun onGetChildren(
-                session: MediaLibrarySession,
-                browser: MediaSession.ControllerInfo,
-                parentId: String,
-                page: Int,
-                pageSize: Int,
-                params: LibraryParams?,
-            ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> =
-                Futures.immediateFuture(
-                    if (parentId == ROOT_MEDIA_ID) {
-                        LibraryResult.ofItemList(emptyList(), params)
-                    } else {
-                        LibraryResult.ofError(SessionError.ERROR_BAD_VALUE, params)
-                    },
+        override fun onGetChildren(
+            session: MediaLibrarySession,
+            browser: MediaSession.ControllerInfo,
+            parentId: String,
+            page: Int,
+            pageSize: Int,
+            params: LibraryParams?,
+        ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> =
+            when (parentId) {
+                ROOT_MEDIA_ID -> Futures.immediateFuture(
+                    LibraryResult.ofItemList(
+                        listOf(audiobooksMediaItem).requestedPage(page, pageSize),
+                        params,
+                    ),
                 )
-        }
+                AUDIOBOOKS_MEDIA_ID -> serviceFuture {
+                    LibraryResult.ofItemList(
+                        downloadedAudiobooks()
+                            .map(Book::asAndroidAutoMediaItem)
+                            .requestedPage(page, pageSize),
+                        params,
+                    )
+                }
+                else -> Futures.immediateFuture(
+                    LibraryResult.ofError(SessionError.ERROR_BAD_VALUE, params),
+                )
+            }
 
+        override fun onGetItem(
+            session: MediaLibrarySession,
+            browser: MediaSession.ControllerInfo,
+            mediaId: String,
+        ): ListenableFuture<LibraryResult<MediaItem>> =
+            when (mediaId) {
+                ROOT_MEDIA_ID -> Futures.immediateFuture(
+                    LibraryResult.ofItem(rootMediaItem, null),
+                )
+                AUDIOBOOKS_MEDIA_ID -> Futures.immediateFuture(
+                    LibraryResult.ofItem(audiobooksMediaItem, null),
+                )
+                else -> serviceFuture {
+                    val bookID = bookIDFromMediaId(mediaId)
+                    val book = bookID?.let { id ->
+                        downloadedAudiobooks().firstOrNull { it.id == id }
+                    }
+                    if (book == null) {
+                        LibraryResult.ofError(SessionError.ERROR_BAD_VALUE)
+                    } else {
+                        LibraryResult.ofItem(book.asAndroidAutoMediaItem(), null)
+                    }
+                }
+            }
+
+        override fun onSetMediaItems(
+            mediaSession: MediaSession,
+            controller: MediaSession.ControllerInfo,
+            mediaItems: List<MediaItem>,
+            startIndex: Int,
+            startPositionMs: Long,
+        ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> =
+            serviceFuture {
+                val requestedID = mediaItems.singleOrNull()?.mediaId
+                    ?: throw IllegalArgumentException("Expected one Silveran audiobook")
+                val bookID = bookIDFromMediaId(requestedID)
+                    ?: throw IllegalArgumentException("Invalid Silveran audiobook ID")
+                val book = downloadedAudiobooks().firstOrNull { it.id == bookID }
+                    ?: throw IllegalArgumentException("Audiobook is not downloaded")
+
+                client.openAudiobook(book.id)
+                awaitNowPlayingCommands()
+                MediaSession.MediaItemsWithStartPosition(
+                    listOf(book.asAndroidAutoMediaItem()),
+                    0,
+                    0L,
+                )
+            }
+    }
+
+    private suspend fun downloadedAudiobooks(): List<Book> {
+        ensureBootstrapped()
+        return client.librarySnapshot(refresh = false).books
+            .filter { book ->
+                book.media.any { media -> media.category == AUDIO_CATEGORY && media.downloaded }
+            }
+            .sortedWith(
+                compareBy<Book, String>(String.CASE_INSENSITIVE_ORDER) { it.title }
+                    .thenBy { it.id.uuid },
+            )
+    }
+
+    private suspend fun ensureBootstrapped() {
+        if (bootstrapped) return
+        bootstrapMutex.withLock {
+            if (!bootstrapped) {
+                client.bootstrap()
+                bootstrapped = true
+            }
+        }
+    }
+
+    private suspend fun awaitNowPlayingCommands() {
+        // Swift's presenter posts its configure/update calls to this looper.
+        // This barrier makes them visible before Media3 evaluates its follow-up play.
+        suspendCancellableCoroutine { continuation ->
+            mainHandler.post {
+                if (continuation.isActive) continuation.resume(Unit)
+            }
+        }
+        check(session?.player?.isCommandAvailable(Player.COMMAND_PLAY_PAUSE) == true) {
+            "Silveran audiobook commands were not installed"
+        }
+    }
+
+    private fun <T> serviceFuture(operation: suspend () -> T): ListenableFuture<T> {
+        val future = SettableFuture.create<T>()
+        serviceScope.launch {
+            try {
+                future.set(operation())
+            } catch (_: CancellationException) {
+                future.cancel(false)
+            } catch (error: Throwable) {
+                future.setException(error)
+            }
+        }
+        return future
+    }
+
+    private companion object {
         val mediaButtonPreferences = listOf(
             CommandButton.Builder(CommandButton.ICON_SKIP_BACK_15)
                 .setDisplayName("Back 15 seconds")
@@ -101,4 +222,73 @@ class SilveranMediaLibraryService : MediaLibraryService() {
                 .build(),
         )
     }
+}
+
+private const val ROOT_MEDIA_ID = "silveran-root"
+private const val AUDIOBOOKS_MEDIA_ID = "silveran-audiobooks"
+private const val MEDIA_ID_SCHEME = "silveran"
+private const val AUDIOBOOK_MEDIA_ID_AUTHORITY = "audiobook"
+private const val AUDIO_CATEGORY = "audio"
+
+private val rootMediaItem: MediaItem = MediaItem.Builder()
+    .setMediaId(ROOT_MEDIA_ID)
+    .setMediaMetadata(
+        MediaMetadata.Builder()
+            .setTitle("Silveran")
+            .setIsBrowsable(true)
+            .setIsPlayable(false)
+            .build(),
+    )
+    .build()
+
+private val audiobooksMediaItem: MediaItem = MediaItem.Builder()
+    .setMediaId(AUDIOBOOKS_MEDIA_ID)
+    .setMediaMetadata(
+        MediaMetadata.Builder()
+            .setTitle("Downloaded audiobooks")
+            .setIsBrowsable(true)
+            .setIsPlayable(false)
+            .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_AUDIO_BOOKS)
+            .build(),
+    )
+    .build()
+
+private fun Book.asAndroidAutoMediaItem(): MediaItem =
+    MediaItem.Builder()
+        .setMediaId(
+            Uri.Builder()
+                .scheme(MEDIA_ID_SCHEME)
+                .authority(AUDIOBOOK_MEDIA_ID_AUTHORITY)
+                .appendPath(id.sourceID)
+                .appendPath(id.uuid)
+                .build()
+                .toString(),
+        )
+        .setMediaMetadata(
+            MediaMetadata.Builder()
+                .setTitle(title)
+                .setArtist(authors.takeIf(String::isNotBlank))
+                .setIsBrowsable(false)
+                .setIsPlayable(true)
+                .setMediaType(MediaMetadata.MEDIA_TYPE_AUDIO_BOOK)
+                .build(),
+        )
+        .build()
+
+private fun bookIDFromMediaId(mediaId: String): BookID? {
+    val uri = Uri.parse(mediaId)
+    if (uri.scheme != MEDIA_ID_SCHEME || uri.authority != AUDIOBOOK_MEDIA_ID_AUTHORITY) {
+        return null
+    }
+    val segments = uri.pathSegments
+    if (segments.size != 2 || segments.any(String::isBlank)) return null
+    return BookID(sourceID = segments[0], uuid = segments[1])
+}
+
+private fun <T> List<T>.requestedPage(page: Int, pageSize: Int): List<T> {
+    if (page < 0 || pageSize <= 0) return emptyList()
+    val start = page.toLong() * pageSize
+    if (start >= size) return emptyList()
+    val end = minOf(size.toLong(), start + pageSize).toInt()
+    return subList(start.toInt(), end)
 }
