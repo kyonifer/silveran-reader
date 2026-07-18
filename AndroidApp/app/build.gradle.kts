@@ -12,6 +12,11 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose") version "2.2.0"
 }
 
+val ciSigningKeystorePath = System.getenv("ANDROID_SIGNING_KEYSTORE_PATH")
+val ciSigningStorePassword = System.getenv("ANDROID_SIGNING_STORE_PASSWORD")
+val ciSigningKeyAlias = System.getenv("ANDROID_SIGNING_KEY_ALIAS")
+val ciSigningKeyPassword = System.getenv("ANDROID_SIGNING_KEY_PASSWORD")
+
 android {
     namespace = "com.kyonifer.silveran"
     compileSdk = 36
@@ -24,6 +29,28 @@ android {
         versionName = "0.1"
         ndk {
             abiFilters += "arm64-v8a"
+        }
+    }
+
+    if (ciSigningKeystorePath != null) {
+        signingConfigs {
+            create("ci") {
+                storeFile = file(ciSigningKeystorePath)
+                storePassword = requireNotNull(ciSigningStorePassword) {
+                    "ANDROID_SIGNING_STORE_PASSWORD is required when CI signing is enabled"
+                }
+                keyAlias = requireNotNull(ciSigningKeyAlias) {
+                    "ANDROID_SIGNING_KEY_ALIAS is required when CI signing is enabled"
+                }
+                keyPassword = requireNotNull(ciSigningKeyPassword) {
+                    "ANDROID_SIGNING_KEY_PASSWORD is required when CI signing is enabled"
+                }
+            }
+        }
+        buildTypes {
+            getByName("debug") {
+                signingConfig = signingConfigs.getByName("ci")
+            }
         }
     }
 

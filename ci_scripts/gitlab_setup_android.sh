@@ -2,6 +2,24 @@
 
 set -euo pipefail
 
+if [[ -n "${ANDROID_SIGNING_KEYSTORE_BASE64:-}" ]]; then
+    : "${ANDROID_SIGNING_STORE_PASSWORD:?ANDROID_SIGNING_STORE_PASSWORD is required}"
+    : "${ANDROID_SIGNING_KEY_ALIAS:?ANDROID_SIGNING_KEY_ALIAS is required}"
+    : "${ANDROID_SIGNING_KEY_PASSWORD:?ANDROID_SIGNING_KEY_PASSWORD is required}"
+
+    SIGNING_DIR="${CI_PROJECT_DIR}/.ci-signing"
+    export ANDROID_SIGNING_KEYSTORE_PATH="${SIGNING_DIR}/storyteller-android.jks"
+    mkdir -p "${SIGNING_DIR}"
+    printf '%s' "${ANDROID_SIGNING_KEYSTORE_BASE64}" \
+        | openssl base64 -d -A -out "${ANDROID_SIGNING_KEYSTORE_PATH}"
+    chmod 600 "${ANDROID_SIGNING_KEYSTORE_PATH}"
+elif [[ "${CI_COMMIT_BRANCH:-}" == "main" ]]; then
+    echo "Protected Android signing variables are required on main." >&2
+    return 1
+else
+    echo "Protected signing variables unavailable; using the ephemeral debug key."
+fi
+
 SWIFT_VERSION="6.3.1"
 SWIFT_ANDROID_CHECKSUM="8193a4e96538635131a154736c8896fba0e5a1c30e065524f00ed78719bac35a"
 SWIFT_ANDROID_URL="https://download.swift.org/swift-${SWIFT_VERSION}-release/android-sdk/swift-${SWIFT_VERSION}-RELEASE/swift-${SWIFT_VERSION}-RELEASE_android.artifactbundle.tar.gz"

@@ -20,6 +20,8 @@ Package.resolved
 !/Package.resolved
 .cache
 .ci-cache/
+.ci-signing/
+*.jks
 icon*.png
 XCodeApps/Assets.xcassets/AppIcon.appiconset/*.png
 XCodeApps/WatchAssets.xcassets/AppIcon.appiconset/*.png
