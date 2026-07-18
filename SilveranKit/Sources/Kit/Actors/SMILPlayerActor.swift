@@ -383,8 +383,10 @@ public actor SMILPlayerActor {
     }
 
     public func setPlaybackRate(_ rate: Double) async {
+        let rateChanged = playbackRate != rate
         playbackRate = rate
         await player?.setRate(rate)
+        guard rateChanged else { return }
         debugLog("[SMILPlayerActor] Playback rate set to \(rate)")
         await notifyStateChange()
     }

@@ -380,22 +380,63 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
     }
 
     public struct Playback: Codable, Equatable, Sendable {
-        public var defaultPlaybackSpeed: Double
+        public private(set) var defaultPlaybackSpeed: Double
+        public private(set) var readaloudPlaybackSpeed: Double
         public var defaultVolume: Double
         public var statsExpanded: Bool
         public var lockViewToAudio: Bool
 
         public init(
             defaultPlaybackSpeed: Double = kDefaultPlaybackSpeed,
+            readaloudPlaybackSpeed: Double? = nil,
             defaultVolume: Double = kDefaultVolume,
             statsExpanded: Bool = kDefaultStatsExpanded,
             lockViewToAudio: Bool = kDefaultLockViewToAudio,
         ) {
-            self.defaultPlaybackSpeed = defaultPlaybackSpeed
+            let normalizedDefaultSpeed = Self.normalizedSpeed(defaultPlaybackSpeed)
+            let normalizedReadaloudSpeed = Self.normalizedSpeed(
+                readaloudPlaybackSpeed ?? defaultPlaybackSpeed
+            )
+            self.defaultPlaybackSpeed = min(normalizedDefaultSpeed, normalizedReadaloudSpeed)
+            self.readaloudPlaybackSpeed = normalizedReadaloudSpeed
             self.defaultVolume = defaultVolume
             self.statsExpanded = statsExpanded
             self.lockViewToAudio = lockViewToAudio
         }
+
+        public mutating func updateDefaultPlaybackSpeed(_ speed: Double) {
+            updatePlaybackSpeed(speed, for: .listening)
+        }
+
+        public mutating func updateReadaloudPlaybackSpeed(_ speed: Double) {
+            updatePlaybackSpeed(speed, for: .readaloud)
+        }
+
+        public mutating func updatePlaybackSpeed(_ speed: Double, for role: PlaybackSpeedRole) {
+            switch role {
+                case .listening:
+                    defaultPlaybackSpeed = Self.normalizedSpeed(speed)
+                    readaloudPlaybackSpeed = max(readaloudPlaybackSpeed, defaultPlaybackSpeed)
+                case .readaloud:
+                    readaloudPlaybackSpeed = Self.normalizedSpeed(speed)
+                    defaultPlaybackSpeed = min(defaultPlaybackSpeed, readaloudPlaybackSpeed)
+            }
+        }
+
+        public func playbackSpeed(for role: PlaybackSpeedRole) -> Double {
+            switch role {
+                case .listening:
+                    defaultPlaybackSpeed
+                case .readaloud:
+                    readaloudPlaybackSpeed
+            }
+        }
+
+        private static func normalizedSpeed(_ speed: Double) -> Double {
+            guard speed.isFinite else { return kDefaultPlaybackSpeed }
+            return min(max(speed, kMinimumPlaybackSpeed), kMaximumPlaybackSpeed)
+        }
+
     }
 
     public struct ReadingBar: Codable, Equatable, Sendable {
@@ -742,7 +783,9 @@ public actor SettingsActor {
         enableMarginClickNavigation: Bool? = nil,
         singleColumnMode: Bool? = nil,
         scrollingMode: Bool? = nil,
+        playback: SilveranGlobalConfig.Playback? = nil,
         defaultPlaybackSpeed: Double? = nil,
+        readaloudPlaybackSpeed: Double? = nil,
         defaultVolume: Double? = nil,
         statsExpanded: Bool? = nil,
         lockViewToAudio: Bool? = nil,
@@ -815,7 +858,15 @@ public actor SettingsActor {
         if let scrollingMode {
             updated.reading.scrollingMode = scrollingMode
         }
-        if let defaultPlaybackSpeed { updated.playback.defaultPlaybackSpeed = defaultPlaybackSpeed }
+        if let playback {
+            updated.playback = playback
+        }
+        if let defaultPlaybackSpeed {
+            updated.playback.updateDefaultPlaybackSpeed(defaultPlaybackSpeed)
+        }
+        if let readaloudPlaybackSpeed {
+            updated.playback.updateReadaloudPlaybackSpeed(readaloudPlaybackSpeed)
+        }
         if let defaultVolume { updated.playback.defaultVolume = defaultVolume }
         if let statsExpanded { updated.playback.statsExpanded = statsExpanded }
         if let lockViewToAudio { updated.playback.lockViewToAudio = lockViewToAudio }

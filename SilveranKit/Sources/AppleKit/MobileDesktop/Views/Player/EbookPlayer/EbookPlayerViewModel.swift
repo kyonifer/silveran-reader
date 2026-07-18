@@ -98,6 +98,8 @@ class EbookPlayerViewModel {
     var isTopBarVisible = true
     var collapseCardTrigger = 0
     #endif
+    private var isAudioPlayerExpanded = false
+    private var isReaderSceneActive = true
     var showCustomizePopover = false
     var commsBridge: WebViewCommsBridge? = nil
     var playbackProgressMessage: Any? = nil
@@ -328,16 +330,38 @@ class EbookPlayerViewModel {
         progressManager?.handleUserChapterSelected(currentIndex + 1)
     }
 
-    func handlePlaybackRateChange(_ rate: Double) {
-        debugLog("[EbookPlayerViewModel] Received playback rate change to \(rate)")
-        settingsVM.defaultPlaybackSpeed = rate
-        mediaOverlayManager?.setPlaybackRate(rate)
+    func handleAudioPlayerExpandedChange(_ isExpanded: Bool) {
+        guard isAudioPlayerExpanded != isExpanded else { return }
+        isAudioPlayerExpanded = isExpanded
+        applyActivePlayback()
+    }
 
-        Task { @MainActor in
-            do {
-                try await settingsVM.save()
-            } catch {
-                debugLog("[EbookPlayerViewModel] Failed to save playback rate: \(error)")
+    private var activePlaybackRole: PlaybackSpeedRole {
+        #if os(macOS)
+        .readaloud
+        #else
+        PlaybackRatePolicy.activeRole(
+            isReaderSceneActive: isReaderSceneActive,
+            isPlayerExpanded: isAudioPlayerExpanded,
+        )
+        #endif
+    }
+
+    var activePlaybackRate: Double {
+        settingsVM.playback.playbackSpeed(for: activePlaybackRole)
+    }
+
+    func applyActivePlayback() {
+        let role = activePlaybackRole
+        let rate = settingsVM.playback.playbackSpeed(for: role)
+        debugLog(
+            "[EbookPlayerViewModel] Applying \(role == .readaloud ? "read-aloud" : "listening") rate \(rate)"
+        )
+        if let mediaOverlayManager {
+            mediaOverlayManager.setPlaybackRate(rate)
+        } else if bookData?.metadata.id != nil {
+            Task {
+                await SMILPlayerActor.shared.setPlaybackRate(rate)
             }
         }
     }
@@ -346,14 +370,7 @@ class EbookPlayerViewModel {
         debugLog("[EbookPlayerViewModel] Received volume change to \(newVolume)")
         settingsVM.defaultVolume = newVolume
         mediaOverlayManager?.setVolume(newVolume)
-
-        Task { @MainActor in
-            do {
-                try await settingsVM.save()
-            } catch {
-                debugLog("[EbookPlayerViewModel] Failed to save volume: \(error)")
-            }
-        }
+        settingsVM.save()
     }
 
     func handleSleepTimerStart(_ duration: TimeInterval?, _ type: SleepTimerType) {
@@ -410,6 +427,10 @@ class EbookPlayerViewModel {
             "[EbookPlayerViewModel] App backgrounding - syncing progress (audio continues in background)"
         )
 
+        #if os(iOS)
+        isReaderSceneActive = false
+        applyActivePlayback()
+        #endif
         await progressManager?.syncProgressToServer(reason: .appBackgrounding)
 
         debugLog("[EbookPlayerViewModel] Background sync complete")
@@ -597,6 +618,7 @@ class EbookPlayerViewModel {
             let nativeStructure = await SMILPlayerActor.shared.getBookStructure()
             self.bookStructure = nativeStructure
             self.tocEntries = await SMILPlayerActor.shared.getTocEntries()
+            await SMILPlayerActor.shared.setPlaybackRate(activePlaybackRate)
             debugLog("[EbookPlayerViewModel] Joined session with \(nativeStructure.count) sections")
             return
         }
@@ -619,7 +641,7 @@ class EbookPlayerViewModel {
                 title: bookData?.metadata.title,
                 author: bookData?.metadata.authors?.first?.name,
             )
-            await SMILPlayerActor.shared.setPlaybackRate(settingsVM.defaultPlaybackSpeed)
+            await SMILPlayerActor.shared.setPlaybackRate(activePlaybackRate)
             await SMILPlayerActor.shared.setVolume(settingsVM.defaultVolume)
 
             let nativeStructure = await SMILPlayerActor.shared.getBookStructure()
@@ -727,6 +749,10 @@ class EbookPlayerViewModel {
     func handleScenePhaseChange(_ phase: ScenePhase) {
         switch phase {
             case .active:
+                #if os(iOS)
+                isReaderSceneActive = true
+                applyActivePlayback()
+                #endif
                 Task { @MainActor in
                     await progressManager?.handleResume()
 
@@ -746,6 +772,10 @@ class EbookPlayerViewModel {
                 }
             case .background:
                 debugLog("[EbookPlayerViewModel] Entering background - audio continues natively")
+                #if os(iOS)
+                isReaderSceneActive = false
+                applyActivePlayback()
+                #endif
                 Task { @MainActor in
                     mediaOverlayManager?.isInBackground = true
                     let wasPlaying =
@@ -881,7 +911,7 @@ class EbookPlayerViewModel {
                         debugLog(
                             "[EbookPlayerViewModel] Book has media overlay - MediaOverlayManager created (native structure: \(useNativeStructure))"
                         )
-                        manager.setPlaybackRate(self.settingsVM.defaultPlaybackSpeed)
+                        manager.setPlaybackRate(self.activePlaybackRate)
                         self.mediaOverlayManager = manager
                         self.hasAudioNarration = true
                         self.styleManager?.setReadaloudModeAvailable(true)
