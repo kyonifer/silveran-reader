@@ -27,10 +27,22 @@ public final class SettingsViewModel {
     public var singleColumnMode: Bool = kDefaultSingleColumnMode
     public var scrollingMode: Bool = kDefaultScrollingMode
 
-    public var defaultPlaybackSpeed: Double = kDefaultPlaybackSpeed
-    public var defaultVolume: Double = kDefaultVolume
-    public var statsExpanded: Bool = kDefaultStatsExpanded
-    public var lockViewToAudio: Bool = kDefaultLockViewToAudio
+    public private(set) var playback = SilveranGlobalConfig.Playback()
+
+    public var defaultPlaybackSpeed: Double { playback.defaultPlaybackSpeed }
+    public var readaloudPlaybackSpeed: Double { playback.readaloudPlaybackSpeed }
+    public var defaultVolume: Double {
+        get { playback.defaultVolume }
+        set { playback.defaultVolume = newValue }
+    }
+    public var statsExpanded: Bool {
+        get { playback.statsExpanded }
+        set { playback.statsExpanded = newValue }
+    }
+    public var lockViewToAudio: Bool {
+        get { playback.lockViewToAudio }
+        set { playback.lockViewToAudio = newValue }
+    }
 
     public var enableReadingBar: Bool = kDefaultReadingBarEnabled
     #if os(iOS)
@@ -87,6 +99,7 @@ public final class SettingsViewModel {
     public var isLoaded: Bool = false
 
     @ObservationIgnored private var observerID: UUID?
+    @ObservationIgnored private var initialLoadTask: Task<Void, Never>?
     @ObservationIgnored private var saveTask: Task<Void, Never>?
 
     public var readingBarConfig: SilveranGlobalConfig.ReadingBar {
@@ -129,13 +142,15 @@ public final class SettingsViewModel {
     }
 
     public init() {
-        Task {
-            await loadSettings()
-            await registerObserver()
+        initialLoadTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.loadSettings()
+            await self.registerObserver()
         }
     }
 
     deinit {
+        initialLoadTask?.cancel()
         if let id = observerID {
             Task {
                 await SettingsActor.shared.removeObserver(id: id)
@@ -145,6 +160,7 @@ public final class SettingsViewModel {
 
     private func loadSettings() async {
         let config = await SettingsActor.shared.config
+        playback = config.playback
 
         fontSize = config.reading.fontSize
         fontFamily = config.reading.fontFamily
@@ -162,11 +178,6 @@ public final class SettingsViewModel {
         enableMarginClickNavigation = config.reading.enableMarginClickNavigation
         singleColumnMode = config.reading.singleColumnMode
         scrollingMode = config.reading.scrollingMode
-
-        defaultPlaybackSpeed = config.playback.defaultPlaybackSpeed
-        defaultVolume = config.playback.defaultVolume
-        statsExpanded = config.playback.statsExpanded
-        lockViewToAudio = config.playback.lockViewToAudio
 
         enableReadingBar = config.readingBar.enabled
         showPlayerControls = config.readingBar.showPlayerControls
@@ -366,6 +377,26 @@ public final class SettingsViewModel {
         }
     }
 
+    public func waitUntilLoaded() async {
+        await initialLoadTask?.value
+    }
+
+    public func updatePlaybackSpeed(_ speed: Double, for role: PlaybackSpeedRole) {
+        playback.updatePlaybackSpeed(speed, for: role)
+        save()
+    }
+
+    func playbackSpeedBinding(for role: PlaybackSpeedRole) -> Binding<Double> {
+        Binding(
+            get: { [weak self] in
+                self?.playback.playbackSpeed(for: role) ?? kDefaultPlaybackSpeed
+            },
+            set: { [weak self] speed in
+                self?.updatePlaybackSpeed(speed, for: role)
+            },
+        )
+    }
+
     private func persistNow() async throws {
         try await SettingsActor.shared.updateConfig(
             fontSize: fontSize,
@@ -384,10 +415,7 @@ public final class SettingsViewModel {
             enableMarginClickNavigation: enableMarginClickNavigation,
             singleColumnMode: singleColumnMode,
             scrollingMode: scrollingMode,
-            defaultPlaybackSpeed: defaultPlaybackSpeed,
-            defaultVolume: defaultVolume,
-            statsExpanded: statsExpanded,
-            lockViewToAudio: lockViewToAudio,
+            playback: playback,
             enableReadingBar: enableReadingBar,
             showPlayerControls: showPlayerControls,
             showProgressBar: showProgressBar,

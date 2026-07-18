@@ -383,10 +383,23 @@ public actor SMILPlayerActor {
     }
 
     public func setPlaybackRate(_ rate: Double) async {
+        let rateChanged = playbackRate != rate
         playbackRate = rate
         await player?.setRate(rate)
+        guard rateChanged else { return }
         debugLog("[SMILPlayerActor] Playback rate set to \(rate)")
         await notifyStateChange()
+    }
+
+    @discardableResult
+    public func setPlaybackRate(_ rate: Double, ifLoadedBookID expectedBookID: BookID) async
+        -> Bool
+    {
+        guard activeAudioPlayer == .smil, bookID == expectedBookID else {
+            return false
+        }
+        await setPlaybackRate(rate)
+        return true
     }
 
     public func setVolume(_ newVolume: Double) async {

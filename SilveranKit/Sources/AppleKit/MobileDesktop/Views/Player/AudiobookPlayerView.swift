@@ -15,13 +15,11 @@ public struct AudiobookPlayerView: View {
 
     @State private var chapterProgress: Double = 0.0
     @State private var isPlaying = false
-    @State private var playbackRate: Double = 1.0
-    @State private var volume: Double = 1.0
+    @State private var settingsVM = SettingsViewModel()
     @State private var sleepTimerActive = false
     @State private var sleepTimerRemaining: TimeInterval? = nil
     @State private var sleepTimerType: SleepTimerType? = nil
     @State private var sleepTimer: Timer? = nil
-    @State private var settingsInitialized = false
 
     @State private var metadata: AudiobookMetadata?
     @State private var currentChapterTitle: String = "Loading..."
@@ -88,16 +86,8 @@ public struct AudiobookPlayerView: View {
                 }
                 #endif
 
-                if !settingsInitialized {
-                    Task { @MainActor in
-                        let config = await SettingsActor.shared.config
-                        playbackRate = config.playback.defaultPlaybackSpeed
-                        volume = config.playback.defaultVolume
-                        settingsInitialized = true
-                    }
-                }
-
                 Task { @MainActor in
+                    await settingsVM.waitUntilLoaded()
                     await loadAudiobook()
                 }
             }
@@ -142,32 +132,18 @@ public struct AudiobookPlayerView: View {
                     await AudiobookActor.shared.cleanup()
                 }
             }
-            .onChange(of: playbackRate) { _, newValue in
-                if settingsInitialized {
+            .onChange(of: settingsVM.defaultVolume) { _, newValue in
+                if settingsVM.isLoaded {
                     Task {
-                        await AudiobookActor.shared.setPlaybackRate(newValue)
-                        do {
-                            try await SettingsActor.shared.updateConfig(
-                                defaultPlaybackSpeed: newValue
-                            )
-                        } catch {
-                            debugLog(
-                                "[AudiobookPlayerView] Failed to auto-save playback rate: \(error)"
-                            )
-                        }
+                        await AudiobookActor.shared.setVolume(newValue)
+                        settingsVM.save()
                     }
                 }
             }
-            .onChange(of: volume) { _, newValue in
-                if settingsInitialized {
-                    Task {
-                        await AudiobookActor.shared.setVolume(newValue)
-                        do {
-                            try await SettingsActor.shared.updateConfig(defaultVolume: newValue)
-                        } catch {
-                            debugLog("[AudiobookPlayerView] Failed to auto-save volume: \(error)")
-                        }
-                    }
+            .onChange(of: settingsVM.defaultPlaybackSpeed) { _, newValue in
+                guard settingsVM.isLoaded else { return }
+                Task {
+                    await AudiobookActor.shared.setPlaybackRate(newValue)
                 }
             }
             #if os(iOS)
@@ -203,6 +179,17 @@ public struct AudiobookPlayerView: View {
     private var readingSidebarView: some View {
         let bookTitle = bookData?.metadata.title ?? "Unknown Book"
         let bookAuthor = bookData?.metadata.authors?.first?.name ?? "Unknown Author"
+        let playbackSpeeds: PlaybackSpeedControls =
+            showsDualPlaybackSpeeds
+            ? .dual(
+                currentRate: settingsVM.defaultPlaybackSpeed,
+                listeningRate: settingsVM.playbackSpeedBinding(for: .listening),
+                readaloudRate: settingsVM.playbackSpeedBinding(for: .readaloud),
+            )
+            : .single(
+                currentRate: settingsVM.defaultPlaybackSpeed,
+                rate: settingsVM.playbackSpeedBinding(for: .listening),
+            )
 
         return ReadingSidebarView(
             bookData: bookData,
@@ -214,8 +201,7 @@ public struct AudiobookPlayerView: View {
                 ebookCoverArt: bookData?.ebookCoverArt,
                 chapterDuration: chapterDuration,
                 totalRemaining: totalRemaining,
-                playbackRate: playbackRate,
-                volume: volume,
+                volume: settingsVM.defaultVolume,
                 isPlaying: isPlaying,
                 sleepTimerActive: sleepTimerActive,
                 sleepTimerRemaining: sleepTimerRemaining,
@@ -267,11 +253,9 @@ public struct AudiobookPlayerView: View {
             onNextChapter: {
                 handleNextChapter()
             },
-            onPlaybackRateChange: { rate in
-                playbackRate = rate
-            },
+            playbackSpeeds: playbackSpeeds,
             onVolumeChange: { newVolume in
-                volume = newVolume
+                settingsVM.defaultVolume = newVolume
             },
             onSleepTimerStart: { duration, type in
                 startSleepTimer(duration: duration, type: type)
@@ -293,6 +277,14 @@ public struct AudiobookPlayerView: View {
             },
             seekWhileDragging: false,
         )
+    }
+
+    private var showsDualPlaybackSpeeds: Bool {
+        #if os(iOS)
+        bookData?.category == .synced || bookData?.metadata.hasAvailableReadaloud == true
+        #else
+        false
+        #endif
     }
 
     private func loadAudiobook() async {
@@ -326,8 +318,8 @@ public struct AudiobookPlayerView: View {
 
             try await AudiobookActor.shared.preparePlayer()
 
-            await AudiobookActor.shared.setPlaybackRate(playbackRate)
-            await AudiobookActor.shared.setVolume(volume)
+            await AudiobookActor.shared.setPlaybackRate(settingsVM.defaultPlaybackSpeed)
+            await AudiobookActor.shared.setVolume(settingsVM.defaultVolume)
 
             if let psaProgress = await ProgressSyncActor.shared.getBookProgress(
                 for: bookData.metadata.id

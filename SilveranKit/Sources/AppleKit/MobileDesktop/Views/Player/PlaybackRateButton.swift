@@ -2,8 +2,7 @@
 import SwiftUI
 
 public struct PlaybackRateButton: View {
-    private let currentRate: Double
-    private let onRateChange: (Double) -> Void
+    private let playbackSpeeds: PlaybackSpeedControls
     private let backgroundColor: Color
     private let foregroundColor: Color
     private let transparency: Double
@@ -14,13 +13,15 @@ public struct PlaybackRateButton: View {
     private let iconFont: Font
 
     @State private var showSpeedPicker = false
-    @State private var sliderValue: Double = 1.0
-    @State private var textFieldValue: String = ""
-    @FocusState private var isTextFieldFocused: Bool
+    #if os(iOS)
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @State private var selectedSpeedSheetDetent: PresentationDetent = .custom(
+        CompactPlaybackSpeedDetent.self
+    )
+    #endif
 
     public init(
-        currentRate: Double,
-        onRateChange: @escaping (Double) -> Void,
+        playbackSpeeds: PlaybackSpeedControls,
         backgroundColor: Color = Color.secondary,
         foregroundColor: Color = Color.primary,
         transparency: Double = 1.0,
@@ -30,8 +31,7 @@ public struct PlaybackRateButton: View {
         compactLabel: Bool = false,
         iconFont: Font = .callout.weight(.semibold),
     ) {
-        self.currentRate = currentRate
-        self.onRateChange = onRateChange
+        self.playbackSpeeds = playbackSpeeds
         self.backgroundColor = backgroundColor
         self.foregroundColor = foregroundColor
         self.transparency = transparency
@@ -40,15 +40,45 @@ public struct PlaybackRateButton: View {
         self.showBackground = showBackground
         self.compactLabel = compactLabel
         self.iconFont = iconFont
+        #if os(iOS)
+        if !playbackSpeeds.isDual {
+            _selectedSpeedSheetDetent = State(
+                initialValue: .custom(CompactSinglePlaybackSpeedDetent.self)
+            )
+        }
+        #endif
+    }
+
+    public init(
+        currentRate: Double,
+        rate: Binding<Double>,
+        backgroundColor: Color = Color.secondary,
+        foregroundColor: Color = Color.primary,
+        transparency: Double = 1.0,
+        showLabel: Bool = true,
+        buttonSize: CGFloat = 38,
+        showBackground: Bool = true,
+        compactLabel: Bool = false,
+        iconFont: Font = .callout.weight(.semibold),
+    ) {
+        self.init(
+            playbackSpeeds: .single(currentRate: currentRate, rate: rate),
+            backgroundColor: backgroundColor,
+            foregroundColor: foregroundColor,
+            transparency: transparency,
+            showLabel: showLabel,
+            buttonSize: buttonSize,
+            showBackground: showBackground,
+            compactLabel: compactLabel,
+            iconFont: iconFont,
+        )
     }
 
     public var body: some View {
         VStack(spacing: compactLabel ? 0 : 6) {
             #if os(iOS)
             Button(action: {
-                sliderValue = currentRate
-                textFieldValue = formatRate(currentRate)
-                showSpeedPicker = true
+                presentSpeedPicker()
             }) {
                 Image(systemName: "speedometer")
                     .font(iconFont)
@@ -64,14 +94,13 @@ public struct PlaybackRateButton: View {
                     )
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(speedPickerTitle)
             .sheet(isPresented: $showSpeedPicker) {
                 speedSheet
             }
             #else
             Button(action: {
-                sliderValue = currentRate
-                textFieldValue = formatRate(currentRate)
-                showSpeedPicker = true
+                presentSpeedPicker()
             }) {
                 Image(systemName: "speedometer")
                     .font(iconFont)
@@ -87,15 +116,11 @@ public struct PlaybackRateButton: View {
                     )
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(speedPickerTitle)
             .popover(isPresented: $showSpeedPicker) {
                 speedPickerContent
-                    .frame(width: 340)
+                    .frame(width: playbackSpeeds.isDual ? 440 : 340)
                     .padding()
-            }
-            .onChange(of: showSpeedPicker) { _, isShowing in
-                if !isShowing {
-                    applyTextFieldValue()
-                }
             }
             #endif
 
@@ -116,133 +141,231 @@ public struct PlaybackRateButton: View {
     }
 
     private var speedPickerContent: some View {
-        HStack(spacing: 12) {
-            Text("1x")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            Slider(
-                value: $sliderValue,
-                in: 1.0...3.0,
-                step: 0.05,
-            )
-            .onChange(of: sliderValue) { _, newValue in
-                let snapped = snapToIncrement(newValue)
-                textFieldValue = formatRate(snapped)
-                onRateChange(snapped)
-            }
-
-            Text("3x")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            HStack(spacing: 4) {
-                TextField("1.0", text: $textFieldValue)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 60)
-                    .multilineTextAlignment(.center)
-                    #if os(iOS)
-                .keyboardType(.decimalPad)
-                    #endif
-                    .focused($isTextFieldFocused)
-                    .onSubmit {
-                        applyTextFieldValue()
-                    }
-                    .onChange(of: isTextFieldFocused) { _, focused in
-                        if !focused {
-                            applyTextFieldValue()
-                        }
-                    }
-
-                Text("x")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 24) {
+            switch playbackSpeeds {
+                case .single(_, let rate):
+                    speedControl(title: "Playback Speed", value: rate)
+                case .dual(_, let listeningRate, let readaloudRate):
+                    speedControl(title: "Listening Speed", value: listeningRate)
+                    speedControl(title: "Read-aloud Speed", value: readaloudRate)
             }
         }
+    }
+
+    private func speedControl(title: String, value: Binding<Double>) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                Text(PlaybackRatePolicy.formattedCurrentRate(value.wrappedValue))
+                    .font(.subheadline.monospacedDigit().weight(.semibold))
+            }
+
+            Slider(
+                value: value,
+                in: PlaybackRatePolicy.minimumRate...PlaybackRatePolicy.maximumRate,
+                step: PlaybackRatePolicy.sliderStep,
+            )
+
+            PlaybackRateFlowLayout(spacing: 6, maximumItemsPerRow: 5) {
+                ForEach(PlaybackRatePolicy.presetRates, id: \.self) { rate in
+                    Button {
+                        value.wrappedValue = rate
+                    } label: {
+                        Text(PlaybackRatePolicy.formattedPresetRate(rate))
+                            .font(.caption.monospacedDigit().weight(.medium))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                            .foregroundStyle(Color.primary)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 6)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .fill(Color.secondary.opacity(0.1))
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     #if os(iOS)
     private var speedSheet: some View {
-        NavigationStack {
-            VStack(spacing: 16) {
+        VStack(alignment: .leading, spacing: 20) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(speedPickerTitle)
+                    .font(.title2.weight(.bold))
+
                 Spacer()
-                speedPickerContent
-                    .padding(.horizontal, 16)
 
-                HStack(spacing: 24) {
-                    Button(action: {
-                        let newRate = max(0.5, sliderValue - 0.05)
-                        sliderValue = snapToIncrement(newRate)
-                        textFieldValue = formatRate(sliderValue)
-                        onRateChange(sliderValue)
-                    }) {
-                        Image(systemName: "minus.circle.fill")
-                            .font(.title)
-                            .foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.plain)
-
-                    Button(action: {
-                        let newRate = min(10.0, sliderValue + 0.05)
-                        sliderValue = snapToIncrement(newRate)
-                        textFieldValue = formatRate(sliderValue)
-                        onRateChange(sliderValue)
-                    }) {
-                        Image(systemName: "plus.circle.fill")
-                            .font(.title)
-                            .foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.plain)
+                Button("Done") {
+                    showSpeedPicker = false
                 }
-
-                Spacer()
+                .font(.body.weight(.semibold))
             }
-            .navigationTitle("Playback Speed")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") {
-                        applyTextFieldValue()
-                        showSpeedPicker = false
-                    }
+
+            ViewThatFits(in: .vertical) {
+                speedPickerContent
+                    .fixedSize(horizontal: false, vertical: true)
+
+                ScrollView {
+                    speedPickerContent
+                        .padding(.bottom, 4)
                 }
+                .scrollIndicators(.visible)
             }
         }
-        .presentationDetents([.height(180)])
+        .padding(.horizontal, 20)
+        .padding(.top, 18)
+        .padding(.bottom, 24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .presentationDetents(
+            speedSheetDetents,
+            selection: $selectedSpeedSheetDetent,
+        )
+        .presentationDragIndicator(.visible)
+        .onChange(of: dynamicTypeSize) { _, newSize in
+            selectedSpeedSheetDetent = preferredSpeedSheetDetent(for: newSize)
+        }
     }
     #endif
 
-    private func snapToIncrement(_ value: Double) -> Double {
-        (value * 20).rounded() / 20
+    private func presentSpeedPicker() {
+        #if os(iOS)
+        selectedSpeedSheetDetent = preferredSpeedSheetDetent(for: dynamicTypeSize)
+        #endif
+        showSpeedPicker = true
     }
 
-    private func formatRate(_ rate: Double) -> String {
-        if rate == rate.rounded() {
-            return String(format: "%.1f", rate)
+    #if os(iOS)
+    private func preferredSpeedSheetDetent(for typeSize: DynamicTypeSize) -> PresentationDetent {
+        if typeSize > .large {
+            return .large
         }
-        let formatted = String(format: "%.2f", rate)
-        if formatted.hasSuffix("0") {
-            return String(format: "%.1f", rate)
-        }
-        return formatted
+        return playbackSpeeds.isDual
+            ? .custom(CompactPlaybackSpeedDetent.self)
+            : .custom(CompactSinglePlaybackSpeedDetent.self)
     }
 
-    private func applyTextFieldValue() {
-        if let rate = Double(textFieldValue) {
-            let clampedRate = min(max(rate, 0.5), 10.0)
-            textFieldValue = formatRate(clampedRate)
-            onRateChange(clampedRate)
-        } else {
-            textFieldValue = formatRate(sliderValue)
-        }
+    private var speedSheetDetents: Set<PresentationDetent> {
+        [preferredSpeedSheetDetent(for: .large), .large]
+    }
+    #endif
+
+    private var speedPickerTitle: String {
+        playbackSpeeds.isDual ? "Playback Speeds" : "Playback Speed"
     }
 
     private var playbackRateDescription: String {
-        let formatted = String(format: "%.2fx", currentRate)
-        if formatted.hasSuffix("0x") {
-            return String(format: "%.1fx", currentRate)
+        PlaybackRatePolicy.formattedCurrentRate(playbackSpeeds.currentRate)
+    }
+}
+
+#if os(iOS)
+private struct CompactPlaybackSpeedDetent: CustomPresentationDetent {
+    static func height(in context: Context) -> CGFloat? {
+        min(context.maxDetentValue * 0.7, 500)
+    }
+}
+
+private struct CompactSinglePlaybackSpeedDetent: CustomPresentationDetent {
+    static func height(in context: Context) -> CGFloat? {
+        min(context.maxDetentValue * 0.55, 360)
+    }
+}
+#endif
+
+private struct PlaybackRateFlowLayout: Layout {
+    let spacing: CGFloat
+    let maximumItemsPerRow: Int
+
+    func sizeThatFits(
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout (),
+    ) -> CGSize {
+        layout(subviews: subviews, width: proposal.width).size
+    }
+
+    func placeSubviews(
+        in bounds: CGRect,
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout (),
+    ) {
+        let result = layout(subviews: subviews, width: bounds.width)
+        for (index, origin) in result.origins.enumerated() {
+            subviews[index].place(
+                at: CGPoint(x: bounds.minX + origin.x, y: bounds.minY + origin.y),
+                anchor: .topLeading,
+                proposal: ProposedViewSize(
+                    width: result.cellSize.width,
+                    height: result.cellSize.height,
+                ),
+            )
         }
-        return formatted
+    }
+
+    private func layout(
+        subviews: Subviews,
+        width: CGFloat?,
+    ) -> (size: CGSize, origins: [CGPoint], cellSize: CGSize) {
+        guard !subviews.isEmpty else {
+            return (.zero, [], .zero)
+        }
+        let intrinsicSizes = subviews.map { $0.sizeThatFits(.unspecified) }
+        let widestButton = intrinsicSizes.map(\.width).max() ?? 0
+        let naturalWidth =
+            (widestButton * CGFloat(maximumItemsPerRow))
+            + (spacing * CGFloat(maximumItemsPerRow - 1))
+        let availableWidth =
+            if let width, width.isFinite, width < .greatestFiniteMagnitude {
+                width
+            } else {
+                naturalWidth
+            }
+        let calculatedItemsPerRow =
+            (availableWidth + spacing) / max(widestButton + spacing, 1)
+        let fittingItemsPerRow = max(
+            1,
+            min(
+                maximumItemsPerRow,
+                Int(min(calculatedItemsPerRow, CGFloat(maximumItemsPerRow))),
+            ),
+        )
+        let cellSize = CGSize(
+            width: (availableWidth - spacing * CGFloat(fittingItemsPerRow - 1))
+                / CGFloat(fittingItemsPerRow),
+            height: intrinsicSizes.map(\.height).max() ?? 0,
+        )
+        var origins: [CGPoint] = []
+        var position = CGPoint.zero
+        var usedWidth: CGFloat = 0
+
+        for _ in subviews {
+            if position.x > 0, position.x + cellSize.width > availableWidth {
+                position.x = 0
+                position.y += cellSize.height + spacing
+            }
+
+            origins.append(position)
+            position.x += cellSize.width + spacing
+            usedWidth = max(usedWidth, position.x - spacing)
+        }
+
+        return (
+            CGSize(
+                width: min(usedWidth, availableWidth),
+                height: position.y + cellSize.height,
+            ),
+            origins,
+            cellSize,
+        )
     }
 }
 
