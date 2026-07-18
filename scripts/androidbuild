@@ -22,6 +22,9 @@ Options:
 Environment:
   ANDROID_HOME                Android SDK path. Default: ~/Library/Android/sdk
   ANDROID_NDK_HOME            NDK path. Default: newest under ANDROID_HOME/ndk
+  SILVERAN_SWIFT_TOOLCHAIN    Swift.org toolchain identifier. Set empty to use PATH.
+  SILVERAN_SWIFT_ANDROID_SDK_BUNDLE
+                              Swift Android SDK artifact bundle path.
 EOF
 }
 
@@ -49,9 +52,9 @@ fi
 
 # The Android project currently packages one ABI. Keep the Swift target,
 # runtime staging path, libc++, and Gradle abiFilter as one validated set.
-TOOLCHAIN="org.swift.623202512101a"
+TOOLCHAIN="${SILVERAN_SWIFT_TOOLCHAIN-org.swift.623202512101a}"
 TRIPLE="aarch64-unknown-linux-android28"
-SDK_BUNDLE="${HOME}/Library/org.swift.swiftpm/swift-sdks/swift-6.2.3-RELEASE_android.artifactbundle"
+SDK_BUNDLE="${SILVERAN_SWIFT_ANDROID_SDK_BUNDLE:-${HOME}/Library/org.swift.swiftpm/swift-sdks/swift-6.2.3-RELEASE_android.artifactbundle}"
 JNILIBS="AndroidApp/app/src/main/jniLibs/arm64-v8a"
 
 export ANDROID_HOME="${ANDROID_HOME:-${HOME}/Library/Android/sdk}"
@@ -72,10 +75,15 @@ if [[ "${APK_ONLY}" -eq 0 ]]; then
     rm -rf "${JEXTRACT_OUTPUT}/src/generated/java"
     rm -f "${JEXTRACT_OUTPUT}/Sources/SilveranAndroidBridgeModule+SwiftJava.swift"
 
-    (cd AndroidApp/swift && TOOLCHAINS="${TOOLCHAIN}" swift build \
-        --disable-sandbox \
-        --swift-sdk "${TRIPLE}" \
-        --product SilveranAndroidBridge)
+    if [[ -n "${TOOLCHAIN}" ]]; then
+        export TOOLCHAINS="${TOOLCHAIN}"
+    else
+        unset TOOLCHAINS
+    fi
+    (cd AndroidApp/swift && swift build \
+            --disable-sandbox \
+            --swift-sdk "${TRIPLE}" \
+            --product SilveranAndroidBridge)
 
     rm -rf "${JNILIBS}"
     mkdir -p "${JNILIBS}"

@@ -5,8 +5,14 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")" && pwd)"
 cd "${SCRIPT_DIR}/.."
 
+DESTINATION="${SILVERAN_TVOS_DESTINATION:-platform=tvOS Simulator,name=Apple TV}"
+XCODEBUILD_OPTIONS=(build)
+if [[ "${SILVERAN_DISABLE_CODE_SIGNING:-0}" == "1" ]]; then
+    XCODEBUILD_OPTIONS=(CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build)
+fi
+
 xcodebuild -project Silveran.xcodeproj \
     -scheme "Silveran Reader (tvOS)" \
     -configuration Debug \
-    -destination 'platform=tvOS Simulator,name=Apple TV' \
-    -derivedDataPath .buildTV build | xcbeautify
+    -destination "${DESTINATION}" \
+    -derivedDataPath .buildTV "${XCODEBUILD_OPTIONS[@]}" | xcbeautify

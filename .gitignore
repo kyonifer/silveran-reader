@@ -19,6 +19,7 @@ XCodeApps/Configs/Local.xcconfig
 Package.resolved
 !/Package.resolved
 .cache
+.ci-cache/
 icon*.png
 XCodeApps/Assets.xcassets/AppIcon.appiconset/*.png
 XCodeApps/WatchAssets.xcassets/AppIcon.appiconset/*.png
@@ -27,4 +28,3 @@ XCodeApps/Info-iOS.plist
 XCodeApps/Info-macOS.plist
 XCodeApps/Info-tvOS.plist
 XCodeApps/Info-watchOS.plist
-!XCodeApps/Info-tvOS.plist

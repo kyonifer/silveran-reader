@@ -1,0 +1,95 @@
+workflow:
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "dev"'
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"'
+    - when: never
+
+stages:
+  - setup
+  - build
+
+variables:
+  GIT_SUBMODULE_STRATEGY: recursive
+  HOMEBREW_NO_AUTO_UPDATE: "1"
+  LANG: en_US.UTF-8
+  SILVERAN_DISABLE_CODE_SIGNING: "1"
+  SILVERAN_IOS_DESTINATION: generic/platform=iOS Simulator
+  SILVERAN_TVOS_DESTINATION: generic/platform=tvOS Simulator
+  SILVERAN_WATCHOS_DESTINATION: generic/platform=watchOS Simulator
+
+.macos_runner:
+  tags:
+    - saas-macos-medium-m1
+  image: macos-26-xcode-26
+
+apple_setup:
+  extends: .macos_runner
+  stage: setup
+  script:
+    - brew install bc imagemagick xcbeautify xcodegen
+    - ./scripts/genicons
+    - ./scripts/genxproj
+    - mkdir -p Silveran.xcodeproj/project.xcworkspace/xcshareddata/swiftpm
+    - cp Package.resolved Silveran.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
+    - mkdir -p .ci-tools
+    - cp "$(brew --prefix xcbeautify)/bin/xcbeautify" .ci-tools/
+  artifacts:
+    expire_in: 1 day
+    paths:
+      - .ci-tools/xcbeautify
+      - Silveran.xcodeproj/
+      - XCodeApps/Info-iOS.plist
+      - XCodeApps/Info-macOS.plist
+      - XCodeApps/Info-tvOS.plist
+      - XCodeApps/Info-watchOS.plist
+      - XCodeApps/Assets.xcassets/AppIcon.appiconset/
+      - XCodeApps/WatchAssets.xcassets/AppIcon.appiconset/
+      - XCodeApps/TVAssets.xcassets/
+
+apple_apps:
+  extends: .macos_runner
+  stage: build
+  needs:
+    - job: apple_setup
+      artifacts: true
+  parallel:
+    matrix:
+      - BUILD_SCRIPT:
+          - macbuild
+          - iosbuild
+          - tvbuild
+          - watchbuild
+  before_script:
+    - export PATH="${CI_PROJECT_DIR}/.ci-tools:${PATH}"
+  script:
+    - "./scripts/${BUILD_SCRIPT}"
+
+android_app:
+  extends: .macos_runner
+  stage: build
+  needs: []
+  variables:
+    GRADLE_USER_HOME: $CI_PROJECT_DIR/.ci-cache/gradle
+    JAVA_HOME: /opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
+  cache:
+    key:
+      files:
+        - Package.resolved
+        - AndroidApp/app/build.gradle.kts
+      prefix: android
+    paths:
+      - .ci-cache/android-sdk/
+      - .ci-cache/downloads/
+      - .ci-cache/gradle/
+      - AndroidApp/swift/.build/
+  before_script:
+    - source ci_scripts/gitlab_setup_android.sh
+    - ./scripts/genicons
+  script:
+    - ./scripts/androidbuild
+    - mv AndroidApp/app/build/outputs/apk/debug/app-debug.apk AndroidApp/app/build/outputs/apk/debug/storyteller-debug.apk
+  artifacts:
+    name: silveran-android-$CI_COMMIT_SHORT_SHA
+    expire_in: 1 week
+    paths:
+      - AndroidApp/app/build/outputs/apk/debug/storyteller-debug.apk
