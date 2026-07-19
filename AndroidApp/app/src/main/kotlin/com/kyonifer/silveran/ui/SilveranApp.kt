@@ -187,8 +187,24 @@ fun SilveranApp(viewModel: SilveranViewModel) {
                     if (readerMode == "audio") {
                         MediaSessionAudiobookPlayerScreen(
                             book = book,
+                            state = state.audiobook?.takeIf { it.bookID == book.id },
                             loading = state.audiobookLoading,
                             modifier = Modifier.padding(padding),
+                            togglePlayPause = viewModel::toggleAudiobookPlayback,
+                            skipBackward = viewModel::skipAudiobookBackward,
+                            skipForward = viewModel::skipAudiobookForward,
+                            previousChapter = viewModel::previousAudiobookChapter,
+                            nextChapter = viewModel::nextAudiobookChapter,
+                            seekChapter = viewModel::seekAudiobookChapter,
+                            selectChapter = viewModel::selectAudiobookChapter,
+                            setPlaybackRate = viewModel::setAudiobookPlaybackRate,
+                            setVolume = viewModel::setAudiobookVolume,
+                            startSleepTimer = viewModel::startAudiobookSleepTimer,
+                            startEndOfChapterSleepTimer =
+                                viewModel::startAudiobookEndOfChapterSleepTimer,
+                            cancelSleepTimer = viewModel::cancelAudiobookSleepTimer,
+                            acceptServerPosition = viewModel::acceptAudiobookServerPosition,
+                            declineServerPosition = viewModel::declineAudiobookServerPosition,
                         )
                     } else {
                         ReaderPlaceholderScreen(

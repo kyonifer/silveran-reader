@@ -324,31 +324,22 @@ public func deleteBookDownload(
 
 public func openAudiobook(bookID: String, sourceID: String) async throws {
     try requireAndroidBootstrap()
-    let bookID = BookID(sourceID: sourceID, uuid: bookID)
-    guard
-        let media = await BookServiceActor.shared.resolveLocalMedia(
-            for: bookID,
-            category: .audio,
-        )
-    else {
-        throw AndroidBridgeError.localMediaUnavailable(category: "audio", bookID: bookID.uuid)
-    }
-
-    if await SMILPlayerActor.shared.activeAudioPlayer == .smil {
-        await SMILPlayerActor.shared.cleanup()
-    }
-    await AudiobookActor.shared.cleanup()
-    do {
-        _ = try await AudiobookActor.shared.validateAndLoadAudiobook(url: media.url)
-        try await AudiobookActor.shared.preparePlayer()
-    } catch {
-        await AudiobookActor.shared.cleanup()
-        throw error
-    }
+    try await AndroidAudiobookSession.shared.open(
+        bookID: BookID(sourceID: sourceID, uuid: bookID)
+    )
 }
 
 public func closeAudiobook() async {
-    await AudiobookActor.shared.cleanup()
+    await AndroidAudiobookSession.shared.close()
+}
+
+public func controlAudiobook(command: String, value: Double, text: String) async throws {
+    try requireAndroidBootstrap()
+    try await AndroidAudiobookSession.shared.control(
+        command: command,
+        value: value,
+        text: text,
+    )
 }
 
 public func startLibraryObservation() async throws {
@@ -554,6 +545,8 @@ enum AndroidBridgeError: Error, LocalizedError, CustomStringConvertible {
     case bookNotFound(String)
     case mediaUnavailable(category: String, bookID: String)
     case localMediaUnavailable(category: String, bookID: String)
+    case audiobookNotOpen
+    case invalidAudiobookCommand(String)
     case secureStorageFailure(String)
 
     var errorDescription: String? {
@@ -586,6 +579,10 @@ enum AndroidBridgeError: Error, LocalizedError, CustomStringConvertible {
                 return "Book \(bookID) has no \(category) available to download."
             case .localMediaUnavailable(let category, let bookID):
                 return "Book \(bookID) has no downloaded \(category)."
+            case .audiobookNotOpen:
+                return "No audiobook is open."
+            case .invalidAudiobookCommand(let command):
+                return "Unknown audiobook command: \(command)"
             case .secureStorageFailure(let account):
                 return "Android secure storage failed for account \(account)."
         }

@@ -21,23 +21,54 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
+import com.kyonifer.silveran.model.AudiobookPlayerState
 import com.kyonifer.silveran.model.Book
 import com.kyonifer.silveran.platform.SilveranMediaLibraryService
 
 @Composable
 internal fun MediaSessionAudiobookPlayerScreen(
     book: Book,
+    state: AudiobookPlayerState?,
     loading: Boolean,
     modifier: Modifier,
+    togglePlayPause: () -> Unit,
+    skipBackward: () -> Unit,
+    skipForward: () -> Unit,
+    previousChapter: () -> Unit,
+    nextChapter: () -> Unit,
+    seekChapter: (Double) -> Unit,
+    selectChapter: (String) -> Unit,
+    setPlaybackRate: (Double) -> Unit,
+    setVolume: (Double) -> Unit,
+    startSleepTimer: (Double) -> Unit,
+    startEndOfChapterSleepTimer: () -> Unit,
+    cancelSleepTimer: () -> Unit,
+    acceptServerPosition: () -> Unit,
+    declineServerPosition: () -> Unit,
 ) {
     val connection = rememberSilveranMediaController()
     val controller = connection.controller
     if (controller != null) {
         AudiobookPlayerScreen(
             book = book,
+            state = state,
             loading = loading,
             player = controller,
             modifier = modifier,
+            togglePlayPause = togglePlayPause,
+            skipBackward = skipBackward,
+            skipForward = skipForward,
+            previousChapter = previousChapter,
+            nextChapter = nextChapter,
+            seekChapter = seekChapter,
+            selectChapter = selectChapter,
+            setPlaybackRate = setPlaybackRate,
+            setVolume = setVolume,
+            startSleepTimer = startSleepTimer,
+            startEndOfChapterSleepTimer = startEndOfChapterSleepTimer,
+            cancelSleepTimer = cancelSleepTimer,
+            acceptServerPosition = acceptServerPosition,
+            declineServerPosition = declineServerPosition,
         )
         return
     }

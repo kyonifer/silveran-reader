@@ -10,6 +10,8 @@ import kotlinx.coroutines.CompletableDeferred
 object AndroidBridgeCallbacks {
     @Volatile
     private var listener: (() -> Unit)? = null
+    @Volatile
+    private var audiobookListener: ((String) -> Unit)? = null
     private val payloadRequests = ConcurrentHashMap<String, CompletableDeferred<String>>()
 
     fun observe(onChange: () -> Unit) {
@@ -18,11 +20,21 @@ object AndroidBridgeCallbacks {
 
     fun clearObserver() {
         listener = null
+        audiobookListener = null
+    }
+
+    fun observeAudiobook(onChange: (String) -> Unit) {
+        audiobookListener = onChange
     }
 
     @JvmStatic
     fun librarySnapshotDidChange() {
         listener?.invoke()
+    }
+
+    @JvmStatic
+    fun audiobookStateDidChange(payload: String) {
+        audiobookListener?.invoke(payload)
     }
 
     suspend fun requestPayload(start: (String) -> CompletableFuture<Void>): String {

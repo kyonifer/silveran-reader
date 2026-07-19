@@ -27,6 +27,9 @@ extension JavaClass<JavaAndroidBridgeCallbacks> {
 
     @JavaStaticMethod
     func bridgeRequestDidComplete(_ requestID: String, _ payload: String, _ error: String)
+
+    @JavaStaticMethod
+    func audiobookStateDidChange(_ payload: String)
 }
 
 enum AndroidPlatformBootstrap {
@@ -96,6 +99,10 @@ final class AndroidKeychainStore: KeychainStoring, @unchecked Sendable {
 
 func notifyAndroidLibrarySnapshotDidChange() {
     try? JavaClass<JavaAndroidBridgeCallbacks>().librarySnapshotDidChange()
+}
+
+func notifyAndroidAudiobookStateDidChange(_ payload: String) {
+    try? JavaClass<JavaAndroidBridgeCallbacks>().audiobookStateDidChange(payload)
 }
 
 func deliverAndroidBridgePayload(

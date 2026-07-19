@@ -490,8 +490,9 @@ public actor AudiobookActor {
         await configureNowPlaying()
     }
 
-    public func setCoverImage(_ imageData: Data) {
+    public func setCoverImage(_ imageData: Data) async {
         artworkData = imageData
+        await updateNowPlayingInfo()
     }
 
     public func play() async throws {

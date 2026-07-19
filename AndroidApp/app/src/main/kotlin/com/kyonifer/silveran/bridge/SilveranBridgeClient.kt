@@ -5,11 +5,14 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Base64
 import android.util.LruCache
+import com.kyonifer.silveran.model.AudiobookChapter
+import com.kyonifer.silveran.model.AudiobookPlayerState
 import com.kyonifer.silveran.model.Book
 import com.kyonifer.silveran.model.BookID
 import com.kyonifer.silveran.model.BookMedia
 import com.kyonifer.silveran.model.HomeSection
 import com.kyonifer.silveran.model.LibrarySnapshot
+import com.kyonifer.silveran.model.ServerPosition
 import com.kyonifer.silveran.model.StorytellerSettings
 import com.kyonifer.silveran.platform.AndroidAudioPlayerBridge
 import com.kyonifer.silveran.platform.AndroidSecureStore
@@ -46,6 +49,12 @@ class SilveranBridgeClient(context: Context) {
     suspend fun observeLibraryChanges(onChange: () -> Unit) {
         AndroidBridgeCallbacks.observe(onChange)
         SilveranAndroidBridge.startLibraryObservation().awaitResult()
+    }
+
+    fun observeAudiobookChanges(onChange: (AudiobookPlayerState?) -> Unit) {
+        AndroidBridgeCallbacks.observeAudiobook { payload ->
+            onChange(payload.takeIf(String::isNotBlank)?.let(::parseAudiobookState))
+        }
     }
 
     fun close() {
@@ -108,6 +117,14 @@ class SilveranBridgeClient(context: Context) {
         audiobookOperations.withLock {
             SilveranAndroidBridge.closeAudiobook().awaitResult()
         }
+    }
+
+    suspend fun controlAudiobook(
+        command: String,
+        value: Double = 0.0,
+        text: String = "",
+    ) {
+        SilveranAndroidBridge.controlAudiobook(command, value, text).awaitResult()
     }
 
     suspend fun cover(book: Book, audio: Boolean, width: Int, height: Int): Bitmap? {
@@ -274,6 +291,47 @@ class SilveranBridgeClient(context: Context) {
         )
     }
 
+    private fun parseAudiobookState(json: String): AudiobookPlayerState {
+        val root = JSONObject(json)
+        val chapters = root.getJSONArray("chapters")
+        val pending = root.optJSONObject("pendingServerPosition")
+        return AudiobookPlayerState(
+            bookID = BookID(
+                sourceID = root.getString("sourceID"),
+                uuid = root.getString("bookID"),
+            ),
+            title = root.getString("title"),
+            author = root.getString("author"),
+            isPlaying = root.getBoolean("isPlaying"),
+            currentTime = root.getDouble("currentTime"),
+            duration = root.getDouble("duration"),
+            bookProgress = root.getDouble("bookProgress"),
+            currentChapterID = root.optionalString("currentChapterID"),
+            currentChapterIndex = root.optionalInt("currentChapterIndex"),
+            chapterElapsed = root.getDouble("chapterElapsed"),
+            chapterDuration = root.getDouble("chapterDuration"),
+            chapterProgress = root.getDouble("chapterProgress"),
+            playbackRate = root.getDouble("playbackRate"),
+            volume = root.getDouble("volume"),
+            chapters = List(chapters.length()) { index ->
+                val chapter = chapters.getJSONObject(index)
+                AudiobookChapter(
+                    id = chapter.getString("id"),
+                    title = chapter.getString("title"),
+                    duration = chapter.getDouble("duration"),
+                )
+            },
+            sleepTimerMode = root.optionalString("sleepTimerMode"),
+            sleepTimerRemaining = root.optionalDouble("sleepTimerRemaining"),
+            pendingServerPosition = pending?.let {
+                ServerPosition(
+                    title = it.optionalString("title"),
+                    totalProgression = it.optionalDouble("totalProgression"),
+                )
+            },
+        )
+    }
+
     private companion object {
         // The activity and media service use separate clients but share one
         // Swift audiobook actor and Android audio backend.
@@ -305,6 +363,9 @@ private fun JSONObject.optionalString(name: String): String? =
 
 private fun JSONObject.optionalDouble(name: String): Double? =
     if (isNull(name) || !has(name)) null else getDouble(name)
+
+private fun JSONObject.optionalInt(name: String): Int? =
+    if (isNull(name) || !has(name)) null else getInt(name)
 
 private fun bitmapCacheSizeKilobytes(): Int =
     maxOf(1, (Runtime.getRuntime().maxMemory() / 8 / 1024).toInt())

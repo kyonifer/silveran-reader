@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.kyonifer.silveran.bridge.SilveranBridgeClient
+import com.kyonifer.silveran.model.AudiobookPlayerState
 import com.kyonifer.silveran.model.Book
 import com.kyonifer.silveran.model.BookID
 import com.kyonifer.silveran.model.DownloadOperation
@@ -33,6 +34,7 @@ data class SilveranUiState(
     val savingSettings: Boolean = false,
     val pendingDownloads: Set<DownloadOperation> = emptySet(),
     val audiobookLoading: Boolean = false,
+    val audiobook: AudiobookPlayerState? = null,
     val successfulSettingsSaves: Int = 0,
     val error: String? = null,
 )
@@ -50,6 +52,9 @@ class SilveranViewModel private constructor(
     private var audiobookRequest = 0L
 
     init {
+        client.observeAudiobookChanges { audiobook ->
+            mutableState.value = mutableState.value.copy(audiobook = audiobook)
+        }
         viewModelScope.launch {
             for (change in libraryChanges) {
                 delay(250)
@@ -171,6 +176,40 @@ class SilveranViewModel private constructor(
         }
     }
 
+    fun toggleAudiobookPlayback() = controlAudiobook("togglePlayPause")
+
+    fun skipAudiobookBackward() = controlAudiobook("skipBackward")
+
+    fun skipAudiobookForward() = controlAudiobook("skipForward")
+
+    fun previousAudiobookChapter() = controlAudiobook("previousChapter")
+
+    fun nextAudiobookChapter() = controlAudiobook("nextChapter")
+
+    fun seekAudiobookChapter(fraction: Double) =
+        controlAudiobook("seekChapterFraction", value = fraction)
+
+    fun selectAudiobookChapter(chapterID: String) =
+        controlAudiobook("selectChapter", text = chapterID)
+
+    fun setAudiobookPlaybackRate(rate: Double) =
+        controlAudiobook("setPlaybackRate", value = rate)
+
+    fun setAudiobookVolume(volume: Double) =
+        controlAudiobook("setVolume", value = volume)
+
+    fun startAudiobookSleepTimer(seconds: Double) =
+        controlAudiobook("startSleepTimer", value = seconds)
+
+    fun startAudiobookEndOfChapterSleepTimer() =
+        controlAudiobook("startEndOfChapterSleepTimer")
+
+    fun cancelAudiobookSleepTimer() = controlAudiobook("cancelSleepTimer")
+
+    fun acceptAudiobookServerPosition() = controlAudiobook("acceptServerPosition")
+
+    fun declineAudiobookServerPosition() = controlAudiobook("declineServerPosition")
+
     suspend fun cover(book: Book, audio: Boolean, width: Int, height: Int): Bitmap? =
         client.cover(book, audio, width, height)
 
@@ -233,6 +272,18 @@ class SilveranViewModel private constructor(
             error = error.message ?: error.toString(),
             refreshingLibrary = false,
         )
+    }
+
+    private fun controlAudiobook(
+        command: String,
+        value: Double = 0.0,
+        text: String = "",
+    ) {
+        viewModelScope.launch {
+            runCatching {
+                client.controlAudiobook(command, value, text)
+            }.onFailure(::showError)
+        }
     }
 
     companion object {

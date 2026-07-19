@@ -56,3 +56,35 @@ data class StorytellerSettings(
     val connectionStatus: String = "notConfigured",
     val connectionMessage: String? = null,
 )
+
+data class AudiobookChapter(
+    val id: String,
+    val title: String,
+    val duration: Double,
+)
+
+data class ServerPosition(
+    val title: String?,
+    val totalProgression: Double?,
+)
+
+data class AudiobookPlayerState(
+    val bookID: BookID,
+    val title: String,
+    val author: String,
+    val isPlaying: Boolean,
+    val currentTime: Double,
+    val duration: Double,
+    val bookProgress: Double,
+    val currentChapterID: String?,
+    val currentChapterIndex: Int?,
+    val chapterElapsed: Double,
+    val chapterDuration: Double,
+    val chapterProgress: Double,
+    val playbackRate: Double,
+    val volume: Double,
+    val chapters: List<AudiobookChapter>,
+    val sleepTimerMode: String?,
+    val sleepTimerRemaining: Double?,
+    val pendingServerPosition: ServerPosition?,
+)

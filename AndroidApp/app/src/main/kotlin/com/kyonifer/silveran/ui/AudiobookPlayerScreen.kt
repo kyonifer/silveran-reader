@@ -1,179 +1,698 @@
 package com.kyonifer.silveran.ui
 
+import android.graphics.BitmapFactory
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.automirrored.filled.VolumeDown
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.AutoStories
+import androidx.compose.material.icons.filled.Bedtime
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Replay
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedIconButton
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.media3.common.C
+import androidx.compose.ui.window.Dialog
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
+import com.kyonifer.silveran.model.AudiobookChapter
+import com.kyonifer.silveran.model.AudiobookPlayerState
 import com.kyonifer.silveran.model.Book
 import java.util.Locale
-import kotlinx.coroutines.delay
+import kotlin.math.roundToInt
 
 @Composable
 internal fun AudiobookPlayerScreen(
     book: Book,
+    state: AudiobookPlayerState?,
     loading: Boolean,
     player: Player,
     modifier: Modifier,
+    togglePlayPause: () -> Unit,
+    skipBackward: () -> Unit,
+    skipForward: () -> Unit,
+    previousChapter: () -> Unit,
+    nextChapter: () -> Unit,
+    seekChapter: (Double) -> Unit,
+    selectChapter: (String) -> Unit,
+    setPlaybackRate: (Double) -> Unit,
+    setVolume: (Double) -> Unit,
+    startSleepTimer: (Double) -> Unit,
+    startEndOfChapterSleepTimer: () -> Unit,
+    cancelSleepTimer: () -> Unit,
+    acceptServerPosition: () -> Unit,
+    declineServerPosition: () -> Unit,
 ) {
-    var uiState by remember(book.id, player) {
-        mutableStateOf(player.audiobookUiState(book.title))
-    }
-    var positionMs by remember(book.id, player) {
-        mutableLongStateOf(player.currentPosition.coerceAtLeast(0L))
-    }
-    var scrubbing by remember(book.id, player) { mutableStateOf(false) }
+    var artwork by remember(player) { mutableStateOf(player.mediaMetadata.artworkData) }
+    var scrubbedProgress by remember(book.id) { mutableStateOf<Double?>(null) }
+    var showSpeed by remember { mutableStateOf(false) }
+    var showVolume by remember { mutableStateOf(false) }
+    var showChapters by remember { mutableStateOf(false) }
+    var showSleepTimer by remember { mutableStateOf(false) }
 
-    DisposableEffect(book.id, player) {
+    DisposableEffect(player) {
         val listener = object : Player.Listener {
-            override fun onEvents(player: Player, events: Player.Events) {
-                uiState = player.audiobookUiState(book.title)
+            override fun onMediaMetadataChanged(mediaMetadata: MediaMetadata) {
+                artwork = mediaMetadata.artworkData
             }
         }
         player.addListener(listener)
-        uiState = player.audiobookUiState(book.title)
+        artwork = player.mediaMetadata.artworkData
         onDispose { player.removeListener(listener) }
     }
 
-    LaunchedEffect(book.id, player, scrubbing) {
-        while (true) {
-            if (!scrubbing) {
-                positionMs = player.currentPosition.coerceAtLeast(0L)
-            }
-            delay(250)
-        }
+    state?.pendingServerPosition?.let { position ->
+        AlertDialog(
+            onDismissRequest = declineServerPosition,
+            title = { Text("Server Has Newer Position") },
+            text = {
+                val location = listOfNotNull(
+                    position.title,
+                    position.totalProgression?.let { "${(it * 100).roundToInt()}%" },
+                ).joinToString(", ")
+                Text(
+                    "Another device has synced a more recent reading position" +
+                        if (location.isBlank()) "." else " ($location).",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = acceptServerPosition) { Text("Go to New Position") }
+            },
+            dismissButton = {
+                TextButton(onClick = declineServerPosition) { Text("Stay Here") }
+            },
+        )
     }
 
-    val displayedPosition = positionMs.coerceIn(0L, maxOf(0L, uiState.durationMs))
-    Column(
-        modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(uiState.title, style = MaterialTheme.typography.headlineMedium)
-        if (uiState.author.isNotBlank()) {
-            Text(
-                uiState.author,
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(top = 4.dp),
-            )
-        }
-        if (uiState.chapter.isNotBlank()) {
-            Text(
-                uiState.chapter,
-                style = MaterialTheme.typography.bodyLarge,
-                modifier = Modifier.padding(top = 20.dp),
-            )
-        }
-
-        if (loading) {
-            CircularProgressIndicator(Modifier.padding(top = 32.dp))
-            Text("Preparing audiobook…", modifier = Modifier.padding(top = 12.dp))
-        }
-
-        Slider(
-            value = displayedPosition.toFloat(),
-            onValueChange = {
-                scrubbing = true
-                positionMs = it.toLong()
+    if (showSpeed && state != null) {
+        PlaybackSpeedDialog(
+            currentRate = state.playbackRate,
+            dismiss = { showSpeed = false },
+            select = {
+                showSpeed = false
+                setPlaybackRate(it)
             },
-            onValueChangeFinished = {
-                player.seekTo(positionMs.coerceIn(0L, maxOf(0L, uiState.durationMs)))
-                scrubbing = false
+        )
+    }
+    if (showChapters && state != null) {
+        ChaptersDialog(
+            chapters = state.chapters,
+            currentChapterID = state.currentChapterID,
+            dismiss = { showChapters = false },
+            select = {
+                showChapters = false
+                selectChapter(it)
             },
-            enabled = !loading && uiState.canSeek && uiState.durationMs > 0L,
-            valueRange = 0f..maxOf(1L, uiState.durationMs).toFloat(),
-            modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
         )
-        Text(
-            "${formatPlaybackTime(displayedPosition)} / " +
-                formatPlaybackTime(uiState.durationMs),
-            style = MaterialTheme.typography.bodyMedium,
+    }
+    if (showVolume && state != null) {
+        VolumeDialog(
+            currentVolume = state.volume,
+            dismiss = { showVolume = false },
+            select = {
+                showVolume = false
+                setVolume(it)
+            },
         )
+    }
+    if (showSleepTimer) {
+        SleepTimerDialog(
+            dismiss = { showSleepTimer = false },
+            selectDuration = {
+                showSleepTimer = false
+                startSleepTimer(it)
+            },
+            selectEndOfChapter = {
+                showSleepTimer = false
+                startEndOfChapterSleepTimer()
+            },
+        )
+    }
 
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically,
+    Box(modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+        Column(
+            Modifier
+                .widthIn(max = 600.dp)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp, vertical = 16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Button(
-                onClick = player::seekBack,
-                enabled = !loading && uiState.canSeekBack,
-            ) {
-                Text("−15")
+            CoverArtwork(artwork, book.title)
+            Spacer(Modifier.height(20.dp))
+            Text(
+                state?.title ?: book.title,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center,
+            )
+            val author = state?.author?.takeIf(String::isNotBlank) ?: book.authors
+            if (author.isNotBlank()) {
+                Text(
+                    author,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
             }
-            Button(
-                onClick = { if (uiState.isPlaying) player.pause() else player.play() },
-                enabled = !loading && uiState.canPlayPause,
-            ) {
-                Text(if (uiState.isPlaying) "Pause" else "Play")
-            }
-            Button(
-                onClick = player::seekForward,
-                enabled = !loading && uiState.canSeekForward,
-            ) {
-                Text("+15")
+
+            if (loading || state == null) {
+                CircularProgressIndicator(Modifier.padding(top = 32.dp))
+                Text("Preparing audiobook…", modifier = Modifier.padding(top = 12.dp))
+            } else {
+                PlayerControls(
+                    state = state,
+                    scrubbedProgress = scrubbedProgress,
+                    updateScrubbedProgress = { scrubbedProgress = it },
+                    finishScrubbing = {
+                        scrubbedProgress?.let(seekChapter)
+                        scrubbedProgress = null
+                    },
+                    togglePlayPause = togglePlayPause,
+                    skipBackward = skipBackward,
+                    skipForward = skipForward,
+                    previousChapter = previousChapter,
+                    nextChapter = nextChapter,
+                )
+
+                Row(
+                    Modifier.fillMaxWidth().padding(top = 24.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    SecondaryControl(
+                        icon = Icons.Filled.Speed,
+                        label = formatPlaybackRate(state.playbackRate),
+                        contentDescription = "Playback speed",
+                        onClick = { showSpeed = true },
+                        modifier = Modifier.weight(1f),
+                    )
+                    SecondaryControl(
+                        icon = Icons.AutoMirrored.Filled.List,
+                        label = "Chapters",
+                        contentDescription = "Chapters",
+                        onClick = { showChapters = true },
+                        modifier = Modifier.weight(1f),
+                    )
+                    SecondaryControl(
+                        icon = volumeIcon(state.volume),
+                        label = "${(state.volume * 100).roundToInt()}%",
+                        contentDescription = "Volume",
+                        onClick = { showVolume = true },
+                        modifier = Modifier.weight(1f),
+                    )
+                    SecondaryControl(
+                        icon = Icons.Filled.Bedtime,
+                        label = sleepTimerLabel(state),
+                        contentDescription = "Sleep timer",
+                        onClick = {
+                            if (state.sleepTimerMode == null) {
+                                showSleepTimer = true
+                            } else {
+                                cancelSleepTimer()
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
             }
         }
     }
 }
 
-private data class AudiobookUiState(
-    val title: String,
-    val author: String,
-    val chapter: String,
-    val durationMs: Long,
-    val isPlaying: Boolean,
-    val canPlayPause: Boolean,
-    val canSeek: Boolean,
-    val canSeekBack: Boolean,
-    val canSeekForward: Boolean,
-)
+@Composable
+private fun CoverArtwork(artwork: ByteArray?, title: String) {
+    val image = remember(artwork) {
+        artwork?.let { BitmapFactory.decodeByteArray(it, 0, it.size) }?.asImageBitmap()
+    }
+    Surface(
+        modifier = Modifier.size(280.dp).aspectRatio(1f),
+        shape = RoundedCornerShape(16.dp),
+        tonalElevation = 3.dp,
+        shadowElevation = 6.dp,
+    ) {
+        if (image != null) {
+            Image(
+                bitmap = image,
+                contentDescription = "$title cover",
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleLarge,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(24.dp),
+                )
+            }
+        }
+    }
+}
 
-private fun Player.audiobookUiState(fallbackTitle: String): AudiobookUiState {
-    val durationMs = duration.takeIf { it != C.TIME_UNSET && it > 0L } ?: 0L
-    return AudiobookUiState(
-        title = mediaMetadata.title?.toString()?.takeIf(String::isNotBlank) ?: fallbackTitle,
-        author = mediaMetadata.albumTitle?.toString().orEmpty(),
-        chapter = mediaMetadata.artist?.toString().orEmpty(),
-        durationMs = durationMs,
-        isPlaying = isPlaying,
-        canPlayPause = isCommandAvailable(Player.COMMAND_PLAY_PAUSE),
-        canSeek = isCommandAvailable(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM),
-        canSeekBack = isCommandAvailable(Player.COMMAND_SEEK_BACK),
-        canSeekForward = isCommandAvailable(Player.COMMAND_SEEK_FORWARD),
+@Composable
+private fun PlayerControls(
+    state: AudiobookPlayerState,
+    scrubbedProgress: Double?,
+    updateScrubbedProgress: (Double) -> Unit,
+    finishScrubbing: () -> Unit,
+    togglePlayPause: () -> Unit,
+    skipBackward: () -> Unit,
+    skipForward: () -> Unit,
+    previousChapter: () -> Unit,
+    nextChapter: () -> Unit,
+) {
+    val chapter = state.currentChapterIndex?.let { state.chapters.getOrNull(it) }
+    Text(
+        chapter?.title ?: "Unknown Chapter",
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        textAlign = TextAlign.Center,
+        modifier = Modifier.padding(top = 16.dp),
+    )
+
+    val progress = scrubbedProgress ?: state.chapterProgress.coerceIn(0.0, 1.0)
+    Slider(
+        value = progress.toFloat(),
+        onValueChange = { updateScrubbedProgress(it.toDouble()) },
+        onValueChangeFinished = finishScrubbing,
+        valueRange = 0f..1f,
+        modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+    )
+    val displayedElapsed = if (scrubbedProgress == null) {
+        state.chapterElapsed
+    } else {
+        state.chapterDuration * scrubbedProgress
+    }
+    val playbackRate = state.playbackRate.coerceAtLeast(0.01)
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(
+            formatPlaybackTime(displayedElapsed / playbackRate),
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Text(
+            "−${formatPlaybackTime((state.chapterDuration - displayedElapsed) / playbackRate)}",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            formatPlaybackTime(state.chapterDuration / playbackRate),
+            style = MaterialTheme.typography.bodyMedium,
+        )
+    }
+
+    Row(
+        Modifier.fillMaxWidth().padding(top = 24.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        OutlinedIconButton(
+            onClick = previousChapter,
+            modifier = Modifier.size(44.dp),
+            shape = CircleShape,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.SkipPrevious,
+                contentDescription = "Restart or previous chapter",
+                modifier = Modifier.size(22.dp),
+            )
+        }
+        OutlinedIconButton(
+            onClick = skipBackward,
+            modifier = Modifier.size(54.dp),
+            shape = CircleShape,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Replay,
+                contentDescription = "Back 15 seconds",
+                modifier = Modifier.size(30.dp),
+            )
+        }
+        FilledIconButton(
+            onClick = togglePlayPause,
+            modifier = Modifier.size(72.dp),
+            shape = CircleShape,
+        ) {
+            Icon(
+                imageVector = if (state.isPlaying) {
+                    Icons.Filled.Pause
+                } else {
+                    Icons.Filled.PlayArrow
+                },
+                contentDescription = if (state.isPlaying) "Pause" else "Play",
+                modifier = Modifier.size(34.dp),
+            )
+        }
+        OutlinedIconButton(
+            onClick = skipForward,
+            modifier = Modifier.size(54.dp),
+            shape = CircleShape,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Replay,
+                contentDescription = "Forward 15 seconds",
+                modifier = Modifier.size(30.dp).graphicsLayer { scaleX = -1f },
+            )
+        }
+        OutlinedIconButton(
+            onClick = nextChapter,
+            modifier = Modifier.size(44.dp),
+            shape = CircleShape,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.SkipNext,
+                contentDescription = "Next chapter",
+                modifier = Modifier.size(22.dp),
+            )
+        }
+    }
+
+    Row(
+        Modifier.fillMaxWidth().padding(top = 20.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.Top,
+    ) {
+        StatRow(
+            icon = Icons.Filled.AutoStories,
+            text = "${(state.bookProgress * 100).roundToInt()}%",
+            contentDescription = "Book progress",
+        )
+        Column(
+            horizontalAlignment = Alignment.End,
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            StatRow(
+                icon = Icons.Filled.AutoStories,
+                text = formatTimeHoursMinutes(
+                    (state.duration - state.currentTime) / playbackRate
+                ),
+                contentDescription = "Book time remaining",
+                iconAfterText = true,
+            )
+            StatRow(
+                icon = Icons.Filled.Bookmark,
+                text = formatTimeMinutesSeconds(
+                    (state.chapterDuration - displayedElapsed) / playbackRate
+                ),
+                contentDescription = "Chapter time remaining",
+                iconAfterText = true,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SecondaryControl(
+    icon: ImageVector,
+    label: String,
+    contentDescription: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(vertical = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Surface(
+            modifier = Modifier.size(52.dp),
+            shape = RoundedCornerShape(14.dp),
+            color = MaterialTheme.colorScheme.secondaryContainer,
+        ) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Icon(icon, contentDescription, modifier = Modifier.size(26.dp))
+            }
+        }
+        Text(
+            label,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
+@Composable
+private fun StatRow(
+    icon: ImageVector,
+    text: String,
+    contentDescription: String,
+    iconAfterText: Boolean = false,
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (!iconAfterText) {
+            Icon(icon, contentDescription, modifier = Modifier.size(18.dp))
+        }
+        Text(text, style = MaterialTheme.typography.bodyMedium)
+        if (iconAfterText) {
+            Icon(icon, contentDescription, modifier = Modifier.size(18.dp))
+        }
+    }
+}
+
+@Composable
+private fun PlaybackSpeedDialog(
+    currentRate: Double,
+    dismiss: () -> Unit,
+    select: (Double) -> Unit,
+) {
+    var rate by remember(currentRate) { mutableStateOf(currentRate.coerceIn(0.5, 3.0)) }
+    AlertDialog(
+        onDismissRequest = dismiss,
+        title = { Text("Playback Speed") },
+        text = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(formatPlaybackRate(rate), style = MaterialTheme.typography.headlineSmall)
+                Slider(
+                    value = rate.toFloat(),
+                    onValueChange = { rate = (it * 20).roundToInt() / 20.0 },
+                    valueRange = 0.5f..3f,
+                    steps = 49,
+                )
+            }
+        },
+        confirmButton = { TextButton(onClick = { select(rate) }) { Text("Done") } },
+        dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } },
     )
 }
 
-private fun formatPlaybackTime(milliseconds: Long): String {
-    val totalSeconds = milliseconds.coerceAtLeast(0L) / 1_000L
-    val hours = totalSeconds / 3_600L
-    val minutes = totalSeconds % 3_600L / 60L
-    val seconds = totalSeconds % 60L
-    return if (hours > 0L) {
-        String.format(Locale.US, "%d:%02d:%02d", hours, minutes, seconds)
-    } else {
-        String.format(Locale.US, "%d:%02d", minutes, seconds)
+@Composable
+private fun VolumeDialog(
+    currentVolume: Double,
+    dismiss: () -> Unit,
+    select: (Double) -> Unit,
+) {
+    var volume by remember(currentVolume) { mutableStateOf(currentVolume.coerceIn(0.0, 1.0)) }
+    AlertDialog(
+        onDismissRequest = dismiss,
+        title = { Text("Volume") },
+        text = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("${(volume * 100).roundToInt()}%", style = MaterialTheme.typography.headlineSmall)
+                Slider(
+                    value = volume.toFloat(),
+                    onValueChange = { volume = it.toDouble() },
+                    valueRange = 0f..1f,
+                )
+            }
+        },
+        confirmButton = { TextButton(onClick = { select(volume) }) { Text("Done") } },
+        dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } },
+    )
+}
+
+@Composable
+private fun ChaptersDialog(
+    chapters: List<AudiobookChapter>,
+    currentChapterID: String?,
+    dismiss: () -> Unit,
+    select: (String) -> Unit,
+) {
+    Dialog(onDismissRequest = dismiss) {
+        Surface(
+            shape = RoundedCornerShape(24.dp),
+            tonalElevation = 6.dp,
+            modifier = Modifier.fillMaxWidth().heightIn(max = 560.dp),
+        ) {
+            Column(Modifier.padding(vertical = 16.dp)) {
+                Text(
+                    "Chapters",
+                    style = MaterialTheme.typography.headlineSmall,
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+                )
+                LazyColumn(Modifier.weight(1f, fill = false)) {
+                    items(chapters, key = AudiobookChapter::id) { chapter ->
+                        TextButton(
+                            onClick = { select(chapter.id) },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+                                Text(
+                                    chapter.title,
+                                    fontWeight = if (chapter.id == currentChapterID) {
+                                        FontWeight.Bold
+                                    } else {
+                                        FontWeight.Normal
+                                    },
+                                )
+                                Text(
+                                    formatPlaybackTime(chapter.duration),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                        HorizontalDivider()
+                    }
+                }
+                TextButton(onClick = dismiss, modifier = Modifier.align(Alignment.End)) {
+                    Text("Close")
+                }
+            }
+        }
     }
+}
+
+@Composable
+private fun SleepTimerDialog(
+    dismiss: () -> Unit,
+    selectDuration: (Double) -> Unit,
+    selectEndOfChapter: () -> Unit,
+) {
+    val options = listOf(
+        "10 minutes" to 10 * 60.0,
+        "15 minutes" to 15 * 60.0,
+        "30 minutes" to 30 * 60.0,
+        "1 hour" to 60 * 60.0,
+    )
+    AlertDialog(
+        onDismissRequest = dismiss,
+        title = { Text("Sleep Timer") },
+        text = {
+            Column {
+                options.forEach { (label, seconds) ->
+                    TextButton(
+                        onClick = { selectDuration(seconds) },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(label, modifier = Modifier.fillMaxWidth())
+                    }
+                }
+                HorizontalDivider()
+                TextButton(
+                    onClick = selectEndOfChapter,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("At End of Chapter", modifier = Modifier.fillMaxWidth())
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } },
+    )
+}
+
+private fun sleepTimerLabel(state: AudiobookPlayerState): String = when (state.sleepTimerMode) {
+    "endOfChapter" -> "End Ch."
+    "duration" -> state.sleepTimerRemaining?.let(::formatPlaybackTime) ?: "Sleep"
+    else -> "Sleep"
+}
+
+private fun volumeIcon(volume: Double): ImageVector = when {
+    volume <= 0 -> Icons.AutoMirrored.Filled.VolumeOff
+    volume < 0.5 -> Icons.AutoMirrored.Filled.VolumeDown
+    else -> Icons.AutoMirrored.Filled.VolumeUp
+}
+
+private fun formatPlaybackRate(rate: Double): String =
+    if (rate == rate.roundToInt().toDouble()) {
+        "${rate.roundToInt()}x"
+    } else {
+        "${String.format(Locale.US, "%.2f", rate).trimEnd('0')}x"
+    }
+
+private fun formatPlaybackTime(seconds: Double): String {
+    val totalSeconds = seconds.takeIf(Double::isFinite)?.coerceAtLeast(0.0)?.roundToInt() ?: 0
+    val hours = totalSeconds / 3_600
+    val minutes = totalSeconds % 3_600 / 60
+    val remainder = totalSeconds % 60
+    return if (hours > 0) {
+        String.format(Locale.US, "%d:%02d:%02d", hours, minutes, remainder)
+    } else {
+        String.format(Locale.US, "%d:%02d", minutes, remainder)
+    }
+}
+
+private fun formatTimeHoursMinutes(seconds: Double): String {
+    val totalSeconds = seconds.takeIf(Double::isFinite)?.coerceAtLeast(0.0)?.roundToInt()
+        ?: return "—h—m"
+    val hours = totalSeconds / 3_600
+    val minutes = totalSeconds % 3_600 / 60
+    return "${hours}h${minutes}m"
+}
+
+private fun formatTimeMinutesSeconds(seconds: Double): String {
+    val totalSeconds = seconds.takeIf(Double::isFinite)?.coerceAtLeast(0.0)?.roundToInt()
+        ?: return "—m—s"
+    val minutes = totalSeconds / 60
+    val remainder = totalSeconds % 60
+    return "${minutes}m${remainder}s"
 }
