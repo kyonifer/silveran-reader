@@ -168,9 +168,12 @@ public actor AudiobookSessionActor {
             await AudiobookActor.shared.setVolume(config.playback.defaultVolume)
 
             let progression = min(max(await initialProgression(for: book) ?? 0, 0), 1)
-            try await AudiobookActor.shared.preparePlayer()
             if progression > 0 {
-                await AudiobookActor.shared.seekToTotalProgressFraction(progression)
+                try await AudiobookActor.shared.preparePlayer(
+                    at: loadedMetadata.totalDuration * progression
+                )
+            } else {
+                try await AudiobookActor.shared.preparePlayer()
             }
             lastSyncedProgress = progression
 

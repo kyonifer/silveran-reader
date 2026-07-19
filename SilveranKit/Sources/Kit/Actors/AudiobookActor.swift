@@ -461,12 +461,20 @@ public actor AudiobookActor {
         }
     }
 
-    public func preparePlayer() async throws {
-        guard let metadata, metadata.tracks.indices.contains(currentTrackIndex) else {
+    public func preparePlayer(at globalTime: TimeInterval? = nil) async throws {
+        guard let metadata, !metadata.tracks.isEmpty else {
             throw AudiobookError.failedToLoadMetadata
         }
         guard let factory = SilveranPlatform.audioPlayerFactory else {
             throw AudiobookError.playbackUnavailable
+        }
+
+        let clampedTime = globalTime.map { min(max($0, 0), metadata.totalDuration) }
+        if let clampedTime {
+            currentTrackIndex = trackIndex(for: clampedTime, in: metadata.tracks)
+        }
+        guard metadata.tracks.indices.contains(currentTrackIndex) else {
+            throw AudiobookError.failedToLoadMetadata
         }
 
         try? await factory.prepareSession(longForm: true)
@@ -484,6 +492,9 @@ public actor AudiobookActor {
             Task { @AudiobookActor in
                 await AudiobookActor.shared.handlePlayerEvent(event)
             }
+        }
+        if let clampedTime {
+            await player.seek(to: max(0, clampedTime - track.startTime))
         }
         self.player = player
 
@@ -528,20 +539,24 @@ public actor AudiobookActor {
         guard let metadata, !metadata.tracks.isEmpty else { return }
         let clampedTime = min(max(time, 0), metadata.totalDuration)
         let trackIndex = trackIndex(for: clampedTime, in: metadata.tracks)
+        let requiresReload = player == nil || trackIndex != currentTrackIndex
         let wasPlaying = isPlaying
         currentTrackIndex = trackIndex
-        isPlaying = false
         do {
-            try await preparePlayer()
+            if requiresReload {
+                try await preparePlayer()
+            }
             if let track = metadata.tracks[safe: trackIndex] {
                 await player?.seek(to: max(0, clampedTime - track.startTime))
             }
-            if wasPlaying {
+            if requiresReload, wasPlaying {
                 await player?.play()
-                isPlaying = true
             }
         } catch {
             debugLog("[AudiobookActor] seek failed: \(error)")
+            if requiresReload {
+                isPlaying = false
+            }
         }
         await notifyStateChange()
     }
