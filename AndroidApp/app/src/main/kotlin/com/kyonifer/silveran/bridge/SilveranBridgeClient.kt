@@ -291,52 +291,52 @@ class SilveranBridgeClient(context: Context) {
         )
     }
 
-    private fun parseAudiobookState(json: String): AudiobookPlayerState {
-        val root = JSONObject(json)
-        val chapters = root.getJSONArray("chapters")
-        val pending = root.optJSONObject("pendingServerPosition")
-        return AudiobookPlayerState(
-            bookID = BookID(
-                sourceID = root.getString("sourceID"),
-                uuid = root.getString("bookID"),
-            ),
-            title = root.getString("title"),
-            author = root.getString("author"),
-            isPlaying = root.getBoolean("isPlaying"),
-            currentTime = root.getDouble("currentTime"),
-            duration = root.getDouble("duration"),
-            bookProgress = root.getDouble("bookProgress"),
-            currentChapterID = root.optionalString("currentChapterID"),
-            currentChapterIndex = root.optionalInt("currentChapterIndex"),
-            chapterElapsed = root.getDouble("chapterElapsed"),
-            chapterDuration = root.getDouble("chapterDuration"),
-            chapterProgress = root.getDouble("chapterProgress"),
-            playbackRate = root.getDouble("playbackRate"),
-            volume = root.getDouble("volume"),
-            chapters = List(chapters.length()) { index ->
-                val chapter = chapters.getJSONObject(index)
-                AudiobookChapter(
-                    id = chapter.getString("id"),
-                    title = chapter.getString("title"),
-                    duration = chapter.getDouble("duration"),
-                )
-            },
-            sleepTimerMode = root.optionalString("sleepTimerMode"),
-            sleepTimerRemaining = root.optionalDouble("sleepTimerRemaining"),
-            pendingServerPosition = pending?.let {
-                ServerPosition(
-                    title = it.optionalString("title"),
-                    totalProgression = it.optionalDouble("totalProgression"),
-                )
-            },
-        )
-    }
-
     private companion object {
         // The activity and media service use separate clients but share one
         // Swift audiobook actor and Android audio backend.
         val audiobookOperations = Mutex()
     }
+}
+
+internal fun parseAudiobookState(json: String): AudiobookPlayerState {
+    val root = JSONObject(json)
+    val chapters = root.getJSONArray("chapters")
+    val pending = root.optJSONObject("pendingServerPosition")
+    return AudiobookPlayerState(
+        bookID = BookID(
+            sourceID = root.getString("sourceID"),
+            uuid = root.getString("bookID"),
+        ),
+        title = root.getString("title"),
+        author = root.getString("author"),
+        isPlaying = root.getBoolean("isPlaying"),
+        currentTime = root.getDouble("currentTime"),
+        duration = root.getDouble("duration"),
+        bookProgress = root.getDouble("bookProgress"),
+        currentChapterID = root.optionalString("currentChapterID"),
+        currentChapterIndex = root.optionalInt("currentChapterIndex"),
+        chapterElapsed = root.getDouble("chapterElapsed"),
+        chapterDuration = root.getDouble("chapterDuration"),
+        chapterProgress = root.getDouble("chapterProgress"),
+        playbackRate = root.getDouble("playbackRate"),
+        volume = root.getDouble("volume"),
+        chapters = List(chapters.length()) { index ->
+            val chapter = chapters.getJSONObject(index)
+            AudiobookChapter(
+                id = chapter.getString("id"),
+                title = chapter.getString("title"),
+                duration = chapter.getDouble("duration"),
+            )
+        },
+        sleepTimerMode = root.optionalString("sleepTimerMode"),
+        sleepTimerRemaining = root.optionalDouble("sleepTimerRemaining"),
+        pendingServerPosition = pending?.let {
+            ServerPosition(
+                title = it.optionalString("title"),
+                totalProgression = it.optionalDouble("totalProgression"),
+            )
+        },
+    )
 }
 
 private data class CoverCacheKey(
