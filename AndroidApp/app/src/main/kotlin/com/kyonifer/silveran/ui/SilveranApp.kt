@@ -87,6 +87,15 @@ fun SilveranApp(viewModel: SilveranViewModel) {
             selectedBook?.let(viewModel::openAudiobook)
         }
     }
+    LaunchedEffect(screen, readerMode, state.audiobook?.bookID) {
+        if (screen == Screen.Reader && readerMode == "audio") {
+            state.audiobook?.bookID
+                ?.takeIf { activeID ->
+                    activeID != selectedBookID && state.books.any { it.id == activeID }
+                }
+                ?.let { activeID -> selectedBookID = activeID }
+        }
+    }
     LaunchedEffect(state.successfulSettingsSaves) {
         if (settingsSavePending) {
             settingsSavePending = false

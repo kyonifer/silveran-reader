@@ -150,7 +150,11 @@ class SilveranViewModel private constructor(
     }
 
     fun openAudiobook(book: Book) {
-        if (currentAudiobookID == book.id) return
+        val sharedAudiobookID = mutableState.value.audiobook?.bookID
+        if (currentAudiobookID == book.id || sharedAudiobookID == book.id) {
+            currentAudiobookID = book.id
+            return
+        }
         currentAudiobookID = book.id
         val request = ++audiobookRequest
         mutableState.value = mutableState.value.copy(audiobookLoading = true, error = null)
