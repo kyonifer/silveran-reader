@@ -189,12 +189,13 @@ public actor DownloadManager {
             debugLog("[DownloadManager] No available format for \(book.title) / \(category)")
             return
         }
-        let record = DownloadRecord(
+        var record = DownloadRecord(
             bookID: bookID,
             category: category,
             bookTitle: book.title,
             format: format,
         )
+        record.expectedBytes = expectedDownloadBytes(for: category, book: book)
 
         downloads[record.id] = record
         bookMetadataCache[bookID] = book
@@ -270,6 +271,9 @@ public actor DownloadManager {
 
         if let book {
             bookMetadataCache[record.bookID] = book
+            if record.expectedBytes == nil {
+                record.expectedBytes = expectedDownloadBytes(for: record.category, book: book)
+            }
         }
 
         record.state = .queued
@@ -378,11 +382,15 @@ public actor DownloadManager {
         guard let downloadID = UUID(uuidString: downloadId),
             var record = downloads[downloadID]
         else { return }
-        record.state = .downloading(progress: progress)
         record.receivedBytes = receivedBytes
         if let expectedBytes {
             record.expectedBytes = expectedBytes
         }
+        let resolvedProgress =
+            record.expectedBytes.flatMap { expectedBytes in
+                expectedBytes > 0 ? Double(receivedBytes) / Double(expectedBytes) : nil
+            } ?? progress
+        record.state = .downloading(progress: min(max(resolvedProgress, 0), 1))
         record.lastUpdatedAt = Date()
         downloads[downloadID] = record
         notifyObservers()
@@ -632,6 +640,20 @@ public actor DownloadManager {
             case .synced:
                 return book.hasAvailableReadaloud ? .readaloud : nil
         }
+    }
+
+    private func expectedDownloadBytes(
+        for category: LocalMediaCategory,
+        book: BookMetadata,
+    ) -> Int64? {
+        let bytes =
+            switch category {
+                case .ebook: book.ebook?.fileSize
+                case .audio: book.audiobook?.fileSize
+                case .synced: book.readaloud?.fileSize
+            }
+        guard let bytes, bytes > 0 else { return nil }
+        return Int64(bytes)
     }
 
     private func fallbackFilename(bookId: String, format: StorytellerBookFormat) -> String {
