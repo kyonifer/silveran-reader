@@ -11,8 +11,9 @@
     <application
         android:allowBackup="false"
         android:icon="@mipmap/app_icon"
+        android:roundIcon="@mipmap/app_icon"
         android:name=".SilveranApplication"
-        android:label="Silveran"
+        android:label="Storyteller"
         tools:ignore="MissingIntentFilterForMediaSearch">
         <!-- Voice play-from-search is TBD. -->
         <meta-data

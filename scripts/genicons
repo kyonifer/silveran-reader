@@ -8,11 +8,11 @@ cd "${SCRIPT_DIR}/.."
 ASSETS_DIR="XCodeApps/Assets.xcassets/AppIcon.appiconset"
 WATCH_ASSETS_DIR="XCodeApps/WatchAssets.xcassets/AppIcon.appiconset"
 TV_ASSETS_DIR="XCodeApps/TVAssets.xcassets/App Icon.brandassets"
-ORIG_ICON="SilveranKit/Sources/AppleKit/Resources/assets/icons/app_icon_orig.png"
+STORYTELLER_LOGO="XCodeApps/Assets.xcassets/StorytellerLogo.imageset/Storyteller_Logo.png"
 MAC_MASK="SilveranKit/Sources/AppleKit/Resources/assets/icons/macos_icon_mask.png"
 
-if [ ! -f $ORIG_ICON ]; then
-    echo "Error: app_icon_orig.png not found in project"
+if [ ! -f "$STORYTELLER_LOGO" ]; then
+    echo "Error: Storyteller_Logo.png not found in project"
     exit 1
 fi
 
@@ -21,30 +21,40 @@ if ! command -v magick &> /dev/null; then
     exit 1
 fi
 
-echo "Generating app icons from app_icon_orig.png..."
+echo "Generating app icons from Storyteller_Logo.png..."
 
 SRGB_PROFILE="/System/Library/ColorSync/Profiles/sRGB Profile.icc"
+ICON_WORK_DIR="$(mktemp -d)"
+trap 'rm -rf "$ICON_WORK_DIR"' EXIT
+MAIN_ICON="${ICON_WORK_DIR}/storyteller_app_icon.png"
+ANDROID_FOREGROUND="${ASSETS_DIR}/icon_android_foreground.png"
 
-magick "${ORIG_ICON}" -resize 1024x1024 -colorspace sRGB -profile "${SRGB_PROFILE}" "${ASSETS_DIR}/icon_1024x1024.png"
-magick "${ORIG_ICON}" -resize 1024x1024 -colorspace sRGB -profile "${SRGB_PROFILE}" "${WATCH_ASSETS_DIR}/icon_1024x1024.png"
+magick -size 1024x1024 gradient:'#fbfffe-#fffbee' \
+    \( "${STORYTELLER_LOGO}" -trim +repage -resize 700x700 \) \
+    -gravity center -compose over -composite \
+    -colorspace sRGB -profile "${SRGB_PROFILE}" "${MAIN_ICON}"
+
+magick "${MAIN_ICON}" "${ASSETS_DIR}/icon_1024x1024.png"
+magick "${MAIN_ICON}" "${WATCH_ASSETS_DIR}/icon_1024x1024.png"
+magick -size 2048x2048 canvas:none \
+    \( "${STORYTELLER_LOGO}" -trim +repage -resize 1024x1024 \) \
+    -gravity center -compose over -composite "${ANDROID_FOREGROUND}"
 
 if [ ! -f "${MAC_MASK}" ]; then
     echo "Error: macOS app icon mask not found at ${MAC_MASK}"
     exit 1
 fi
 
-mkdir -p tmp
-
 generate_mac_icon() {
     local canvas_size=$1
     local output_file=$2
     local icon_size=$(echo "$canvas_size * 824 / 1024" | bc)
 
-    local tmp_resized="tmp/mac_resized_${canvas_size}.png"
-    local tmp_mask="tmp/mac_mask_${canvas_size}.png"
-    local tmp_masked="tmp/mac_masked_${canvas_size}.png"
+    local tmp_resized="${ICON_WORK_DIR}/mac_resized_${canvas_size}.png"
+    local tmp_mask="${ICON_WORK_DIR}/mac_mask_${canvas_size}.png"
+    local tmp_masked="${ICON_WORK_DIR}/mac_masked_${canvas_size}.png"
 
-    magick "${ORIG_ICON}" -resize ${icon_size}x${icon_size} -colorspace sRGB -profile "${SRGB_PROFILE}" "${tmp_resized}"
+    magick "${MAIN_ICON}" -resize ${icon_size}x${icon_size} -colorspace sRGB -profile "${SRGB_PROFILE}" "${tmp_resized}"
     magick "${MAC_MASK}" -resize ${icon_size}x${icon_size} "${tmp_mask}"
     magick "${tmp_resized}" \( "${tmp_mask}" -channel A -separate +channel \) -compose CopyOpacity -composite "${tmp_masked}"
     magick "${tmp_masked}" -gravity center -background none -extent ${canvas_size}x${canvas_size} "${output_file}"
@@ -66,7 +76,7 @@ generate_tv_icon() {
     local width=$1
     local height=$2
     local output_file=$3
-    magick "${ORIG_ICON}" -resize x${height} -gravity center -background 'srgb(40,40,40)' -extent ${width}x${height} -colorspace sRGB -profile "${SRGB_PROFILE}" -alpha off "${output_file}"
+    magick "${MAIN_ICON}" -resize x${height} -gravity center -background 'srgb(40,40,40)' -extent ${width}x${height} -colorspace sRGB -profile "${SRGB_PROFILE}" -alpha off "${output_file}"
 }
 
 generate_tv_icon 400 240 "${TV_ASSETS_DIR}/App Icon.imagestack/Back.imagestacklayer/Content.imageset/back.png"
@@ -80,7 +90,7 @@ generate_tv_shelf() {
     local width=$1
     local height=$2
     local output_file=$3
-    magick "${ORIG_ICON}" -resize x${height} -gravity center -background 'srgb(40,40,40)' -extent ${width}x${height} -colorspace sRGB -profile "${SRGB_PROFILE}" -alpha off "${output_file}"
+    magick "${MAIN_ICON}" -resize x${height} -gravity center -background 'srgb(40,40,40)' -extent ${width}x${height} -colorspace sRGB -profile "${SRGB_PROFILE}" -alpha off "${output_file}"
 }
 
 generate_tv_shelf 1920 720 "${TV_ASSETS_DIR}/Top Shelf Image.imageset/shelf.png"

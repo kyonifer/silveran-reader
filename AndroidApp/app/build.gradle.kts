@@ -82,6 +82,9 @@ abstract class GenerateSharedResources : DefaultTask() {
     abstract val appIcon: RegularFileProperty
 
     @get:InputFile
+    abstract val adaptiveIconForeground: RegularFileProperty
+
+    @get:InputFile
     abstract val readaloudIcon: RegularFileProperty
 
     @get:InputFile
@@ -95,6 +98,11 @@ abstract class GenerateSharedResources : DefaultTask() {
         val appIconOutput = outputDirectory.file("mipmap/app_icon.png").get().asFile
         appIconOutput.parentFile.mkdirs()
         appIcon.get().asFile.copyTo(appIconOutput, overwrite = true)
+
+        val adaptiveIconForegroundOutput =
+            outputDirectory.file("drawable/app_icon_foreground.png").get().asFile
+        adaptiveIconForegroundOutput.parentFile.mkdirs()
+        adaptiveIconForeground.get().asFile.copyTo(adaptiveIconForegroundOutput, overwrite = true)
 
         val iconOutput = outputDirectory.file("drawable/ic_readaloud.xml").get().asFile
         iconOutput.parentFile.mkdirs()
@@ -113,6 +121,11 @@ val generateSharedResources = tasks.register<GenerateSharedResources>("generateS
     appIcon.set(
         rootProject.layout.projectDirectory.file(
             "../XCodeApps/Assets.xcassets/AppIcon.appiconset/icon_1024x1024.png"
+        )
+    )
+    adaptiveIconForeground.set(
+        rootProject.layout.projectDirectory.file(
+            "../XCodeApps/Assets.xcassets/AppIcon.appiconset/icon_android_foreground.png"
         )
     )
     readaloudIcon.set(

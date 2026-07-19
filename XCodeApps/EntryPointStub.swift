@@ -16,6 +16,7 @@ class EntryPointStub {
             environment: SilveranEnvironment(
                 contentServer: ContentServer(),
                 readaloudAligner: ReadaloudEngine(),
+                showStorytellerLockup: true,
             )
         )
         #elseif os(iOS)
