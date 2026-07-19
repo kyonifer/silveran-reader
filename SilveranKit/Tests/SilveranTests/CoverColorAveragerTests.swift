@@ -27,6 +27,15 @@ import Testing
     )
 }
 
+@Test func coverDerivedPaletteUsesAndroidSurfaceAndContentTone() {
+    let redPixel: [UInt8] = [255, 0, 0, 255]
+    let redPixels = Array(repeating: redPixel, count: 8 * 8).flatMap { $0 }
+    let palette = CoverDerivedPaletteValues.make(rgbaPixels: redPixels)
+
+    #expect(palette.surface.rgb8 == CoverRGB8(red: 97, green: 21, blue: 21))
+    #expect(palette.contentBackground.rgb8 == CoverRGB8(red: 76, green: 16, blue: 16))
+}
+
 @Test func coverColorAveragerUsesFallbackForTransparentSamples() {
     let transparentPixels = [UInt8](repeating: 0, count: 8 * 8 * 4)
 

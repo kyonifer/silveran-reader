@@ -121,14 +121,14 @@ fun SilveranApp(viewModel: SilveranViewModel) {
                         refresh = viewModel::refreshLibrary,
                         openSettings = { screenName = Screen.Settings.name },
                     )
-                } else {
+                } else if (screen != Screen.Details) {
                     TopAppBar(
                         title = {
                             Text(
                                 when (screen) {
                                     Screen.Library -> "Library"
                                     Screen.Settings -> "Server settings"
-                                    Screen.Details -> selectedBook?.title ?: "Book"
+                                    Screen.Details -> ""
                                     Screen.Reader -> if (readerMode == "audio") "Player" else "Reader"
                                 },
                                 maxLines = 1,
@@ -175,9 +175,12 @@ fun SilveranApp(viewModel: SilveranViewModel) {
                 Screen.Details -> selectedBook?.let { book ->
                     BookDetailsScreen(
                         book = book,
+                        library = state.books,
                         pendingDownloads = state.pendingDownloads,
                         coverRevision = state.coverRevision,
-                        modifier = Modifier.padding(padding),
+                        modifier = Modifier.padding(bottom = padding.calculateBottomPadding()),
+                        navigateBack = navigateBack,
+                        openSettings = { screenName = Screen.Settings.name },
                         cover = viewModel::cover,
                         download = { category -> viewModel.download(book, category) },
                         cancelDownload = { category ->
@@ -190,6 +193,7 @@ fun SilveranApp(viewModel: SilveranViewModel) {
                             readerMode = mode
                             screenName = Screen.Reader.name
                         },
+                        selectRelated = { related -> selectedBookID = related.id },
                     )
                 }
                 Screen.Reader -> selectedBook?.let { book ->

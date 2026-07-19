@@ -74,7 +74,7 @@ public enum CoverColorAverager {
         )
     }
 
-    private static func hsb(red: Double, green: Double, blue: Double) -> CoverHSB {
+    static func hsb(red: Double, green: Double, blue: Double) -> CoverHSB {
         let maximum = max(red, green, blue)
         let minimum = min(red, green, blue)
         let delta = maximum - minimum
@@ -98,7 +98,7 @@ public enum CoverColorAverager {
         )
     }
 
-    private static func rgb(_ hsb: CoverHSB) -> CoverRGB8 {
+    static func rgb(_ hsb: CoverHSB) -> CoverRGB8 {
         let chroma = hsb.brightness * hsb.saturation
         let hueSection = hsb.hue * 6
         let intermediate = chroma

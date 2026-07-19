@@ -88,89 +88,35 @@ struct CoverDerivedPalette {
         saturation: Double,
         brightness: Double,
     ) -> CoverDerivedPalette {
-        let surface = Color(
-            hue: hue,
-            saturation: saturation,
-            brightness: brightness,
-        )
-
-        guard saturation >= 0.08 else {
-            return CoverDerivedPalette(
-                surface: surface,
-                accent: Color(white: 0.86),
-                brightAccent: Color(white: 0.98),
-                mutedAccent: Color(white: 0.68),
-                accentBackground: Color(white: 0.14).opacity(0.94),
-                contentBackground: Color(white: 0.19),
-                cardBackground: Color(white: 0.22),
-                cardBorder: Color.white.opacity(0.1),
-                lightSurface: Color(white: 0.92),
-                lightContentBackground: Color(white: 0.92),
-                lightCardBackground: Color(white: 0.98),
-                lightCardBorder: Color.black.opacity(0.1),
+        let values = CoverDerivedPaletteValues.make(
+            surfaceHSB: CoverHSB(
+                hue: hue,
+                saturation: saturation,
+                brightness: brightness
             )
-        }
-
+        )
         return CoverDerivedPalette(
-            surface: surface,
-            accent: Color(
-                hue: hue,
-                saturation: min(max(saturation * 0.72, 0.24), 0.62),
-                brightness: 0.9,
-            ),
-            brightAccent: Color(
-                hue: hue,
-                saturation: min(max(saturation * 0.48, 0.14), 0.42),
-                brightness: 1,
-            ),
-            mutedAccent: Color(
-                hue: hue,
-                saturation: min(max(saturation * 0.07, 0.015), 0.06),
-                brightness: 0.72,
-            ),
-            accentBackground: Color(
-                hue: hue,
-                saturation: min(max(saturation * 1.08, 0.3), 0.78),
-                brightness: min(max(brightness * 0.62, 0.1), 0.24),
-                opacity: 0.94,
-            ),
-            contentBackground: Color(
-                hue: hue,
-                saturation: min(max(saturation * 0.82, 0.2), 0.6),
-                brightness: min(max(brightness * 0.84, 0.19), 0.32),
-            ),
-            cardBackground: Color(
-                hue: hue,
-                saturation: min(max(saturation * 0.74, 0.17), 0.52),
-                brightness: min(max(brightness * 0.9, 0.22), 0.35),
-            ),
-            cardBorder: Color(
-                hue: hue,
-                saturation: min(max(saturation * 0.58, 0.18), 0.5),
-                brightness: 0.82,
-                opacity: 0.16,
-            ),
-            lightSurface: Color(
-                hue: hue,
-                saturation: min(max(saturation * 0.24, 0.055), 0.16),
-                brightness: 0.92,
-            ),
-            lightContentBackground: Color(
-                hue: hue,
-                saturation: min(max(saturation * 0.28, 0.06), 0.18),
-                brightness: 0.93,
-            ),
-            lightCardBackground: Color(
-                hue: hue,
-                saturation: min(max(saturation * 0.16, 0.035), 0.11),
-                brightness: 0.985,
-            ),
-            lightCardBorder: Color(
-                hue: hue,
-                saturation: min(max(saturation * 0.45, 0.12), 0.32),
-                brightness: 0.42,
-                opacity: 0.18,
-            ),
+            surface: color(values.surface),
+            accent: color(values.accent),
+            brightAccent: color(values.brightAccent),
+            mutedAccent: color(values.mutedAccent),
+            accentBackground: color(values.accentBackground),
+            contentBackground: color(values.contentBackground),
+            cardBackground: color(values.cardBackground),
+            cardBorder: color(values.cardBorder),
+            lightSurface: color(values.lightSurface),
+            lightContentBackground: color(values.lightContentBackground),
+            lightCardBackground: color(values.lightCardBackground),
+            lightCardBorder: color(values.lightCardBorder),
+        )
+    }
+
+    private static func color(_ value: CoverPaletteColor) -> Color {
+        Color(
+            hue: value.hue,
+            saturation: value.saturation,
+            brightness: value.brightness,
+            opacity: value.opacity
         )
     }
 

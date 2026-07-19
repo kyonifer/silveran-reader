@@ -388,6 +388,14 @@ internal fun BookCover(
     revision: Int,
     load: suspend (Book, Boolean, Int, Int) -> Bitmap?,
     modifier: Modifier,
+    onPrimaryBitmap: (Bitmap?) -> Unit = {},
+    artworkScale: Float = COVER_SCALE,
+    showsPanel: Boolean = true,
+    layersMedia: Boolean = true,
+    showsReadaloudBadge: Boolean = true,
+    showsProgressBadge: Boolean = false,
+    progressColor: Color? = null,
+    progressBackgroundColor: Color? = null,
 ) {
     val ebookState = rememberCoverLoadState(
         book = book,
@@ -412,24 +420,31 @@ internal fun BookCover(
     val ebookImage = remember(ebookBitmap) { ebookBitmap?.asImageBitmap() }
     val audioImage = remember(audioBitmap) { audioBitmap?.asImageBitmap() }
     val darkTheme = MaterialTheme.colorScheme.background.luminance() < 0.5f
-    val backgroundColor = remember(ebookBitmap, audioBitmap, darkTheme) {
-        coverBackgroundColor(ebookBitmap ?: audioBitmap, darkTheme)
+    val backgroundColor = remember(ebookBitmap, audioBitmap, darkTheme, showsPanel) {
+        if (showsPanel) {
+            coverBackgroundColor(ebookBitmap ?: audioBitmap, darkTheme)
+        } else {
+            Color.Transparent
+        }
+    }
+    LaunchedEffect(ebookBitmap, audioBitmap) {
+        onPrimaryBitmap(ebookBitmap ?: audioBitmap)
     }
     val coverShape = RoundedCornerShape(6.dp)
 
     Surface(
         modifier = modifier,
         shape = coverShape,
-        color = backgroundColor,
-        shadowElevation = 2.dp,
+        color = if (showsPanel) backgroundColor else Color.Transparent,
+        shadowElevation = if (showsPanel) 2.dp else 0.dp,
     ) {
         BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            val coverWidth = maxWidth * COVER_SCALE
+            val coverWidth = maxWidth * artworkScale
             val ebookHeight = coverWidth / EBOOK_ASPECT_RATIO
             val shift = maxWidth * COVER_SPREAD
-            val hasBothCovers = ebookImage != null && audioImage != null
+            val hasBothCovers = layersMedia && ebookImage != null && audioImage != null
 
-            if (audioImage != null) {
+            if (audioImage != null && (layersMedia || ebookImage == null)) {
                 Image(
                     bitmap = audioImage,
                     contentDescription = "${book.title} audiobook cover",
@@ -466,7 +481,9 @@ internal fun BookCover(
                 }
             }
 
-            if (book.hasReadaloud && (ebookImage != null || audioImage != null)) {
+            if (showsReadaloudBadge && book.hasReadaloud &&
+                (ebookImage != null || audioImage != null)
+            ) {
                 Surface(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
@@ -481,6 +498,22 @@ internal fun BookCover(
                         contentDescription = "Readaloud available",
                         tint = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.padding(4.dp),
+                    )
+                }
+            }
+
+            if (showsProgressBadge && (ebookImage != null || audioImage != null)) {
+                Surface(
+                    modifier = Modifier.align(Alignment.BottomEnd).padding(3.dp).size(22.dp).zIndex(3f),
+                    shape = CircleShape,
+                    color = progressBackgroundColor
+                        ?: MaterialTheme.colorScheme.surface.copy(alpha = 0.82f),
+                ) {
+                    CircularProgressIndicator(
+                        progress = { book.progress.toFloat().coerceIn(0f, 1f) },
+                        modifier = Modifier.padding(2.dp),
+                        strokeWidth = 2.dp,
+                        color = progressColor ?: MaterialTheme.colorScheme.primary,
                     )
                 }
             }

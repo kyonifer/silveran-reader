@@ -10,9 +10,23 @@ data class BookID(
 data class Book(
     val id: BookID,
     val title: String,
+    val subtitle: String?,
     val authors: String,
+    val authorNames: List<String>,
+    val narrators: List<String>,
+    val series: List<BookSeries>,
+    val tags: List<String>,
+    val collections: List<String>,
     val description: String?,
+    val language: String?,
+    val publicationDateDisplay: String,
     val createdAt: String?,
+    val createdAtDisplay: String,
+    val updatedAtDisplay: String,
+    val rating: Double?,
+    val progress: Double,
+    val pageCount: Int?,
+    val durationDisplay: String,
     val coverVersion: String,
     val media: List<BookMedia>,
 ) {
@@ -22,8 +36,18 @@ data class Book(
     val hasDownloadedMedia: Boolean get() = media.any(BookMedia::downloaded)
 }
 
+data class BookSeries(
+    val name: String,
+    val position: Double?,
+)
+
 data class BookMedia(
     val category: String,
+    val format: String?,
+    val pageCount: Int?,
+    val durationDisplay: String,
+    val fileSizeDisplay: String,
+    val status: String?,
     val downloaded: Boolean,
     val removable: Boolean,
     val downloadState: String?,

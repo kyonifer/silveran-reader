@@ -109,6 +109,7 @@ private func makeLibrarySnapshotJSON(refresh: Bool) async throws -> String {
             androidMedia(
                 bookID: book.id,
                 category: .ebook,
+                info: AndroidMediaInfo(asset: book.ebook),
                 available: book.hasAvailableEbook,
                 paths: paths,
                 cachedPaths: cachedPaths,
@@ -117,6 +118,7 @@ private func makeLibrarySnapshotJSON(refresh: Bool) async throws -> String {
             androidMedia(
                 bookID: book.id,
                 category: .audio,
+                info: AndroidMediaInfo(asset: book.audiobook),
                 available: book.hasAvailableAudiobook,
                 paths: paths,
                 cachedPaths: cachedPaths,
@@ -125,6 +127,7 @@ private func makeLibrarySnapshotJSON(refresh: Bool) async throws -> String {
             androidMedia(
                 bookID: book.id,
                 category: .synced,
+                info: AndroidMediaInfo(readaloud: book.readaloud),
                 available: book.hasAvailableReadaloud,
                 paths: paths,
                 cachedPaths: cachedPaths,
@@ -137,9 +140,29 @@ private func makeLibrarySnapshotJSON(refresh: Bool) async throws -> String {
                 id: book.uuid,
                 sourceID: sourceID,
                 title: book.title,
+                subtitle: book.subtitle,
                 authors: book.authors?.compactMap(\.name).joined(separator: ", ") ?? "",
+                authorNames: book.authors?.compactMap(\.name) ?? [],
+                narrators: book.narrators?.compactMap(\.name) ?? [],
+                series: book.series?.map {
+                    AndroidSeries(name: $0.name, position: $0.position.map(Double.init))
+                } ?? [],
+                tags: book.tagNames,
+                collections: book.collections?.map(\.name) ?? [],
                 description: book.description.map { BookDescriptionText.plain(from: $0) },
+                language: book.language,
+                publicationDateDisplay: SilveranDate.full(book.publicationDateValue),
                 createdAt: book.createdAt,
+                createdAtDisplay: SilveranDate.dateTimeWithZone(book.createdAtValue),
+                updatedAtDisplay: SilveranDate.dateTimeWithZone(
+                    SilveranDate.parse(book.updatedAt, field: .updatedAt, context: book.title)
+                ),
+                rating: book.rating,
+                progress: book.status?.name.lowercased() == "read"
+                    ? 1
+                    : (progress[book.id]?.progressFraction ?? 0),
+                pageCount: book.pageCountValue,
+                durationDisplay: book.durationDisplay,
                 coverVersion: book.updatedAt ?? "",
                 media: media,
             )
@@ -263,6 +286,33 @@ public func coverSurfaceColorARGB(rgbaBase64: String, dark: Bool) throws -> Int3
     return Int32(bitPattern: argb)
 }
 
+public func coverPaletteJSON(rgbaBase64: String, dark: Bool) throws -> String {
+    guard let data = Data(base64Encoded: rgbaBase64) else {
+        throw AndroidBridgeError.invalidCoverPixels
+    }
+    let palette = CoverDerivedPaletteValues.make(rgbaPixels: Array(data))
+    return try encodeJSON(
+        AndroidCoverPalette(
+            surface: argb(dark ? palette.surface : palette.lightSurface),
+            accent: argb(palette.accent),
+            brightAccent: argb(palette.brightAccent),
+            mutedAccent: argb(palette.mutedAccent),
+            accentBackground: argb(palette.accentBackground),
+            contentBackground: argb(
+                dark ? palette.contentBackground : palette.lightContentBackground
+            ),
+            cardBackground: argb(dark ? palette.cardBackground : palette.lightCardBackground),
+            cardBorder: argb(dark ? palette.cardBorder : palette.lightCardBorder)
+        )
+    )
+}
+
+private func argb(_ color: CoverPaletteColor) -> UInt32 {
+    let rgb = color.rgb8
+    return UInt32(color.alpha8) << 24 | UInt32(rgb.red) << 16 | UInt32(rgb.green) << 8
+        | UInt32(rgb.blue)
+}
+
 public func downloadBook(
     bookID: String,
     sourceID: String,
@@ -359,19 +409,99 @@ private struct AndroidBook: Encodable {
     let id: String
     let sourceID: String
     let title: String
+    let subtitle: String?
     let authors: String
+    let authorNames: [String]
+    let narrators: [String]
+    let series: [AndroidSeries]
+    let tags: [String]
+    let collections: [String]
     let description: String?
+    let language: String?
+    let publicationDateDisplay: String
     let createdAt: String?
+    let createdAtDisplay: String
+    let updatedAtDisplay: String
+    let rating: Double?
+    let progress: Double
+    let pageCount: Int?
+    let durationDisplay: String
     let coverVersion: String
     let media: [AndroidMedia]
 }
 
+private struct AndroidSeries: Encodable {
+    let name: String
+    let position: Double?
+}
+
 private struct AndroidMedia: Encodable {
     let category: String
+    let format: String?
+    let pageCount: Int?
+    let durationDisplay: String
+    let fileSizeDisplay: String
+    let status: String?
     let downloaded: Bool
     let removable: Bool
     let downloadState: String?
     let downloadProgress: Double?
+}
+
+private struct AndroidMediaInfo {
+    let format: String?
+    let pageCount: Int?
+    let durationDisplay: String
+    let fileSizeDisplay: String
+    let status: String?
+
+    init(asset: BookAsset?) {
+        if let path = asset?.filepath {
+            let value = URL(fileURLWithPath: path).pathExtension.uppercased()
+            format = value.isEmpty ? nil : value
+        } else {
+            format = nil
+        }
+        pageCount = asset?.pageCount
+        if let duration = asset?.duration, duration > 0 {
+            durationDisplay = BookMetadata.formatDuration(seconds: Int(duration.rounded()))
+        } else {
+            durationDisplay = ""
+        }
+        if let size = asset?.fileSize, size > 0 {
+            fileSizeDisplay = BookMetadata.formatFileSize(bytes: size)
+        } else {
+            fileSizeDisplay = ""
+        }
+        status = nil
+    }
+
+    init(readaloud: BookReadaloud?) {
+        format = nil
+        pageCount = readaloud?.pageCount
+        if let duration = readaloud?.duration, duration > 0 {
+            durationDisplay = BookMetadata.formatDuration(seconds: Int(duration.rounded()))
+        } else {
+            durationDisplay = ""
+        }
+        if let size = readaloud?.fileSize, size > 0 {
+            fileSizeDisplay = BookMetadata.formatFileSize(bytes: size)
+        } else {
+            fileSizeDisplay = ""
+        }
+        status = readaloud?.status
+    }
+}
+
+private struct AndroidCoverPalette: Encodable {
+    let surface: UInt32
+    let accent: UInt32
+    let brightAccent: UInt32
+    let mutedAccent: UInt32
+    let accentBackground: UInt32
+    let contentBackground: UInt32
+    let cardBackground: UInt32
+    let cardBorder: UInt32
 }
 
 private struct AndroidCoverResponse: Encodable {
@@ -508,6 +638,7 @@ private func downloadProgress(_ record: DownloadRecord?) -> Double? {
 private func androidMedia(
     bookID: BookID,
     category: LocalMediaCategory,
+    info: AndroidMediaInfo,
     available: Bool,
     paths: MediaPaths?,
     cachedPaths: MediaPaths?,
@@ -517,6 +648,11 @@ private func androidMedia(
     let record = downloadsByBookID[bookID]?.first { $0.category == category }
     return AndroidMedia(
         category: category.rawValue,
+        format: info.format,
+        pageCount: info.pageCount,
+        durationDisplay: info.durationDisplay,
+        fileSizeDisplay: info.fileSizeDisplay,
+        status: info.status,
         downloaded: paths?.path(for: category) != nil,
         removable: cachedPaths?.path(for: category) != nil,
         downloadState: downloadStateName(record?.state),

@@ -5,13 +5,46 @@ import android.graphics.Color as AndroidColor
 import android.util.Base64
 import androidx.compose.ui.graphics.Color
 import com.kyonifer.silveran.bridge.SilveranAndroidBridge
+import org.json.JSONObject
 
 private const val SAMPLE_SIZE = 8
 
+internal data class CoverBackgroundPalette(
+    val surface: Color,
+    val accent: Color,
+    val brightAccent: Color,
+    val mutedAccent: Color,
+    val accentBackground: Color,
+    val contentBackground: Color,
+    val cardBackground: Color,
+    val cardBorder: Color,
+)
+
 internal fun coverBackgroundColor(bitmap: Bitmap?, darkTheme: Boolean): Color {
+    return Color(SilveranAndroidBridge.coverSurfaceColorARGB(sampledRgbaBase64(bitmap), darkTheme))
+}
+
+internal fun coverBackgroundPalette(bitmap: Bitmap?, darkTheme: Boolean): CoverBackgroundPalette {
+    val palette = JSONObject(
+        SilveranAndroidBridge.coverPaletteJSON(sampledRgbaBase64(bitmap), darkTheme),
+    )
+    return CoverBackgroundPalette(
+        surface = palette.color("surface"),
+        accent = palette.color("accent"),
+        brightAccent = palette.color("brightAccent"),
+        mutedAccent = palette.color("mutedAccent"),
+        accentBackground = palette.color("accentBackground"),
+        contentBackground = palette.color("contentBackground"),
+        cardBackground = palette.color("cardBackground"),
+        cardBorder = palette.color("cardBorder"),
+    )
+}
+
+private fun JSONObject.color(name: String): Color = Color(getLong(name).toInt())
+
+private fun sampledRgbaBase64(bitmap: Bitmap?): String {
     val pixels = bitmap?.let(::sampleRgba) ?: ByteArray(0)
-    val encoded = Base64.encodeToString(pixels, Base64.NO_WRAP)
-    return Color(SilveranAndroidBridge.coverSurfaceColorARGB(encoded, darkTheme))
+    return Base64.encodeToString(pixels, Base64.NO_WRAP)
 }
 
 private fun sampleRgba(bitmap: Bitmap): ByteArray {

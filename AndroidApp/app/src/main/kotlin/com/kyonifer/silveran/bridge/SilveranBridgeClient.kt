@@ -251,14 +251,42 @@ class SilveranBridgeClient(context: Context) {
                     uuid = item.getString("id"),
                 ),
                 title = item.getString("title"),
+                subtitle = item.optionalString("subtitle"),
                 authors = item.optString("authors"),
+                authorNames = item.stringList("authorNames"),
+                narrators = item.stringList("narrators"),
+                series = item.getJSONArray("series").let { series ->
+                    List(series.length()) { seriesIndex ->
+                        val value = series.getJSONObject(seriesIndex)
+                        com.kyonifer.silveran.model.BookSeries(
+                            name = value.getString("name"),
+                            position = value.optionalDouble("position"),
+                        )
+                    }
+                },
+                tags = item.stringList("tags"),
+                collections = item.stringList("collections"),
                 description = item.optionalString("description"),
+                language = item.optionalString("language"),
+                publicationDateDisplay = item.optString("publicationDateDisplay"),
                 createdAt = item.optionalString("createdAt"),
+                createdAtDisplay = item.optString("createdAtDisplay"),
+                updatedAtDisplay = item.optString("updatedAtDisplay"),
+                rating = item.optionalDouble("rating"),
+                progress = item.optDouble("progress", 0.0),
+                pageCount = item.takeUnless { it.isNull("pageCount") }?.optInt("pageCount"),
+                durationDisplay = item.optString("durationDisplay"),
                 coverVersion = item.optString("coverVersion"),
                 media = List(mediaItems.length()) { mediaIndex ->
                     val media = mediaItems.getJSONObject(mediaIndex)
                     BookMedia(
                         category = media.getString("category"),
+                        format = media.optionalString("format"),
+                        pageCount = media.takeUnless { it.isNull("pageCount") }
+                            ?.optInt("pageCount"),
+                        durationDisplay = media.optString("durationDisplay"),
+                        fileSizeDisplay = media.optString("fileSizeDisplay"),
+                        status = media.optionalString("status"),
                         downloaded = media.getBoolean("downloaded"),
                         removable = media.getBoolean("removable"),
                         downloadState = media.optionalString("downloadState"),
@@ -289,6 +317,11 @@ class SilveranBridgeClient(context: Context) {
             sourceStatus = root.optString("sourceStatus", "notConfigured"),
             sourceMessage = root.optionalString("sourceMessage"),
         )
+    }
+
+    private fun JSONObject.stringList(name: String): List<String> {
+        val values = optJSONArray(name) ?: return emptyList()
+        return List(values.length()) { values.getString(it) }
     }
 
     private companion object {
