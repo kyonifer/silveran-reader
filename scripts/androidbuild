@@ -22,7 +22,9 @@ Options:
 Environment:
   ANDROID_HOME                Android SDK path. Default: ~/Library/Android/sdk
   ANDROID_NDK_HOME            NDK path. Default: newest under ANDROID_HOME/ndk
-  SILVERAN_SWIFT_TOOLCHAIN    Swift.org toolchain identifier. Set empty to use PATH.
+  SILVERAN_SWIFT_TOOLCHAIN    Swift toolchain directory or identifier. If unset,
+                              infer the matching installed toolchain from the SDK.
+                              Set empty to use PATH.
   SILVERAN_SWIFT_ANDROID_SDK_BUNDLE
                               Swift Android SDK artifact bundle path.
 EOF
@@ -52,10 +54,24 @@ fi
 
 # The Android project currently packages one ABI. Keep the Swift target,
 # runtime staging path, libc++, and Gradle abiFilter as one validated set.
-TOOLCHAIN="${SILVERAN_SWIFT_TOOLCHAIN-org.swift.623202512101a}"
 TRIPLE="aarch64-unknown-linux-android28"
 SDK_BUNDLE="${SILVERAN_SWIFT_ANDROID_SDK_BUNDLE:-${HOME}/Library/org.swift.swiftpm/swift-sdks/swift-6.2.3-RELEASE_android.artifactbundle}"
 JNILIBS="AndroidApp/app/src/main/jniLibs/arm64-v8a"
+
+SDK_BUNDLE_NAME="$(basename "${SDK_BUNDLE}")"
+SDK_VERSION="${SDK_BUNDLE_NAME#swift-}"
+SDK_VERSION="${SDK_VERSION%-RELEASE_android.artifactbundle}"
+TOOLCHAIN="${SILVERAN_SWIFT_TOOLCHAIN-}"
+if [[ -z "${SILVERAN_SWIFT_TOOLCHAIN+x}" ]]; then
+    for candidate in \
+        "${HOME}/Library/Developer/Toolchains/swift-${SDK_VERSION}-RELEASE.xctoolchain" \
+        "/Library/Developer/Toolchains/swift-${SDK_VERSION}-RELEASE.xctoolchain"; do
+        if [[ -x "${candidate}/usr/bin/swift" ]]; then
+            TOOLCHAIN="${candidate}"
+            break
+        fi
+    done
+fi
 
 export ANDROID_HOME="${ANDROID_HOME:-${HOME}/Library/Android/sdk}"
 if [[ -z "${JAVA_HOME:-}" && -x /usr/libexec/java_home ]]; then
@@ -75,15 +91,52 @@ if [[ "${APK_ONLY}" -eq 0 ]]; then
     rm -rf "${JEXTRACT_OUTPUT}/src/generated/java"
     rm -f "${JEXTRACT_OUTPUT}/Sources/SilveranAndroidBridgeModule+SwiftJava.swift"
 
-    if [[ -n "${TOOLCHAIN}" ]]; then
-        export TOOLCHAINS="${TOOLCHAIN}"
-    else
+    if [[ -z "${TOOLCHAIN}" ]]; then
+        SWIFT_BIN="$(command -v swift)"
         unset TOOLCHAINS
+    elif [[ -x "${TOOLCHAIN}/usr/bin/swift" ]]; then
+        SWIFT_BIN="${TOOLCHAIN}/usr/bin/swift"
+        unset TOOLCHAINS
+    elif [[ -x "${TOOLCHAIN}" ]]; then
+        SWIFT_BIN="${TOOLCHAIN}"
+        unset TOOLCHAINS
+    else
+        export TOOLCHAINS="${TOOLCHAIN}"
+        SWIFT_BIN="$(xcrun --find swift)"
     fi
-    (cd AndroidApp/swift && swift build \
+
+    SWIFT_VERSION_OUTPUT="$("${SWIFT_BIN}" --version)"
+    if [[ "${SWIFT_VERSION_OUTPUT}" != *"Swift version ${SDK_VERSION}"* ]]; then
+        echo "Swift compiler and Android SDK versions do not match." >&2
+        echo "Compiler: ${SWIFT_VERSION_OUTPUT%%$'\n'*}" >&2
+        echo "Android SDK: Swift ${SDK_VERSION} (${SDK_BUNDLE})" >&2
+        exit 1
+    fi
+    echo "Swift compiler: ${SWIFT_BIN} (${SDK_VERSION})"
+    export PATH="$(dirname "${SWIFT_BIN}"):${PATH}"
+
+    # SwiftPM does not invalidate host tools or target modules when the active
+    # Swift compiler changes. Clean derived products once for each build
+    # environment so modules from (for example) Swift 6.3 cannot be reused by
+    # the Swift 6.2 Android toolchain. Dependency checkouts remain cached.
+    SWIFT_BUILD_DIR="AndroidApp/swift/.build"
+    SWIFT_BUILD_ENVIRONMENT="${SWIFT_BIN}|${SWIFT_VERSION_OUTPUT%%$'\n'*}|${SDK_BUNDLE}|${TRIPLE}"
+    SWIFT_BUILD_ENVIRONMENT_FILE="${SWIFT_BUILD_DIR}/.silveran-build-environment"
+    PREVIOUS_SWIFT_BUILD_ENVIRONMENT=""
+    if [[ -f "${SWIFT_BUILD_ENVIRONMENT_FILE}" ]]; then
+        PREVIOUS_SWIFT_BUILD_ENVIRONMENT="$(<"${SWIFT_BUILD_ENVIRONMENT_FILE}")"
+    fi
+    if [[ "${PREVIOUS_SWIFT_BUILD_ENVIRONMENT}" != "${SWIFT_BUILD_ENVIRONMENT}" ]]; then
+        echo "Swift build environment changed; cleaning derived SwiftPM products"
+        (cd AndroidApp/swift && "${SWIFT_BIN}" package clean)
+    fi
+
+    (cd AndroidApp/swift && "${SWIFT_BIN}" build \
             --disable-sandbox \
             --swift-sdk "${TRIPLE}" \
             --product SilveranAndroidBridge)
+    mkdir -p "${SWIFT_BUILD_DIR}"
+    printf '%s\n' "${SWIFT_BUILD_ENVIRONMENT}" > "${SWIFT_BUILD_ENVIRONMENT_FILE}"
 
     rm -rf "${JNILIBS}"
     mkdir -p "${JNILIBS}"
