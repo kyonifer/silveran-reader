@@ -5,6 +5,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -16,7 +17,7 @@ import org.robolectric.annotation.Config
 class AndroidNowPlayingSessionPlayerTest {
     @Test
     fun acceptsSessionPreparationWhileTheMirrorIsEmpty() {
-        val player = AndroidNowPlayingSessionPlayer(Looper.getMainLooper()) { _, _, _ -> }
+        val player = AndroidNowPlayingSessionPlayer(Looper.getMainLooper()) { _, _, _, _ -> }
 
         assertTrue(player.isCommandAvailable(Player.COMMAND_SET_MEDIA_ITEM))
         assertTrue(player.isCommandAvailable(Player.COMMAND_PREPARE))
@@ -31,8 +32,10 @@ class AndroidNowPlayingSessionPlayerTest {
     @Test
     fun publishesChapterStateAndForwardsCommands() {
         val commands = mutableListOf<ReceivedCommand>()
-        val player = AndroidNowPlayingSessionPlayer(Looper.getMainLooper()) { token, command, value ->
-            commands += ReceivedCommand(token, command, value)
+        val player = AndroidNowPlayingSessionPlayer(
+            Looper.getMainLooper(),
+        ) { token, command, value, text ->
+            commands += ReceivedCommand(token, command, value, text)
         }
         player.configureCommands(commandConfiguration())
         player.update(snapshot())
@@ -69,11 +72,61 @@ class AndroidNowPlayingSessionPlayerTest {
             ReceivedCommand("commands", "changePlaybackRate", 1.5),
             commands.removeFirst(),
         )
+
+        player.update(snapshot().copy(playbackRate = 1.5))
+        assertEquals("Chapter 2 · 1.5×", player.currentMediaItem?.mediaMetadata?.artist)
+        assertEquals(120_000L, player.duration)
+    }
+
+    @Test
+    fun publishesChaptersAsASelectableQueue() {
+        val commands = mutableListOf<ReceivedCommand>()
+        val player = AndroidNowPlayingSessionPlayer(
+            Looper.getMainLooper(),
+        ) { token, command, value, text ->
+            commands += ReceivedCommand(token, command, value, text)
+        }
+        player.configureCommands(commandConfiguration())
+        player.update(snapshot())
+        player.updateAudiobookState(
+            AndroidNowPlayingAudiobookState(
+                currentChapterID = "chapter-2",
+                currentChapterIndex = 1,
+                chapters = listOf(
+                    AndroidNowPlayingChapter("chapter-1", "Chapter 1", 100.0),
+                    AndroidNowPlayingChapter("chapter-2", "Chapter 2", 120.0),
+                    AndroidNowPlayingChapter("chapter-3", "Chapter 3", 140.0),
+                ),
+            ),
+        )
+
+        assertEquals(3, player.mediaItemCount)
+        assertEquals(1, player.currentMediaItemIndex)
+        assertEquals("Chapter 1", player.getMediaItemAt(0).mediaMetadata.title)
+        assertEquals("Chapter 2", player.getMediaItemAt(1).mediaMetadata.title)
+        assertNull(player.getMediaItemAt(0).mediaMetadata.artworkData)
+        assertNull(player.getMediaItemAt(1).mediaMetadata.artworkData)
+        assertNull(player.getMediaItemAt(2).mediaMetadata.artworkData)
+        assertTrue(player.mediaMetadata.artworkData.contentEquals(byteArrayOf(1, 2, 3)))
+        assertEquals("The Book", player.mediaMetadata.title)
+        assertEquals("Chapter 2 · 1.25×", player.mediaMetadata.artist)
+        assertTrue(player.isCommandAvailable(Player.COMMAND_SEEK_TO_MEDIA_ITEM))
+
+        player.seekToDefaultPosition(2)
+        assertEquals(
+            ReceivedCommand(
+                token = "commands",
+                command = "selectChapter",
+                value = 0.0,
+                text = "chapter-3",
+            ),
+            commands.removeFirst(),
+        )
     }
 
     @Test
     fun teardownAndClearRemainIndependentAndRejectStaleTokens() {
-        val player = AndroidNowPlayingSessionPlayer(Looper.getMainLooper()) { _, _, _ -> }
+        val player = AndroidNowPlayingSessionPlayer(Looper.getMainLooper()) { _, _, _, _ -> }
         player.configureCommands(commandConfiguration())
         player.update(snapshot())
 
@@ -92,7 +145,7 @@ class AndroidNowPlayingSessionPlayerTest {
 
     @Test
     fun positionSeekingFollowsTheCommandConfiguration() {
-        val player = AndroidNowPlayingSessionPlayer(Looper.getMainLooper()) { _, _, _ -> }
+        val player = AndroidNowPlayingSessionPlayer(Looper.getMainLooper()) { _, _, _, _ -> }
         player.configureCommands(
             commandConfiguration().copy(supportsChangePlaybackPosition = false),
         )
@@ -126,5 +179,6 @@ class AndroidNowPlayingSessionPlayerTest {
         val token: String,
         val command: String,
         val value: Double,
+        val text: String = "",
     )
 }

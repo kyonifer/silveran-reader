@@ -6,6 +6,7 @@ import android.util.Base64
 import androidx.annotation.Keep
 import androidx.media3.common.Player
 import com.kyonifer.silveran.bridge.SilveranAndroidBridge
+import com.kyonifer.silveran.bridge.parseAudiobookState
 
 /** Static primitive-only surface consumed by AndroidNowPlayingPresenter in Swift. */
 @Keep
@@ -59,6 +60,24 @@ object AndroidNowPlayingBridge {
         player().clear()
     }
 
+    internal fun updateAudiobookState(payload: String) {
+        val state = payload.takeIf(String::isNotEmpty)?.let(::parseAudiobookState)
+        val nowPlayingState = state?.let {
+            AndroidNowPlayingAudiobookState(
+                currentChapterID = it.currentChapterID,
+                currentChapterIndex = it.currentChapterIndex,
+                chapters = it.chapters.map { chapter ->
+                    AndroidNowPlayingChapter(
+                        id = chapter.id,
+                        title = chapter.title,
+                        durationSeconds = chapter.duration,
+                    )
+                },
+            )
+        }
+        onMain { player().updateAudiobookState(nowPlayingState) }
+    }
+
     @JvmStatic
     fun configureCommands(
         token: String,
@@ -85,8 +104,8 @@ object AndroidNowPlayingBridge {
 
     private fun player(): AndroidNowPlayingSessionPlayer = player ?: AndroidNowPlayingSessionPlayer(
         Looper.getMainLooper(),
-        AndroidNowPlayingCommandSink { token, command, value ->
-            SilveranAndroidBridge.androidNowPlayingCommand(token, command, value)
+        AndroidNowPlayingCommandSink { token, command, value, text ->
+            SilveranAndroidBridge.androidNowPlayingCommand(token, command, value, text)
         },
     ).also { player = it }
 

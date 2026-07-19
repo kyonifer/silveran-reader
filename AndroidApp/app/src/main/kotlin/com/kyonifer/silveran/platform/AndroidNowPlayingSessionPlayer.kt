@@ -40,8 +40,20 @@ internal data class AndroidNowPlayingCommandConfiguration(
     val supportsChangePlaybackRate: Boolean,
 )
 
+internal data class AndroidNowPlayingChapter(
+    val id: String,
+    val title: String,
+    val durationSeconds: Double,
+)
+
+internal data class AndroidNowPlayingAudiobookState(
+    val currentChapterID: String?,
+    val currentChapterIndex: Int?,
+    val chapters: List<AndroidNowPlayingChapter>,
+)
+
 internal fun interface AndroidNowPlayingCommandSink {
-    fun send(token: String, command: String, value: Double)
+    fun send(token: String, command: String, value: Double, text: String)
 }
 
 /**
@@ -59,6 +71,7 @@ internal class AndroidNowPlayingSessionPlayer(
 ) : SimpleBasePlayer(looper) {
     private var snapshot: AndroidNowPlayingSnapshot? = null
     private var commandConfiguration: AndroidNowPlayingCommandConfiguration? = null
+    private var audiobookState: AndroidNowPlayingAudiobookState? = null
 
     fun update(snapshot: AndroidNowPlayingSnapshot) {
         requireApplicationThread()
@@ -69,6 +82,14 @@ internal class AndroidNowPlayingSessionPlayer(
     fun clear() {
         requireApplicationThread()
         snapshot = null
+        audiobookState = null
+        invalidateState()
+    }
+
+    fun updateAudiobookState(state: AndroidNowPlayingAudiobookState?) {
+        requireApplicationThread()
+        if (audiobookState == state) return
+        audiobookState = state
         invalidateState()
     }
 
@@ -109,22 +130,12 @@ internal class AndroidNowPlayingSessionPlayer(
             metadataBuilder.setArtworkData(it, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
         }
         val metadata = metadataBuilder.build()
-        val mediaItem = MediaItem.Builder()
-            .setMediaId(NOW_PLAYING_MEDIA_ID)
-            .setMediaMetadata(metadata)
-            .build()
-        val durationUs = snapshot.durationSeconds.secondsToMicrosecondsOrUnset()
-        val mediaItemData = MediaItemData.Builder(NOW_PLAYING_MEDIA_ID)
-            .setMediaItem(mediaItem)
-            .setMediaMetadata(metadata)
-            .setDurationUs(durationUs)
-            .setIsSeekable(configuration?.supportsChangePlaybackPosition == true)
-            .build()
+        val (playlist, currentMediaItemIndex) = chapterPlaylist(snapshot, metadata)
 
         return State.Builder()
             .setAvailableCommands(commands)
-            .setPlaylist(listOf(mediaItemData))
-            .setCurrentMediaItemIndex(0)
+            .setPlaylist(playlist)
+            .setCurrentMediaItemIndex(currentMediaItemIndex)
             .setContentPositionMs(snapshot.elapsedSeconds.secondsToMilliseconds())
             .setPlaybackParameters(PlaybackParameters(snapshot.normalizedRate().toFloat()))
             .setPlaybackState(Player.STATE_READY)
@@ -144,6 +155,7 @@ internal class AndroidNowPlayingSessionPlayer(
             configuration.token,
             if (playWhenReady) COMMAND_PLAY else COMMAND_PAUSE,
             0.0,
+            "",
         )
         return immediateVoidFuture()
     }
@@ -162,6 +174,17 @@ internal class AndroidNowPlayingSessionPlayer(
         seekCommand: Int,
     ): ListenableFuture<Any> {
         val configuration = commandConfiguration ?: return immediateVoidFuture()
+        if (seekCommand == Player.COMMAND_SEEK_TO_MEDIA_ITEM) {
+            val chapter = audiobookState?.chapters?.getOrNull(mediaItemIndex)
+                ?: return immediateVoidFuture()
+            commandSink.send(
+                configuration.token,
+                COMMAND_SELECT_CHAPTER,
+                0.0,
+                chapter.id,
+            )
+            return immediateVoidFuture()
+        }
         snapshot = snapshot?.copy(elapsedSeconds = positionMs.coerceAtLeast(0L) / 1_000.0)
 
         when (seekCommand) {
@@ -169,16 +192,19 @@ internal class AndroidNowPlayingSessionPlayer(
                 configuration.token,
                 COMMAND_SKIP_BACKWARD,
                 configuration.skipBackwardSeconds,
+                "",
             )
             Player.COMMAND_SEEK_FORWARD -> commandSink.send(
                 configuration.token,
                 COMMAND_SKIP_FORWARD,
                 configuration.skipForwardSeconds,
+                "",
             )
             Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM -> commandSink.send(
                 configuration.token,
                 COMMAND_CHANGE_POSITION,
                 positionMs.coerceAtLeast(0L) / 1_000.0,
+                "",
             )
         }
         return immediateVoidFuture()
@@ -193,6 +219,7 @@ internal class AndroidNowPlayingSessionPlayer(
             configuration.token,
             COMMAND_CHANGE_RATE,
             playbackParameters.speed.toDouble(),
+            "",
         )
         return immediateVoidFuture()
     }
@@ -221,8 +248,62 @@ internal class AndroidNowPlayingSessionPlayer(
             if (configuration.supportsChangePlaybackRate) {
                 commands.add(Player.COMMAND_SET_SPEED_AND_PITCH)
             }
+            if ((audiobookState?.chapters?.size ?: 0) > 1) {
+                commands.add(Player.COMMAND_SEEK_TO_MEDIA_ITEM)
+            }
         }
         return commands.build()
+    }
+
+    private fun chapterPlaylist(
+        snapshot: AndroidNowPlayingSnapshot,
+        nowPlayingMetadata: MediaMetadata,
+    ): Pair<List<MediaItemData>, Int> {
+        val audiobookState = audiobookState
+        if (audiobookState == null || audiobookState.chapters.isEmpty()) {
+            val mediaItem = MediaItem.Builder()
+                .setMediaId(NOW_PLAYING_MEDIA_ID)
+                .setMediaMetadata(nowPlayingMetadata)
+                .build()
+            val mediaItemData = MediaItemData.Builder(NOW_PLAYING_MEDIA_ID)
+                .setMediaItem(mediaItem)
+                .setMediaMetadata(nowPlayingMetadata)
+                .setDurationUs(snapshot.durationSeconds.secondsToMicrosecondsOrUnset())
+                .setIsSeekable(commandConfiguration?.supportsChangePlaybackPosition == true)
+                .build()
+            return listOf(mediaItemData) to 0
+        }
+
+        val currentIndex = audiobookState.currentChapterID
+            ?.let { currentID -> audiobookState.chapters.indexOfFirst { it.id == currentID } }
+            ?.takeIf { it >= 0 }
+            ?: audiobookState.currentChapterIndex
+                ?.takeIf(audiobookState.chapters.indices::contains)
+            ?: 0
+        val playlist = audiobookState.chapters.mapIndexed { index, chapter ->
+            val chapterMetadata = MediaMetadata.Builder()
+                .setTitle(chapter.title)
+                .setArtist(snapshot.title)
+                .setAlbumTitle(snapshot.albumTitle)
+                .setIsPlayable(true)
+                .setMediaType(MediaMetadata.MEDIA_TYPE_AUDIO_BOOK_CHAPTER)
+                .build()
+            val playbackMetadata =
+                if (index == currentIndex) nowPlayingMetadata else chapterMetadata
+            val mediaID = "$NOW_PLAYING_CHAPTER_PREFIX$index"
+            MediaItemData.Builder(mediaID)
+                .setMediaItem(
+                    MediaItem.Builder()
+                        .setMediaId(mediaID)
+                        .setMediaMetadata(chapterMetadata)
+                        .build(),
+                )
+                .setMediaMetadata(playbackMetadata)
+                .setDurationUs(chapter.durationSeconds.secondsToMicrosecondsOrUnset())
+                .setIsSeekable(commandConfiguration?.supportsChangePlaybackPosition == true)
+                .build()
+        }
+        return playlist to currentIndex
     }
 
     private fun requireApplicationThread() {
@@ -237,6 +318,7 @@ internal class AndroidNowPlayingSessionPlayer(
 
     companion object {
         private const val NOW_PLAYING_MEDIA_ID = "silveran-now-playing"
+        private const val NOW_PLAYING_CHAPTER_PREFIX = "silveran-now-playing-chapter-"
 
         const val COMMAND_PLAY = "play"
         const val COMMAND_PAUSE = "pause"
@@ -244,6 +326,7 @@ internal class AndroidNowPlayingSessionPlayer(
         const val COMMAND_SKIP_BACKWARD = "skipBackward"
         const val COMMAND_CHANGE_POSITION = "changePlaybackPosition"
         const val COMMAND_CHANGE_RATE = "changePlaybackRate"
+        const val COMMAND_SELECT_CHAPTER = "selectChapter"
     }
 }
 

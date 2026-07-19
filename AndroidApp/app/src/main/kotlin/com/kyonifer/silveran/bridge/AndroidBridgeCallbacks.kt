@@ -1,6 +1,7 @@
 package com.kyonifer.silveran.bridge
 
 import androidx.annotation.Keep
+import com.kyonifer.silveran.platform.AndroidNowPlayingBridge
 import java.util.UUID
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
@@ -34,6 +35,7 @@ object AndroidBridgeCallbacks {
 
     @JvmStatic
     fun audiobookStateDidChange(payload: String) {
+        AndroidNowPlayingBridge.updateAudiobookState(payload)
         audiobookListener?.invoke(payload)
     }
 

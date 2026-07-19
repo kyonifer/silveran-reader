@@ -99,7 +99,12 @@ actor AndroidNowPlayingPresenter: NowPlayingPresenting {
         try? JavaClass<JavaAndroidNowPlayingBridge>().teardownCommands(token)
     }
 
-    fileprivate func handleCommand(token: String, command: String, value: Double) {
+    fileprivate func handleCommand(
+        token: String,
+        command: String,
+        value: Double,
+        text: String,
+    ) async {
         guard token == commandToken, let commandHandler else { return }
 
         switch command {
@@ -117,6 +122,8 @@ actor AndroidNowPlayingPresenter: NowPlayingPresenting {
                 commandHandler(.changePlaybackPosition(value))
             case "changePlaybackRate":
                 commandHandler(.changePlaybackRate(value))
+            case "selectChapter":
+                try? await AudiobookSessionActor.shared.control(.selectChapter(text))
             case "nextTrack":
                 commandHandler(.nextTrack)
             case "previousTrack":
@@ -133,10 +140,16 @@ actor AndroidNowPlayingPresenter: NowPlayingPresenting {
 }
 
 /// Kotlin-to-Swift delivery for MediaSession/MediaLibrarySession player commands.
-public func androidNowPlayingCommand(token: String, command: String, value: Double) async {
+public func androidNowPlayingCommand(
+    token: String,
+    command: String,
+    value: Double,
+    text: String,
+) async {
     await AndroidNowPlayingPresenter.shared.handleCommand(
         token: token,
         command: command,
         value: value,
+        text: text,
     )
 }
