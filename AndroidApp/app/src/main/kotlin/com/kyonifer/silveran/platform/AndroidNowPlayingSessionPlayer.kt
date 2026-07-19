@@ -11,6 +11,15 @@ import androidx.media3.common.SimpleBasePlayer
 import androidx.media3.common.util.UnstableApi
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
+import java.util.Locale
+
+private fun nowPlayingSubtitle(chapterTitle: String?, playbackRate: Double): String {
+    val rate = String.format(Locale.ROOT, "%.2f", playbackRate)
+        .trimEnd('0')
+        .trimEnd('.')
+    return listOfNotNull(chapterTitle?.takeIf(String::isNotBlank), "$rate×")
+        .joinToString(" · ")
+}
 
 internal data class AndroidNowPlayingSnapshot(
     val title: String,
@@ -92,7 +101,7 @@ internal class AndroidNowPlayingSessionPlayer(
 
         val metadataBuilder = MediaMetadata.Builder()
             .setTitle(snapshot.title)
-            .setArtist(snapshot.artist)
+            .setArtist(nowPlayingSubtitle(snapshot.artist, snapshot.normalizedRate()))
             .setAlbumTitle(snapshot.albumTitle)
             .setIsPlayable(true)
             .setMediaType(MediaMetadata.MEDIA_TYPE_AUDIO_BOOK_CHAPTER)

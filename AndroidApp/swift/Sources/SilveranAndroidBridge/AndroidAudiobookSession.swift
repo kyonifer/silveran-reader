@@ -6,6 +6,10 @@ import SilveranKit
 actor AndroidAudiobookSession {
     static let shared = AndroidAudiobookSession()
 
+    private static let playbackRateSteps: [Float] = [
+        0.75, 1.0, 1.1, 1.2, 1.3, 1.5, 2.0, 5.0,
+    ]
+
     private var stateObserverID: UUID?
 
     func open(bookID: BookID) async throws {
@@ -36,6 +40,14 @@ actor AndroidAudiobookSession {
                 sharedCommand = .selectChapter(text)
             case "setPlaybackRate":
                 sharedCommand = .setPlaybackRate(value)
+            case "cyclePlaybackRate":
+                let currentRate = Float(
+                    (await AudiobookSessionActor.shared.currentState())?.playbackRate ?? 1
+                )
+                let nextRate =
+                    Self.playbackRateSteps.first { $0 > currentRate }
+                    ?? Self.playbackRateSteps[0]
+                sharedCommand = .setPlaybackRate(Double(nextRate))
             case "setVolume":
                 sharedCommand = .setVolume(value)
             case "startSleepTimer":

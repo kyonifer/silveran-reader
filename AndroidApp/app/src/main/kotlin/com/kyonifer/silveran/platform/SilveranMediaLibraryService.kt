@@ -3,6 +3,7 @@ package com.kyonifer.silveran.platform
 import android.app.PendingIntent
 import android.content.Intent
 import android.net.Uri
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import androidx.annotation.OptIn
@@ -16,7 +17,9 @@ import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaLibraryService.LibraryParams
 import androidx.media3.session.MediaLibraryService.MediaLibrarySession
 import androidx.media3.session.MediaSession
+import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionError
+import androidx.media3.session.SessionResult
 import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
@@ -76,6 +79,20 @@ class SilveranMediaLibraryService : MediaLibraryService() {
     }
 
     private val libraryCallback = object : MediaLibrarySession.Callback {
+        override fun onConnect(
+            session: MediaSession,
+            controller: MediaSession.ControllerInfo,
+        ): MediaSession.ConnectionResult {
+            val sessionCommands =
+                MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS
+                    .buildUpon()
+                    .add(cyclePlaybackRateCommand)
+                    .build()
+            return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
+                .setAvailableSessionCommands(sessionCommands)
+                .build()
+        }
+
         override fun onGetLibraryRoot(
             session: MediaLibrarySession,
             browser: MediaSession.ControllerInfo,
@@ -159,6 +176,24 @@ class SilveranMediaLibraryService : MediaLibraryService() {
                     0L,
                 )
             }
+
+        override fun onCustomCommand(
+            session: MediaSession,
+            controller: MediaSession.ControllerInfo,
+            customCommand: SessionCommand,
+            args: Bundle,
+        ): ListenableFuture<SessionResult> {
+            if (customCommand.customAction != CYCLE_PLAYBACK_RATE_ACTION) {
+                return Futures.immediateFuture(
+                    SessionResult(SessionResult.RESULT_ERROR_NOT_SUPPORTED),
+                )
+            }
+            return serviceFuture {
+                ensureBootstrapped()
+                client.controlAudiobook("cyclePlaybackRate")
+                SessionResult(SessionResult.RESULT_SUCCESS)
+            }
+        }
     }
 
     private suspend fun downloadedAudiobooks(): List<Book> {
@@ -211,6 +246,10 @@ class SilveranMediaLibraryService : MediaLibraryService() {
     }
 
     private companion object {
+        const val CYCLE_PLAYBACK_RATE_ACTION =
+            "com.kyonifer.silveran.action.CYCLE_PLAYBACK_RATE"
+        val cyclePlaybackRateCommand = SessionCommand(CYCLE_PLAYBACK_RATE_ACTION, Bundle.EMPTY)
+
         val mediaButtonPreferences = listOf(
             CommandButton.Builder(CommandButton.ICON_SKIP_BACK_15)
                 .setDisplayName("Back 15 seconds")
@@ -219,6 +258,11 @@ class SilveranMediaLibraryService : MediaLibraryService() {
             CommandButton.Builder(CommandButton.ICON_SKIP_FORWARD_15)
                 .setDisplayName("Forward 15 seconds")
                 .setPlayerCommand(Player.COMMAND_SEEK_FORWARD)
+                .build(),
+            CommandButton.Builder(CommandButton.ICON_PLAYBACK_SPEED)
+                .setDisplayName("Playback speed")
+                .setSessionCommand(cyclePlaybackRateCommand)
+                .setSlots(CommandButton.SLOT_OVERFLOW)
                 .build(),
         )
     }

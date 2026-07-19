@@ -39,7 +39,7 @@ class AndroidNowPlayingSessionPlayerTest {
 
         assertEquals(Player.STATE_READY, player.playbackState)
         assertEquals("The Book", player.currentMediaItem?.mediaMetadata?.title)
-        assertEquals("Chapter 2", player.currentMediaItem?.mediaMetadata?.artist)
+        assertEquals("Chapter 2 · 1.25×", player.currentMediaItem?.mediaMetadata?.artist)
         assertEquals("The Author", player.currentMediaItem?.mediaMetadata?.albumTitle)
         assertEquals(120_000L, player.duration)
         assertEquals(12_500L, player.currentPosition)
