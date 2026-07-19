@@ -67,7 +67,7 @@ public actor ProgressSyncActor {
     private var syncNotificationCallback: (@Sendable @MainActor (Int, [BookID]) -> Void)?
 
     private var incomingPositionObservers:
-        [UUID: (bookID: BookID, callback: @Sendable @MainActor (IncomingServerPosition) -> Void)] =
+        [UUID: (bookID: BookID, callback: @Sendable (IncomingServerPosition) -> Void)] =
             [:]
     private var pollingTask: Task<Void, Never>? = nil
     private var started = false
@@ -570,7 +570,7 @@ public actor ProgressSyncActor {
     @discardableResult
     public func addIncomingPositionObserver(
         for bookID: BookID,
-        _ callback: @escaping @Sendable @MainActor (IncomingServerPosition) -> Void,
+        _ callback: @escaping @Sendable (IncomingServerPosition) -> Void,
     ) -> UUID {
         let id = UUID()
         incomingPositionObservers[id] = (bookID: bookID, callback: callback)
@@ -640,7 +640,7 @@ public actor ProgressSyncActor {
             timestamp: timestamp,
         )
         for (_, observer) in incomingPositionObservers where observer.bookID == bookID {
-            await observer.callback(position)
+            observer.callback(position)
         }
         debugLogVerbose(
             "[PSA] notifyIncomingPositionObservers: notified observers for bookID=\(bookID)"

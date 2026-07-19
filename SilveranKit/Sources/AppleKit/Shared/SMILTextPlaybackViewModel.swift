@@ -874,8 +874,8 @@ public final class SMILTextPlaybackViewModel: NSObject {
             let observerId = await ProgressSyncActor.shared.addIncomingPositionObserver(
                 for: bookId
             ) { [weak self] position in
-                guard let self else { return }
-                Task { @MainActor in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
                     let config = await SettingsActor.shared.config
                     if config.sync.autoSyncToNewerServerPosition {
                         await self.navigateToServerPosition(position.locator)

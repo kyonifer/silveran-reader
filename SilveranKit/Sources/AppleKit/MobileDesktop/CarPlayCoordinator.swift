@@ -309,9 +309,10 @@ public final class CarPlayCoordinator {
         currentAudiobookHref = nil
         wasPlaying = false
 
-        audiobookObserverId = await AudiobookActor.shared.addStateObserver {
-            @MainActor [weak self] state in
-            self?.handleAudiobookStateChange(state)
+        audiobookObserverId = await AudiobookActor.shared.addStateObserver { [weak self] state in
+            Task { @MainActor [weak self] in
+                self?.handleAudiobookStateChange(state)
+            }
         }
         debugLog(
             "[CarPlayCoordinator] Audiobook observer registered: \(String(describing: audiobookObserverId))"

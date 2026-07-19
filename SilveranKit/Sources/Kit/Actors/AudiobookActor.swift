@@ -143,7 +143,7 @@ public actor AudiobookActor {
     // AudioPlaying has no isPlaying accessor; the actor is the source of truth
     // for play/pause intent (players only emit events, never auto-pause).
     private var isPlaying = false
-    private var stateObservers: [UUID: @Sendable @MainActor (AudiobookPlaybackState) -> Void] = [:]
+    private var stateObservers: [UUID: @Sendable (AudiobookPlaybackState) -> Void] = [:]
     private var artworkData: Data?
     private var nowPlayingRefreshTask: Task<Void, Never>?
 
@@ -637,13 +637,13 @@ public actor AudiobookActor {
 
     public func addStateObserver(
         id: UUID = UUID(),
-        observer: @escaping @Sendable @MainActor (AudiobookPlaybackState) -> Void,
+        observer: @escaping @Sendable (AudiobookPlaybackState) -> Void,
     ) async -> UUID {
         debugLog("[AudiobookActor] addStateObserver called, id=\(id)")
         stateObservers[id] = observer
         debugLog("[AudiobookActor] Observer stored, count=\(stateObservers.count)")
         if let state = await getCurrentState() {
-            await observer(state)
+            observer(state)
         }
         return id
     }
@@ -665,7 +665,7 @@ public actor AudiobookActor {
         await updateNowPlayingInfo()
 
         for observer in stateObservers.values {
-            await observer(state)
+            observer(state)
         }
     }
 

@@ -533,15 +533,14 @@ class EbookPlayerViewModel {
             incomingPositionObserverId = await ProgressSyncActor.shared.addIncomingPositionObserver(
                 for: bookId
             ) { [weak self] position in
-                guard let self else { return }
-
-                if self.settingsVM.autoSyncToNewerServerPosition {
-                    Task {
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    if self.settingsVM.autoSyncToNewerServerPosition {
                         await self.navigateToServerPosition(position.locator)
+                    } else {
+                        self.pendingServerPosition = position
+                        self.showServerPositionDialog = true
                     }
-                } else {
-                    self.pendingServerPosition = position
-                    self.showServerPositionDialog = true
                 }
             }
             debugLog("[EbookPlayerViewModel] Registered incoming position observer for \(bookId)")
