@@ -219,9 +219,6 @@ class EbookPlayerViewModel {
     }
 
     func handleChapterSelection(_ chapter: ChapterItem) {
-        debugLog(
-            "[TOC-DEBUG] handleChapterSelection: id=\(chapter.id) label=\"\(chapter.label)\" href=\"\(chapter.href)\" level=\(chapter.level)"
-        )
         userSelectedTocId = chapter.id
         if isComicBook, let index = Int(chapter.href) ?? Int(chapter.id) {
             progressManager?.handleNativePageSelected(index)
@@ -235,20 +232,15 @@ class EbookPlayerViewModel {
 
             if let fragment, let sectionId = bookStructure[safe: entry.sectionIndex]?.id {
                 let fullHref = "\(sectionId)#\(fragment)"
-                debugLog("[TOC-DEBUG] -> EPM href navigation to \(fullHref)")
                 progressManager?.handleUserChapterSelectedWithHref(
                     entry.sectionIndex,
                     href: fullHref,
                 )
             } else {
-                debugLog(
-                    "[TOC-DEBUG] -> EPM section navigation to sectionIndex=\(entry.sectionIndex)"
-                )
                 progressManager?.handleUserChapterSelected(entry.sectionIndex)
             }
             return
         }
-        debugLog("[TOC-DEBUG] -> falling back to href-based lookup")
         handleChapterSelectionByHref(chapter.href)
     }
 

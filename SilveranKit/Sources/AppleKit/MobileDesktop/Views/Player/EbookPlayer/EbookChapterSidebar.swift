@@ -8,31 +8,23 @@ struct EbookChapterSidebar: View {
     let onChapterSelected: (ChapterItem) -> Void
 
     var body: some View {
-        List {
-            Section("Chapters") {
-                ForEach(chapters, id: \.id) { chapter in
-                    Button {
-                        debugLog(
-                            "[TOC-DEBUG] Sidebar button tapped: id=\(chapter.id) label=\"\(chapter.label)\""
-                        )
-                        onChapterSelected(chapter)
-                    } label: {
-                        Text(chapter.label)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .padding(.leading, CGFloat(chapter.level) * 16)
-                    .listRowBackground(
-                        chapter.id == selectedChapterId
-                            ? Color.accentColor.opacity(0.2)
-                            : Color.clear
-                    )
-                }
+        VStack(spacing: 0) {
+            Text("Chapters")
+                .font(.headline)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+
+            Divider()
+
+            ChapterSelectionList(
+                chapters: chapters,
+                selectedChapterId: selectedChapterId,
+            ) { chapter in
+                onChapterSelected(chapter)
             }
         }
-        .listStyle(.sidebar)
-        .scrollContentBackground(.hidden)
         .background(backgroundColor)
     }
 }

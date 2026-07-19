@@ -79,34 +79,10 @@ public enum SMILParser {
 
         let rawTocEntries = try parseTOC(from: archive, manifest: manifest, opfDir: opfDir)
 
-        debugLog("[TOC-DEBUG] Raw TOC entries from parser: \(rawTocEntries.count)")
-        for (i, raw) in rawTocEntries.enumerated() {
-            debugLog(
-                "[TOC-DEBUG]   raw[\(i)] level=\(raw.level) label=\"\(raw.label)\" href=\"\(raw.href)\""
-            )
-        }
-
-        debugLog("[TOC-DEBUG] Spine sections: \(sections.count)")
-        for (i, sec) in sections.enumerated() {
-            debugLog("[TOC-DEBUG]   spine[\(i)] id=\"\(sec.id)\"")
-        }
-
         let tocEntries = rawTocEntries.compactMap { raw -> TocEntry? in
             let baseHref = raw.href.components(separatedBy: "#").first ?? raw.href
-            guard let idx = findSectionIndex(for: baseHref, in: sections) else {
-                debugLog(
-                    "[TOC-DEBUG]   DROPPED raw entry: no section match for baseHref=\"\(baseHref)\" (label=\"\(raw.label)\")"
-                )
-                return nil
-            }
+            guard let idx = findSectionIndex(for: baseHref, in: sections) else { return nil }
             return TocEntry(label: raw.label, href: raw.href, level: raw.level, sectionIndex: idx)
-        }
-
-        debugLog("[TOC-DEBUG] Final tocEntries: \(tocEntries.count)")
-        for (i, entry) in tocEntries.enumerated() {
-            debugLog(
-                "[TOC-DEBUG]   toc[\(i)] level=\(entry.level) sectionIdx=\(entry.sectionIndex) label=\"\(entry.label)\" href=\"\(entry.href)\""
-            )
         }
 
         let labelsBySection = labelsFromTocEntries(tocEntries)

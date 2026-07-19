@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -49,6 +50,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -566,6 +568,16 @@ private fun ChaptersDialog(
     dismiss: () -> Unit,
     select: (String) -> Unit,
 ) {
+    val currentChapterIndex = chapters.indexOfFirst { it.id == currentChapterID }
+    val listState = rememberLazyListState(
+        initialFirstVisibleItemIndex = currentChapterIndex.coerceAtLeast(0),
+    )
+    LaunchedEffect(currentChapterIndex) {
+        if (currentChapterIndex >= 0) {
+            listState.scrollToItem(currentChapterIndex)
+        }
+    }
+
     Dialog(onDismissRequest = dismiss) {
         Surface(
             shape = RoundedCornerShape(24.dp),
@@ -578,7 +590,10 @@ private fun ChaptersDialog(
                     style = MaterialTheme.typography.headlineSmall,
                     modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
                 )
-                LazyColumn(Modifier.weight(1f, fill = false)) {
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.weight(1f, fill = false),
+                ) {
                     items(chapters, key = AudiobookChapter::id) { chapter ->
                         TextButton(
                             onClick = { select(chapter.id) },

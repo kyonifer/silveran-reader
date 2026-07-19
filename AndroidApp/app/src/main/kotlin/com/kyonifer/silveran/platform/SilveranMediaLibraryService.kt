@@ -65,6 +65,7 @@ class SilveranMediaLibraryService : MediaLibraryService() {
         )
             .setSessionActivity(sessionActivity)
             .setMediaButtonPreferences(mediaButtonPreferences)
+            .setPeriodicPositionUpdateEnabled(false)
             .build()
     }
 
