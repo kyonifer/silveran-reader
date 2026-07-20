@@ -12,6 +12,7 @@ public struct AudiobookPlayerView: View {
     @State private var errorMessage: String?
     @State private var stateObserverID: UUID?
     @State private var showServerPositionDialog = false
+    @State private var lastPendingServerPosition: AudiobookSessionServerPosition?
 
     public init(bookData: PlayerBookData?, onClose: (() -> Void)? = nil) {
         self.bookData = bookData
@@ -248,8 +249,12 @@ public struct AudiobookPlayerView: View {
         sessionState = state
         if let state {
             chapterProgress = state.chapterProgress
-            showServerPositionDialog = state.pendingServerPosition != nil
+            if state.pendingServerPosition != lastPendingServerPosition {
+                lastPendingServerPosition = state.pendingServerPosition
+                showServerPositionDialog = state.pendingServerPosition != nil
+            }
         } else {
+            lastPendingServerPosition = nil
             showServerPositionDialog = false
         }
     }
