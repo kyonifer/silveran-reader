@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -61,6 +62,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.lerp
@@ -142,7 +144,7 @@ internal fun BookDetailsScreen(
                 .statusBarsPadding()
                 .padding(horizontal = 20.dp)
                 .padding(top = 12.dp)
-                .padding(bottom = 18.dp),
+                .padding(bottom = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
@@ -222,13 +224,15 @@ internal fun BookDetailsScreen(
                 palette = backgroundPalette,
                 open = open,
             )
-            if (book.tags.isNotEmpty()) TagRow(book.tags, onHero)
+            if (book.tags.isNotEmpty()) {
+                TagRow(book.tags, onHero, Modifier.padding(top = 3.dp))
+            }
         }
 
         Column(
             Modifier.fillMaxWidth().background(contentColor)
                 .padding(horizontal = 10.dp)
-                .padding(top = 28.dp, bottom = 18.dp),
+                .padding(top = 18.dp, bottom = 18.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             book.description?.takeIf(String::isNotBlank)?.let {
@@ -356,16 +360,52 @@ private fun HeroMediaSummary(book: Book, color: Color) {
 }
 
 @Composable
-private fun TagRow(tags: List<String>, color: Color) {
-    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        tags.take(4).forEach { tag ->
-            Text(
-                tag,
-                color = color.copy(alpha = 0.86f),
-                style = MaterialTheme.typography.labelSmall,
-                modifier = Modifier.clip(RoundedCornerShape(50)).background(color.copy(alpha = 0.12f))
-                    .padding(horizontal = 10.dp, vertical = 2.dp),
-            )
+private fun TagRow(tags: List<String>, color: Color, modifier: Modifier = Modifier) {
+    val uniqueTags = remember(tags) { tags.distinct() }
+    var expanded by remember(tags) { mutableStateOf(false) }
+    val visibleTags = if (expanded) uniqueTags else uniqueTags.take(3)
+
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(7.dp),
+    ) {
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(5.dp, Alignment.CenterHorizontally),
+            verticalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            visibleTags.forEach { tag ->
+                Text(
+                    tag,
+                    color = color.copy(alpha = 0.86f),
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.clip(RoundedCornerShape(50)).background(color.copy(alpha = 0.12f))
+                        .padding(horizontal = 9.dp, vertical = 4.dp),
+                )
+            }
+        }
+
+        if (uniqueTags.size > 3) {
+            Row(
+                modifier = Modifier.clickable { expanded = !expanded },
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    if (expanded) "Show less" else "${uniqueTags.size - 3} more",
+                    color = color.copy(alpha = 0.82f),
+                    style = MaterialTheme.typography.labelSmall,
+                )
+                Icon(
+                    Icons.Default.ExpandMore,
+                    contentDescription = null,
+                    tint = color.copy(alpha = 0.82f),
+                    modifier = Modifier.size(16.dp).rotate(if (expanded) 180f else 0f),
+                )
+            }
         }
     }
 }
