@@ -14,7 +14,7 @@
         android:icon="@mipmap/app_icon"
         android:roundIcon="@mipmap/app_icon"
         android:name=".SilveranApplication"
-        android:label="Storyteller"
+        android:label="Storyteller v3"
         tools:ignore="MissingIntentFilterForMediaSearch">
         <!-- Voice play-from-search is TBD. -->
         <meta-data
