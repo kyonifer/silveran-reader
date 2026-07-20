@@ -1,9 +1,11 @@
 package com.kyonifer.silveran.ui
 
 import android.graphics.Bitmap
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -45,13 +47,14 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -223,6 +226,7 @@ internal fun BookDetailsScreen(
                 cancelDownload = cancelDownload,
                 palette = backgroundPalette,
                 open = open,
+                requestDelete = { pendingDeletion = it },
             )
             if (book.tags.isNotEmpty()) {
                 TagRow(book.tags, onHero, Modifier.padding(top = 3.dp))
@@ -648,6 +652,7 @@ private fun MediaActions(
     cancelDownload: (String) -> Unit,
     palette: CoverBackgroundPalette,
     open: (String) -> Unit,
+    requestDelete: (MediaActionOption) -> Unit,
 ) {
     val options = book.media.mapNotNull { media ->
         val title = when (media.category) {
@@ -681,6 +686,7 @@ private fun MediaActions(
                 download = { download(option.category) },
                 cancelDownload = { cancelDownload(option.category) },
                 play = { open(option.category) },
+                delete = if (option.removable) ({ requestDelete(option) }) else null,
             )
         }
     }
@@ -696,6 +702,7 @@ private data class MediaActionOption(
     val progress: Double?,
 )
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun MediaAction(
     option: MediaActionOption,
@@ -705,6 +712,7 @@ private fun MediaAction(
     download: () -> Unit,
     cancelDownload: () -> Unit,
     play: () -> Unit,
+    delete: (() -> Unit)?,
 ) {
     val cancellable = option.downloadState == "queued" ||
         option.downloadState == "downloading"
@@ -712,19 +720,24 @@ private fun MediaAction(
         option.downloadState == "completed"
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         when {
-            option.downloaded -> FilledTonalButton(
-                onClick = play,
-                modifier = Modifier.fillMaxWidth().heightIn(min = 36.dp),
+            option.downloaded -> Surface(
                 shape = RoundedCornerShape(9.dp),
-                colors = ButtonDefaults.filledTonalButtonColors(
-                    containerColor = palette.accentBackground,
-                    contentColor = palette.brightAccent,
-                ),
-                contentPadding = MediaActionContentPadding,
+                color = palette.accentBackground,
+                contentColor = palette.brightAccent,
+                modifier = Modifier.minimumInteractiveComponentSize().fillMaxWidth(),
             ) {
-                Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(4.dp))
-                MediaActionLabel(option.title)
+                Row(
+                    Modifier
+                        .combinedClickable(onClick = play, onLongClick = delete)
+                        .heightIn(min = 40.dp)
+                        .padding(MediaActionContentPadding),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(4.dp))
+                    MediaActionLabel(option.title)
+                }
             }
             cancellable || finishing || pending -> {
                 OutlinedButton(
@@ -736,6 +749,7 @@ private fun MediaAction(
                     colors = ButtonDefaults.outlinedButtonColors(
                         containerColor = palette.accentBackground,
                         contentColor = palette.brightAccent,
+                        disabledContainerColor = palette.accentBackground,
                         disabledContentColor = palette.mutedAccent,
                     ),
                     contentPadding = MediaActionContentPadding,

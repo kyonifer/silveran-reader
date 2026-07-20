@@ -75,24 +75,24 @@ class SilveranBridgeClient(context: Context) {
     }
 
     suspend fun observeLibraryChanges(onChange: () -> Unit) {
-        AndroidBridgeCallbacks.observe(onChange)
+        AndroidBridgeCallbacks.observe(this, onChange)
         SilveranAndroidBridge.startLibraryObservation().awaitResult()
     }
 
     fun observeAudiobookChanges(onChange: (AudiobookPlayerState?) -> Unit) {
-        AndroidBridgeCallbacks.observeAudiobook { payload ->
+        AndroidBridgeCallbacks.observeAudiobook(this) { payload ->
             onChange(payload.takeIf(String::isNotBlank)?.let(::parseAudiobookState))
         }
     }
 
     fun observeDownloadChanges(onChange: (List<DownloadUpdate>) -> Unit) {
-        AndroidBridgeCallbacks.observeDownloads { payload ->
+        AndroidBridgeCallbacks.observeDownloads(this) { payload ->
             onChange(parseDownloadUpdates(payload))
         }
     }
 
     fun observeSourceStatusChanges(onChange: (SourceStatusUpdate) -> Unit) {
-        AndroidBridgeCallbacks.observeSourceStatus { payload ->
+        AndroidBridgeCallbacks.observeSourceStatus(this) { payload ->
             val status = JSONObject(payload)
             if (status.optString("status") == "connected") missingCovers.clear()
             onChange(
@@ -105,7 +105,7 @@ class SilveranBridgeClient(context: Context) {
     }
 
     fun close() {
-        AndroidBridgeCallbacks.clearObserver()
+        AndroidBridgeCallbacks.clearObserver(this)
     }
 
     suspend fun storytellerSettings(): StorytellerSettings {

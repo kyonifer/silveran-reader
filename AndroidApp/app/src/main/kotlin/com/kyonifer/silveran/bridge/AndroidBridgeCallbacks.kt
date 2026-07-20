@@ -9,59 +9,63 @@ import kotlinx.coroutines.CompletableDeferred
 
 @Keep
 object AndroidBridgeCallbacks {
+    private class Registration<T>(val owner: Any, val callback: T)
+
     @Volatile
-    private var listener: (() -> Unit)? = null
+    private var listener: Registration<() -> Unit>? = null
     @Volatile
-    private var audiobookListener: ((String) -> Unit)? = null
+    private var audiobookListener: Registration<(String) -> Unit>? = null
     @Volatile
-    private var downloadListener: ((String) -> Unit)? = null
+    private var downloadListener: Registration<(String) -> Unit>? = null
     @Volatile
-    private var sourceStatusListener: ((String) -> Unit)? = null
+    private var sourceStatusListener: Registration<(String) -> Unit>? = null
     private val payloadRequests = ConcurrentHashMap<String, CompletableDeferred<String>>()
     private val coverRequests = ConcurrentHashMap<String, CompletableDeferred<CoverPayload>>()
 
-    fun observe(onChange: () -> Unit) {
-        listener = onChange
+    fun observe(owner: Any, onChange: () -> Unit) {
+        listener = Registration(owner, onChange)
     }
 
-    fun clearObserver() {
-        listener = null
-        audiobookListener = null
-        downloadListener = null
-        sourceStatusListener = null
+    // A stale owner (an already-replaced ViewModel's client) must not tear down
+    // registrations that a newer owner has since installed.
+    fun clearObserver(owner: Any) {
+        if (listener?.owner === owner) listener = null
+        if (audiobookListener?.owner === owner) audiobookListener = null
+        if (downloadListener?.owner === owner) downloadListener = null
+        if (sourceStatusListener?.owner === owner) sourceStatusListener = null
     }
 
-    fun observeAudiobook(onChange: (String) -> Unit) {
-        audiobookListener = onChange
+    fun observeAudiobook(owner: Any, onChange: (String) -> Unit) {
+        audiobookListener = Registration(owner, onChange)
     }
 
-    fun observeDownloads(onChange: (String) -> Unit) {
-        downloadListener = onChange
+    fun observeDownloads(owner: Any, onChange: (String) -> Unit) {
+        downloadListener = Registration(owner, onChange)
     }
 
-    fun observeSourceStatus(onChange: (String) -> Unit) {
-        sourceStatusListener = onChange
+    fun observeSourceStatus(owner: Any, onChange: (String) -> Unit) {
+        sourceStatusListener = Registration(owner, onChange)
     }
 
     @JvmStatic
     fun librarySnapshotDidChange() {
-        listener?.invoke()
+        listener?.callback?.invoke()
     }
 
     @JvmStatic
     fun audiobookStateDidChange(payload: String) {
         AndroidNowPlayingBridge.updateAudiobookState(payload)
-        audiobookListener?.invoke(payload)
+        audiobookListener?.callback?.invoke(payload)
     }
 
     @JvmStatic
     fun downloadStateDidChange(payload: String) {
-        downloadListener?.invoke(payload)
+        downloadListener?.callback?.invoke(payload)
     }
 
     @JvmStatic
     fun sourceStatusDidChange(payload: String) {
-        sourceStatusListener?.invoke(payload)
+        sourceStatusListener?.callback?.invoke(payload)
     }
 
     suspend fun requestPayload(start: (String) -> CompletableFuture<Void>): String {
