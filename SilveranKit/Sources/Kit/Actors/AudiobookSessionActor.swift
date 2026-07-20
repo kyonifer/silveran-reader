@@ -105,7 +105,7 @@ public actor AudiobookSessionActor {
     private var observers: [UUID: @Sendable (AudiobookSessionState?) -> Void] = [:]
 
     private var lastObservedIsPlaying = false
-    private var lastSyncedProgress = 0.0
+    private var lastSyncedLocator: BookLocator?
     private var nextPeriodicSync = Date.distantFuture
     private var syncInterval: TimeInterval = 60
     private var pendingServerPosition: IncomingServerPosition?
@@ -175,10 +175,9 @@ public actor AudiobookSessionActor {
             } else {
                 try await AudiobookActor.shared.preparePlayer()
             }
-            lastSyncedProgress = progression
-
             if let state = await AudiobookActor.shared.getCurrentState() {
                 lastObservedIsPlaying = state.isPlaying
+                lastSyncedLocator = makeLocator(state: state, metadata: loadedMetadata)
             }
 
             await installPlaybackObserver(for: sessionID)
@@ -322,7 +321,9 @@ public actor AudiobookSessionActor {
         guard let progression = position.locator.locations?.totalProgression else { return }
         let clampedProgression = min(max(progression, 0), 1)
         await AudiobookActor.shared.seekToTotalProgressFraction(clampedProgression)
-        lastSyncedProgress = clampedProgression
+        if let metadata, let state = await AudiobookActor.shared.getCurrentState() {
+            lastSyncedLocator = makeLocator(state: state, metadata: metadata)
+        }
         pendingServerPosition = nil
     }
 
@@ -511,9 +512,6 @@ public actor AudiobookSessionActor {
             let state = await AudiobookActor.shared.getCurrentState()
         else { return }
 
-        let progress = state.duration > 0 ? state.currentTime / state.duration : 0
-        guard abs(progress - lastSyncedProgress) > 0.001 else { return }
-
         let chapter = state.currentChapterIndex.flatMap { metadata.chapters[safe: $0] }
         let chapterProgress =
             chapter.map {
@@ -521,7 +519,37 @@ public actor AudiobookSessionActor {
                     ? min(max((state.currentTime - $0.startTime) / $0.duration, 0), 1)
                     : 0
             } ?? 0
-        let locator = BookLocator(
+        let locator = makeLocator(state: state, metadata: metadata)
+        guard locator != lastSyncedLocator else { return }
+        let result = await ProgressSyncActor.shared.syncProgress(
+            bookID: book.id,
+            locator: locator,
+            timestamp: floor(Date().timeIntervalSince1970 * 1_000),
+            reason: reason,
+            sourceIdentifier: "Audiobook Player",
+            locationDescription: "\(chapter?.title ?? "Audiobook"), \(Int(chapterProgress * 100))%",
+        )
+        switch result {
+            case .success, .queued:
+                lastSyncedLocator = locator
+            case .failed:
+                break
+        }
+    }
+
+    private func makeLocator(
+        state: AudiobookPlaybackState,
+        metadata: AudiobookMetadata,
+    ) -> BookLocator {
+        let progress = state.duration > 0 ? state.currentTime / state.duration : 0
+        let chapter = state.currentChapterIndex.flatMap { metadata.chapters[safe: $0] }
+        let chapterProgress =
+            chapter.map {
+                $0.duration > 0
+                    ? min(max((state.currentTime - $0.startTime) / $0.duration, 0), 1)
+                    : 0
+            } ?? 0
+        return BookLocator(
             href: state.currentTrackHref ?? "audiobook",
             type: state.currentTrackType ?? "audio/mp4",
             title: chapter?.title,
@@ -536,20 +564,6 @@ public actor AudiobookSessionActor {
             ),
             text: nil,
         )
-        let result = await ProgressSyncActor.shared.syncProgress(
-            bookID: book.id,
-            locator: locator,
-            timestamp: floor(Date().timeIntervalSince1970 * 1_000),
-            reason: reason,
-            sourceIdentifier: "Audiobook Player",
-            locationDescription: "\(chapter?.title ?? "Audiobook"), \(Int(chapterProgress * 100))%",
-        )
-        switch result {
-            case .success, .queued:
-                lastSyncedProgress = progress
-            case .failed:
-                break
-        }
     }
 
     private func initialProgression(for book: BookMetadata) async -> Double? {
@@ -633,7 +647,7 @@ public actor AudiobookSessionActor {
         playbackObserverID = nil
         incomingPositionObserverID = nil
         lastObservedIsPlaying = false
-        lastSyncedProgress = 0
+        lastSyncedLocator = nil
         nextPeriodicSync = .distantFuture
         syncInterval = 60
         pendingServerPosition = nil
