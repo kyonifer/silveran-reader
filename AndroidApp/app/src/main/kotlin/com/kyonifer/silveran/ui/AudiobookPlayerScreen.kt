@@ -72,7 +72,9 @@ import com.kyonifer.silveran.model.AudiobookChapter
 import com.kyonifer.silveran.model.AudiobookPlayerState
 import com.kyonifer.silveran.model.Book
 import java.util.Locale
+import kotlin.math.abs
 import kotlin.math.roundToInt
+import kotlinx.coroutines.delay
 
 @Composable
 internal fun AudiobookPlayerScreen(
@@ -98,6 +100,7 @@ internal fun AudiobookPlayerScreen(
 ) {
     var artwork by remember(player) { mutableStateOf(player.mediaMetadata.artworkData) }
     var scrubbedProgress by remember(book.id) { mutableStateOf<Double?>(null) }
+    var pendingSeekProgress by remember(book.id) { mutableStateOf<Double?>(null) }
     var showSpeed by remember { mutableStateOf(false) }
     var showVolume by remember { mutableStateOf(false) }
     var showChapters by remember { mutableStateOf(false) }
@@ -112,6 +115,21 @@ internal fun AudiobookPlayerScreen(
         player.addListener(listener)
         artwork = player.mediaMetadata.artworkData
         onDispose { player.removeListener(listener) }
+    }
+
+    LaunchedEffect(state, pendingSeekProgress) {
+        val pending = pendingSeekProgress ?: return@LaunchedEffect
+        if (state == null ||
+            abs(state.chapterElapsed - pending * state.chapterDuration) < 3.0
+        ) {
+            pendingSeekProgress = null
+        }
+    }
+    LaunchedEffect(pendingSeekProgress) {
+        if (pendingSeekProgress != null) {
+            delay(1_500)
+            pendingSeekProgress = null
+        }
     }
 
     state?.pendingServerPosition?.let { position ->
@@ -216,10 +234,13 @@ internal fun AudiobookPlayerScreen(
             } else {
                 PlayerControls(
                     state = state,
-                    scrubbedProgress = scrubbedProgress,
+                    scrubbedProgress = scrubbedProgress ?: pendingSeekProgress,
                     updateScrubbedProgress = { scrubbedProgress = it },
                     finishScrubbing = {
-                        scrubbedProgress?.let(seekChapter)
+                        scrubbedProgress?.let {
+                            pendingSeekProgress = it
+                            seekChapter(it)
+                        }
                         scrubbedProgress = null
                     },
                     togglePlayPause = togglePlayPause,

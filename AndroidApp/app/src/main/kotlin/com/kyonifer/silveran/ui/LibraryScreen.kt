@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items as listItems
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
@@ -214,7 +215,16 @@ private fun HomeSections(
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 20.dp),
                     )
                 } else {
+                    val rowState = rememberLazyListState()
+                    // A keyed LazyRow anchors scroll to the first visible item, so a
+                    // book moving to the front lands out of view past the left edge.
+                    LaunchedEffect(section.books.firstOrNull()?.id) {
+                        if (rowState.firstVisibleItemIndex <= 2) {
+                            rowState.scrollToItem(0)
+                        }
+                    }
                     LazyRow(
+                        state = rowState,
                         contentPadding = PaddingValues(horizontal = 12.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
