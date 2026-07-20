@@ -88,6 +88,7 @@ internal fun BookDetailsScreen(
     navigateBack: () -> Unit,
     openSettings: () -> Unit,
     cover: suspend (Book, Boolean, Int, Int) -> Bitmap?,
+    cachedCover: (Book, Boolean) -> Bitmap?,
     download: (String) -> Unit,
     cancelDownload: (String) -> Unit,
     deleteDownload: (String) -> Unit,
@@ -186,6 +187,7 @@ internal fun BookDetailsScreen(
                 height = 960,
                 revision = coverRevision,
                 load = cover,
+                cached = cachedCover,
                 modifier = Modifier.width(152.dp).aspectRatio(0.675f),
                 onPrimaryBitmap = {
                     backgroundPalette = coverBackgroundPalette(it, darkTheme)
@@ -244,6 +246,7 @@ internal fun BookDetailsScreen(
                     backgroundPalette,
                     coverRevision,
                     cover,
+                    cachedCover,
                     selectRelated,
                 )
             }
@@ -254,6 +257,7 @@ internal fun BookDetailsScreen(
                     backgroundPalette,
                     coverRevision,
                     cover,
+                    cachedCover,
                     selectRelated,
                 )
             }
@@ -548,6 +552,7 @@ private fun RelatedShelf(
     palette: CoverBackgroundPalette,
     coverRevision: Int,
     cover: suspend (Book, Boolean, Int, Int) -> Bitmap?,
+    cachedCover: (Book, Boolean) -> Bitmap?,
     select: (Book) -> Unit,
 ) {
     DetailCard(title, Icons.AutoMirrored.Filled.MenuBook, palette = palette) {
@@ -560,6 +565,7 @@ private fun RelatedShelf(
                         height = 360,
                         revision = coverRevision,
                         load = cover,
+                        cached = cachedCover,
                         modifier = Modifier.fillMaxWidth().aspectRatio(COVER_PANEL_ASPECT_RATIO),
                     )
                     Text(related.title, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 5.dp))

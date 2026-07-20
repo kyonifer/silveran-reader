@@ -25,6 +25,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import com.kyonifer.silveran.model.Book
+import com.kyonifer.silveran.model.BookDetails
 import com.kyonifer.silveran.model.BookID
 
 private enum class Screen {
@@ -47,7 +49,13 @@ fun SilveranApp(viewModel: SilveranViewModel) {
     var settingsSavePending by remember { mutableStateOf(false) }
     val screen = Screen.valueOf(screenName)
     val libraryTab = LibraryTab.valueOf(libraryTabName)
-    val selectedBook = state.books.firstOrNull { it.id == selectedBookID }
+    val selectedBookSummary = state.books.firstOrNull { it.id == selectedBookID }
+    val selectedBook = selectedBookSummary?.let { book ->
+        state.bookDetails[book.id]
+            ?.takeIf { it.version == book.coverVersion }
+            ?.let(book::withDetails)
+            ?: book
+    }
     val canNavigateBack = screen == Screen.Details || screen == Screen.Reader ||
         (screen == Screen.Settings && state.settings.configured)
     val navigateBack = {
@@ -87,14 +95,8 @@ fun SilveranApp(viewModel: SilveranViewModel) {
             selectedBook?.let(viewModel::openAudiobook)
         }
     }
-    LaunchedEffect(screen, readerMode, state.audiobook?.bookID) {
-        if (screen == Screen.Reader && readerMode == "audio") {
-            state.audiobook?.bookID
-                ?.takeIf { activeID ->
-                    activeID != selectedBookID && state.books.any { it.id == activeID }
-                }
-                ?.let { activeID -> selectedBookID = activeID }
-        }
+    LaunchedEffect(screen, selectedBookSummary?.id, selectedBookSummary?.coverVersion) {
+        if (screen == Screen.Details) selectedBookSummary?.let(viewModel::loadBookDetails)
     }
     LaunchedEffect(state.successfulSettingsSaves) {
         if (settingsSavePending) {
@@ -115,7 +117,7 @@ fun SilveranApp(viewModel: SilveranViewModel) {
                         selectedTab = libraryTab,
                         searchText = librarySearchText,
                         refreshing = state.refreshingLibrary,
-                        refreshEnabled = !state.refreshingLibrary && state.settings.configured,
+                        refreshEnabled = !state.libraryBusy && state.settings.configured,
                         selectTab = { libraryTabName = it.name },
                         updateSearch = { librarySearchText = it },
                         refresh = viewModel::refreshLibrary,
@@ -161,6 +163,7 @@ fun SilveranApp(viewModel: SilveranViewModel) {
                     },
                     coverRevision = state.coverRevision,
                     cover = viewModel::cover,
+                    cachedCover = viewModel::cachedCover,
                 )
                 Screen.Settings -> SettingsScreen(
                     settings = state.settings,
@@ -182,6 +185,7 @@ fun SilveranApp(viewModel: SilveranViewModel) {
                         navigateBack = navigateBack,
                         openSettings = { screenName = Screen.Settings.name },
                         cover = viewModel::cover,
+                        cachedCover = viewModel::cachedCover,
                         download = { category -> viewModel.download(book, category) },
                         cancelDownload = { category ->
                             viewModel.cancelDownload(book, category)
@@ -231,3 +235,10 @@ fun SilveranApp(viewModel: SilveranViewModel) {
         }
     }
 }
+
+private fun Book.withDetails(details: BookDetails) = copy(
+    description = details.description,
+    publicationDateDisplay = details.publicationDateDisplay,
+    createdAtDisplay = details.createdAtDisplay,
+    updatedAtDisplay = details.updatedAtDisplay,
+)

@@ -88,6 +88,36 @@ public func librarySnapshotJSON(requestID: String, refresh: Bool) async throws {
     }
 }
 
+public func bookDetailsJSON(
+    requestID: String,
+    bookID: String,
+    sourceID: String,
+) async throws {
+    try await deliverAndroidBridgePayload(requestID: requestID) {
+        try requireAndroidBootstrap()
+        let id = BookID(sourceID: sourceID, uuid: bookID)
+        let snapshot = await BookServiceActor.shared.librarySnapshot(policy: .cachedOnly)
+        guard let book = snapshot.books.first(where: { $0.id == id }) else {
+            throw AndroidBridgeError.bookNotFound(bookID)
+        }
+        return try encodeJSON(
+            AndroidBookDetails(
+                version: book.updatedAt ?? "",
+                description: book.description.map { BookDescriptionText.plain(from: $0) },
+                publicationDateDisplay: SilveranDate.full(book.publicationDateValue),
+                createdAtDisplay: SilveranDate.dateTimeWithZone(book.createdAtValue),
+                updatedAtDisplay: SilveranDate.dateTimeWithZone(
+                    SilveranDate.parse(
+                        book.updatedAt,
+                        field: .updatedAt,
+                        context: book.title
+                    )
+                )
+            )
+        )
+    }
+}
+
 private func makeLibrarySnapshotJSON(refresh: Bool) async throws -> String {
     try requireAndroidBootstrap()
 
@@ -149,14 +179,7 @@ private func makeLibrarySnapshotJSON(refresh: Bool) async throws -> String {
                 } ?? [],
                 tags: book.tagNames,
                 collections: book.collections?.map(\.name) ?? [],
-                description: book.description.map { BookDescriptionText.plain(from: $0) },
                 language: book.language,
-                publicationDateDisplay: SilveranDate.full(book.publicationDateValue),
-                createdAt: book.createdAt,
-                createdAtDisplay: SilveranDate.dateTimeWithZone(book.createdAtValue),
-                updatedAtDisplay: SilveranDate.dateTimeWithZone(
-                    SilveranDate.parse(book.updatedAt, field: .updatedAt, context: book.title)
-                ),
                 rating: book.rating,
                 progress: book.status?.name.lowercased() == "read"
                     ? 1
@@ -190,7 +213,7 @@ private func makeLibrarySnapshotJSON(refresh: Bool) async throws -> String {
     )
 }
 
-public func coverResponseJSON(
+public func coverResponseBytes(
     requestID: String,
     bookID: String,
     sourceID: String,
@@ -199,80 +222,59 @@ public func coverResponseJSON(
     width: Int32,
     height: Int32,
     refresh: Bool,
-) async throws {
-    let bookID = BookID(sourceID: sourceID, uuid: bookID)
-    try await deliverAndroidBridgePayload(requestID: requestID) {
-        try await makeCoverResponseJSON(
-            bookID: bookID,
-            version: version,
+) async {
+    do {
+        try requireAndroidBootstrap()
+        guard width > 0, height > 0 else {
+            throw AndroidBridgeError.invalidCoverSize
+        }
+
+        let response = await BookServiceActor.shared.loadCover(
+            for: BookID(sourceID: sourceID, uuid: bookID),
             audio: audio,
-            width: width,
-            height: height,
-            refresh: refresh,
+            width: Int(width),
+            height: Int(height),
+            version: version.isEmpty ? nil : version,
+            allowNetwork: true,
+            policy: refresh ? .forceRefresh : .cachedThenFetch,
         )
+
+        switch response {
+            case .cached(let data):
+                deliverAndroidCoverPayload(
+                    requestID: requestID,
+                    data: data,
+                    shouldPersist: false
+                )
+            case .fetched(let cover):
+                deliverAndroidCoverPayload(
+                    requestID: requestID,
+                    data: cover.data,
+                    shouldPersist: true
+                )
+            case .missing, .skippedOffline:
+                deliverAndroidCoverPayload(
+                    requestID: requestID,
+                    data: Data(),
+                    shouldPersist: false
+                )
+        }
+    } catch {
+        deliverAndroidCoverError(requestID: requestID, error: error)
     }
 }
 
-private func makeCoverResponseJSON(
-    bookID: BookID,
-    version: String,
-    audio: Bool,
-    width: Int32,
-    height: Int32,
-    refresh: Bool,
-) async throws -> String {
-    try requireAndroidBootstrap()
-    guard width > 0, height > 0 else {
-        throw AndroidBridgeError.invalidCoverSize
-    }
-
-    let response = await BookServiceActor.shared.loadCover(
-        for: bookID,
-        audio: audio,
-        width: Int(width),
-        height: Int(height),
-        version: version.isEmpty ? nil : version,
-        allowNetwork: true,
-        policy: refresh ? .forceRefresh : .cachedThenFetch,
-    )
-
-    switch response {
-        case .cached(let data):
-            return try encodeJSON(
-                AndroidCoverResponse(
-                    dataBase64: data.base64EncodedString(),
-                    shouldPersist: false,
-                )
-            )
-        case .fetched(let cover):
-            return try encodeJSON(
-                AndroidCoverResponse(
-                    dataBase64: cover.data.base64EncodedString(),
-                    shouldPersist: true,
-                )
-            )
-        case .missing, .skippedOffline:
-            return try encodeJSON(
-                AndroidCoverResponse(dataBase64: "", shouldPersist: false)
-            )
-    }
-}
-
-public func persistCoverBase64(
+public func persistCoverBytes(
     bookID: String,
     sourceID: String,
     audio: Bool,
-    dataBase64: String,
+    data: [UInt8],
 ) async throws {
     try requireAndroidBootstrap()
-    let bookID = BookID(sourceID: sourceID, uuid: bookID)
-    guard let data = Data(base64Encoded: dataBase64) else {
-        throw AndroidBridgeError.invalidCoverData
-    }
     await BookServiceActor.shared.persistCachedCover(
-        bookID: bookID,
+        bookID: BookID(sourceID: sourceID, uuid: bookID),
         audio: audio,
-        data: data,
+        data: Data(data),
     )
 }
 
@@ -399,8 +401,23 @@ public func startLibraryObservation() async throws {
     _ = await BookServiceActor.shared.addLibraryCacheObserver {
         notifyAndroidLibrarySnapshotDidChange()
     }
-    _ = await DownloadManager.shared.addObserver { _ in
-        notifyAndroidLibrarySnapshotDidChange()
+    _ = await ProgressSyncActor.shared.addObserver {
+        Task {
+            notifyAndroidLibrarySnapshotDidChange()
+        }
+    }
+    _ = await DownloadManager.shared.addObserver { records in
+        let updates = records.map { record in
+            AndroidDownloadUpdate(
+                bookID: record.bookID.uuid,
+                sourceID: record.bookID.sourceID,
+                category: record.category.rawValue,
+                state: downloadStateName(record.state) ?? "queued",
+                progress: downloadProgress(record)
+            )
+        }
+        guard let payload = try? encodeJSON(updates) else { return }
+        notifyAndroidDownloadStateDidChange(payload)
     }
     await installAndroidConnectionObserver()
 }
@@ -416,18 +433,21 @@ private struct AndroidBook: Encodable {
     let series: [AndroidSeries]
     let tags: [String]
     let collections: [String]
-    let description: String?
     let language: String?
-    let publicationDateDisplay: String
-    let createdAt: String?
-    let createdAtDisplay: String
-    let updatedAtDisplay: String
     let rating: Double?
     let progress: Double
     let pageCount: Int?
     let durationDisplay: String
     let coverVersion: String
     let media: [AndroidMedia]
+}
+
+private struct AndroidBookDetails: Encodable {
+    let version: String
+    let description: String?
+    let publicationDateDisplay: String
+    let createdAtDisplay: String
+    let updatedAtDisplay: String
 }
 
 private struct AndroidSeries: Encodable {
@@ -446,6 +466,19 @@ private struct AndroidMedia: Encodable {
     let removable: Bool
     let downloadState: String?
     let downloadProgress: Double?
+}
+
+private struct AndroidDownloadUpdate: Encodable {
+    let bookID: String
+    let sourceID: String
+    let category: String
+    let state: String
+    let progress: Double?
+}
+
+private struct AndroidSourceStatus: Encodable {
+    let status: String
+    let message: String?
 }
 
 private struct AndroidMediaInfo {
@@ -504,11 +537,6 @@ private struct AndroidCoverPalette: Encodable {
     let cardBorder: UInt32
 }
 
-private struct AndroidCoverResponse: Encodable {
-    let dataBase64: String
-    let shouldPersist: Bool
-}
-
 private struct AndroidHomeSection: Encodable {
     let kind: String
     let title: String
@@ -548,7 +576,15 @@ private let androidObserverStore = AndroidObserverStore()
 
 private func installAndroidConnectionObserver() async {
     await BookServiceActor.shared.request_notify {
-        notifyAndroidLibrarySnapshotDidChange()
+        Task {
+            let fields = connectionFields(await BookServiceActor.shared.connectionStatus)
+            guard
+                let payload = try? encodeJSON(
+                    AndroidSourceStatus(status: fields.status, message: fields.message)
+                )
+            else { return }
+            notifyAndroidSourceStatusDidChange(payload)
+        }
     }
 }
 
@@ -675,7 +711,6 @@ enum AndroidBridgeError: Error, LocalizedError, CustomStringConvertible {
     case missingPassword
     case couldNotSaveStorytellerSettings
     case invalidCoverSize
-    case invalidCoverData
     case invalidCoverPixels
     case invalidMediaCategory(String)
     case bookNotFound(String)
@@ -703,8 +738,6 @@ enum AndroidBridgeError: Error, LocalizedError, CustomStringConvertible {
                 return "Could not save the Storyteller server settings."
             case .invalidCoverSize:
                 return "Cover width and height must be greater than zero."
-            case .invalidCoverData:
-                return "Cover data must be base64 encoded."
             case .invalidCoverPixels:
                 return "Cover pixels must be base64-encoded RGBA bytes."
             case .invalidMediaCategory(let category):

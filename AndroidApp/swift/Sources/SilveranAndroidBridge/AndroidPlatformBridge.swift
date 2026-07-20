@@ -30,6 +30,20 @@ extension JavaClass<JavaAndroidBridgeCallbacks> {
 
     @JavaStaticMethod
     func audiobookStateDidChange(_ payload: String)
+
+    @JavaStaticMethod
+    func downloadStateDidChange(_ payload: String)
+
+    @JavaStaticMethod
+    func sourceStatusDidChange(_ payload: String)
+
+    @JavaStaticMethod
+    func coverRequestDidComplete(
+        _ requestID: String,
+        _ data: [UInt8],
+        _ shouldPersist: Bool,
+        _ error: String
+    )
 }
 
 enum AndroidPlatformBootstrap {
@@ -103,6 +117,36 @@ func notifyAndroidLibrarySnapshotDidChange() {
 
 func notifyAndroidAudiobookStateDidChange(_ payload: String) {
     try? JavaClass<JavaAndroidBridgeCallbacks>().audiobookStateDidChange(payload)
+}
+
+func notifyAndroidDownloadStateDidChange(_ payload: String) {
+    try? JavaClass<JavaAndroidBridgeCallbacks>().downloadStateDidChange(payload)
+}
+
+func notifyAndroidSourceStatusDidChange(_ payload: String) {
+    try? JavaClass<JavaAndroidBridgeCallbacks>().sourceStatusDidChange(payload)
+}
+
+func deliverAndroidCoverPayload(
+    requestID: String,
+    data: Data,
+    shouldPersist: Bool,
+) {
+    try? JavaClass<JavaAndroidBridgeCallbacks>().coverRequestDidComplete(
+        requestID,
+        [UInt8](data),
+        shouldPersist,
+        ""
+    )
+}
+
+func deliverAndroidCoverError(requestID: String, error: Error) {
+    try? JavaClass<JavaAndroidBridgeCallbacks>().coverRequestDidComplete(
+        requestID,
+        [],
+        false,
+        String(describing: error)
+    )
 }
 
 func deliverAndroidBridgePayload(

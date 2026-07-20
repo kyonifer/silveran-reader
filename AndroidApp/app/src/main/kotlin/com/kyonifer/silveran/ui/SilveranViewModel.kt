@@ -8,12 +8,14 @@ import androidx.lifecycle.viewModelScope
 import com.kyonifer.silveran.bridge.SilveranBridgeClient
 import com.kyonifer.silveran.model.AudiobookPlayerState
 import com.kyonifer.silveran.model.Book
+import com.kyonifer.silveran.model.BookDetails
 import com.kyonifer.silveran.model.BookID
 import com.kyonifer.silveran.model.DownloadOperation
+import com.kyonifer.silveran.model.DownloadUpdate
 import com.kyonifer.silveran.model.HomeSection
+import com.kyonifer.silveran.model.SourceStatusUpdate
 import com.kyonifer.silveran.model.StorytellerSettings
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -25,11 +27,13 @@ data class SilveranUiState(
     val settingsLoaded: Boolean = false,
     val settings: StorytellerSettings = StorytellerSettings(),
     val books: List<Book> = emptyList(),
+    val bookDetails: Map<BookID, BookDetails> = emptyMap(),
     val homeSections: List<HomeSection> = emptyList(),
     val libraryLoaded: Boolean = false,
     val coverRevision: Int = 0,
     val sourceStatus: String = "notConfigured",
     val sourceMessage: String? = null,
+    val libraryBusy: Boolean = false,
     val refreshingLibrary: Boolean = false,
     val savingSettings: Boolean = false,
     val pendingDownloads: Set<DownloadOperation> = emptySet(),
@@ -50,14 +54,21 @@ class SilveranViewModel private constructor(
     private val libraryChanges = Channel<Unit>(Channel.CONFLATED)
     private var currentAudiobookID: BookID? = null
     private var audiobookRequest = 0L
+    private var downloadUpdates: Map<DownloadOperation, DownloadUpdate> = emptyMap()
+    private val bookDetailsLoading = mutableSetOf<BookID>()
 
     init {
         client.observeAudiobookChanges { audiobook ->
             mutableState.value = mutableState.value.copy(audiobook = audiobook)
         }
+        client.observeDownloadChanges { updates ->
+            viewModelScope.launch { applyDownloadUpdates(updates) }
+        }
+        client.observeSourceStatusChanges { update ->
+            viewModelScope.launch { applySourceStatus(update) }
+        }
         viewModelScope.launch {
             for (change in libraryChanges) {
-                delay(250)
                 runCatching { refreshLibraryNow(refresh = false) }.onFailure(::showError)
             }
         }
@@ -77,7 +88,7 @@ class SilveranViewModel private constructor(
                 mutableState.value = mutableState.value.copy(settingsLoaded = true)
                 showError(error)
             }
-            runCatching { refreshLibraryNow(refresh = true) }.onFailure { error ->
+            runCatching { refreshLibraryNow(refresh = false) }.onFailure { error ->
                 mutableState.value = mutableState.value.copy(libraryLoaded = true)
                 showError(error)
             }
@@ -87,6 +98,26 @@ class SilveranViewModel private constructor(
     fun refreshLibrary() {
         viewModelScope.launch {
             runCatching { refreshLibraryNow(refresh = true) }.onFailure(::showError)
+        }
+    }
+
+    fun loadBookDetails(book: Book) {
+        val details = mutableState.value.bookDetails[book.id]
+        if (details?.version == book.coverVersion || !bookDetailsLoading.add(book.id)) return
+
+        viewModelScope.launch {
+            runCatching { client.bookDetails(book) }
+                .onSuccess { loaded ->
+                    val current = mutableState.value
+                    val currentBook = current.books.firstOrNull { it.id == book.id }
+                    if (currentBook?.coverVersion == loaded.version) {
+                        mutableState.value = current.copy(
+                            bookDetails = current.bookDetails + (book.id to loaded),
+                        )
+                    }
+                }
+                .onFailure(::showError)
+            bookDetailsLoading.remove(book.id)
         }
     }
 
@@ -119,7 +150,6 @@ class SilveranViewModel private constructor(
         viewModelScope.launch {
             runCatching {
                 client.download(book, category)
-                refreshLibraryNow(refresh = false)
             }.onFailure(::showError)
             mutableState.value = mutableState.value.copy(
                 pendingDownloads = mutableState.value.pendingDownloads - operation,
@@ -135,7 +165,6 @@ class SilveranViewModel private constructor(
                 mutableState.value = mutableState.value.copy(
                     pendingDownloads = mutableState.value.pendingDownloads - operation,
                 )
-                refreshLibraryNow(refresh = false)
             }.onFailure(::showError)
         }
     }
@@ -217,6 +246,8 @@ class SilveranViewModel private constructor(
     suspend fun cover(book: Book, audio: Boolean, width: Int, height: Int): Bitmap? =
         client.cover(book, audio, width, height)
 
+    fun cachedCover(book: Book, audio: Boolean): Bitmap? = client.cachedCover(book, audio)
+
     fun clearError() {
         mutableState.value = mutableState.value.copy(error = null)
     }
@@ -241,16 +272,29 @@ class SilveranViewModel private constructor(
 
     private suspend fun refreshLibraryNow(refresh: Boolean) {
         refreshMutex.withLock {
-            mutableState.value = mutableState.value.copy(refreshingLibrary = true)
+            mutableState.value = mutableState.value.copy(
+                libraryBusy = true,
+                refreshingLibrary = refresh,
+            )
             try {
                 val snapshot = client.librarySnapshot(refresh)
                 val current = mutableState.value
                 val settings = current.settings
                 val refreshCovers = refresh || !current.libraryLoaded ||
                     current.sourceStatus != snapshot.sourceStatus ||
-                    current.books.map(Book::id) != snapshot.books.map(Book::id)
-                mutableState.value = current.copy(
+                    current.books.map(Book::coverIdentity) !=
+                    snapshot.books.map(Book::coverIdentity)
+                val books = updateDownloadStates(
                     books = snapshot.books,
+                    updates = downloadUpdates,
+                    operations = downloadUpdates.keys,
+                )
+                val versions = books.associate { it.id to it.coverVersion }
+                mutableState.value = current.copy(
+                    books = books,
+                    bookDetails = current.bookDetails.filter { (id, details) ->
+                        versions[id] == details.version
+                    },
                     homeSections = snapshot.homeSections,
                     libraryLoaded = true,
                     coverRevision = current.coverRevision + if (refreshCovers) 1 else 0,
@@ -266,14 +310,67 @@ class SilveranViewModel private constructor(
                     },
                 )
             } finally {
-                mutableState.value = mutableState.value.copy(refreshingLibrary = false)
+                mutableState.value = mutableState.value.copy(
+                    libraryBusy = false,
+                    refreshingLibrary = false,
+                )
             }
+        }
+    }
+
+    private fun applyDownloadUpdates(updates: List<DownloadUpdate>) {
+        val next = updates.associateBy(DownloadUpdate::operation)
+        val affected = downloadUpdates.keys + next.keys
+        downloadUpdates = next
+        val current = mutableState.value
+        mutableState.value = current.copy(
+            books = updateDownloadStates(current.books, next, affected),
+        )
+    }
+
+    private fun applySourceStatus(update: SourceStatusUpdate) {
+        val current = mutableState.value
+        mutableState.value = current.copy(
+            sourceStatus = update.status,
+            sourceMessage = update.message,
+            settings = if (current.settings.configured) {
+                current.settings.copy(
+                    connectionStatus = update.status,
+                    connectionMessage = update.message,
+                )
+            } else {
+                current.settings
+            },
+        )
+    }
+
+    private fun updateDownloadStates(
+        books: List<Book>,
+        updates: Map<DownloadOperation, DownloadUpdate>,
+        operations: Set<DownloadOperation>,
+    ): List<Book> {
+        if (operations.isEmpty()) return books
+        val affectedBookIDs = operations.mapTo(mutableSetOf(), DownloadOperation::bookID)
+        return books.map { book ->
+            if (book.id !in affectedBookIDs) return@map book
+            book.copy(
+                media = book.media.map { media ->
+                    val operation = DownloadOperation(book.id, media.category)
+                    if (operation !in operations) return@map media
+                    val update = updates[operation]
+                    media.copy(
+                        downloadState = update?.state,
+                        downloadProgress = update?.progress,
+                    )
+                },
+            )
         }
     }
 
     private fun showError(error: Throwable) {
         mutableState.value = mutableState.value.copy(
             error = error.message ?: error.toString(),
+            libraryBusy = false,
             refreshingLibrary = false,
         )
     }
@@ -299,3 +396,19 @@ class SilveranViewModel private constructor(
             }
     }
 }
+
+private data class CoverIdentity(
+    val id: BookID,
+    val version: String,
+    val hasEbook: Boolean,
+    val hasAudio: Boolean,
+    val hasReadaloud: Boolean,
+)
+
+private fun Book.coverIdentity() = CoverIdentity(
+    id = id,
+    version = coverVersion,
+    hasEbook = hasEbook,
+    hasAudio = hasAudio,
+    hasReadaloud = hasReadaloud,
+)

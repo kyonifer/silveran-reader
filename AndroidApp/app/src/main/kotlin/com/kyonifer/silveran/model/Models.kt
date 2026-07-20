@@ -36,6 +36,14 @@ data class Book(
     val hasDownloadedMedia: Boolean get() = media.any(BookMedia::downloaded)
 }
 
+data class BookDetails(
+    val version: String,
+    val description: String?,
+    val publicationDateDisplay: String,
+    val createdAtDisplay: String,
+    val updatedAtDisplay: String,
+)
+
 data class BookSeries(
     val name: String,
     val position: Double?,
@@ -70,6 +78,17 @@ data class HomeSection(
 data class DownloadOperation(
     val bookID: BookID,
     val category: String,
+)
+
+data class DownloadUpdate(
+    val operation: DownloadOperation,
+    val state: String,
+    val progress: Double?,
+)
+
+data class SourceStatusUpdate(
+    val status: String,
+    val message: String?,
 )
 
 data class StorytellerSettings(

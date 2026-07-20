@@ -101,6 +101,7 @@ internal fun LibraryScreen(
     select: (Book) -> Unit,
     coverRevision: Int,
     cover: suspend (Book, Boolean, Int, Int) -> Bitmap?,
+    cachedCover: (Book, Boolean) -> Bitmap?,
 ) {
     val query = searchText.trim()
     val visibleBooks = remember(state.books, tab, query) {
@@ -173,12 +174,14 @@ internal fun LibraryScreen(
                 select = select,
                 coverRevision = coverRevision,
                 cover = cover,
+                cachedCover = cachedCover,
             )
             else -> BookGrid(
                 books = visibleBooks,
                 select = select,
                 coverRevision = coverRevision,
                 cover = cover,
+                cachedCover = cachedCover,
             )
         }
     }
@@ -190,6 +193,7 @@ private fun HomeSections(
     select: (Book) -> Unit,
     coverRevision: Int,
     cover: suspend (Book, Boolean, Int, Int) -> Bitmap?,
+    cachedCover: (Book, Boolean) -> Bitmap?,
 ) {
     LazyColumn(
         contentPadding = PaddingValues(vertical = 16.dp),
@@ -220,6 +224,7 @@ private fun HomeSections(
                                 select = select,
                                 coverRevision = coverRevision,
                                 cover = cover,
+                                cachedCover = cachedCover,
                                 modifier = Modifier.width(112.dp),
                             )
                         }
@@ -236,6 +241,7 @@ private fun BookGrid(
     select: (Book) -> Unit,
     coverRevision: Int,
     cover: suspend (Book, Boolean, Int, Int) -> Bitmap?,
+    cachedCover: (Book, Boolean) -> Bitmap?,
 ) {
     LazyVerticalGrid(
         columns = GridCells.Fixed(3),
@@ -249,6 +255,7 @@ private fun BookGrid(
                 select = select,
                 coverRevision = coverRevision,
                 cover = cover,
+                cachedCover = cachedCover,
                 modifier = Modifier.fillMaxWidth(),
             )
         }
@@ -261,6 +268,7 @@ private fun BookTile(
     select: (Book) -> Unit,
     coverRevision: Int,
     cover: suspend (Book, Boolean, Int, Int) -> Bitmap?,
+    cachedCover: (Book, Boolean) -> Bitmap?,
     modifier: Modifier,
 ) {
     Column(modifier.clickable { select(book) }) {
@@ -270,6 +278,7 @@ private fun BookTile(
             height = 480,
             revision = coverRevision,
             load = cover,
+            cached = cachedCover,
             modifier = Modifier.fillMaxWidth().aspectRatio(COVER_PANEL_ASPECT_RATIO),
         )
         Text(
@@ -387,6 +396,7 @@ internal fun BookCover(
     height: Int,
     revision: Int,
     load: suspend (Book, Boolean, Int, Int) -> Bitmap?,
+    cached: (Book, Boolean) -> Bitmap?,
     modifier: Modifier,
     onPrimaryBitmap: (Bitmap?) -> Unit = {},
     artworkScale: Float = COVER_SCALE,
@@ -405,6 +415,7 @@ internal fun BookCover(
         height = height,
         revision = revision,
         load = load,
+        cached = cached,
     )
     val audioState = rememberCoverLoadState(
         book = book,
@@ -414,6 +425,7 @@ internal fun BookCover(
         height = width,
         revision = revision,
         load = load,
+        cached = cached,
     )
     val ebookBitmap = (ebookState as? CoverLoadState.Loaded)?.bitmap
     val audioBitmap = (audioState as? CoverLoadState.Loaded)?.bitmap
@@ -427,8 +439,9 @@ internal fun BookCover(
             Color.Transparent
         }
     }
-    LaunchedEffect(ebookBitmap, audioBitmap) {
-        onPrimaryBitmap(ebookBitmap ?: audioBitmap)
+    val primaryBitmap = ebookBitmap ?: audioBitmap
+    LaunchedEffect(primaryBitmap) {
+        primaryBitmap?.let(onPrimaryBitmap)
     }
     val coverShape = RoundedCornerShape(6.dp)
 
@@ -530,9 +543,15 @@ private fun rememberCoverLoadState(
     height: Int,
     revision: Int,
     load: suspend (Book, Boolean, Int, Int) -> Bitmap?,
+    cached: (Book, Boolean) -> Bitmap?,
 ): CoverLoadState {
+    val initialState = if (!available) {
+        CoverLoadState.Missing
+    } else {
+        cached(book, audio)?.let(CoverLoadState::Loaded) ?: CoverLoadState.Loading
+    }
     val state by produceState<CoverLoadState>(
-        if (available) CoverLoadState.Loading else CoverLoadState.Missing,
+        initialState,
         book.id,
         book.coverVersion,
         audio,
@@ -543,6 +562,10 @@ private fun rememberCoverLoadState(
     ) {
         if (!available) {
             value = CoverLoadState.Missing
+            return@produceState
+        }
+        cached(book, audio)?.let {
+            value = CoverLoadState.Loaded(it)
             return@produceState
         }
         value = CoverLoadState.Loading

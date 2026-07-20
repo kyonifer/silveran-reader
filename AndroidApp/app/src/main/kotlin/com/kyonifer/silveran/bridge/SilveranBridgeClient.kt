@@ -3,16 +3,19 @@ package com.kyonifer.silveran.bridge
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.util.Base64
 import android.util.LruCache
 import com.kyonifer.silveran.model.AudiobookChapter
 import com.kyonifer.silveran.model.AudiobookPlayerState
 import com.kyonifer.silveran.model.Book
+import com.kyonifer.silveran.model.BookDetails
 import com.kyonifer.silveran.model.BookID
 import com.kyonifer.silveran.model.BookMedia
+import com.kyonifer.silveran.model.DownloadOperation
+import com.kyonifer.silveran.model.DownloadUpdate
 import com.kyonifer.silveran.model.HomeSection
 import com.kyonifer.silveran.model.LibrarySnapshot
 import com.kyonifer.silveran.model.ServerPosition
+import com.kyonifer.silveran.model.SourceStatusUpdate
 import com.kyonifer.silveran.model.StorytellerSettings
 import com.kyonifer.silveran.platform.AndroidAudioPlayerBridge
 import com.kyonifer.silveran.platform.AndroidSecureStore
@@ -26,6 +29,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
+import org.json.JSONArray
 import org.json.JSONObject
 
 class SilveranBridgeClient(context: Context) {
@@ -57,6 +61,24 @@ class SilveranBridgeClient(context: Context) {
         }
     }
 
+    fun observeDownloadChanges(onChange: (List<DownloadUpdate>) -> Unit) {
+        AndroidBridgeCallbacks.observeDownloads { payload ->
+            onChange(parseDownloadUpdates(payload))
+        }
+    }
+
+    fun observeSourceStatusChanges(onChange: (SourceStatusUpdate) -> Unit) {
+        AndroidBridgeCallbacks.observeSourceStatus { payload ->
+            val status = JSONObject(payload)
+            onChange(
+                SourceStatusUpdate(
+                    status = status.optString("status", "disconnected"),
+                    message = status.optionalString("message"),
+                )
+            )
+        }
+    }
+
     fun close() {
         AndroidBridgeCallbacks.clearObserver()
     }
@@ -74,6 +96,26 @@ class SilveranBridgeClient(context: Context) {
             SilveranAndroidBridge.librarySnapshotJSON(requestID, refresh)
         }
         return withContext(Dispatchers.Default) { parseLibrary(json) }
+    }
+
+    suspend fun bookDetails(book: Book): BookDetails {
+        val json = AndroidBridgeCallbacks.requestPayload { requestID ->
+            SilveranAndroidBridge.bookDetailsJSON(
+                requestID,
+                book.id.uuid,
+                book.id.sourceID,
+            )
+        }
+        return withContext(Dispatchers.Default) {
+            val details = JSONObject(json)
+            BookDetails(
+                version = details.optString("version"),
+                description = details.optionalString("description"),
+                publicationDateDisplay = details.optString("publicationDateDisplay"),
+                createdAtDisplay = details.optString("createdAtDisplay"),
+                updatedAtDisplay = details.optString("updatedAtDisplay"),
+            )
+        }
     }
 
     suspend fun download(book: Book, category: String) {
@@ -128,7 +170,7 @@ class SilveranBridgeClient(context: Context) {
     }
 
     suspend fun cover(book: Book, audio: Boolean, width: Int, height: Int): Bitmap? {
-        val cacheKey = CoverCacheKey(book.id, book.coverVersion, audio, width, height)
+        val cacheKey = CoverCacheKey(book.id, book.coverVersion, audio)
         val missingKey = MissingCoverKey(book.id, book.coverVersion, audio)
         coverBitmaps.get(cacheKey)?.let { return it }
         if (missingKey in missingCovers) return null
@@ -143,6 +185,9 @@ class SilveranBridgeClient(context: Context) {
         }
     }
 
+    fun cachedCover(book: Book, audio: Boolean): Bitmap? =
+        coverBitmaps.get(CoverCacheKey(book.id, book.coverVersion, audio))
+
     private suspend fun loadCover(
         book: Book,
         audio: Boolean,
@@ -154,20 +199,20 @@ class SilveranBridgeClient(context: Context) {
         if (missingKey in missingCovers) return null
 
         var response = loadCoverResponse(book, audio, width, height, refresh = false)
-        var decoded = decodeCover(response.dataBase64, width, height)
-        if (decoded == null && response.dataBase64.isNotBlank()) {
+        var decoded = decodeCover(response.data, width, height)
+        if (decoded == null && response.data.isNotEmpty()) {
             response = loadCoverResponse(book, audio, width, height, refresh = true)
-            decoded = decodeCover(response.dataBase64, width, height)
+            decoded = decodeCover(response.data, width, height)
         }
         if (decoded == null) {
             missingCovers.add(missingKey)
         } else {
             if (response.shouldPersist) {
-                SilveranAndroidBridge.persistCoverBase64(
+                SilveranAndroidBridge.persistCoverBytes(
                     book.id.uuid,
                     book.id.sourceID,
                     audio,
-                    response.dataBase64,
+                    response.data,
                 ).awaitResult()
             }
             coverBitmaps.put(cacheKey, decoded)
@@ -181,9 +226,9 @@ class SilveranBridgeClient(context: Context) {
         width: Int,
         height: Int,
         refresh: Boolean,
-    ): CoverResponse {
-        val json = AndroidBridgeCallbacks.requestPayload { requestID ->
-            SilveranAndroidBridge.coverResponseJSON(
+    ): CoverPayload =
+        AndroidBridgeCallbacks.requestCover { requestID ->
+            SilveranAndroidBridge.coverResponseBytes(
                 requestID,
                 book.id.uuid,
                 book.id.sourceID,
@@ -194,20 +239,10 @@ class SilveranBridgeClient(context: Context) {
                 refresh,
             )
         }
-        return withContext(Dispatchers.Default) {
-            val response = JSONObject(json)
-            CoverResponse(
-                dataBase64 = response.getString("dataBase64"),
-                shouldPersist = response.getBoolean("shouldPersist"),
-            )
-        }
-    }
 
-    private suspend fun decodeCover(encoded: String, width: Int, height: Int): Bitmap? =
+    private suspend fun decodeCover(bytes: ByteArray, width: Int, height: Int): Bitmap? =
         withContext(Dispatchers.Default) {
-            val bytes = encoded.takeIf(String::isNotBlank)
-                ?.let { Base64.decode(it, Base64.DEFAULT) }
-                ?: return@withContext null
+            if (bytes.isEmpty()) return@withContext null
             decodeSampledBitmap(bytes, width, height)
         }
 
@@ -372,23 +407,34 @@ internal fun parseAudiobookState(json: String): AudiobookPlayerState {
     )
 }
 
+private fun parseDownloadUpdates(json: String): List<DownloadUpdate> {
+    val updates = JSONArray(json)
+    return List(updates.length()) { index ->
+        val update = updates.getJSONObject(index)
+        DownloadUpdate(
+            operation = DownloadOperation(
+                bookID = BookID(
+                    sourceID = update.getString("sourceID"),
+                    uuid = update.getString("bookID"),
+                ),
+                category = update.getString("category"),
+            ),
+            state = update.getString("state"),
+            progress = update.optionalDouble("progress"),
+        )
+    }
+}
+
 private data class CoverCacheKey(
     val bookID: BookID,
     val coverVersion: String,
     val audio: Boolean,
-    val width: Int,
-    val height: Int,
 )
 
 private data class MissingCoverKey(
     val bookID: BookID,
     val coverVersion: String,
     val audio: Boolean,
-)
-
-private data class CoverResponse(
-    val dataBase64: String,
-    val shouldPersist: Boolean,
 )
 
 private fun JSONObject.optionalString(name: String): String? =

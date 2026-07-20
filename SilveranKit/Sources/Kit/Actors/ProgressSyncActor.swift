@@ -63,7 +63,7 @@ public actor ProgressSyncActor {
 
     private var syncHistory: [BookID: [SyncHistoryEntry]] = [:]
 
-    private var observers: [UUID: @Sendable @MainActor () -> Void] = [:]
+    private var observers: [UUID: @Sendable () -> Void] = [:]
     private var syncNotificationCallback: (@Sendable @MainActor (Int, [BookID]) -> Void)?
 
     private var incomingPositionObservers:
@@ -547,7 +547,7 @@ public actor ProgressSyncActor {
     // MARK: - Observers
 
     @discardableResult
-    public func addObserver(_ callback: @escaping @Sendable @MainActor () -> Void) -> UUID {
+    public func addObserver(_ callback: @escaping @Sendable () -> Void) -> UUID {
         let id = UUID()
         observers[id] = callback
         debugLog("[PSA] addObserver: id=\(id), total observers=\(observers.count)")
@@ -780,7 +780,7 @@ public actor ProgressSyncActor {
     private func notifyObservers() async {
         debugLogVerbose("[PSA] notifyObservers: notifying \(observers.count) observers")
         for (_, callback) in observers {
-            await callback()
+            callback()
         }
     }
 
