@@ -22,17 +22,22 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.automirrored.filled.VolumeDown
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
@@ -42,8 +47,10 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedIconButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -57,12 +64,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -537,25 +548,127 @@ private fun PlaybackSpeedDialog(
     dismiss: () -> Unit,
     select: (Double) -> Unit,
 ) {
-    var rate by remember(currentRate) { mutableStateOf(currentRate.coerceIn(0.5, 3.0)) }
+    var rate by remember(currentRate) { mutableStateOf(snapPlaybackRate(currentRate)) }
+    var editing by remember { mutableStateOf(false) }
+    var editText by remember { mutableStateOf("") }
+
+    fun commitEdit() {
+        editText.toDoubleOrNull()?.let { rate = snapPlaybackRate(it) }
+        editing = false
+    }
+
     AlertDialog(
         onDismissRequest = dismiss,
         title = { Text("Playback Speed") },
         text = {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(formatPlaybackRate(rate), style = MaterialTheme.typography.headlineSmall)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    OutlinedIconButton(
+                        onClick = {
+                            editing = false
+                            rate = snapPlaybackRate(rate - 0.1)
+                        },
+                        modifier = Modifier.size(40.dp),
+                        shape = CircleShape,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Remove,
+                            contentDescription = "Decrease speed",
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                    if (editing) {
+                        val focusRequester = remember { FocusRequester() }
+                        OutlinedTextField(
+                            value = editText,
+                            onValueChange = { editText = it },
+                            modifier = Modifier.widthIn(max = 96.dp).focusRequester(focusRequester),
+                            textStyle = MaterialTheme.typography.headlineSmall.copy(
+                                textAlign = TextAlign.Center,
+                            ),
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Decimal,
+                                imeAction = ImeAction.Done,
+                            ),
+                            keyboardActions = KeyboardActions(onDone = { commitEdit() }),
+                        )
+                        LaunchedEffect(Unit) { focusRequester.requestFocus() }
+                    } else {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(2.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                formatPlaybackRate(rate),
+                                style = MaterialTheme.typography.headlineSmall,
+                            )
+                            IconButton(
+                                onClick = {
+                                    editText = String.format(Locale.US, "%.2f", rate)
+                                        .trimEnd('0')
+                                        .trimEnd('.')
+                                    editing = true
+                                },
+                                modifier = Modifier.size(32.dp),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Edit,
+                                    contentDescription = "Enter custom speed",
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
+                        }
+                    }
+                    OutlinedIconButton(
+                        onClick = {
+                            editing = false
+                            rate = snapPlaybackRate(rate + 0.1)
+                        },
+                        modifier = Modifier.size(40.dp),
+                        shape = CircleShape,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Add,
+                            contentDescription = "Increase speed",
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                }
                 Slider(
                     value = rate.toFloat(),
-                    onValueChange = { rate = (it * 20).roundToInt() / 20.0 },
+                    onValueChange = {
+                        editing = false
+                        rate = (it * 20).roundToInt() / 20.0
+                    },
                     valueRange = 0.5f..3f,
                     steps = 49,
                 )
             }
         },
-        confirmButton = { TextButton(onClick = { select(rate) }) { Text("Done") } },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    val chosen = if (editing) {
+                        editText.toDoubleOrNull()?.let(::snapPlaybackRate) ?: rate
+                    } else {
+                        rate
+                    }
+                    select(chosen)
+                },
+            ) { Text("Done") }
+        },
         dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } },
     )
 }
+
+// Android Auto's speed badges are generated on the 0.05 grid from 0.5x to 3x;
+// staying on that grid keeps the badge numerically exact.
+private fun snapPlaybackRate(rate: Double): Double =
+    ((rate * 20).roundToInt() / 20.0).coerceIn(0.5, 3.0)
 
 @Composable
 private fun VolumeDialog(
