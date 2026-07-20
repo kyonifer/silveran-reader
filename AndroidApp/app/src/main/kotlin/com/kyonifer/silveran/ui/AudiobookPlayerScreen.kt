@@ -34,7 +34,6 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Bookmark
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Remove
@@ -47,7 +46,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedIconButton
 import androidx.compose.material3.OutlinedTextField
@@ -580,47 +578,31 @@ private fun PlaybackSpeedDialog(
                             modifier = Modifier.size(20.dp),
                         )
                     }
-                    if (editing) {
-                        val focusRequester = remember { FocusRequester() }
-                        OutlinedTextField(
-                            value = editText,
-                            onValueChange = { editText = it },
-                            modifier = Modifier.widthIn(max = 96.dp).focusRequester(focusRequester),
-                            textStyle = MaterialTheme.typography.headlineSmall.copy(
-                                textAlign = TextAlign.Center,
-                            ),
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(
-                                keyboardType = KeyboardType.Decimal,
-                                imeAction = ImeAction.Done,
-                            ),
-                            keyboardActions = KeyboardActions(onDone = { commitEdit() }),
-                        )
-                        LaunchedEffect(Unit) { focusRequester.requestFocus() }
-                    } else {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(2.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
+                    Box(Modifier.widthIn(min = 96.dp), contentAlignment = Alignment.Center) {
+                        if (editing) {
+                            val focusRequester = remember { FocusRequester() }
+                            OutlinedTextField(
+                                value = editText,
+                                onValueChange = { editText = it },
+                                modifier = Modifier
+                                    .widthIn(max = 96.dp)
+                                    .focusRequester(focusRequester),
+                                textStyle = MaterialTheme.typography.headlineSmall.copy(
+                                    textAlign = TextAlign.Center,
+                                ),
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.Decimal,
+                                    imeAction = ImeAction.Done,
+                                ),
+                                keyboardActions = KeyboardActions(onDone = { commitEdit() }),
+                            )
+                            LaunchedEffect(Unit) { focusRequester.requestFocus() }
+                        } else {
                             Text(
                                 formatPlaybackRate(rate),
                                 style = MaterialTheme.typography.headlineSmall,
                             )
-                            IconButton(
-                                onClick = {
-                                    editText = String.format(Locale.US, "%.2f", rate)
-                                        .trimEnd('0')
-                                        .trimEnd('.')
-                                    editing = true
-                                },
-                                modifier = Modifier.size(32.dp),
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.Edit,
-                                    contentDescription = "Enter custom speed",
-                                    modifier = Modifier.size(18.dp),
-                                )
-                            }
                         }
                     }
                     OutlinedIconButton(
@@ -646,6 +628,7 @@ private fun PlaybackSpeedDialog(
                     },
                     valueRange = 0.5f..3f,
                     steps = 49,
+                    modifier = Modifier.padding(top = 12.dp),
                 )
             }
         },
@@ -661,7 +644,21 @@ private fun PlaybackSpeedDialog(
                 },
             ) { Text("Done") }
         },
-        dismissButton = { TextButton(onClick = dismiss) { Text("Cancel") } },
+        dismissButton = {
+            Row {
+                if (!editing) {
+                    TextButton(
+                        onClick = {
+                            editText = String.format(Locale.US, "%.2f", rate)
+                                .trimEnd('0')
+                                .trimEnd('.')
+                            editing = true
+                        },
+                    ) { Text("Custom") }
+                }
+                TextButton(onClick = dismiss) { Text("Cancel") }
+            }
+        },
     )
 }
 
