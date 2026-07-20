@@ -1,4 +1,9 @@
 import com.android.ide.common.vectordrawable.Svg2Vector
+import java.awt.Color
+import java.awt.Font
+import java.awt.RenderingHints
+import java.awt.image.BufferedImage
+import javax.imageio.ImageIO
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
@@ -117,6 +122,108 @@ abstract class GenerateSharedResources : DefaultTask() {
     }
 }
 
+/**
+ * Renders the playback speed badges Android Auto shows on the cycle-speed
+ * button, one per rate the app can reach: the phone slider's 0.05 grid plus
+ * the 5x cycle step. Generated at build time so no rasterized assets live in
+ * the repository.
+ */
+abstract class GeneratePlaybackSpeedIcons : DefaultTask() {
+    @get:OutputDirectory
+    abstract val outputDirectory: DirectoryProperty
+
+    @TaskAction
+    fun generate() {
+        System.setProperty("java.awt.headless", "true")
+        val densities = linkedMapOf(
+            "mdpi" to 48,
+            "hdpi" to 72,
+            "xhdpi" to 96,
+            "xxhdpi" to 144,
+            "xxxhdpi" to 192,
+        )
+        val rateHundredths = (50..300 step 5) + 500
+
+        for (hundredths in rateHundredths) {
+            for ((qualifier, sizePixels) in densities) {
+                val file = outputDirectory
+                    .file("drawable-$qualifier/${resourceName(hundredths)}.png")
+                    .get()
+                    .asFile
+                file.parentFile.mkdirs()
+                ImageIO.write(renderBadge(label(hundredths), sizePixels), "png", file)
+            }
+        }
+
+        val valuesFile = outputDirectory.file("values/speed_icons.xml").get().asFile
+        valuesFile.parentFile.mkdirs()
+        valuesFile.writeText(
+            buildString {
+                appendLine("""<?xml version="1.0" encoding="utf-8"?>""")
+                appendLine("<resources>")
+                appendLine("""    <integer-array name="speed_icon_hundredths">""")
+                rateHundredths.forEach { appendLine("        <item>$it</item>") }
+                appendLine("    </integer-array>")
+                appendLine("""    <array name="speed_icon_drawables">""")
+                rateHundredths.forEach {
+                    appendLine("        <item>@drawable/${resourceName(it)}</item>")
+                }
+                appendLine("    </array>")
+                appendLine("</resources>")
+            },
+        )
+    }
+
+    private fun label(hundredths: Int): String {
+        val whole = hundredths / 100
+        val fraction = hundredths % 100
+        return when {
+            fraction == 0 -> "${whole}x"
+            fraction % 10 == 0 -> "$whole.${fraction / 10}x"
+            else -> "$whole.${"%02d".format(fraction)}x"
+        }
+    }
+
+    private fun resourceName(hundredths: Int): String =
+        "speed_" + label(hundredths).removeSuffix("x").replace('.', '_')
+
+    private fun renderBadge(text: String, sizePixels: Int): BufferedImage {
+        val image = BufferedImage(sizePixels, sizePixels, BufferedImage.TYPE_INT_ARGB)
+        val graphics = image.createGraphics()
+        graphics.setRenderingHint(
+            RenderingHints.KEY_ANTIALIASING,
+            RenderingHints.VALUE_ANTIALIAS_ON,
+        )
+        graphics.setRenderingHint(
+            RenderingHints.KEY_TEXT_ANTIALIASING,
+            RenderingHints.VALUE_TEXT_ANTIALIAS_ON,
+        )
+        graphics.setRenderingHint(
+            RenderingHints.KEY_FRACTIONALMETRICS,
+            RenderingHints.VALUE_FRACTIONALMETRICS_ON,
+        )
+        val context = graphics.fontRenderContext
+        val baseFont = Font(Font.SANS_SERIF, Font.BOLD, 100)
+        val probe = baseFont.createGlyphVector(context, text).visualBounds
+        val scale = minOf(
+            sizePixels * 0.94 / probe.width,
+            sizePixels * 0.42 / probe.height,
+        )
+        val glyphs = baseFont
+            .deriveFont((100 * scale).toFloat())
+            .createGlyphVector(context, text)
+        val bounds = glyphs.visualBounds
+        graphics.color = Color.WHITE
+        graphics.drawGlyphVector(
+            glyphs,
+            ((sizePixels - bounds.width) / 2 - bounds.x).toFloat(),
+            ((sizePixels - bounds.height) / 2 - bounds.y).toFloat(),
+        )
+        graphics.dispose()
+        return image
+    }
+}
+
 val generateSharedResources = tasks.register<GenerateSharedResources>("generateSharedResources") {
     appIcon.set(
         rootProject.layout.projectDirectory.file(
@@ -140,11 +247,18 @@ val generateSharedResources = tasks.register<GenerateSharedResources>("generateS
     )
 }
 
+val generatePlaybackSpeedIcons =
+    tasks.register<GeneratePlaybackSpeedIcons>("generatePlaybackSpeedIcons")
+
 androidComponents {
     onVariants { variant ->
         variant.sources.res?.addGeneratedSourceDirectory(
             generateSharedResources,
             GenerateSharedResources::outputDirectory,
+        )
+        variant.sources.res?.addGeneratedSourceDirectory(
+            generatePlaybackSpeedIcons,
+            GeneratePlaybackSpeedIcons::outputDirectory,
         )
     }
 }

@@ -9,6 +9,7 @@ import android.os.Looper
 import androidx.annotation.OptIn
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.CommandButton
@@ -25,6 +26,7 @@ import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.SettableFuture
 import com.kyonifer.silveran.MainActivity
+import com.kyonifer.silveran.R
 import com.kyonifer.silveran.bridge.SilveranBridgeClient
 import com.kyonifer.silveran.model.Book
 import com.kyonifer.silveran.model.BookID
@@ -38,6 +40,8 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlin.coroutines.resume
+import kotlin.math.abs
+import kotlin.math.roundToInt
 
 /** Hosts Silveran's now-playing Player and downloaded audiobook catalog for Android Auto. */
 @OptIn(UnstableApi::class)
@@ -49,6 +53,14 @@ class SilveranMediaLibraryService : MediaLibraryService() {
     private var bootstrapped = false
     private lateinit var client: SilveranBridgeClient
 
+    private val playbackRateListener = object : Player.Listener {
+        override fun onPlaybackParametersChanged(playbackParameters: PlaybackParameters) {
+            session?.setMediaButtonPreferences(
+                mediaButtonPreferences(playbackParameters.speed.toDouble()),
+            )
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         client = SilveranBridgeClient(applicationContext)
@@ -58,21 +70,22 @@ class SilveranMediaLibraryService : MediaLibraryService() {
             Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-        session = MediaLibrarySession.Builder(
-            this,
-            AndroidNowPlayingBridge.sessionPlayer(),
-            libraryCallback,
-        )
+        val player = AndroidNowPlayingBridge.sessionPlayer()
+        session = MediaLibrarySession.Builder(this, player, libraryCallback)
             .setSessionActivity(sessionActivity)
-            .setMediaButtonPreferences(mediaButtonPreferences)
+            .setMediaButtonPreferences(
+                mediaButtonPreferences(player.playbackParameters.speed.toDouble()),
+            )
             .setPeriodicPositionUpdateEnabled(false)
             .build()
+        player.addListener(playbackRateListener)
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? =
         session
 
     override fun onDestroy() {
+        session?.player?.removeListener(playbackRateListener)
         session?.release()
         session = null
         serviceScope.cancel()
@@ -246,26 +259,48 @@ class SilveranMediaLibraryService : MediaLibraryService() {
         return future
     }
 
+    private val speedIcons: List<Pair<Int, Int>> by lazy {
+        val hundredths = resources.getIntArray(R.array.speed_icon_hundredths)
+        val drawables = resources.obtainTypedArray(R.array.speed_icon_drawables)
+        try {
+            hundredths.mapIndexed { index, value ->
+                value to drawables.getResourceId(index, 0)
+            }
+        } finally {
+            drawables.recycle()
+        }
+    }
+
+    private fun speedIconButton(playbackRate: Double): CommandButton.Builder {
+        val hundredths = (playbackRate * 100).roundToInt()
+        val iconResId = speedIcons
+            .minByOrNull { abs(it.first - hundredths) }
+            ?.second
+            ?.takeIf { it != 0 }
+            ?: return CommandButton.Builder(CommandButton.ICON_PLAYBACK_SPEED)
+        return CommandButton.Builder(CommandButton.ICON_UNDEFINED).setCustomIconResId(iconResId)
+    }
+
+    private fun mediaButtonPreferences(playbackRate: Double): List<CommandButton> = listOf(
+        CommandButton.Builder(CommandButton.ICON_SKIP_BACK_15)
+            .setDisplayName("Back 15 seconds")
+            .setPlayerCommand(Player.COMMAND_SEEK_BACK)
+            .build(),
+        CommandButton.Builder(CommandButton.ICON_SKIP_FORWARD_15)
+            .setDisplayName("Forward 15 seconds")
+            .setPlayerCommand(Player.COMMAND_SEEK_FORWARD)
+            .build(),
+        speedIconButton(playbackRate)
+            .setDisplayName("Playback speed")
+            .setSessionCommand(cyclePlaybackRateCommand)
+            .setSlots(CommandButton.SLOT_OVERFLOW)
+            .build(),
+    )
+
     private companion object {
         const val CYCLE_PLAYBACK_RATE_ACTION =
             "com.kyonifer.silveran.action.CYCLE_PLAYBACK_RATE"
         val cyclePlaybackRateCommand = SessionCommand(CYCLE_PLAYBACK_RATE_ACTION, Bundle.EMPTY)
-
-        val mediaButtonPreferences = listOf(
-            CommandButton.Builder(CommandButton.ICON_SKIP_BACK_15)
-                .setDisplayName("Back 15 seconds")
-                .setPlayerCommand(Player.COMMAND_SEEK_BACK)
-                .build(),
-            CommandButton.Builder(CommandButton.ICON_SKIP_FORWARD_15)
-                .setDisplayName("Forward 15 seconds")
-                .setPlayerCommand(Player.COMMAND_SEEK_FORWARD)
-                .build(),
-            CommandButton.Builder(CommandButton.ICON_PLAYBACK_SPEED)
-                .setDisplayName("Playback speed")
-                .setSessionCommand(cyclePlaybackRateCommand)
-                .setSlots(CommandButton.SLOT_OVERFLOW)
-                .build(),
-        )
     }
 }
 

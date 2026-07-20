@@ -42,7 +42,7 @@ class AndroidNowPlayingSessionPlayerTest {
 
         assertEquals(Player.STATE_READY, player.playbackState)
         assertEquals("The Book", player.currentMediaItem?.mediaMetadata?.title)
-        assertEquals("Chapter 2 · 1.25×", player.currentMediaItem?.mediaMetadata?.artist)
+        assertEquals("Chapter 2", player.currentMediaItem?.mediaMetadata?.artist)
         assertEquals("The Author", player.currentMediaItem?.mediaMetadata?.albumTitle)
         assertEquals(120_000L, player.duration)
         assertEquals(12_500L, player.currentPosition)
@@ -74,7 +74,7 @@ class AndroidNowPlayingSessionPlayerTest {
         )
 
         player.update(snapshot().copy(playbackRate = 1.5))
-        assertEquals("Chapter 2 · 1.5×", player.currentMediaItem?.mediaMetadata?.artist)
+        assertEquals(1.5f, player.playbackParameters.speed)
         assertEquals(120_000L, player.duration)
     }
 
@@ -109,7 +109,7 @@ class AndroidNowPlayingSessionPlayerTest {
         assertNull(player.getMediaItemAt(2).mediaMetadata.artworkData)
         assertTrue(player.mediaMetadata.artworkData.contentEquals(byteArrayOf(1, 2, 3)))
         assertEquals("The Book", player.mediaMetadata.title)
-        assertEquals("Chapter 2 · 1.25×", player.mediaMetadata.artist)
+        assertEquals("Chapter 2", player.mediaMetadata.artist)
         assertTrue(player.isCommandAvailable(Player.COMMAND_SEEK_TO_MEDIA_ITEM))
 
         player.seekToDefaultPosition(2)
