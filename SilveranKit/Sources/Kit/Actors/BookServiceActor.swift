@@ -18,6 +18,8 @@ public actor BookServiceActor {
     private var libraryObservers: [UUID: @Sendable () -> Void] = [:]
     private var localMediaObserverID: UUID?
     private var networkAvailable: Bool?
+    private var periodicLibraryRefreshTask: Task<Void, Never>?
+    private var periodicRefreshUsesProgressSyncInterval = true
 
     public init() {
         self.sourceRecords = []
@@ -493,6 +495,54 @@ public actor BookServiceActor {
         await ensureSourceRegistryLoaded()
         _ = await fetchLibraryInformation()
         await notifyLibraryObservers()
+    }
+
+    /// Re-fetches source libraries on the configured sync interval until stopped.
+    /// Fetches update the local cache, so results reach the UI through the
+    /// existing library cache observers. Progress positions ride along with
+    /// metadata fetches, so the default interval is the smaller of the metadata
+    /// and progress sync intervals; pass usingProgressSyncInterval false to
+    /// refresh on the metadata interval alone (the watch trades sync latency
+    /// for battery).
+    public func startPeriodicLibraryRefresh(usingProgressSyncInterval: Bool = true) {
+        guard periodicLibraryRefreshTask == nil else { return }
+        periodicRefreshUsesProgressSyncInterval = usingProgressSyncInterval
+        periodicLibraryRefreshTask = Task {
+            while !Task.isCancelled {
+                let config = await SettingsActor.shared.config
+                if config.sync.isMetadataRefreshDisabled {
+                    try? await Task.sleep(for: .seconds(60))
+                    continue
+                }
+                let interval =
+                    usingProgressSyncInterval
+                    ? min(
+                        config.sync.metadataRefreshIntervalSeconds,
+                        config.sync.progressSyncIntervalSeconds,
+                    )
+                    : config.sync.metadataRefreshIntervalSeconds
+                debugLog("[BookServiceActor] Next periodic library refresh in \(Int(interval))s")
+                try? await Task.sleep(for: .seconds(interval))
+                guard !Task.isCancelled else { return }
+                guard await hasConnectedSource() else { continue }
+                _ = await fetchLibraryInformation()
+            }
+        }
+    }
+
+    public func stopPeriodicLibraryRefresh() {
+        periodicLibraryRefreshTask?.cancel()
+        periodicLibraryRefreshTask = nil
+    }
+
+    /// Applies a changed sync interval without waiting out the sleep already
+    /// in flight.
+    public func restartPeriodicLibraryRefresh() {
+        guard periodicLibraryRefreshTask != nil else { return }
+        stopPeriodicLibraryRefresh()
+        startPeriodicLibraryRefresh(
+            usingProgressSyncInterval: periodicRefreshUsesProgressSyncInterval
+        )
     }
 
     @discardableResult

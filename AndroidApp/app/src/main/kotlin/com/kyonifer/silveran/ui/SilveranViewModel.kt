@@ -248,6 +248,10 @@ class SilveranViewModel private constructor(
 
     fun cachedCover(book: Book, audio: Boolean): Bitmap? = client.cachedCover(book, audio)
 
+    fun appDidBecomeActive() = client.appDidBecomeActive()
+
+    fun appDidEnterBackground() = client.appDidEnterBackground()
+
     fun clearError() {
         mutableState.value = mutableState.value.copy(error = null)
     }

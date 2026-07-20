@@ -46,6 +46,9 @@ class SilveranBridgeClient(context: Context) {
     private val missingCovers = ConcurrentHashMap.newKeySet<MissingCoverKey>()
     private val coverRequests = Semaphore(4)
 
+    @Volatile
+    private var bootstrapped = false
+
     suspend fun bootstrap() {
         AndroidSecureStore.initialize(applicationContext)
         AndroidAudioPlayerBridge.initialize(applicationContext)
@@ -53,8 +56,21 @@ class SilveranBridgeClient(context: Context) {
         SilveranAndroidBridge.bootstrapAndroid(filesDirectory).awaitResult()
         SilveranAndroidBridge.androidNetworkAvailabilityDidChange(networkAvailable).awaitResult()
         AndroidNetworkMonitor.start(applicationContext)
+        bootstrapped = true
+        appDidBecomeActive()
+    }
+
+    fun appDidBecomeActive() {
+        if (!bootstrapped) return
         SilveranAndroidBridge.androidAppDidBecomeActive().whenComplete { _, error ->
             if (error != null) Log.e("SilveranNetwork", "Could not activate source", error)
+        }
+    }
+
+    fun appDidEnterBackground() {
+        if (!bootstrapped) return
+        SilveranAndroidBridge.androidAppDidEnterBackground().whenComplete { _, error ->
+            if (error != null) Log.e("SilveranNetwork", "Could not deactivate source", error)
         }
     }
 

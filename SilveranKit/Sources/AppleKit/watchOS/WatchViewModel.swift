@@ -12,7 +12,6 @@ public final class WatchViewModel {
     var totalChunks: Int = 0
     var savingBook: (bookID: BookID, title: String)?
     var remotePlaybackState: RemotePlaybackState?
-    private var metadataRefreshTask: Task<Void, Never>?
     private var started = false
 
     var transferProgress: Double {
@@ -27,7 +26,11 @@ public final class WatchViewModel {
         started = true
         loadBooks()
         setupObservers()
-        startMetadataRefreshTask()
+        Task {
+            await BookServiceActor.shared.startPeriodicLibraryRefresh(
+                usingProgressSyncInterval: false
+            )
+        }
     }
 
     private func setupObservers() {
@@ -115,34 +118,5 @@ public final class WatchViewModel {
         }
     }
 
-    private func startMetadataRefreshTask() {
-        metadataRefreshTask?.cancel()
-        metadataRefreshTask = Task { [weak self] in
-            while !Task.isCancelled {
-                let config = await SettingsActor.shared.config
-                let refreshInterval = config.sync.metadataRefreshIntervalSeconds
-
-                if config.sync.isMetadataRefreshDisabled {
-                    debugLog("[WatchViewModel] Metadata auto-refresh is disabled")
-                    try? await Task.sleep(for: .seconds(60))
-                    continue
-                }
-
-                debugLog("[WatchViewModel] Next metadata refresh in \(Int(refreshInterval))s")
-                try? await Task.sleep(for: .seconds(refreshInterval))
-
-                guard !Task.isCancelled else { return }
-
-                let status = await BookServiceActor.shared.connectionStatus
-                if status == .connected {
-                    debugLog("[WatchViewModel] Periodic metadata refresh")
-                    let _ = await BookServiceActor.shared.fetchLibraryInformation()
-                    self?.loadBooks()
-                } else {
-                    debugLog("[WatchViewModel] Skipping refresh - not connected to server")
-                }
-            }
-        }
-    }
 }
 #endif

@@ -17,6 +17,13 @@ public func androidNetworkAvailabilityDidChange(_ available: Bool) async throws 
 public func androidAppDidBecomeActive() async throws {
     try requireAndroidBootstrap()
     await BookServiceActor.shared.setActive(true, source: .app)
+    await BookServiceActor.shared.startPeriodicLibraryRefresh()
+}
+
+public func androidAppDidEnterBackground() async throws {
+    try requireAndroidBootstrap()
+    await BookServiceActor.shared.stopPeriodicLibraryRefresh()
+    await BookServiceActor.shared.setActive(false, source: .app)
 }
 
 public func storytellerSettingsJSON(requestID: String) async throws {

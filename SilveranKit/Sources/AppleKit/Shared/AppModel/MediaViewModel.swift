@@ -190,7 +190,6 @@ public final class MediaViewModel {
     // macOS has no standalone details screen, so the grid's info sidebar
     // consumes this; LibraryView navigates to a grid if none is on screen.
     public var pendingInfoBookID: BookID?
-    @ObservationIgnored private var metadataRefreshTask: Task<Void, Never>?
     @ObservationIgnored private var widgetSnapshotPublishTask: Task<Void, Never>?
     @ObservationIgnored private let usesInjectedLibrary: Bool
     @ObservationIgnored private var hasStarted = false
@@ -438,7 +437,7 @@ public final class MediaViewModel {
         }
         await setupSettingsSync()
         await setupPathCacheSync()
-        startMetadataRefreshTask()
+        await BookServiceActor.shared.startPeriodicLibraryRefresh()
         await setupDownloadManagerObserver()
     }
 
@@ -730,10 +729,6 @@ public final class MediaViewModel {
         }
     }
 
-    private func startMetadataRefreshTask() {
-        restartMetadataRefreshTask()
-    }
-
     private func scheduleWidgetSnapshotPublish(reason: String) {
         #if os(iOS) || os(macOS)
         widgetSnapshotPublishTask?.cancel()
@@ -753,51 +748,6 @@ public final class MediaViewModel {
         #endif
     }
 
-    private func restartMetadataRefreshTask() {
-        metadataRefreshTask?.cancel()
-
-        metadataRefreshTask = Task { [weak self] in
-            while true {
-                guard self != nil else { return }
-
-                let config = await SettingsActor.shared.config
-                // Use minimum of metadata and progress sync intervals, since incoming
-                // progress sync data comes from metadata fetches
-                let refreshInterval = min(
-                    config.sync.metadataRefreshIntervalSeconds,
-                    config.sync.progressSyncIntervalSeconds,
-                )
-
-                if config.sync.isMetadataRefreshDisabled {
-                    debugLog("[MediaViewModel] Metadata auto-refresh is disabled")
-                    try? await Task.sleep(for: .seconds(60))
-                    if Task.isCancelled { return }
-                    continue
-                }
-
-                debugLog("[MediaViewModel] Next metadata refresh in \(Int(refreshInterval))s")
-                try? await Task.sleep(for: .seconds(refreshInterval))
-
-                guard !Task.isCancelled else {
-                    return
-                }
-
-                debugLog(
-                    "[MediaViewModel] Periodic metadata refresh (interval: \(Int(refreshInterval))s, min of metadata/progress sync)"
-                )
-
-                let hasConnectedSource = await BookServiceActor.shared.hasConnectedSource()
-                if hasConnectedSource {
-                    let _ = await BookServiceActor.shared.fetchLibraryInformation()
-                } else {
-                    debugLog(
-                        "[MediaViewModel] Skipping source refresh - no connected book source"
-                    )
-                }
-            }
-        }
-    }
-
     private func setupSettingsSync() async {
         await SettingsActor.shared.request_notify { @MainActor [weak self] in
             guard let self else { return }
@@ -805,7 +755,7 @@ public final class MediaViewModel {
                 guard let self else { return }
                 let config = await SettingsActor.shared.config
                 self.cachedConfig = config
-                self.restartMetadataRefreshTask()
+                await BookServiceActor.shared.restartPeriodicLibraryRefresh()
             }
         }
 

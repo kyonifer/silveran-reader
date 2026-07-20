@@ -14,6 +14,8 @@ class MainActivity : ComponentActivity() {
         private var didCleanDownloadTemps = false
     }
 
+    private lateinit var viewModel: SilveranViewModel
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (!didCleanDownloadTemps) {
@@ -22,12 +24,22 @@ class MainActivity : ComponentActivity() {
         }
         enableEdgeToEdge()
 
-        val viewModel = ViewModelProvider(
+        viewModel = ViewModelProvider(
             this,
             SilveranViewModel.factory(applicationContext),
         )[SilveranViewModel::class.java]
 
         setContent { SilveranApp(viewModel) }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        viewModel.appDidBecomeActive()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        viewModel.appDidEnterBackground()
     }
 }
 
