@@ -17,6 +17,7 @@ public actor BookServiceActor {
     private var lastUpdateErrorsBySourceID: [BookSourceID: String] = [:]
     private var libraryObservers: [UUID: @Sendable () -> Void] = [:]
     private var localMediaObserverID: UUID?
+    private var networkAvailable: Bool?
 
     public init() {
         self.sourceRecords = []
@@ -189,6 +190,25 @@ public actor BookServiceActor {
         }
     }
 
+    public func networkAvailabilityDidChange(_ available: Bool) async {
+        await ensureSourceRegistryLoaded()
+        networkAvailable = available
+        for actor in storytellerActors() {
+            await actor.networkAvailabilityDidChange(available)
+        }
+    }
+
+    /// New source actors must start from the platform's last reported network state,
+    /// not the optimistic default, or a source created while offline would attempt
+    /// doomed requests until the next path change.
+    private func makeStorytellerActor(record: BookSourceRecord) async -> StorytellerActor {
+        let actor = StorytellerActor(sourceRecord: record)
+        if let networkAvailable {
+            await actor.networkAvailabilityDidChange(networkAvailable)
+        }
+        return actor
+    }
+
     public func setLogin(
         sourceID: BookSourceID,
         baseURL baseURLString: String,
@@ -248,7 +268,7 @@ public actor BookServiceActor {
                 else {
                     return nil
                 }
-                let actor = StorytellerActor(sourceRecord: record)
+                let actor = await makeStorytellerActor(record: record)
                 sourcesByID[record.id] = actor
 
                 guard
@@ -341,7 +361,7 @@ public actor BookServiceActor {
                     actor = existingActor
                 } else {
                     await closeFolderAccessIfNeeded(sourceID: sourceID)
-                    actor = StorytellerActor(sourceRecord: updatedRecord)
+                    actor = await makeStorytellerActor(record: updatedRecord)
                     sourcesByID[sourceID] = actor
                 }
 
@@ -1383,7 +1403,7 @@ public actor BookServiceActor {
                     if let existing = sourcesByID[record.id] as? StorytellerActor {
                         actor = existing
                     } else {
-                        actor = StorytellerActor(sourceRecord: record)
+                        actor = await makeStorytellerActor(record: record)
                         sourcesByID[record.id] = actor
                     }
 

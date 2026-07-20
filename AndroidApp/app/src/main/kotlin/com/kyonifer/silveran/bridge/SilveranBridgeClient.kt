@@ -3,6 +3,7 @@ package com.kyonifer.silveran.bridge
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.util.Log
 import android.util.LruCache
 import com.kyonifer.silveran.model.AudiobookChapter
 import com.kyonifer.silveran.model.AudiobookPlayerState
@@ -18,6 +19,7 @@ import com.kyonifer.silveran.model.ServerPosition
 import com.kyonifer.silveran.model.SourceStatusUpdate
 import com.kyonifer.silveran.model.StorytellerSettings
 import com.kyonifer.silveran.platform.AndroidAudioPlayerBridge
+import com.kyonifer.silveran.platform.AndroidNetworkMonitor
 import com.kyonifer.silveran.platform.AndroidSecureStore
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
@@ -47,7 +49,13 @@ class SilveranBridgeClient(context: Context) {
     suspend fun bootstrap() {
         AndroidSecureStore.initialize(applicationContext)
         AndroidAudioPlayerBridge.initialize(applicationContext)
+        val networkAvailable = AndroidNetworkMonitor.isNetworkAvailable(applicationContext)
         SilveranAndroidBridge.bootstrapAndroid(filesDirectory).awaitResult()
+        SilveranAndroidBridge.androidNetworkAvailabilityDidChange(networkAvailable).awaitResult()
+        AndroidNetworkMonitor.start(applicationContext)
+        SilveranAndroidBridge.androidAppDidBecomeActive().whenComplete { _, error ->
+            if (error != null) Log.e("SilveranNetwork", "Could not activate source", error)
+        }
     }
 
     suspend fun observeLibraryChanges(onChange: () -> Unit) {
@@ -70,6 +78,7 @@ class SilveranBridgeClient(context: Context) {
     fun observeSourceStatusChanges(onChange: (SourceStatusUpdate) -> Unit) {
         AndroidBridgeCallbacks.observeSourceStatus { payload ->
             val status = JSONObject(payload)
+            if (status.optString("status") == "connected") missingCovers.clear()
             onChange(
                 SourceStatusUpdate(
                     status = status.optString("status", "disconnected"),

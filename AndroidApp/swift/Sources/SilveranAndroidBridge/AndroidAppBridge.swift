@@ -9,6 +9,16 @@ public func bootstrapAndroid(filesDirectory: String) async throws {
     }
 }
 
+public func androidNetworkAvailabilityDidChange(_ available: Bool) async throws {
+    try requireAndroidBootstrap()
+    await BookServiceActor.shared.networkAvailabilityDidChange(available)
+}
+
+public func androidAppDidBecomeActive() async throws {
+    try requireAndroidBootstrap()
+    await BookServiceActor.shared.setActive(true, source: .app)
+}
+
 public func storytellerSettingsJSON(requestID: String) async throws {
     try await deliverAndroidBridgePayload(requestID: requestID) {
         try requireAndroidBootstrap()
@@ -192,7 +202,7 @@ private func makeLibrarySnapshotJSON(refresh: Bool) async throws -> String {
         )
     }
 
-    let status = connectionFields(await BookServiceActor.shared.connectionStatus)
+    let status = connectionFields(await androidStorytellerConnectionStatus())
     let homeSections = HomeSectionDeriver.sections(
         books: snapshot.books,
         progress: progress,
@@ -229,13 +239,15 @@ public func coverResponseBytes(
             throw AndroidBridgeError.invalidCoverSize
         }
 
+        let id = BookID(sourceID: sourceID, uuid: bookID)
         let response = await BookServiceActor.shared.loadCover(
-            for: BookID(sourceID: sourceID, uuid: bookID),
+            for: id,
             audio: audio,
             width: Int(width),
             height: Int(height),
             version: version.isEmpty ? nil : version,
-            allowNetwork: true,
+            allowNetwork: await BookServiceActor.shared.connectionStatus(sourceID: id.sourceID)
+                == .connected,
             policy: refresh ? .forceRefresh : .cachedThenFetch,
         )
 
@@ -577,7 +589,7 @@ private let androidObserverStore = AndroidObserverStore()
 private func installAndroidConnectionObserver() async {
     await BookServiceActor.shared.request_notify {
         Task {
-            let fields = connectionFields(await BookServiceActor.shared.connectionStatus)
+            let fields = connectionFields(await androidStorytellerConnectionStatus())
             guard
                 let payload = try? encodeJSON(
                     AndroidSourceStatus(status: fields.status, message: fields.message)
@@ -586,6 +598,17 @@ private func installAndroidConnectionObserver() async {
             notifyAndroidSourceStatusDidChange(payload)
         }
     }
+}
+
+private func androidStorytellerConnectionStatus() async -> ConnectionStatus {
+    guard
+        let source = await BookServiceActor.shared.bookSources.first(where: {
+            $0.kind == .storyteller
+        })
+    else {
+        return .disconnected
+    }
+    return await BookServiceActor.shared.connectionStatus(sourceID: source.id)
 }
 
 private func encodeStorytellerSettings() async throws -> String {

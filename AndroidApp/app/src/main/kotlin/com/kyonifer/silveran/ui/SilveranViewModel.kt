@@ -330,9 +330,11 @@ class SilveranViewModel private constructor(
 
     private fun applySourceStatus(update: SourceStatusUpdate) {
         val current = mutableState.value
+        val reconnected = current.sourceStatus != "connected" && update.status == "connected"
         mutableState.value = current.copy(
             sourceStatus = update.status,
             sourceMessage = update.message,
+            coverRevision = current.coverRevision + if (reconnected) 1 else 0,
             settings = if (current.settings.configured) {
                 current.settings.copy(
                     connectionStatus = update.status,

@@ -72,6 +72,10 @@ public actor ProgressSyncActor {
     private var pollingTask: Task<Void, Never>? = nil
     private var started = false
 
+    private var queueFlushTask: Task<Void, Never>? = nil
+    private var queueFlushRequested = false
+    private var queueFlushNotifyUser = false
+
     public init() {}
 
     func start() async {
@@ -169,32 +173,8 @@ public actor ProgressSyncActor {
             locator: locator,
         )
 
-        let sourceStatus = await BookServiceActor.shared.connectionStatus(sourceID: bookID.sourceID)
-        debugLog("[PSA] syncProgress: sourceStatus=\(sourceStatus), sourceID=\(bookID.sourceID)")
-
-        if sourceStatus == .connected {
-            let result = await BookServiceActor.shared.sendProgressToServer(
-                bookID: bookID,
-                locator: locator,
-                timestamp: timestamp,
-            )
-            if result == .success {
-                debugLog("[PSA] syncProgress: synced to server")
-                await markQueueItemSynced(bookID: bookID)
-                updateServerPositionIfNewer(bookID: bookID, locator: locator, timestamp: timestamp)
-                await updateHistoryResult(
-                    bookID: bookID,
-                    timestamp: timestamp,
-                    result: .sent,
-                )
-                await notifyObservers()
-                return .success
-            }
-            debugLog("[PSA] syncProgress: server sync failed, result=\(result)")
-        }
-
-        debugLog("[PSA] syncProgress: queued for later sync")
         await notifyObservers()
+        scheduleQueueFlush()
         return .queued
     }
 
@@ -212,7 +192,30 @@ public actor ProgressSyncActor {
 
     // MARK: - Queue Management
 
+    /// Flushes the pending queue to the server without making the caller wait: the
+    /// send runs on a background task. Calls made while a flush is in flight are
+    /// absorbed into a single rerun after it finishes. Pass notifyUser to show the
+    /// sync-result toast when the flush completes.
+    public func scheduleQueueFlush(notifyUser: Bool = false) {
+        queueFlushRequested = true
+        queueFlushNotifyUser = queueFlushNotifyUser || notifyUser
+        guard queueFlushTask == nil else { return }
+        queueFlushTask = Task {
+            while queueFlushRequested {
+                queueFlushRequested = false
+                let notify = queueFlushNotifyUser
+                queueFlushNotifyUser = false
+                _ = await flushQueue(notifyUser: notify)
+            }
+            queueFlushTask = nil
+        }
+    }
+
     public func syncPendingQueue() async -> (synced: Int, failed: Int) {
+        await flushQueue(notifyUser: true)
+    }
+
+    private func flushQueue(notifyUser: Bool) async -> (synced: Int, failed: Int) {
         guard await ensureQueueLoaded() else { return (0, 0) }
         debugLog("[PSA] syncPendingQueue: starting with \(pendingProgressQueue.count) items")
 
@@ -224,44 +227,46 @@ public actor ProgressSyncActor {
         var syncedCount = 0
         var failedBookIDs: [BookID] = []
 
-        let queueSnapshot = pendingProgressQueue
-        for var pending in queueSnapshot {
-            if !pending.syncedToStoryteller {
-                let sourceStatus = await BookServiceActor.shared.connectionStatus(
-                    sourceID: pending.bookID.sourceID
-                )
-                guard sourceStatus == .connected else {
-                    debugLog(
-                        "[PSA] syncPendingQueue: source not connected, skipping \(pending.bookID)"
-                    )
-                    continue
-                }
+        let bookIDs = pendingProgressQueue.map(\.bookID)
+        for bookID in bookIDs {
+            let sourceStatus = await BookServiceActor.shared.connectionStatus(
+                sourceID: bookID.sourceID
+            )
+            guard sourceStatus == .connected else {
+                debugLog("[PSA] syncPendingQueue: source not connected, skipping \(bookID)")
+                continue
+            }
 
-                let result = await BookServiceActor.shared.sendProgressToServer(
+            // Read the live entry just before sending: every send below suspends this
+            // actor, and a newer position may have replaced the entry in the meantime.
+            guard var pending = pendingProgressQueue.first(where: { $0.bookID == bookID }),
+                !pending.syncedToStoryteller
+            else { continue }
+
+            let result = await BookServiceActor.shared.sendProgressToServer(
+                bookID: pending.bookID,
+                locator: pending.locator,
+                timestamp: pending.timestamp,
+            )
+            if result == .success {
+                pending.syncedToStoryteller = true
+                updateServerPositionIfNewer(
                     bookID: pending.bookID,
                     locator: pending.locator,
                     timestamp: pending.timestamp,
                 )
-                if result == .success {
-                    pending.syncedToStoryteller = true
-                    updateServerPositionIfNewer(
-                        bookID: pending.bookID,
-                        locator: pending.locator,
-                        timestamp: pending.timestamp,
-                    )
-                    await updateQueueItem(pending)
-                    syncedCount += 1
+                await updateQueueItem(pending)
+                syncedCount += 1
 
-                    await updateHistoryResult(
-                        bookID: pending.bookID,
-                        timestamp: pending.timestamp,
-                        result: .sent,
-                    )
-                    debugLog("[PSA] syncPendingQueue: \(pending.bookID) sent successfully")
-                } else if result == .failure {
-                    debugLog("[PSA] syncPendingQueue: \(pending.bookID) failed permanently")
-                    failedBookIDs.append(pending.bookID)
-                }
+                await updateHistoryResult(
+                    bookID: pending.bookID,
+                    timestamp: pending.timestamp,
+                    result: .sent,
+                )
+                debugLog("[PSA] syncPendingQueue: \(pending.bookID) sent successfully")
+            } else if result == .failure {
+                debugLog("[PSA] syncPendingQueue: \(pending.bookID) failed permanently")
+                failedBookIDs.append(pending.bookID)
             }
         }
 
@@ -270,14 +275,20 @@ public actor ProgressSyncActor {
 
         if syncedCount > 0 || failedCount > 0 {
             await notifyObservers()
-            await syncNotificationCallback?(syncedCount, failedBookIDs)
+            if notifyUser {
+                await syncNotificationCallback?(syncedCount, failedBookIDs)
+            }
         }
 
         return (syncedCount, failedCount)
     }
 
     private func updateQueueItem(_ item: PendingProgressSync) async {
-        if let index = pendingProgressQueue.firstIndex(where: { $0.bookID == item.bookID }) {
+        // Timestamp must match: a newer position may have replaced this entry while
+        // its upload was in flight, and overwriting that entry would lose it.
+        if let index = pendingProgressQueue.firstIndex(where: {
+            $0.bookID == item.bookID && $0.timestamp == item.timestamp
+        }) {
             pendingProgressQueue[index] = item
             await saveQueueToDisk()
         }
@@ -747,14 +758,6 @@ public actor ProgressSyncActor {
         await saveQueueToDisk()
         await notifyObservers()
         return .queued
-    }
-
-    private func markQueueItemSynced(bookID: BookID) async {
-        if let index = pendingProgressQueue.firstIndex(where: { $0.bookID == bookID }) {
-            pendingProgressQueue[index].syncedToStoryteller = true
-            debugLog("[PSA] markQueueItemSynced: bookID=\(bookID)")
-            await saveQueueToDisk()
-        }
     }
 
     private func removeFromQueue(bookID: BookID) async {

@@ -76,6 +76,7 @@ public actor StorytellerActor {
     private var activeSources: Set<ActivitySource> = []
     private var reconnectFailureCount: Int = 0
     private var reconnectCooldownUntil: Date? = nil
+    private var networkAvailable = true
     public private(set) var lastNetworkOpSucceeded: Bool? = nil
     #if canImport(Network)
     private var networkMonitor: NWPathMonitor? = nil
@@ -175,9 +176,8 @@ public actor StorytellerActor {
         observers?()
 
         if wasNotConnected && status == .connected {
-            debugLog("[StorytellerActor] Connection restored, syncing pending progress queue")
-            let (synced, failed) = await ProgressSyncActor.shared.syncPendingQueue()
-            debugLog("[StorytellerActor] Pending queue sync: synced=\(synced), failed=\(failed)")
+            debugLog("[StorytellerActor] Connection restored, scheduling pending queue flush")
+            await ProgressSyncActor.shared.scheduleQueueFlush(notifyUser: true)
         }
     }
 
@@ -186,6 +186,8 @@ public actor StorytellerActor {
 
         await ProgressSyncActor.shared.recordWakeEvent()
         await ProgressSyncActor.shared.startPolling()
+
+        guard networkAvailable else { return }
 
         var reconnected = false
         if connectionStatus != .connected {
@@ -196,10 +198,7 @@ public actor StorytellerActor {
 
         if connectionStatus == .connected, !reconnected {
             let _ = await fetchLibraryInformation()
-            let (synced, failed) = await ProgressSyncActor.shared.syncPendingQueue()
-            debugLog(
-                "[StorytellerActor] handleActivation: queue sync synced=\(synced), failed=\(failed)"
-            )
+            await ProgressSyncActor.shared.scheduleQueueFlush(notifyUser: true)
         }
     }
 
@@ -274,6 +273,7 @@ public actor StorytellerActor {
     }
 
     private func canAttemptReconnect() -> Bool {
+        guard networkAvailable else { return false }
         guard let cooldownUntil = reconnectCooldownUntil else { return true }
         return cooldownUntil <= Date()
     }
@@ -338,19 +338,26 @@ public actor StorytellerActor {
     #if canImport(Network)
     private func handleNetworkPathUpdate(_ path: NWPath) async {
         debugLog("[StorytellerActor] network path update: status=\(path.status)")
-        if path.status == .satisfied && isAppActive {
-            resetReconnectBackoff()
-            if connectionStatus == .connected {
-                await verifyConnection()
-            } else {
-                await attemptReconnect()
-            }
-        } else if path.status != .satisfied {
-            lastNetworkOpSucceeded = false
-            await updateConnectionStatus(.error("No network"))
-        }
+        await networkAvailabilityDidChange(path.status == .satisfied)
     }
     #endif
+
+    public func networkAvailabilityDidChange(_ available: Bool) async {
+        networkAvailable = available
+        if !available {
+            lastNetworkOpSucceeded = false
+            await updateConnectionStatus(.error("No network"))
+            return
+        }
+
+        guard isAppActive else { return }
+        resetReconnectBackoff()
+        if connectionStatus == .connected {
+            await verifyConnection()
+        } else {
+            await attemptReconnect()
+        }
+    }
 
     private func isConnectivityError(_ error: URLError) -> Bool {
         switch error.code {
@@ -2707,6 +2714,9 @@ public actor StorytellerActor {
         let url = baseURL.appendingPathComponent("books/\(bookId)/positions")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
+        // Position payloads are tiny; a wedged connection should fail fast so the
+        // background flush can retry later instead of pinning the queue for a minute.
+        request.timeoutInterval = 15
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
