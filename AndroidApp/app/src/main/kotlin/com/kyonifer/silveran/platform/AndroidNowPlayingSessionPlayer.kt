@@ -175,7 +175,10 @@ internal class AndroidNowPlayingSessionPlayer(
     ): ListenableFuture<Any> {
         val configuration = commandConfiguration ?: return immediateVoidFuture()
         if (seekCommand == Player.COMMAND_SEEK_TO_MEDIA_ITEM) {
-            val chapter = audiobookState?.chapters?.getOrNull(mediaItemIndex)
+            val state = audiobookState ?: return immediateVoidFuture()
+            val chapter = presentedChapterIndices(state)
+                .getOrNull(mediaItemIndex)
+                ?.let(state.chapters::getOrNull)
                 ?: return immediateVoidFuture()
             commandSink.send(
                 configuration.token,
@@ -274,15 +277,17 @@ internal class AndroidNowPlayingSessionPlayer(
             return listOf(mediaItemData) to 0
         }
 
-        val currentIndex = audiobookState.currentChapterID
-            ?.let { currentID -> audiobookState.chapters.indexOfFirst { it.id == currentID } }
-            ?.takeIf { it >= 0 }
-            ?: audiobookState.currentChapterIndex
-                ?.takeIf(audiobookState.chapters.indices::contains)
-            ?: 0
-        val playlist = audiobookState.chapters.mapIndexed { index, chapter ->
+        val currentIndex = currentChapterIndex(audiobookState)
+        val windowStart = (currentIndex - 1).coerceAtLeast(0)
+        val playlist = presentedChapterIndices(audiobookState).map { index ->
+            val chapter = audiobookState.chapters[index]
+            val title = if (index < windowStart) {
+                "Previous · ${chapter.title}"
+            } else {
+                chapter.title
+            }
             val chapterMetadata = MediaMetadata.Builder()
-                .setTitle(chapter.title)
+                .setTitle(title)
                 .setArtist(snapshot.title)
                 .setAlbumTitle(snapshot.albumTitle)
                 .setIsPlayable(true)
@@ -303,8 +308,23 @@ internal class AndroidNowPlayingSessionPlayer(
                 .setIsSeekable(commandConfiguration?.supportsChangePlaybackPosition == true)
                 .build()
         }
-        return playlist to currentIndex
+        return playlist to (currentIndex - windowStart)
     }
+
+    // Android Auto opens the queue at the top with no scroll-to-active API, so
+    // the playlist starts one chapter before the active one and earlier
+    // chapters wrap around to the end.
+    private fun presentedChapterIndices(state: AndroidNowPlayingAudiobookState): List<Int> {
+        val windowStart = (currentChapterIndex(state) - 1).coerceAtLeast(0)
+        return (windowStart until state.chapters.size) + (0 until windowStart)
+    }
+
+    private fun currentChapterIndex(state: AndroidNowPlayingAudiobookState): Int =
+        state.currentChapterID
+            ?.let { currentID -> state.chapters.indexOfFirst { it.id == currentID } }
+            ?.takeIf { it >= 0 }
+            ?: state.currentChapterIndex?.takeIf(state.chapters.indices::contains)
+            ?: 0
 
     private fun requireApplicationThread() {
         check(Looper.myLooper() == applicationLooper) {

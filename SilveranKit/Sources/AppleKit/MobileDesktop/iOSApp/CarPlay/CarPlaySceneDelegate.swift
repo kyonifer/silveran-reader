@@ -129,30 +129,77 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
                 return
             }
 
-            let items: [CPListItem] = chapters.map { chapter in
-                let isCurrent = chapter.sectionIndex == currentSectionIndex
-                let item = CPListItem(
-                    text: chapter.label,
-                    detailText: isCurrent ? "Now Playing" : nil,
+            let activePosition =
+                chapters.firstIndex { $0.sectionIndex == currentSectionIndex } ?? 0
+            let folderCount = max(activePosition - 1, 0)
+            let previousChapters = Array(chapters.prefix(folderCount))
+            let visibleChapters = Array(chapters.dropFirst(folderCount))
+
+            var items: [CPListItem] = []
+            if !previousChapters.isEmpty {
+                let folderItem = CPListItem(
+                    text: "Previous Chapters",
+                    detailText: previousChapters.count == 1
+                        ? "1 chapter" : "\(previousChapters.count) chapters",
                 )
-                item.isPlaying = isCurrent
-                item.handler = { [weak self] _, completion in
-                    debugLog(
-                        "[CarPlay] Chapter selected: \(chapter.label), sectionIndex: \(chapter.sectionIndex)"
-                    )
-                    Task { @MainActor in
-                        CarPlayCoordinator.shared.selectChapter(sectionIndex: chapter.sectionIndex)
+                folderItem.accessoryType = .disclosureIndicator
+                folderItem.handler = { [weak self] _, completion in
+                    guard let self else {
+                        completion()
+                        return
                     }
-                    self?.interfaceController?.popTemplate(animated: true, completion: nil)
+                    let section = CPListSection(
+                        items: previousChapters.map {
+                            self.chapterListItem(for: $0, currentSectionIndex: currentSectionIndex)
+                        }
+                    )
+                    let template = CPListTemplate(title: "Previous Chapters", sections: [section])
+                    self.interfaceController?.pushTemplate(
+                        template,
+                        animated: true,
+                        completion: nil,
+                    )
                     completion()
                 }
-                return item
+                items.append(folderItem)
             }
+            items.append(
+                contentsOf: visibleChapters.map {
+                    chapterListItem(for: $0, currentSectionIndex: currentSectionIndex)
+                }
+            )
 
             let section = CPListSection(items: items)
             let template = CPListTemplate(title: "Chapters", sections: [section])
             interfaceController?.pushTemplate(template, animated: true, completion: nil)
         }
+    }
+
+    private func chapterListItem(
+        for chapter: CarPlayChapter,
+        currentSectionIndex: Int?,
+    ) -> CPListItem {
+        let isCurrent = chapter.sectionIndex == currentSectionIndex
+        let item = CPListItem(
+            text: chapter.label,
+            detailText: isCurrent ? "Now Playing" : nil,
+        )
+        item.isPlaying = isCurrent
+        item.handler = { [weak self] _, completion in
+            debugLog(
+                "[CarPlay] Chapter selected: \(chapter.label), sectionIndex: \(chapter.sectionIndex)"
+            )
+            Task { @MainActor in
+                CarPlayCoordinator.shared.selectChapter(sectionIndex: chapter.sectionIndex)
+            }
+            self?.interfaceController?.pop(
+                to: CPNowPlayingTemplate.shared,
+                animated: true,
+                completion: nil,
+            )
+            completion()
+        }
+        return item
     }
 
     private func showSpeedList() {

@@ -125,6 +125,50 @@ class AndroidNowPlayingSessionPlayerTest {
     }
 
     @Test
+    fun windowsTheQueueToStartOneChapterBeforeTheActiveOne() {
+        val commands = mutableListOf<ReceivedCommand>()
+        val player = AndroidNowPlayingSessionPlayer(
+            Looper.getMainLooper(),
+        ) { token, command, value, text ->
+            commands += ReceivedCommand(token, command, value, text)
+        }
+        player.configureCommands(commandConfiguration())
+        player.update(snapshot())
+        player.updateAudiobookState(
+            AndroidNowPlayingAudiobookState(
+                currentChapterID = "chapter-4",
+                currentChapterIndex = 3,
+                chapters = listOf(
+                    AndroidNowPlayingChapter("chapter-1", "Intro", 100.0),
+                    AndroidNowPlayingChapter("chapter-2", "Rising", 120.0),
+                    AndroidNowPlayingChapter("chapter-3", "Climax", 140.0),
+                    AndroidNowPlayingChapter("chapter-4", "Falling", 160.0),
+                    AndroidNowPlayingChapter("chapter-5", "Ending", 180.0),
+                ),
+            ),
+        )
+
+        assertEquals(5, player.mediaItemCount)
+        assertEquals(1, player.currentMediaItemIndex)
+        assertEquals("Climax", player.getMediaItemAt(0).mediaMetadata.title)
+        assertEquals("Falling", player.getMediaItemAt(1).mediaMetadata.title)
+        assertEquals("Ending", player.getMediaItemAt(2).mediaMetadata.title)
+        assertEquals("Previous · Intro", player.getMediaItemAt(3).mediaMetadata.title)
+        assertEquals("Previous · Rising", player.getMediaItemAt(4).mediaMetadata.title)
+
+        player.seekToDefaultPosition(3)
+        assertEquals(
+            ReceivedCommand(
+                token = "commands",
+                command = "selectChapter",
+                value = 0.0,
+                text = "chapter-1",
+            ),
+            commands.removeFirst(),
+        )
+    }
+
+    @Test
     fun teardownAndClearRemainIndependentAndRejectStaleTokens() {
         val player = AndroidNowPlayingSessionPlayer(Looper.getMainLooper()) { _, _, _, _ -> }
         player.configureCommands(commandConfiguration())
