@@ -242,7 +242,6 @@ class MediaOverlayManager {
                 entryIndex: state.currentEntryIndex,
             )
         }
-
         if wasPlaying && !state.isPlaying {
             debugLog("[MOM] Audio paused - syncing progress")
             Task {
@@ -680,10 +679,11 @@ class MediaOverlayManager {
     }
 
     func setPlaybackRate(_ rate: Double) {
+        guard playbackRate != rate else { return }
         playbackRate = rate
         debugLog("[MOM] Playback rate set to: \(rate)x")
         Task {
-            await SMILPlayerActor.shared.setPlaybackRate(rate)
+            await SMILPlayerActor.shared.setPlaybackRate(rate, ifLoadedBookID: bookID)
         }
     }
 

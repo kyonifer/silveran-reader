@@ -51,9 +51,31 @@ public let kDefaultReadaloudHighlightMode = "background"
 // MARK: - Playback Settings
 
 public let kDefaultPlaybackSpeed: Double = 1.0
+public let kMinimumPlaybackSpeed: Double = 0.75
+public let kMaximumPlaybackSpeed: Double = 4.0
 public let kDefaultVolume: Double = 1.0
 public let kDefaultStatsExpanded = false
 public let kDefaultLockViewToAudio = true
+
+public enum PlaybackSpeedRole: Equatable, Sendable {
+    case listening
+    case readaloud
+}
+
+public enum PlaybackSpeedPolicy {
+    public static let sliderStep = 0.05
+    public static let presetStep = 0.25
+
+    public static let presetRates = stride(
+        from: kMinimumPlaybackSpeed,
+        through: kMaximumPlaybackSpeed,
+        by: presetStep,
+    ).map { $0 }
+
+    public static let quickPresetRates = [
+        0.75, 1.0, 1.1, 1.2, 1.3, 1.5, 1.75, 2.0, 2.25, 2.5, 2.75, 3.0, 4.0,
+    ]
+}
 
 // MARK: - Reading Bar Settings
 

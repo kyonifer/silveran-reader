@@ -157,9 +157,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
 
     private func showSpeedList() {
         Task { @MainActor in
-            let speeds: [Double] = [
-                0.75, 1.0, 1.1, 1.2, 1.3, 1.5, 1.75, 2.0, 2.25, 2.5, 2.75, 3.0, 5.0,
-            ]
+            let speeds = PlaybackSpeedPolicy.quickPresetRates
             let currentRate = CarPlayCoordinator.shared.currentPlaybackRate
 
             let items: [CPListItem] = speeds.map { speed in

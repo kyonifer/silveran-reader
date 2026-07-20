@@ -16,7 +16,7 @@ struct DraggableAudioCard<FullContent: View>: View {
     let chapterElapsedSeconds: TimeInterval?
     let chapterTotalSeconds: TimeInterval?
     let bookTimeRemaining: TimeInterval?
-    let playbackRate: Double
+    let playbackSpeeds: PlaybackSpeedControls
     let hasAudioNarration: Bool
     let chapters: [ChapterItem]
     let selectedChapterHref: String?
@@ -32,12 +32,12 @@ struct DraggableAudioCard<FullContent: View>: View {
     let onPrevChapter: () -> Void
     let onNextChapter: () -> Void
     let onProgressSeek: ((Double) -> Void)?
-    let onPlaybackRateChange: (Double) -> Void
     let onChapterSelected: (ChapterItem) -> Void
     let onSleepTimerStart: (TimeInterval?, SleepTimerType) -> Void
     let onSleepTimerCancel: () -> Void
     let onDismiss: () -> Void
     let onComicScrubberVisibilityChange: (Bool) -> Void
+    let onExpandedChange: (Bool) -> Void
     @ViewBuilder let fullContent: () -> FullContent
 
     enum CardState {
@@ -57,17 +57,19 @@ struct DraggableAudioCard<FullContent: View>: View {
     private let expandedFraction: CGFloat = 1.0
     private let scrubberFraction: CGFloat = 0.28
     private let dragThreshold: CGFloat = 40
+    private let minimumCompactBottomInset: CGFloat = 34
 
     var body: some View {
         GeometryReader { geometry in
             let screenHeight = geometry.size.height
             let safeAreaBottom = geometry.safeAreaInsets.bottom
+            let compactBottomInset = max(safeAreaBottom, minimumCompactBottomInset)
             let expandedHeight = screenHeight * expandedFraction
             let scrubberHeight = max(screenHeight * scrubberFraction, 170)
 
             let targetHeight: CGFloat =
                 switch cardState {
-                    case .compact: compactHeight + safeAreaBottom
+                    case .compact: compactHeight + compactBottomInset
                     case .scrubber: scrubberHeight
                     case .expanded: expandedHeight
                 }
@@ -99,12 +101,15 @@ struct DraggableAudioCard<FullContent: View>: View {
 
                         if cardState == .compact && hasAudioNarration && showMiniPlayerStats {
                             compactStatsRow
-                                .frame(height: safeAreaBottom)
+                                .frame(height: compactBottomInset)
                         } else if cardState == .scrubber {
                             Color.clear
                                 .frame(height: safeAreaBottom)
                         } else {
-                            Spacer(minLength: safeAreaBottom)
+                            Spacer(
+                                minLength: cardState == .compact
+                                    ? compactBottomInset : safeAreaBottom
+                            )
                         }
                     }
                     .overlay(alignment: .top) {
@@ -182,20 +187,24 @@ struct DraggableAudioCard<FullContent: View>: View {
             onComicScrubberVisibilityChange(
                 isPresented && supportsComicScrubber && newValue == .scrubber
             )
+            onExpandedChange(isPresented && newValue == .expanded)
         }
         .onChange(of: isPresented) { _, newValue in
             onComicScrubberVisibilityChange(
                 newValue && supportsComicScrubber && cardState == .scrubber
             )
+            onExpandedChange(newValue && cardState == .expanded)
         }
         .onAppear {
             sliderValue = chapterProgress
             onComicScrubberVisibilityChange(
                 isPresented && supportsComicScrubber && cardState == .scrubber
             )
+            onExpandedChange(isPresented && cardState == .expanded)
         }
         .onDisappear {
             onComicScrubberVisibilityChange(false)
+            onExpandedChange(false)
         }
     }
 
@@ -267,8 +276,7 @@ struct DraggableAudioCard<FullContent: View>: View {
             if hasAudioNarration {
                 HStack(spacing: 15) {
                     PlaybackRateButton(
-                        currentRate: playbackRate,
-                        onRateChange: onPlaybackRateChange,
+                        playbackSpeeds: playbackSpeeds,
                         showLabel: true,
                         buttonSize: showMiniPlayerStats ? 32 : 36,
                         showBackground: false,
@@ -403,11 +411,11 @@ struct DraggableAudioCard<FullContent: View>: View {
 
     private var chapterTimeRemaining: TimeInterval? {
         guard let elapsed = chapterElapsedSeconds, let total = chapterTotalSeconds,
-            playbackRate > 0
+            playbackSpeeds.currentRate > 0
         else {
             return nil
         }
-        return max(0, total - elapsed) / playbackRate
+        return max(0, total - elapsed) / playbackSpeeds.currentRate
     }
 
     private func handleDragEnd(translation: CGFloat, velocity: CGFloat, screenHeight: CGFloat) {

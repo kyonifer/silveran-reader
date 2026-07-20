@@ -180,7 +180,7 @@ public struct SettingsView: View {
                     enableMarginClickNavigation: newValue.reading.enableMarginClickNavigation,
                     singleColumnMode: newValue.reading.singleColumnMode,
                     scrollingMode: newValue.reading.scrollingMode,
-                    defaultPlaybackSpeed: newValue.playback.defaultPlaybackSpeed,
+                    playback: newValue.playback,
                     enableReadingBar: newValue.readingBar.enabled,
                     showPlayerControls: newValue.readingBar.showPlayerControls,
                     showProgressBar: newValue.readingBar.showProgressBar,
@@ -323,7 +323,8 @@ extension SettingsView {
         config.reading.singleColumnMode = false
         config.reading.scrollingMode = kDefaultScrollingMode
         config.reading.customCSS = nil
-        config.playback.defaultPlaybackSpeed = kDefaultPlaybackSpeed
+        config.playback.updatePlaybackSpeed(kDefaultPlaybackSpeed, for: .listening)
+        config.playback.updatePlaybackSpeed(kDefaultPlaybackSpeed, for: .readaloud)
     }
 }
 #else
@@ -639,6 +640,21 @@ private struct MacReaderSettingsView: View {
         ["System Default", "serif", "sans-serif", "monospace"]
     }
 
+    private var listeningSpeedBinding: Binding<Double> {
+        playbackSpeedBinding(for: .listening)
+    }
+
+    private var readaloudSpeedBinding: Binding<Double> {
+        playbackSpeedBinding(for: .readaloud)
+    }
+
+    private func playbackSpeedBinding(for role: PlaybackSpeedRole) -> Binding<Double> {
+        Binding(
+            get: { playback.playbackSpeed(for: role) },
+            set: { playback.updatePlaybackSpeed($0, for: role) },
+        )
+    }
+
     var body: some View {
         MacSettingsContainer(tab: .readerSettings) {
             Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 18) {
@@ -774,10 +790,20 @@ private struct MacReaderSettingsView: View {
                 }
 
                 GridRow {
-                    label("Playback Speed")
+                    label("Listening Speed")
                     MacSliderControl(
-                        value: $playback.defaultPlaybackSpeed,
-                        range: 0.5...3.0,
+                        value: listeningSpeedBinding,
+                        range: 0.75...4.0,
+                        step: 0.05,
+                        formatter: { String(format: "%.2fx", $0) },
+                    )
+                }
+
+                GridRow {
+                    label("Read-aloud Speed")
+                    MacSliderControl(
+                        value: readaloudSpeedBinding,
+                        range: 0.75...4.0,
                         step: 0.05,
                         formatter: { String(format: "%.2fx", $0) },
                     )

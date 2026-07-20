@@ -20,7 +20,6 @@ public struct ReadingSidebarView: View {
         public var ebookCoverArt: Image?
         public var chapterDuration: TimeInterval
         public var totalRemaining: TimeInterval
-        public var playbackRate: Double
         public var volume: Double
         public var isPlaying: Bool
         public var sleepTimerActive: Bool
@@ -35,7 +34,6 @@ public struct ReadingSidebarView: View {
             ebookCoverArt: Image? = nil,
             chapterDuration: TimeInterval,
             totalRemaining: TimeInterval,
-            playbackRate: Double,
             volume: Double = 1.0,
             isPlaying: Bool,
             sleepTimerActive: Bool = false,
@@ -49,7 +47,6 @@ public struct ReadingSidebarView: View {
             self.ebookCoverArt = ebookCoverArt
             self.chapterDuration = chapterDuration
             self.totalRemaining = totalRemaining
-            self.playbackRate = playbackRate
             self.volume = volume
             self.isPlaying = isPlaying
             self.sleepTimerActive = sleepTimerActive
@@ -68,6 +65,7 @@ public struct ReadingSidebarView: View {
     private let onChapterSelected: (ChapterItem) -> Void
     private let onProgressSeek: ((Double) -> Void)?
     private let seekWhileDragging: Bool
+    private let playbackSpeeds: PlaybackSpeedControls
 
     @State private var showVolumePopover = false
     @State private var showSleepTimerPopover = false
@@ -82,7 +80,6 @@ public struct ReadingSidebarView: View {
     private let onPlayPause: () -> Void
     private let onSkipForward: () -> Void
     private let onNextChapter: () -> Void
-    private let onPlaybackRateChange: (Double) -> Void
     private let onVolumeChange: (Double) -> Void
     private let onSleepTimerStart: (TimeInterval?, SleepTimerType) -> Void
     private let onSleepTimerCancel: () -> Void
@@ -101,7 +98,7 @@ public struct ReadingSidebarView: View {
         onPlayPause: @escaping () -> Void = {},
         onSkipForward: @escaping () -> Void = {},
         onNextChapter: @escaping () -> Void = {},
-        onPlaybackRateChange: @escaping (Double) -> Void = { _ in },
+        playbackSpeeds: PlaybackSpeedControls,
         onVolumeChange: @escaping (Double) -> Void = { _ in },
         onSleepTimerStart: @escaping (TimeInterval?, SleepTimerType) -> Void = { _, _ in },
         onSleepTimerCancel: @escaping () -> Void = {},
@@ -121,7 +118,7 @@ public struct ReadingSidebarView: View {
         self.onPlayPause = onPlayPause
         self.onSkipForward = onSkipForward
         self.onNextChapter = onNextChapter
-        self.onPlaybackRateChange = onPlaybackRateChange
+        self.playbackSpeeds = playbackSpeeds
         self.onVolumeChange = onVolumeChange
         self.onSleepTimerStart = onSleepTimerStart
         self.onSleepTimerCancel = onSleepTimerCancel
@@ -288,12 +285,12 @@ public struct ReadingSidebarView: View {
             normalizedSeconds(progressData?.chapterTotalSecondsAudio) ?? model.chapterDuration
         let chapterTotalRaw = max(baseChapterTotalRaw, chapterElapsedRaw)
 
-        let rate = max(model.playbackRate, 0.01)
+        let rate = max(playbackSpeeds.currentRate, 0.01)
         let chapterElapsed = chapterElapsedRaw / rate
         let chapterTotal = chapterTotalRaw / rate
         let rawRemaining = max(chapterTotal - chapterElapsed, 0)
         let chapterRemainingAtRate = timeRemaining(
-            atRate: model.playbackRate,
+            atRate: playbackSpeeds.currentRate,
             total: chapterTotalRaw,
             elapsed: chapterElapsedRaw,
         )
@@ -406,14 +403,7 @@ public struct ReadingSidebarView: View {
     private var secondaryControls: some View {
         HStack(spacing: 32) {
             if mode != .ebook {
-                PlaybackRateButton(
-                    currentRate: model.playbackRate,
-                    onRateChange: onPlaybackRateChange,
-                    backgroundColor: secondaryColor,
-                    foregroundColor: primaryColor,
-                    transparency: 1.0,
-                    showLabel: true,
-                )
+                playbackRateButton
             }
 
             ChaptersButton(
@@ -460,6 +450,16 @@ public struct ReadingSidebarView: View {
         .padding(.horizontal, 20)
     }
 
+    private var playbackRateButton: some View {
+        PlaybackRateButton(
+            playbackSpeeds: playbackSpeeds,
+            backgroundColor: secondaryColor,
+            foregroundColor: primaryColor,
+            transparency: 1.0,
+            showLabel: true,
+        )
+    }
+
     @ViewBuilder
     private var statsSection: some View {
         let data = progressData
@@ -478,12 +478,12 @@ public struct ReadingSidebarView: View {
         let chapterTotalRaw = data.flatMap { normalizedSeconds($0.chapterTotalSecondsAudio) }
 
         let bookRemaining = timeRemaining(
-            atRate: model.playbackRate,
+            atRate: playbackSpeeds.currentRate,
             total: bookTotalRaw,
             elapsed: bookElapsedRaw,
         )
         let chapterRemaining = timeRemaining(
-            atRate: model.playbackRate,
+            atRate: playbackSpeeds.currentRate,
             total: chapterTotalRaw,
             elapsed: chapterElapsedRaw,
         )
@@ -723,7 +723,7 @@ public struct ReadingSidebarView: View {
     }
 
     private var playbackRateDescription: String {
-        SilveranAppleKit.playbackRateDescription(for: model.playbackRate)
+        SilveranAppleKit.playbackRateDescription(for: playbackSpeeds.currentRate)
     }
 
     private var elapsedTime: TimeInterval {
@@ -740,7 +740,6 @@ public struct ReadingSidebarView: View {
         coverArt: nil,
         chapterDuration: (12 * 60) + 27,
         totalRemaining: (8 * 60 * 60) + (9 * 60),
-        playbackRate: 1.3,
         isPlaying: true,
     )
     let progress = ProgressData(
@@ -759,6 +758,11 @@ public struct ReadingSidebarView: View {
         mode: .readaloud,
         chapterProgress: .constant(Double((4 * 60) + 7) / Double((12 * 60) + 27)),
         progressData: progress,
+        playbackSpeeds: .dual(
+            currentRate: 1.3,
+            listeningRate: .constant(1.0),
+            readaloudRate: .constant(1.3),
+        ),
     )
     .frame(maxWidth: 420)
 }

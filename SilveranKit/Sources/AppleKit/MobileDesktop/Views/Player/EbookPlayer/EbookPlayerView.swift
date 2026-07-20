@@ -169,6 +169,10 @@ public struct EbookPlayerView: View {
         .onChange(of: scenePhase) { _, newPhase in
             viewModel.handleScenePhaseChange(newPhase)
         }
+        .onChange(of: viewModel.activePlaybackRate) { _, _ in
+            guard viewModel.settingsVM.isLoaded else { return }
+            viewModel.applyActivePlayback()
+        }
         .onChange(of: viewModel.settingsVM.highlightColorsHash) { _, _ in
             Task { await viewModel.refreshHighlightColors() }
         }
@@ -550,7 +554,7 @@ public struct EbookPlayerView: View {
             if viewModel.isTopBarVisible {
                 EbookPlayerTopToolbar(
                     hasAudioNarration: viewModel.hasAudioNarration,
-                    playbackSpeed: viewModel.settingsVM.defaultPlaybackSpeed,
+                    playbackSpeed: viewModel.settingsVM.readaloudPlaybackSpeed,
                     chapters: viewModel.chapterList,
                     selectedChapterId: viewModel.selectedChapterHref,
                     isSynced: viewModel.settingsVM.lockViewToAudio,
@@ -621,7 +625,7 @@ public struct EbookPlayerView: View {
                     readingBarConfig: viewModel.settingsVM.readingBarConfig,
                     progressData: progressData,
                     isPlaying: mom?.isPlaying ?? false,
-                    playbackRate: mom?.playbackRate ?? viewModel.settingsVM.defaultPlaybackSpeed,
+                    playbackRate: mom?.playbackRate ?? viewModel.settingsVM.readaloudPlaybackSpeed,
                     isLightBackground: isLight,
                     backgroundColor: readerBackgroundColor,
                     chapterProgress: viewModel.chapterProgressBinding,
@@ -690,7 +694,11 @@ public struct EbookPlayerView: View {
             chapterElapsedSeconds: mom?.chapterElapsedSeconds,
             chapterTotalSeconds: mom?.chapterTotalSeconds,
             bookTimeRemaining: mom?.bookTimeRemaining,
-            playbackRate: mom?.playbackRate ?? viewModel.settingsVM.defaultPlaybackSpeed,
+            playbackSpeeds: .dual(
+                currentRate: mom?.playbackRate ?? viewModel.settingsVM.readaloudPlaybackSpeed,
+                listeningRate: viewModel.settingsVM.playbackSpeedBinding(for: .listening),
+                readaloudRate: viewModel.settingsVM.playbackSpeedBinding(for: .readaloud),
+            ),
             hasAudioNarration: viewModel.hasAudioNarration,
             chapters: viewModel.chapterList,
             selectedChapterHref: viewModel.selectedChapterHref,
@@ -715,7 +723,6 @@ public struct EbookPlayerView: View {
                 viewModel.handleNextChapter()
             },
             onProgressSeek: viewModel.handleProgressSeek,
-            onPlaybackRateChange: viewModel.handlePlaybackRateChange,
             onChapterSelected: viewModel.handleChapterSelection,
             onSleepTimerStart: viewModel.handleSleepTimerStart,
             onSleepTimerCancel: viewModel.handleSleepTimerCancel,
@@ -725,6 +732,7 @@ public struct EbookPlayerView: View {
             onComicScrubberVisibilityChange: { visible in
                 isComicScrubberVisible = visible
             },
+            onExpandedChange: viewModel.handleAudioPlayerExpandedChange,
             fullContent: {
                 audiobookSidebar()
             },
@@ -780,6 +788,19 @@ public struct EbookPlayerView: View {
 
         let readingMode: ReadingMode = viewModel.bookData?.category == .ebook ? .ebook : .readaloud
 
+        #if os(macOS)
+        let playbackSpeeds: PlaybackSpeedControls = .single(
+            currentRate: mom?.playbackRate ?? viewModel.settingsVM.readaloudPlaybackSpeed,
+            rate: viewModel.settingsVM.playbackSpeedBinding(for: .readaloud),
+        )
+        #else
+        let playbackSpeeds: PlaybackSpeedControls = .dual(
+            currentRate: mom?.playbackRate ?? viewModel.settingsVM.readaloudPlaybackSpeed,
+            listeningRate: viewModel.settingsVM.playbackSpeedBinding(for: .listening),
+            readaloudRate: viewModel.settingsVM.playbackSpeedBinding(for: .readaloud),
+        )
+        #endif
+
         let progressData = ProgressData(
             chapterLabel: currentChapterTitle,
             chapterCurrentPage: pm?.chapterCurrentPage,
@@ -801,7 +822,6 @@ public struct EbookPlayerView: View {
                 ebookCoverArt: viewModel.bookData?.ebookCoverArt,
                 chapterDuration: chapterDuration,
                 totalRemaining: totalRemaining,
-                playbackRate: mom?.playbackRate ?? viewModel.settingsVM.defaultPlaybackSpeed,
                 volume: mom?.volume ?? viewModel.settingsVM.defaultVolume,
                 isPlaying: mom?.isPlaying ?? false,
                 sleepTimerActive: mom?.sleepTimerActive ?? false,
@@ -831,9 +851,7 @@ public struct EbookPlayerView: View {
             onNextChapter: {
                 viewModel.handleNextChapter()
             },
-            onPlaybackRateChange: { rate in
-                viewModel.handlePlaybackRateChange(rate)
-            },
+            playbackSpeeds: playbackSpeeds,
             onVolumeChange: { newVolume in
                 viewModel.handleVolumeChange(newVolume)
             },
