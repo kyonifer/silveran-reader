@@ -83,14 +83,56 @@ public enum AudiobookSessionError: Error, LocalizedError, Sendable {
     }
 }
 
-/// Platform-neutral audiobook session policy.
+public enum AudioSessionKind: Sendable, Equatable {
+    case audiobook(BookID)
+    case readaloud(BookID)
+
+    public var bookID: BookID {
+        switch self {
+            case .audiobook(let id), .readaloud(let id):
+                return id
+        }
+    }
+}
+
+public enum ReadaloudOpenResult: Sendable, Equatable {
+    case joinedLiveSession
+    case openedFresh
+}
+
+public struct AudioSessionSnapshot: Sendable {
+    public let kind: AudioSessionKind
+    public let title: String?
+    public let isPlaying: Bool
+    public let chapterLabel: String?
+    public let bookProgress: Double
+    public let playbackRate: Double
+}
+
+public enum AudioSessionTransportCommand: Sendable {
+    case play
+    case pause
+    case togglePlayPause
+}
+
+/// The one app-wide audio session.
 ///
-/// `AudiobookActor` remains the low-level decoder/player. This actor owns the
-/// user-visible session lifecycle, progress restoration and synchronization,
-/// semantic controls, sleep timers, and the state rendered by platform UIs.
+/// `AudiobookActor` and `SMILPlayerActor` remain the low-level engines. This
+/// actor owns which book currently holds the audio pipeline (audiobook or
+/// readaloud) and, for audiobooks, the user-visible session lifecycle,
+/// progress restoration and synchronization, semantic controls, sleep timers,
+/// and the state rendered by platform UIs. For readaloud, position/nav
+/// authority stays with the reading session; this actor only owns the
+/// engine's lifetime and exclusivity.
 @globalActor
-public actor AudiobookSessionActor {
-    public static let shared = AudiobookSessionActor()
+public actor AudioSessionActor {
+    public static let shared = AudioSessionActor()
+
+    private var currentKind: AudioSessionKind?
+    private var readaloudTitle: String?
+    private var smilObserverID: UUID?
+    private var attachments: Set<UUID> = []
+    private var snapshotObservers: [UUID: @Sendable (AudioSessionSnapshot?) -> Void] = [:]
 
     private var book: BookMetadata?
     private var mediaURL: URL?
@@ -118,7 +160,7 @@ public actor AudiobookSessionActor {
 
     private init() {}
 
-    public func open(bookID: BookID) async throws {
+    public func openAudiobook(bookID: BookID) async throws {
         let snapshot = await BookServiceActor.shared.librarySnapshot(policy: .cachedOnly)
         guard let book = snapshot.books.first(where: { $0.id == bookID }) else {
             throw AudiobookSessionError.bookNotFound(bookID.uuid)
@@ -132,10 +174,10 @@ public actor AudiobookSessionActor {
             throw AudiobookSessionError.localMediaUnavailable(bookID.uuid)
         }
 
-        try await open(book: book, mediaURL: media.url)
+        try await openAudiobook(book: book, mediaURL: media.url)
     }
 
-    public func open(book: BookMetadata, mediaURL: URL) async throws {
+    public func openAudiobook(book: BookMetadata, mediaURL: URL) async throws {
         if self.book?.id == book.id,
             self.mediaURL?.standardizedFileURL == mediaURL.standardizedFileURL,
             metadata != nil
@@ -150,11 +192,10 @@ public actor AudiobookSessionActor {
         activeSessionID = sessionID
         self.book = book
         self.mediaURL = mediaURL
+        currentKind = .audiobook(book.id)
 
         do {
-            if await SMILPlayerActor.shared.activeAudioPlayer == .smil {
-                await SMILPlayerActor.shared.cleanup()
-            }
+            await closeReadaloudArm(onlyIfEngineActive: true)
             await AudiobookActor.shared.cleanup()
 
             let loadedMetadata = try await AudiobookActor.shared.validateAndLoadAudiobook(
@@ -184,7 +225,7 @@ public actor AudiobookSessionActor {
             incomingPositionObserverID = await ProgressSyncActor.shared
                 .addIncomingPositionObserver(for: book.id) { position in
                     Task {
-                        await AudiobookSessionActor.shared.handleIncomingPosition(
+                        await AudioSessionActor.shared.handleIncomingPosition(
                             position,
                             sessionID: sessionID,
                         )
@@ -203,9 +244,118 @@ public actor AudiobookSessionActor {
         }
     }
 
-    public func close() async {
+    public func openReadaloud(
+        bookID: BookID,
+        epubPath: URL,
+        title: String?,
+        author: String?,
+    ) async throws -> ReadaloudOpenResult {
+        let loadedBookID = await SMILPlayerActor.shared.getLoadedBookID()
+        let isPlaying = await SMILPlayerActor.shared.getCurrentState()?.isPlaying ?? false
+
+        if loadedBookID == bookID && isPlaying {
+            currentKind = .readaloud(bookID)
+            readaloudTitle = title
+            await installSMILObserver()
+            return .joinedLiveSession
+        }
+
+        await closeAudiobookArmIfActive()
+
+        try await SMILPlayerActor.shared.loadBook(
+            epubPath: epubPath,
+            bookID: bookID,
+            title: title,
+            author: author,
+        )
+        let config = await SettingsActor.shared.config
+        await SMILPlayerActor.shared.setPlaybackRate(config.playback.defaultPlaybackSpeed)
+        await SMILPlayerActor.shared.setVolume(config.playback.defaultVolume)
+
+        currentKind = .readaloud(bookID)
+        readaloudTitle = title
+        await installSMILObserver()
+        return .openedFresh
+    }
+
+    public func closeAudiobook() async {
         await teardown(syncReason: .userClosedBook)
         notifyObservers(nil)
+    }
+
+    public func closeAudiobookArmIfActive() async {
+        if case .audiobook = currentKind {
+            await closeAudiobook()
+        } else if await SMILPlayerActor.shared.activeAudioPlayer == .audiobook {
+            await AudiobookActor.shared.cleanup()
+        }
+    }
+
+    public func closeCurrent() async {
+        switch currentKind {
+            case .audiobook:
+                await closeAudiobook()
+            case .readaloud:
+                await closeReadaloudArm()
+            case nil:
+                break
+        }
+    }
+
+    public func close(ifOwnedBy bookID: BookID) async {
+        switch currentKind {
+            case .audiobook(let id) where id == bookID:
+                await closeAudiobook()
+            case .readaloud(let id) where id == bookID:
+                await closeReadaloudArm()
+            default:
+                if await SMILPlayerActor.shared.getLoadedBookID() == bookID {
+                    await SMILPlayerActor.shared.cleanup()
+                }
+        }
+    }
+
+    public func currentSessionKind() -> AudioSessionKind? {
+        currentKind
+    }
+
+    @discardableResult
+    public func attach(id: UUID = UUID()) -> UUID {
+        attachments.insert(id)
+        return id
+    }
+
+    public func detach(id: UUID) {
+        attachments.remove(id)
+    }
+
+    public var attachmentCount: Int {
+        attachments.count
+    }
+
+    public func transport(_ command: AudioSessionTransportCommand) async throws {
+        switch currentKind {
+            case .audiobook:
+                switch command {
+                    case .play:
+                        try await AudiobookActor.shared.play()
+                    case .pause:
+                        await AudiobookActor.shared.pause()
+                    case .togglePlayPause:
+                        try await AudiobookActor.shared.togglePlayPause()
+                }
+            case .readaloud:
+                switch command {
+                    case .play:
+                        try await SMILPlayerActor.shared.play()
+                    case .pause:
+                        await SMILPlayerActor.shared.pause()
+                    case .togglePlayPause:
+                        try await SMILPlayerActor.shared.togglePlayPause()
+                }
+            case nil:
+                break
+        }
     }
 
     public func control(_ command: AudiobookSessionCommand) async throws {
@@ -265,6 +415,113 @@ public actor AudiobookSessionActor {
 
     public func currentState() async -> AudiobookSessionState? {
         await makeState()
+    }
+
+    @discardableResult
+    public func addSnapshotObserver(
+        id: UUID = UUID(),
+        _ observer: @escaping @Sendable (AudioSessionSnapshot?) -> Void,
+    ) async -> UUID {
+        snapshotObservers[id] = observer
+        observer(await currentSnapshot())
+        return id
+    }
+
+    public func removeSnapshotObserver(id: UUID) {
+        snapshotObservers.removeValue(forKey: id)
+    }
+
+    public func currentSnapshot() async -> AudioSessionSnapshot? {
+        switch currentKind {
+            case .audiobook:
+                return (await makeState()).flatMap(audiobookSnapshot(from:))
+            case .readaloud(let id):
+                guard let state = await SMILPlayerActor.shared.getCurrentState() else {
+                    return nil
+                }
+                return readaloudSnapshot(from: state, fallbackBookID: id)
+            case nil:
+                return nil
+        }
+    }
+
+    private func closeReadaloudArm(onlyIfEngineActive: Bool = false) async {
+        if let smilObserverID {
+            await SMILPlayerActor.shared.removeStateObserver(id: smilObserverID)
+            self.smilObserverID = nil
+        }
+        if case .readaloud = currentKind {
+            currentKind = nil
+            readaloudTitle = nil
+            notifySnapshotObservers(nil)
+        }
+        if onlyIfEngineActive {
+            if await SMILPlayerActor.shared.activeAudioPlayer == .smil {
+                await SMILPlayerActor.shared.cleanup()
+            }
+        } else {
+            await SMILPlayerActor.shared.cleanup()
+        }
+    }
+
+    private func installSMILObserver() async {
+        guard smilObserverID == nil else { return }
+        smilObserverID = await SMILPlayerActor.shared.addStateObserver { state in
+            Task {
+                await AudioSessionActor.shared.handleSMILStateChange(state)
+            }
+        }
+    }
+
+    private func handleSMILStateChange(_ state: SMILPlaybackState) async {
+        guard case .readaloud(let id) = currentKind else { return }
+        guard let bookID = state.bookID else {
+            if let smilObserverID {
+                await SMILPlayerActor.shared.removeStateObserver(id: smilObserverID)
+                self.smilObserverID = nil
+            }
+            currentKind = nil
+            readaloudTitle = nil
+            notifySnapshotObservers(nil)
+            return
+        }
+        if bookID != id {
+            currentKind = .readaloud(bookID)
+        }
+        notifySnapshotObservers(readaloudSnapshot(from: state, fallbackBookID: bookID))
+    }
+
+    private func readaloudSnapshot(
+        from state: SMILPlaybackState,
+        fallbackBookID: BookID,
+    ) -> AudioSessionSnapshot {
+        AudioSessionSnapshot(
+            kind: .readaloud(state.bookID ?? fallbackBookID),
+            title: readaloudTitle,
+            isPlaying: state.isPlaying,
+            chapterLabel: state.chapterLabel,
+            bookProgress: state.bookTotal > 0 ? state.bookElapsed / state.bookTotal : 0,
+            playbackRate: state.playbackRate,
+        )
+    }
+
+    private func audiobookSnapshot(from state: AudiobookSessionState) -> AudioSessionSnapshot? {
+        guard case .audiobook(let id) = currentKind else { return nil }
+        let chapter = state.currentChapterIndex.flatMap { state.chapters[safe: $0] }
+        return AudioSessionSnapshot(
+            kind: .audiobook(id),
+            title: state.title,
+            isPlaying: state.isPlaying,
+            chapterLabel: chapter?.title,
+            bookProgress: state.bookProgress,
+            playbackRate: state.playbackRate,
+        )
+    }
+
+    private func notifySnapshotObservers(_ snapshot: AudioSessionSnapshot?) {
+        for observer in snapshotObservers.values {
+            observer(snapshot)
+        }
     }
 
     private func installPlaybackObserver(for sessionID: UUID) async {
@@ -505,6 +762,9 @@ public actor AudiobookSessionActor {
         for observer in observers.values {
             observer(state)
         }
+        if case .audiobook = currentKind {
+            notifySnapshotObservers(state.flatMap(audiobookSnapshot(from:)))
+        }
     }
 
     private func syncProgress(reason: SyncReason) async {
@@ -653,5 +913,9 @@ public actor AudiobookSessionActor {
         pendingServerPosition = nil
         lastRestartTime = nil
         cancelSleepTimer()
+        if case .audiobook = currentKind {
+            currentKind = nil
+            notifySnapshotObservers(nil)
+        }
     }
 }

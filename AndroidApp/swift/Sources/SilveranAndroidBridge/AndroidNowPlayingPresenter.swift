@@ -123,7 +123,7 @@ actor AndroidNowPlayingPresenter: NowPlayingPresenting {
             case "changePlaybackRate":
                 commandHandler(.changePlaybackRate(value))
             case "selectChapter":
-                try? await AudiobookSessionActor.shared.control(.selectChapter(text))
+                try? await AudioSessionActor.shared.control(.selectChapter(text))
             case "nextTrack":
                 commandHandler(.nextTrack)
             case "previousTrack":

@@ -13,12 +13,12 @@ actor AndroidAudiobookSession {
     private var stateObserverID: UUID?
 
     func open(bookID: BookID) async throws {
-        try await AudiobookSessionActor.shared.open(bookID: bookID)
+        try await AudioSessionActor.shared.openAudiobook(bookID: bookID)
         await installStateObserverIfNeeded()
     }
 
     func close() async {
-        await AudiobookSessionActor.shared.close()
+        await AudioSessionActor.shared.closeAudiobook()
     }
 
     func control(command: String, value: Double, text: String) async throws {
@@ -42,7 +42,7 @@ actor AndroidAudiobookSession {
                 sharedCommand = .setPlaybackRate(value)
             case "cyclePlaybackRate":
                 let currentRate = Float(
-                    (await AudiobookSessionActor.shared.currentState())?.playbackRate ?? 1
+                    (await AudioSessionActor.shared.currentState())?.playbackRate ?? 1
                 )
                 let nextRate =
                     Self.playbackRateSteps.first { $0 > currentRate }
@@ -64,12 +64,12 @@ actor AndroidAudiobookSession {
                 throw AndroidBridgeError.invalidAudiobookCommand(command)
         }
 
-        try await AudiobookSessionActor.shared.control(sharedCommand)
+        try await AudioSessionActor.shared.control(sharedCommand)
     }
 
     private func installStateObserverIfNeeded() async {
         guard stateObserverID == nil else { return }
-        stateObserverID = await AudiobookSessionActor.shared.addStateObserver { state in
+        stateObserverID = await AudioSessionActor.shared.addStateObserver { state in
             publishAndroidAudiobookState(state)
         }
     }

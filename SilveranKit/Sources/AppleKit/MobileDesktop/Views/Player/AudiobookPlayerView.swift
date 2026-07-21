@@ -86,9 +86,9 @@ public struct AudiobookPlayerView: View {
                 stateObserverID = nil
                 Task {
                     if let observerID {
-                        await AudiobookSessionActor.shared.removeStateObserver(id: observerID)
+                        await AudioSessionActor.shared.removeStateObserver(id: observerID)
                     }
-                    await AudiobookSessionActor.shared.close()
+                    await AudioSessionActor.shared.closeAudiobook()
                 }
             }
             #if os(iOS)
@@ -226,19 +226,19 @@ public struct AudiobookPlayerView: View {
         }
 
         do {
-            try await AudiobookSessionActor.shared.open(
+            try await AudioSessionActor.shared.openAudiobook(
                 book: bookData.metadata,
                 mediaURL: mediaURL,
             )
 
             if stateObserverID == nil {
-                stateObserverID = await AudiobookSessionActor.shared.addStateObserver { state in
+                stateObserverID = await AudioSessionActor.shared.addStateObserver { state in
                     Task { @MainActor in
                         applySessionState(state)
                     }
                 }
             }
-            applySessionState(await AudiobookSessionActor.shared.currentState())
+            applySessionState(await AudioSessionActor.shared.currentState())
         } catch {
             errorMessage = "Failed to load audiobook: \(error.localizedDescription)"
         }
@@ -262,7 +262,7 @@ public struct AudiobookPlayerView: View {
     private func control(_ command: AudiobookSessionCommand) {
         Task {
             do {
-                try await AudiobookSessionActor.shared.control(command)
+                try await AudioSessionActor.shared.control(command)
             } catch {
                 await MainActor.run {
                     errorMessage = error.localizedDescription

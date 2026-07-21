@@ -576,42 +576,21 @@ class EbookPlayerViewModel {
             debugLog("[EbookPlayerViewModel] Cannot load SMIL actor without book identity")
             return
         }
-        let loadedBookID = await SMILPlayerActor.shared.getLoadedBookID()
-        let currentState = await SMILPlayerActor.shared.getCurrentState()
-        let isPlaying = currentState?.isPlaying ?? false
-
-        if loadedBookID == currentBookID && isPlaying {
-            debugLog(
-                "[EbookPlayerViewModel] Book already loaded and playing in SMILPlayerActor, joining existing session"
-            )
-            isJoiningExistingSession = true
-            let nativeStructure = await SMILPlayerActor.shared.getBookStructure()
-            self.bookStructure = nativeStructure
-            self.tocEntries = await SMILPlayerActor.shared.getTocEntries()
-            debugLog("[EbookPlayerViewModel] Joined session with \(nativeStructure.count) sections")
-            return
-        }
-
-        if loadedBookID == currentBookID {
-            debugLog(
-                "[EbookPlayerViewModel] Book loaded but paused, reloading fresh from PSA"
-            )
-        }
-
-        if await SMILPlayerActor.shared.activeAudioPlayer == .audiobook {
-            await AudiobookActor.shared.cleanup()
-            debugLog("[EbookPlayerViewModel] Cleaned up AudiobookActor before loading readaloud")
-        }
 
         do {
-            try await SMILPlayerActor.shared.loadBook(
-                epubPath: epubPath,
+            let result = try await AudioSessionActor.shared.openReadaloud(
                 bookID: currentBookID,
+                epubPath: epubPath,
                 title: bookData?.metadata.title,
                 author: bookData?.metadata.authors?.first?.name,
             )
-            await SMILPlayerActor.shared.setPlaybackRate(settingsVM.defaultPlaybackSpeed)
-            await SMILPlayerActor.shared.setVolume(settingsVM.defaultVolume)
+
+            if result == .joinedLiveSession {
+                debugLog(
+                    "[EbookPlayerViewModel] Book already loaded and playing in SMILPlayerActor, joining existing session"
+                )
+                isJoiningExistingSession = true
+            }
 
             let nativeStructure = await SMILPlayerActor.shared.getBookStructure()
             self.bookStructure = nativeStructure
@@ -621,7 +600,7 @@ class EbookPlayerViewModel {
             )
 
             #if os(iOS)
-            if let metadata = bookData?.metadata {
+            if result == .openedFresh, let metadata = bookData?.metadata {
                 if let coverData = await BookServiceActor.shared.cachedCoverData(
                     for: metadata.id,
                     audio: false,
@@ -710,8 +689,12 @@ class EbookPlayerViewModel {
         Task { @MainActor in
             await mediaOverlayManager?.cleanup()
             await progressManager?.cleanup()
-            debugLog("[EbookPlayerViewModel] onDisappear: calling SMILPlayerActor.cleanup()")
-            await SMILPlayerActor.shared.cleanup()
+            if let bookID = bookData?.metadata.id {
+                debugLog(
+                    "[EbookPlayerViewModel] onDisappear: closing audio session if owned by \(bookID)"
+                )
+                await AudioSessionActor.shared.close(ifOwnedBy: bookID)
+            }
         }
     }
 

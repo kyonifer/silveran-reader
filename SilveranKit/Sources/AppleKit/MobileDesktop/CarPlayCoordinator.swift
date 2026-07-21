@@ -38,7 +38,7 @@ public final class CarPlayCoordinator {
     private var currentPlaybackState: SMILPlaybackState?
     private var currentAudiobookState: AudiobookPlaybackState?
     private var cachedBookStructure: [SectionInfo] = []
-    private var cachedAudiobookChapters: [AudiobookChapter] = []
+    private var cachedAudiobookChapters: [AudiobookSessionChapter] = []
     private var wasPlaying: Bool = false
     private var syncTimer: Timer?
     private var activePlayer: ActivePlayer?
@@ -129,27 +129,10 @@ public final class CarPlayCoordinator {
     private func handleAudiobookStateChange(_ state: AudiobookPlaybackState) {
         guard activePlayer == .audiobook else { return }
 
-        let previouslyPlaying = wasPlaying
         currentAudiobookState = state
         wasPlaying = state.isPlaying
 
-        debugLog(
-            "[CarPlayCoordinator] Audiobook state: isPlaying=\(state.isPlaying), wasPlaying=\(previouslyPlaying)"
-        )
-
-        if previouslyPlaying && !state.isPlaying {
-            debugLog("[CarPlayCoordinator] Audiobook paused, syncing progress")
-            Task { @MainActor in
-                await self.syncProgress(reason: .userPausedPlayback)
-            }
-            stopPeriodicSync()
-        } else if !previouslyPlaying && state.isPlaying {
-            debugLog("[CarPlayCoordinator] Audiobook started, starting periodic sync")
-            Task { @MainActor in
-                await self.startPeriodicSync()
-            }
-        }
-
+        // Audiobook progress syncing is owned by AudioSessionActor.
         onPlaybackStateChanged?()
     }
 
@@ -300,77 +283,40 @@ public final class CarPlayCoordinator {
         debugLog(
             "[CarPlayCoordinator] loadM4BAudiobook start: carPlayConnected=\(isCarPlayConnected), playerViewActive=\(isPlayerViewActive)"
         )
-        if await SMILPlayerActor.shared.activeAudioPlayer == .smil {
-            await SMILPlayerActor.shared.cleanup()
-        }
         activePlayer = .audiobook
         currentBookID = metadata.id
         currentBookTitle = metadata.title
         currentAudiobookHref = nil
         wasPlaying = false
 
-        audiobookObserverId = await AudiobookActor.shared.addStateObserver { [weak self] state in
-            Task { @MainActor [weak self] in
-                self?.handleAudiobookStateChange(state)
+        if audiobookObserverId == nil {
+            audiobookObserverId = await AudiobookActor.shared.addStateObserver {
+                [weak self] state in
+                Task { @MainActor [weak self] in
+                    self?.handleAudiobookStateChange(state)
+                }
             }
-        }
-        debugLog(
-            "[CarPlayCoordinator] Audiobook observer registered: \(String(describing: audiobookObserverId))"
-        )
-
-        let audiobookMetadata = try await AudiobookActor.shared.validateAndLoadAudiobook(
-            url: localPath
-        )
-        cachedAudiobookChapters = audiobookMetadata.chapters
-        onChaptersUpdated?()
-
-        try await AudiobookActor.shared.preparePlayer()
-
-        if let coverData = await getCoverImageData(for: metadata.id) {
-            await AudiobookActor.shared.setCoverImage(coverData)
-        }
-
-        isPositionRestored = false
-
-        var locatorToUse: BookLocator? = nil
-        if let psaProgress = await ProgressSyncActor.shared.getBookProgress(for: metadata.id),
-            let psaLocator = psaProgress.locator
-        {
             debugLog(
-                "[CarPlayCoordinator] Got audiobook position from PSA (source: \(psaProgress.source))"
+                "[CarPlayCoordinator] Audiobook observer registered: \(String(describing: audiobookObserverId))"
             )
-            locatorToUse = psaLocator
-        } else if let metadataLocator = metadata.position?.locator {
-            debugLog("[CarPlayCoordinator] Using fallback audiobook position from metadata")
-            locatorToUse = metadataLocator
         }
 
-        if let locator = locatorToUse,
-            let totalProg = locator.locations?.totalProgression, totalProg > 0
-        {
-            debugLog("[CarPlayCoordinator] Restoring audiobook position to \(totalProg * 100)%")
-            await AudiobookActor.shared.seekToTotalProgressFraction(totalProg)
-        } else {
-            debugLog("[CarPlayCoordinator] No saved audiobook position, starting from beginning")
-        }
+        try await AudioSessionActor.shared.openAudiobook(book: metadata, mediaURL: localPath)
+
+        cachedAudiobookChapters = (await AudioSessionActor.shared.currentState())?.chapters ?? []
+        onChaptersUpdated?()
 
         isPositionRestored = true
 
-        let playbackSpeed = await SettingsActor.shared.config.playback.defaultPlaybackSpeed
-        await AudiobookActor.shared.setPlaybackRate(playbackSpeed)
-        debugLog(
-            "[CarPlayCoordinator] M4B audiobook loaded at \(playbackSpeed)x, starting playback"
-        )
-        try await AudiobookActor.shared.play()
+        debugLog("[CarPlayCoordinator] M4B audiobook opened via AudioSessionActor, starting playback")
+        try await AudioSessionActor.shared.transport(.play)
     }
 
     private func loadSMILBook(metadata: BookMetadata) async throws {
         debugLog(
             "[CarPlayCoordinator] loadSMILBook start: carPlayConnected=\(isCarPlayConnected), playerViewActive=\(isPlayerViewActive)"
         )
-        if await SMILPlayerActor.shared.activeAudioPlayer == .audiobook {
-            await AudiobookActor.shared.cleanup()
-        }
+        await AudioSessionActor.shared.closeAudiobookArmIfActive()
         activePlayer = .smil
         currentBookID = metadata.id
         currentBookTitle = metadata.title
@@ -557,52 +503,8 @@ public final class CarPlayCoordinator {
 
         switch activePlayer {
             case .audiobook:
-                guard let state = await AudiobookActor.shared.getCurrentState() else {
-                    debugLog("[CarPlayCoordinator] Cannot sync audiobook: no playback state")
-                    return
-                }
-
-                let chapterIndex = state.currentChapterIndex ?? 0
-                let chapter =
-                    chapterIndex < cachedAudiobookChapters.count
-                    ? cachedAudiobookChapters[chapterIndex]
-                    : nil
-
-                let totalProgression = state.duration > 0 ? state.currentTime / state.duration : 0
-                let roundedTime = (state.currentTrackTime * 100).rounded() / 100
-                let timeFragment = "t=\(roundedTime)"
-
-                let locations = BookLocator.Locations(
-                    fragments: [timeFragment],
-                    progression: nil,
-                    position: nil,
-                    totalProgression: totalProgression,
-                    cssSelector: nil,
-                    partialCfi: nil,
-                    domRange: nil,
-                )
-
-                locator = BookLocator(
-                    href: state.currentTrackHref ?? currentAudiobookHref ?? "audiobook",
-                    type: state.currentTrackType ?? "audio/mp4",
-                    title: chapter?.title ?? "Chapter \(chapterIndex + 1)",
-                    locations: locations,
-                    text: nil,
-                )
-
-                sourceIdentifier = "CarPlay · Audiobook"
-                let chapterTitle = chapter?.title ?? "Chapter \(chapterIndex + 1)"
-                let chapterProgress: Double
-                if let ch = chapter, ch.duration > 0 {
-                    chapterProgress = (state.currentTime - ch.startTime) / ch.duration
-                } else {
-                    chapterProgress = 0
-                }
-                locationDescription = "\(chapterTitle), \(Int(chapterProgress * 100))%"
-
-                debugLog(
-                    "[CarPlayCoordinator] Syncing audiobook progress: book=\(bookID), chapter=\(chapterIndex), progress=\(totalProgression), reason=\(reason)"
-                )
+                debugLog("[CarPlayCoordinator] Audiobook sync is handled by AudioSessionActor")
+                return
 
             case .smil, .none:
                 guard let state = currentPlaybackState else {
