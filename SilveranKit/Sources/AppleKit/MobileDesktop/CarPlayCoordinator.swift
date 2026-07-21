@@ -30,7 +30,6 @@ public final class CarPlayCoordinator {
     public var onChaptersUpdated: (() -> Void)?
     public var onPlaybackStateChanged: (() -> Void)?
     public var isCarPlayConnected: Bool = false
-    public var isPlayerViewActive: Bool = false
 
     private var smilObserverId: UUID?
     private var audiobookObserverId: UUID?
@@ -264,7 +263,7 @@ public final class CarPlayCoordinator {
 
     private func loadM4BAudiobook(metadata: BookMetadata, localPath: URL) async throws {
         debugLog(
-            "[CarPlayCoordinator] loadM4BAudiobook start: carPlayConnected=\(isCarPlayConnected), playerViewActive=\(isPlayerViewActive)"
+            "[CarPlayCoordinator] loadM4BAudiobook start: carPlayConnected=\(isCarPlayConnected)"
         )
         if activePlayer == .smil, let previousID = currentBookID {
             // The audiobook takes over the audio engine; a headless readaloud
@@ -302,7 +301,7 @@ public final class CarPlayCoordinator {
 
     private func loadSMILBook(metadata: BookMetadata) async throws {
         debugLog(
-            "[CarPlayCoordinator] loadSMILBook start: carPlayConnected=\(isCarPlayConnected), playerViewActive=\(isPlayerViewActive)"
+            "[CarPlayCoordinator] loadSMILBook start: carPlayConnected=\(isCarPlayConnected)"
         )
         activePlayer = .smil
         currentBookID = metadata.id

@@ -164,9 +164,6 @@ extension AuthorView {
                         showOfflineSheet: showOfflineSheet ?? .constant(false),
                     )
             }
-            .navigationDestination(for: PlayerBookData.self) { bookData in
-                playerView(for: bookData)
-            }
         }
         .environment(\.mediaNavigationPath, $navigationPath)
     }
@@ -237,15 +234,6 @@ extension AuthorView {
         }
     }
 
-    @ViewBuilder
-    private func playerView(for bookData: PlayerBookData) -> some View {
-        switch bookData.category {
-            case .audio:
-                AudiobookPlayerView(bookData: bookData).navigationBarTitleDisplayMode(.inline)
-            case .ebook, .synced:
-                EbookPlayerView(bookData: bookData).navigationBarTitleDisplayMode(.inline)
-        }
-    }
 }
 #endif
 

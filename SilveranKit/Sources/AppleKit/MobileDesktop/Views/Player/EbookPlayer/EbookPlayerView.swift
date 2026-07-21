@@ -138,26 +138,17 @@ public struct EbookPlayerView: View {
         #endif
         .onAppear {
             viewModel.handleOnAppear()
-            #if os(iOS)
-            CarPlayCoordinator.shared.isPlayerViewActive = true
-            debugLog(
-                "[LastOpenBookStore] EbookPlayerView onAppear scenePhase=\(scenePhase) bookId=\(viewModel.bookData?.metadata.uuid ?? "nil")"
-            )
-            if let bookData = viewModel.bookData {
-                Task {
-                    await LastOpenBookStore.save(bookData: bookData)
-                }
-            }
-            #endif
         }
         .onDisappear {
             #if os(iOS)
             debugLog(
-                "[LastOpenBookStore] EbookPlayerView onDisappear scenePhase=\(scenePhase) bookId=\(viewModel.bookData?.metadata.uuid ?? "nil")"
+                "[EbookPlayerView] onDisappear scenePhase=\(scenePhase) bookId=\(viewModel.bookData?.metadata.uuid ?? "nil")"
             )
-            viewModel.handleOnDisappear(cleanupPlayback: scenePhase == .active)
             if scenePhase == .active {
-                CarPlayCoordinator.shared.isPlayerViewActive = false
+                let keepsSession = PlayerPresenter.shared.cardDismissalKeepsSession()
+                viewModel.handleOnDisappear(close: keepsSession ? .detachView : .endSession)
+            } else {
+                viewModel.handleOnDisappear(close: nil)
             }
             #else
             viewModel.handleOnDisappear()
@@ -563,12 +554,6 @@ public struct EbookPlayerView: View {
                     showAudioSidebar: $viewModel.showAudioSidebar,
                     searchManager: viewModel.searchManager,
                     onDismiss: {
-                        if let bookData = viewModel.bookData {
-                            LastOpenBookStore.clearIfMatching(
-                                bookId: bookData.metadata.id,
-                                category: bookData.category,
-                            )
-                        }
                         if let onClose {
                             onClose()
                         } else {

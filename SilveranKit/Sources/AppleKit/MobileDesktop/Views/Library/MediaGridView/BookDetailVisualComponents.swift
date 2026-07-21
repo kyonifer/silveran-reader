@@ -270,8 +270,12 @@ private struct CompactMediaButton: View {
     var body: some View {
         Group {
             if isDownloaded {
-                NavigationLink(value: playerData) { buttonContent }
-                    .buttonStyle(.plain)
+                Button {
+                    PlayerPresenter.shared.present(playerData)
+                } label: {
+                    buttonContent
+                }
+                .buttonStyle(.plain)
             } else {
                 Button(action: performAction) { buttonContent }
                     .buttonStyle(.plain)

@@ -89,7 +89,6 @@ struct MediaItemCardView: View {
     @Environment(\.mediaNavigationPath) private var mediaNavigationPath
     @Environment(\.editMetadataAction) private var editMetadataAction
     @State private var pendingDetailsNavigation = false
-    @State private var pendingPlayerCategory: LocalMediaCategory?
     @State private var copyBookData: CopyBookData?
     @State private var pendingFolderDelete: FolderDeleteRequest?
     #endif
@@ -97,7 +96,9 @@ struct MediaItemCardView: View {
     var body: some View {
         #if os(iOS)
         if let playerData = preferredPlayerBookData {
-            NavigationLink(value: playerData) {
+            Button {
+                PlayerPresenter.shared.present(playerData)
+            } label: {
                 cardContent
             }
             .buttonStyle(.plain)
@@ -384,66 +385,19 @@ struct MediaItemCardView: View {
     }
 
     private func handlePlayerNavigation(_ category: LocalMediaCategory) {
-        let bookData = makePlayerBookData(for: category)
-        if let mediaNavigationPath {
-            mediaNavigationPath.wrappedValue.append(bookData)
-        } else {
-            pendingPlayerCategory = category
-        }
+        PlayerPresenter.shared.present(makePlayerBookData(for: category))
     }
 
     @ViewBuilder
     private var deferredNavigationLinks: some View {
         if mediaNavigationPath == nil {
-            ZStack {
-                NavigationLink(isActive: $pendingDetailsNavigation) {
-                    iOSBookDetailView(item: item, mediaKind: mediaKind)
-                } label: {
-                    EmptyView()
-                }
-
-                NavigationLink(
-                    tag: LocalMediaCategory.synced,
-                    selection: $pendingPlayerCategory,
-                ) {
-                    playerDestination(for: .synced)
-                } label: {
-                    EmptyView()
-                }
-
-                NavigationLink(
-                    tag: LocalMediaCategory.ebook,
-                    selection: $pendingPlayerCategory,
-                ) {
-                    playerDestination(for: .ebook)
-                } label: {
-                    EmptyView()
-                }
-
-                NavigationLink(
-                    tag: LocalMediaCategory.audio,
-                    selection: $pendingPlayerCategory,
-                ) {
-                    playerDestination(for: .audio)
-                } label: {
-                    EmptyView()
-                }
+            NavigationLink(isActive: $pendingDetailsNavigation) {
+                iOSBookDetailView(item: item, mediaKind: mediaKind)
+            } label: {
+                EmptyView()
             }
             .frame(width: 0, height: 0)
             .hidden()
-        }
-    }
-
-    @ViewBuilder
-    private func playerDestination(for category: LocalMediaCategory) -> some View {
-        let bookData = makePlayerBookData(for: category)
-        switch category {
-            case .audio:
-                AudiobookPlayerView(bookData: bookData)
-                    .navigationBarTitleDisplayMode(.inline)
-            case .ebook, .synced:
-                EbookPlayerView(bookData: bookData)
-                    .navigationBarTitleDisplayMode(.inline)
         }
     }
     #endif

@@ -164,9 +164,6 @@ struct HomeView: View {
                         showOfflineSheet: showOfflineSheet ?? .constant(false),
                     )
             }
-            .navigationDestination(for: PlayerBookData.self) { bookData in
-                playerView(for: bookData)
-            }
         }
         .environment(\.mediaNavigationPath, $navigationPath)
         #else
@@ -840,17 +837,6 @@ struct HomeView: View {
     }
 
     #if os(iOS)
-    @ViewBuilder
-    private func playerView(for bookData: PlayerBookData) -> some View {
-        switch bookData.category {
-            case .audio:
-                AudiobookPlayerView(bookData: bookData)
-                    .navigationBarTitleDisplayMode(.inline)
-            case .ebook, .synced:
-                EbookPlayerView(bookData: bookData)
-                    .navigationBarTitleDisplayMode(.inline)
-        }
-    }
 
     private var searchOverlay: some View {
         MediaGridView(

@@ -363,7 +363,9 @@ struct MediaDownloadOptionRow: View {
         let hasCachedMedia = mediaViewModel.hasCachedMedia(option.category, for: item)
         #if os(iOS)
         HStack(spacing: 8) {
-            NavigationLink(value: makePlayerBookData()) {
+            Button {
+                PlayerPresenter.shared.present(makePlayerBookData())
+            } label: {
                 HStack(spacing: 10) {
                     Group {
                         switch option.iconType {

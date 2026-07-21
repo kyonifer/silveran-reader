@@ -578,20 +578,21 @@ class EbookPlayerViewModel {
         showServerPositionDialog = false
     }
 
-    func handleOnDisappear(cleanupPlayback: Bool = true) {
-        debugLog("[EbookPlayerViewModel] View disappearing")
-        debugLog("[EbookPlayerViewModel] Window closing")
+    func handleOnDisappear(close policy: ReadingSessionClosePolicy? = .endSession) {
+        debugLog("[EbookPlayerViewModel] View disappearing (policy: \(String(describing: policy)))")
 
         session?.removeIncomingPositionObserver()
 
-        guard cleanupPlayback else {
+        guard let policy else {
             debugLog("[EbookPlayerViewModel] Background disappear - preserving SMIL playback")
             return
         }
 
         Task { @MainActor in
-            await comicProgressManager?.cleanup()
-            await session?.close(.endSession)
+            if policy == .endSession {
+                await comicProgressManager?.cleanup()
+            }
+            await session?.close(policy)
         }
     }
 

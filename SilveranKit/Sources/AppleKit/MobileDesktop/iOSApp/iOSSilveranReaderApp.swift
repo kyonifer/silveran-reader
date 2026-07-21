@@ -256,7 +256,6 @@ private struct iOSRootView: View {
     let restorePrerequisitesTask: Task<Bool, Never>
     @Environment(MediaViewModel.self) private var mediaViewModel
     @State private var restoreStartupFinished = false
-    @State private var restoredPlayer: PlayerBookData?
     @State private var readaloudGeneratorData: ReadaloudGeneratorData?
 
     var body: some View {
@@ -264,10 +263,6 @@ private struct iOSRootView: View {
             if !restoreStartupFinished {
                 ProgressView(LastOpenBookStore.hasSavedRoute ? "Loading book..." : "Loading...")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let restoredPlayer {
-                NavigationStack {
-                    restoredPlayerView(for: restoredPlayer)
-                }
             } else {
                 iOSLibraryView()
             }
@@ -301,9 +296,10 @@ private struct iOSRootView: View {
                 "[RestoreTrace][Restore] awaitPrerequisites deltaMs=\(String(format: "%.1f", (afterStartup - restoreStarted) * 1000))"
             )
             if mediaViewModel.pendingOpenBookID == nil {
-                restoredPlayer = await LastOpenBookStore.loadPlayerBookData()
-                if mediaViewModel.pendingOpenBookID != nil {
-                    restoredPlayer = nil
+                if let bookData = await LastOpenBookStore.loadPlayerBookData(),
+                    mediaViewModel.pendingOpenBookID == nil
+                {
+                    PlayerPresenter.shared.present(bookData)
                 }
             }
             debugLog(
@@ -316,28 +312,6 @@ private struct iOSRootView: View {
     private func handleOpenURL(_ url: URL) {
         guard let bookID = SilveranBookLink.bookID(from: url) else { return }
         mediaViewModel.pendingOpenBookID = bookID
-        // The tapped book supersedes whatever the restore flow brought back.
-        restoredPlayer = nil
-    }
-
-    @ViewBuilder
-    private func restoredPlayerView(for bookData: PlayerBookData) -> some View {
-        switch bookData.category {
-            case .audio:
-                AudiobookPlayerView(
-                    bookData: bookData,
-                    onClose: {
-                        restoredPlayer = nil
-                    },
-                )
-            case .ebook, .synced:
-                EbookPlayerView(
-                    bookData: bookData,
-                    onClose: {
-                        restoredPlayer = nil
-                    },
-                )
-        }
     }
 }
 #endif

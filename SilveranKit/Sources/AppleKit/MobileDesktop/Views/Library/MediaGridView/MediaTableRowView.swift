@@ -28,7 +28,9 @@ struct MediaTableRowView: View {
     var body: some View {
         #if os(iOS)
         if let playerData = preferredPlayerBookData {
-            NavigationLink(value: playerData) {
+            Button {
+                PlayerPresenter.shared.present(playerData)
+            } label: {
                 rowContent
             }
             .buttonStyle(.plain)

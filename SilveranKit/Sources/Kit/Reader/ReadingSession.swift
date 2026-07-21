@@ -657,12 +657,23 @@ public final class ReadingSession {
     public func close(_ policy: ReadingSessionClosePolicy) async {
         switch policy {
             case .detachView:
+                guard !isEnded else { return }
                 debugLog("[ReadingSession] Detaching view from session for \(bookID)")
                 isViewAttached = false
                 commsBridge = nil
-                if let manager = mediaOverlayManager {
-                    await manager.detach()
+                clearViewHooks()
+                // The view-bound managers hold a dead bridge; replace them with
+                // headless ones so position tracking and syncing continue.
+                let oldProgressManager = progressManager
+                let oldOverlayManager = mediaOverlayManager
+                progressManager = nil
+                mediaOverlayManager = nil
+                oldProgressManager?.stopPeriodicSync()
+                if let oldOverlayManager {
+                    await oldOverlayManager.detach()
                 }
+                await oldProgressManager?.cleanup()
+                setUpHeadlessManagers()
                 detachFromAudioSession()
 
             case .endSession:
@@ -683,6 +694,17 @@ public final class ReadingSession {
                 await AudioSessionActor.shared.close(ifOwnedBy: bookID)
                 ReadingSessionStore.shared.remove(self)
         }
+    }
+
+    private func clearViewHooks() {
+        onComicPrepared = nil
+        onUserNavigation = nil
+        isViewRecovering = nil
+        onRecoveryStructureReady = nil
+        configureMediaOverlayManager = nil
+        onReadaloudAvailabilityChanged = nil
+        onViewStructureReady = nil
+        onIncomingServerPosition = nil
     }
 
     private func detachFromAudioSession() {

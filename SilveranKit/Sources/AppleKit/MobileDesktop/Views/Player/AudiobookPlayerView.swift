@@ -50,18 +50,6 @@ public struct AudiobookPlayerView: View {
                 Text(serverPositionDescription)
             }
             .onAppear {
-                #if os(iOS)
-                CarPlayCoordinator.shared.isPlayerViewActive = true
-                debugLog(
-                    "[LastOpenBookStore] AudiobookPlayerView onAppear scenePhase=\(scenePhase) bookId=\(bookData?.metadata.uuid ?? "nil")"
-                )
-                if let bookData {
-                    Task {
-                        await LastOpenBookStore.save(bookData: bookData)
-                    }
-                }
-                #endif
-
                 Task { @MainActor in
                     await openSession()
                 }
@@ -69,17 +57,17 @@ public struct AudiobookPlayerView: View {
             .onDisappear {
                 #if os(iOS)
                 debugLog(
-                    "[LastOpenBookStore] AudiobookPlayerView onDisappear scenePhase=\(scenePhase) bookId=\(bookData?.metadata.uuid ?? "nil")"
+                    "[AudiobookPlayerView] onDisappear scenePhase=\(scenePhase) bookId=\(bookData?.metadata.uuid ?? "nil")"
                 )
-                if scenePhase == .active {
-                    CarPlayCoordinator.shared.isPlayerViewActive = false
-                }
                 guard scenePhase == .active else {
                     debugLog(
                         "[AudiobookPlayerView] Background disappear - preserving audio playback"
                     )
                     return
                 }
+                let keepsSession = PlayerPresenter.shared.cardDismissalKeepsSession()
+                #else
+                let keepsSession = false
                 #endif
 
                 let observerID = stateObserverID
@@ -88,7 +76,9 @@ public struct AudiobookPlayerView: View {
                     if let observerID {
                         await AudioSessionActor.shared.removeStateObserver(id: observerID)
                     }
-                    await AudioSessionActor.shared.closeAudiobook()
+                    if !keepsSession {
+                        await AudioSessionActor.shared.closeAudiobook()
+                    }
                 }
             }
             #if os(iOS)
@@ -107,12 +97,6 @@ public struct AudiobookPlayerView: View {
 
     #if os(iOS)
     private func closeBook() {
-        if let bookData {
-            LastOpenBookStore.clearIfMatching(
-                bookId: bookData.metadata.id,
-                category: bookData.category,
-            )
-        }
         if let onClose {
             onClose()
         } else {

@@ -62,8 +62,6 @@ public struct iOSLibraryView: View {
     @State private var collectionsNavigationPath = NavigationPath()
     @State private var booksNavigationPath = NavigationPath()
     @State private var downloadedNavigationPath = NavigationPath()
-    @State private var showCarPlayPlayer: Bool = false
-    @State private var shortcutReaderBook: ShortcutReaderBook?
     @State private var shortcutDetailBook: BookMetadata?
     @State private var metadataEditorData: MetadataEditorData?
     @State private var metadataEditorHasUnsavedChanges = false
@@ -80,11 +78,6 @@ public struct iOSLibraryView: View {
     }
 
     public init() {}
-
-    private var carPlayBook: BookMetadata? {
-        guard let bookId = CarPlayCoordinator.shared.activeBookId else { return nil }
-        return mediaViewModel.library.bookMetaData.first { $0.id == bookId }
-    }
 
     private var connectionErrorType: OfflineStatusSheet.ErrorType {
         if case .error(let message) = mediaViewModel.connectionStatus {
@@ -137,24 +130,28 @@ public struct iOSLibraryView: View {
     public var body: some View {
         TabView(selection: $selectedTab) {
             homeTab
+                .safeAreaInset(edge: .bottom, spacing: 0) { GlobalMiniPlayerBar() }
                 .tabItem {
                     Label(tabLabel(for: .home), systemImage: tabIcon(for: .home))
                 }
                 .tag(Tab.home)
 
             configurableTabView(for: slot1Tab)
+                .safeAreaInset(edge: .bottom, spacing: 0) { GlobalMiniPlayerBar() }
                 .tabItem {
                     Label(tabLabel(for: .slot1), systemImage: tabIcon(for: .slot1))
                 }
                 .tag(Tab.slot1)
 
             configurableTabView(for: slot2Tab)
+                .safeAreaInset(edge: .bottom, spacing: 0) { GlobalMiniPlayerBar() }
                 .tabItem {
                     Label(tabLabel(for: .slot2), systemImage: tabIcon(for: .slot2))
                 }
                 .tag(Tab.slot2)
 
             moreTab
+                .safeAreaInset(edge: .bottom, spacing: 0) { GlobalMiniPlayerBar() }
                 .tabItem {
                     Label(tabLabel(for: .more), systemImage: tabIcon(for: .more))
                 }
@@ -171,7 +168,7 @@ public struct iOSLibraryView: View {
         .onReceive(NotificationCenter.default.publisher(for: .silveranShowReader)) { _ in
             Task {
                 if let data = await LastOpenBookStore.loadPlayerBookData() {
-                    shortcutReaderBook = ShortcutReaderBook(data: data)
+                    PlayerPresenter.shared.present(data)
                 }
             }
         }
@@ -184,16 +181,9 @@ public struct iOSLibraryView: View {
         .task {
             openPendingBookIfReady()
         }
-        .fullScreenCover(item: $shortcutReaderBook) { wrapper in
+        .fullScreenCover(item: PlayerPresenter.shared.cardItemBinding) { wrapper in
             NavigationStack {
                 playerView(for: wrapper.data)
-                    .toolbar {
-                        ToolbarItem(placement: .topBarLeading) {
-                            Button("Done") {
-                                shortcutReaderBook = nil
-                            }
-                        }
-                    }
             }
         }
         .sheet(item: $shortcutDetailBook) { book in
@@ -299,49 +289,6 @@ public struct iOSLibraryView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(metadataPermissionErrorMessage)
-        }
-        .safeAreaInset(edge: .top) {
-            if CarPlayCoordinator.shared.isCarPlayConnected,
-                CarPlayCoordinator.shared.isPlaying,
-                !CarPlayCoordinator.shared.isPlayerViewActive,
-                let book = carPlayBook
-            {
-                CarPlayNowPlayingBanner(bookTitle: book.title) {
-                    showCarPlayPlayer = true
-                }
-            }
-        }
-        .fullScreenCover(isPresented: $showCarPlayPlayer) {
-            if let book = carPlayBook,
-                let category = CarPlayCoordinator.shared.activeCategory,
-                let path = mediaViewModel.localMediaPath(for: book.id, category: category)
-            {
-                let variant: MediaViewModel.CoverVariant =
-                    book.hasAvailableAudiobook ? .audioSquare : .standard
-                let cover = mediaViewModel.coverImage(for: book, variant: variant)
-                let ebookCover =
-                    book.hasAvailableAudiobook
-                    ? mediaViewModel.coverImage(for: book, variant: .standard)
-                    : nil
-                NavigationStack {
-                    playerView(
-                        for: PlayerBookData(
-                            metadata: book,
-                            localMediaPath: path,
-                            category: category,
-                            coverArt: cover,
-                            ebookCoverArt: ebookCover,
-                        )
-                    )
-                    .toolbar {
-                        ToolbarItem(placement: .topBarLeading) {
-                            Button("Done") {
-                                showCarPlayPlayer = false
-                            }
-                        }
-                    }
-                }
-            }
         }
     }
 
@@ -580,11 +527,17 @@ public struct iOSLibraryView: View {
     private func playerView(for bookData: PlayerBookData) -> some View {
         switch bookData.category {
             case .audio:
-                AudiobookPlayerView(bookData: bookData)
-                    .navigationBarTitleDisplayMode(.inline)
+                AudiobookPlayerView(
+                    bookData: bookData,
+                    onClose: { PlayerPresenter.shared.dismissCard() },
+                )
+                .navigationBarTitleDisplayMode(.inline)
             case .ebook, .synced:
-                EbookPlayerView(bookData: bookData)
-                    .navigationBarTitleDisplayMode(.inline)
+                EbookPlayerView(
+                    bookData: bookData,
+                    onClose: { PlayerPresenter.shared.dismissCard() },
+                )
+                .navigationBarTitleDisplayMode(.inline)
         }
     }
 
@@ -604,19 +557,14 @@ public struct iOSLibraryView: View {
             return
         }
         Task {
-            shortcutReaderBook = ShortcutReaderBook(
-                data: await mediaViewModel.makePlayerBookDataLoadingCovers(
+            PlayerPresenter.shared.present(
+                await mediaViewModel.makePlayerBookDataLoadingCovers(
                     for: book,
                     category: category,
                 )
             )
         }
     }
-}
-
-private struct ShortcutReaderBook: Identifiable {
-    let id = UUID()
-    let data: PlayerBookData
 }
 
 struct MoreMenuView: View {
@@ -1496,46 +1444,6 @@ extension View {
     }
 }
 
-struct CarPlayNowPlayingBanner: View {
-    let bookTitle: String
-    let onTap: () -> Void
-
-    var body: some View {
-        Button(action: onTap) {
-            HStack(spacing: 14) {
-                Image(systemName: "car.fill")
-                    .font(.system(size: 24))
-                    .foregroundStyle(.white)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Now playing on CarPlay")
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.white.opacity(0.85))
-
-                    Text(bookTitle)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .lineLimit(2)
-                }
-
-                Spacer()
-
-                Text("Tap to join")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.white.opacity(0.85))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(.white.opacity(0.2))
-                    .clipShape(Capsule())
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(Color.accentColor)
-        }
-        .buttonStyle(.plain)
-    }
-}
-
 struct LibraryNavigationDestinations: ViewModifier {
     @Binding var showSettings: Bool
     @Binding var showOfflineSheet: Bool
@@ -1548,16 +1456,6 @@ struct LibraryNavigationDestinations: ViewModifier {
                         showSettings: $showSettings,
                         showOfflineSheet: $showOfflineSheet,
                     )
-            }
-            .navigationDestination(for: PlayerBookData.self) { bookData in
-                switch bookData.category {
-                    case .audio:
-                        AudiobookPlayerView(bookData: bookData)
-                            .navigationBarTitleDisplayMode(.inline)
-                    case .ebook, .synced:
-                        EbookPlayerView(bookData: bookData)
-                            .navigationBarTitleDisplayMode(.inline)
-                }
             }
             .navigationDestination(for: String.self) { authorName in
                 MediaGridView(
