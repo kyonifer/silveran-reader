@@ -2690,8 +2690,6 @@ public actor StorytellerActor {
         return dict
     }
 
-    // MARK: - PSA REST Methods (Pure REST, no queue logic)
-
     public func sendProgressToServer(
         bookId: String,
         locator: BookLocator,

@@ -110,8 +110,6 @@ struct AuthorDetailNavigation: Hashable {
     let initialSelectedBook: BookMetadata?
 }
 
-// MARK: - iOS
-
 #if os(iOS)
 extension AuthorView {
     private var iOSBody: some View {
@@ -251,8 +249,6 @@ extension AuthorView {
 }
 #endif
 
-// MARK: - macOS
-
 #if os(macOS)
 extension AuthorView {
     private var macOSBody: some View {
@@ -384,8 +380,6 @@ extension AuthorView {
     }
 }
 #endif
-
-// MARK: - Shared
 
 extension AuthorView {
     @ViewBuilder

@@ -53,8 +53,6 @@ public actor DownloadManager {
 
     private init() {}
 
-    // MARK: - Initialization
-
     private func ensureInitialized() async {
         guard !initialized else { return }
         let persisted = await loadPersistedState()
@@ -158,8 +156,6 @@ public actor DownloadManager {
             await performResume(downloadId: record.id)
         }
     }
-
-    // MARK: - Public Operations
 
     private func recordID(for bookID: BookID, category: LocalMediaCategory) -> UUID? {
         downloads.values.first {
@@ -299,8 +295,6 @@ public actor DownloadManager {
         notifyObservers()
     }
 
-    // MARK: - State Access
-
     public var incompleteDownloads: [DownloadRecord] {
         get async {
             await ensureInitialized()
@@ -327,8 +321,6 @@ public actor DownloadManager {
         return record.progressFraction
     }
 
-    // MARK: - Observation
-
     // Ensures the retry loop starts on boot: called from MediaViewModel.init on iOS/macOS/tvOS,
     // and from SilveranWatchApp.task on watchOS.
     public func addObserver(_ callback: @escaping @Sendable ([DownloadRecord]) -> Void)
@@ -352,8 +344,6 @@ public actor DownloadManager {
         }
     }
 
-    // MARK: - Background Session
-
     public func handleBackgroundSessionEvents(completionHandler: @escaping @Sendable () -> Void)
         async
     {
@@ -369,8 +359,6 @@ public actor DownloadManager {
             }
         }
     }
-
-    // MARK: - Delegate Callbacks
 
     func handleProgress(
         downloadId: String,
@@ -529,8 +517,6 @@ public actor DownloadManager {
         notifyObservers()
     }
 
-    // MARK: - Private Helpers
-
     private func beginDownloadTask(for record: DownloadRecord, book: BookMetadata?) async {
         if let existingTask = activeTasks.removeValue(forKey: record.id) {
             existingTask.cancel()
@@ -663,8 +649,6 @@ public actor DownloadManager {
             }
         return "\(bookId).\(ext)"
     }
-
-    // MARK: - Persistence
 
     private func persistState() async {
         let records = Array(downloads.values)

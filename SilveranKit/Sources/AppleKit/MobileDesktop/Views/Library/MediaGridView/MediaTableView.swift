@@ -1150,8 +1150,6 @@ struct MediaTableView: NSViewRepresentable {
             parent.onQuickEdit?(items[row].id, field)
         }
 
-        // MARK: - NSMenuDelegate (right-click context menu)
-
         func menuNeedsUpdate(_ menu: NSMenu) {
             menu.removeAllItems()
             guard let tableView, tableView.clickedRow >= 0,

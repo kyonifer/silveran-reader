@@ -546,8 +546,6 @@ struct SidebarView: View {
         )
     }
 
-    // MARK: - Data-driven section rendering
-
     @ViewBuilder
     private func sidebarSection(for group: SidebarConfigGroup, config: [SidebarConfigGroup])
         -> some View
@@ -632,8 +630,6 @@ struct SidebarView: View {
             SidebarConfigHelper.config = config
         }
     }
-
-    // MARK: - Sidebar Row
 
     @ViewBuilder
     private func sidebarRow(for item: SidebarItemDescription, isPinned: Bool = false) -> some View {
@@ -828,8 +824,6 @@ struct SidebarView: View {
         }
     }
     #endif
-
-    // MARK: - Helpers
 
     private func nonAnimating(_ binding: Binding<Bool>) -> Binding<Bool> {
         Binding(

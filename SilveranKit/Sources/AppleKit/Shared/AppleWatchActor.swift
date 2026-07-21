@@ -558,8 +558,6 @@ public actor AppleWatchActor: NSObject {
         )
     }
 
-    // MARK: - Remote Playback Control
-
     public func startObservingSMILPlayer() {
         guard smilObserverID == nil else { return }
         let observerID = UUID()

@@ -103,8 +103,6 @@ struct TagDetailNavigation: Hashable {
     let initialSelectedBook: BookMetadata?
 }
 
-// MARK: - iOS
-
 #if os(iOS)
 extension TagView {
     private var iOSBody: some View {
@@ -239,8 +237,6 @@ extension TagView {
 }
 #endif
 
-// MARK: - macOS
-
 #if os(macOS)
 extension TagView {
     private var macOSBody: some View {
@@ -372,8 +368,6 @@ extension TagView {
     }
 }
 #endif
-
-// MARK: - Shared
 
 extension TagView {
     @ViewBuilder

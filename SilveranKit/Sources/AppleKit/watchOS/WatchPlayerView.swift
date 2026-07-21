@@ -70,8 +70,6 @@ struct WatchPlayerView: View {
     }
 }
 
-// MARK: - Chapter List View
-
 private struct ChapterListView: View {
     @Bindable var viewModel: WatchPlayerViewModel
     let onSelectChapter: (Int) -> Void
@@ -103,8 +101,6 @@ private struct ChapterListView: View {
         .navigationTitle("Chapters")
     }
 }
-
-// MARK: - Audio Controls Page
 
 private struct AudioControlsPage: View {
     @Bindable var viewModel: WatchPlayerViewModel
@@ -337,8 +333,6 @@ private struct AudioControlsPage: View {
     }
 }
 
-// MARK: - Text Reader Page
-
 private struct TextReaderPage: View {
     @Bindable var viewModel: WatchPlayerViewModel
     let onBack: () -> Void
@@ -370,8 +364,6 @@ private struct TextReaderPage: View {
         .navigationBarTitleDisplayMode(.inline)
     }
 }
-
-// MARK: - Speed Picker Sheet
 
 private struct SpeedPickerSheet: View {
     let currentRate: Double

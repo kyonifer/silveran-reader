@@ -8,7 +8,6 @@ import UIKit
 @MainActor
 @Observable
 public final class SMILTextPlaybackViewModel: NSObject {
-    // MARK: - Playback State
 
     public var isPlaying = false
     public var isLoadingPosition = true
@@ -28,18 +27,12 @@ public final class SMILTextPlaybackViewModel: NSObject {
     private static let minimumVolume = 0.05
     #endif
 
-    // MARK: - Current Position
-
     public var currentSectionIndex: Int = 0
     public var currentEntryIndex: Int = 0
-
-    // MARK: - Text Display
 
     private var currentSectionHTML: String = ""
     private var cachedSectionHref: String = ""
     private var chapterTextByIndex: [String] = []
-
-    // MARK: - Private
 
     private var stateObserverId: UUID?
     private var bookStructure: [SectionInfo] = []
@@ -52,8 +45,6 @@ public final class SMILTextPlaybackViewModel: NSObject {
     private var periodicSyncTask: Task<Void, Never>?
     private var sentenceNavigationTask: Task<Void, Never>?
     private static let periodicSyncInterval: TimeInterval = 60
-
-    // MARK: - Incoming Position Sync
 
     public var showServerPositionDialog = false
     public var pendingServerPosition: IncomingServerPosition? = nil
@@ -70,8 +61,6 @@ public final class SMILTextPlaybackViewModel: NSObject {
     private let logPrefix = "SMILTextPlaybackViewModel"
     private let syncSourceIdentifier = "Text Player"
     #endif
-
-    // MARK: - Chapter Info
 
     public struct ChapterInfo: Identifiable {
         public let index: Int
@@ -90,8 +79,6 @@ public final class SMILTextPlaybackViewModel: NSObject {
                 )
             }
     }
-
-    // MARK: - Computed Properties
 
     public var hasChapters: Bool {
         bookStructure.count > 1
@@ -136,8 +123,6 @@ public final class SMILTextPlaybackViewModel: NSObject {
         formatTime(bookDuration)
     }
 
-    // MARK: - Subtitle Text (cached to avoid HTML parsing on every view update)
-
     public var usesFullChapterCache = false
     public private(set) var previousLineText: String = ""
     public private(set) var currentLineText: String = ""
@@ -179,8 +164,6 @@ public final class SMILTextPlaybackViewModel: NSObject {
         return entryIndex
     }
 
-    // MARK: - Initialization
-
     public override init() {
         super.init()
         #if os(watchOS)
@@ -197,8 +180,6 @@ public final class SMILTextPlaybackViewModel: NSObject {
         }
     }
     #endif
-
-    // MARK: - Book Loading
 
     public func loadBook(_ book: BookMetadata) async {
         let bookID = book.id
@@ -336,8 +317,6 @@ public final class SMILTextPlaybackViewModel: NSObject {
         periodicSyncTask?.cancel()
         periodicSyncTask = nil
     }
-
-    // MARK: - Playback Controls
 
     public func playPause() {
         guard !isLoadingPosition else { return }
@@ -552,8 +531,6 @@ public final class SMILTextPlaybackViewModel: NSObject {
         }
     }
 
-    // MARK: - Text Display
-
     private func updateCachedTextIfNeeded() {
         guard cachedEntryIndex != currentEntryIndex || cachedSectionIndex != currentSectionIndex
         else {
@@ -756,8 +733,6 @@ public final class SMILTextPlaybackViewModel: NSObject {
         return true
     }
 
-    // MARK: - Helpers
-
     private func updateChapterDuration() {
         guard currentSectionIndex < bookStructure.count else { return }
         let section = bookStructure[currentSectionIndex]
@@ -776,8 +751,6 @@ public final class SMILTextPlaybackViewModel: NSObject {
         }
         return String(format: "%d:%02d", mins, secs)
     }
-
-    // MARK: - Position Restore
 
     private func restorePosition(_ book: BookMetadata) {
         Task {
@@ -849,8 +822,6 @@ public final class SMILTextPlaybackViewModel: NSObject {
             )
         }
     }
-
-    // MARK: - Incoming Position Observer
 
     public var serverPositionDescription: String {
         guard let position = pendingServerPosition else {
@@ -950,8 +921,6 @@ public final class SMILTextPlaybackViewModel: NSObject {
         pendingServerPosition = nil
         showServerPositionDialog = false
     }
-
-    // MARK: - Cleanup
 
     public func cleanup() {
         stopPeriodicSync()

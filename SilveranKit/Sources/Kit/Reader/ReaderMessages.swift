@@ -6,8 +6,6 @@ import Foundation
 /// - Swift → JS: No wrapper needed, direct evaluateJavaScript calls
 /// - JS → Swift: Simple structs decoded from webkit.messageHandlers
 
-// MARK: - Messages from JS to Swift
-
 /// Sent from JS when foliate-view relocates (page turn, navigation, etc.)
 public struct RelocatedMessage: Codable {
     public let sectionIndex: Int?
@@ -73,8 +71,6 @@ public struct ElementVisibilityMessage: Codable {
     public let offScreenRatio: Double
 }
 
-// MARK: - Search Messages
-
 /// Sent from JS when search finds results in a section
 public struct SearchResultsMessage: Codable {
     public let sectionLabel: String
@@ -100,8 +96,6 @@ public struct SearchProgressMessage: Codable {
 public struct SearchErrorMessage: Codable {
     public let message: String
 }
-
-// MARK: - Highlight Messages
 
 /// Sent from JS when user completes a text selection (after long-press)
 public struct TextSelectionMessage: Codable {

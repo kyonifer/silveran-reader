@@ -11,8 +11,6 @@ struct ContentServerHandlers: Sendable {
     let sourceID: BookSourceID
     let sessionToken: String
 
-    // MARK: - Routes
-
     func token(_ request: Request, _ context: BasicRequestContext) async throws -> Response {
         let body = try await collectString(request)
         let fields = Self.parseFormURLEncoded(body)
@@ -250,15 +248,11 @@ struct ContentServerHandlers: Sendable {
         }
     }
 
-    // MARK: - Auth
-
     private func authorized(_ request: Request) -> Bool {
         guard let header = request.headers[.authorization] else { return false }
         let expected = "Bearer \(sessionToken)"
         return header.caseInsensitiveCompare(expected) == .orderedSame
     }
-
-    // MARK: - Coders
 
     private func bookEncoder() -> JSONEncoder {
         let encoder = JSONEncoder()
@@ -275,8 +269,6 @@ struct ContentServerHandlers: Sendable {
     private func plainEncoder() -> JSONEncoder {
         JSONEncoder()
     }
-
-    // MARK: - Request helpers
 
     private func collectData(_ request: Request) async throws -> Data {
         let buffer = try await request.body.collect(upTo: 256 * 1024 * 1024)
@@ -315,8 +307,6 @@ struct ContentServerHandlers: Sendable {
     private static func decodeFormComponent(_ component: String) -> String {
         component.replacingOccurrences(of: "+", with: " ").removingPercentEncoding ?? component
     }
-
-    // MARK: - Response helpers
 
     private func json(_ data: Data, status: HTTPResponse.Status = .ok) -> Response {
         var headers = HTTPFields()

@@ -248,8 +248,6 @@ struct SmartShelfCreatorView: View {
         return false
     }
 
-    // MARK: - Condition menu
-
     private var addConditionMenu: some View {
         Menu {
             addConditionMenuContent
@@ -301,8 +299,6 @@ struct SmartShelfCreatorView: View {
             Label(type.label, systemImage: type.systemImage)
         }
     }
-
-    // MARK: - Condition merge logic
 
     private func appendConditions(_ newConditions: [ShelfCondition]) {
         for condition in newConditions {
@@ -415,8 +411,6 @@ struct SmartShelfCreatorView: View {
         return result
     }
 
-    // MARK: - Preview panel
-
     private var previewPanel: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
@@ -504,8 +498,6 @@ struct SmartShelfCreatorView: View {
                 return .standard
         }
     }
-
-    // MARK: - Footer
 
     private var footerBar: some View {
         HStack {

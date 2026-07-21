@@ -129,7 +129,6 @@ public actor SMILPlayerActor {
     private var volume: Double = 1.0
 
     private var updateTimer: Timer?
-    private var lastPausedWhilePlayingTime: Date?
     private var isAdvancing: Bool = false
 
     private var stateObservers: [UUID: @Sendable @SilveranUIActor (SMILPlaybackState) -> Void] =
@@ -241,10 +240,6 @@ public actor SMILPlayerActor {
 
     public func pause() async {
         guard let player = player else { return }
-
-        if isPlaying {
-            lastPausedWhilePlayingTime = Date()
-        }
 
         await player.pause()
         isPlaying = false
@@ -523,14 +518,6 @@ public actor SMILPlayerActor {
             "[SMILPlayerActor] setCurrentEntry: section=\(sectionIndex), entry=\(entryIndex), file=\(audioFile)"
         )
 
-        let wasRecentlyPlaying: Bool
-        if let pauseTime = lastPausedWhilePlayingTime {
-            let elapsed = Date().timeIntervalSince(pauseTime)
-            wasRecentlyPlaying = elapsed < 0.5
-        } else {
-            wasRecentlyPlaying = false
-        }
-
         currentSectionIndex = sectionIndex
         currentEntryIndex = entryIndex
         currentEntryBeginTime = beginTime
@@ -552,15 +539,6 @@ public actor SMILPlayerActor {
             debugLog(
                 "[SMILPlayerActor] setCurrentEntry: AFTER seek - currentTime=\(timeAfter)"
             )
-
-            if wasRecentlyPlaying {
-                lastPausedWhilePlayingTime = nil
-                await player.setRate(playbackRate)
-                await player.play()
-                isPlaying = true
-                startUpdateTimer()
-                startNowPlayingUpdateTimer()
-            }
         }
 
         await notifyStateChange()
@@ -699,6 +677,12 @@ public actor SMILPlayerActor {
     }
 
     private func timerFired() async {
+        // A tick spawned before pause() invalidated the timer could otherwise
+        // flip isPlaying back on in the file-end branch below.
+        guard updateTimer != nil else {
+            debugLog("[SMILPlayerActor] Ignoring update tick after timer stop")
+            return
+        }
         guard let player = player else { return }
 
         let currentTime = await player.currentTime

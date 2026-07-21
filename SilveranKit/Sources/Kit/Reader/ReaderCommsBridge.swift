@@ -12,8 +12,6 @@ import Foundation
 public final class ReaderCommsBridge {
     public weak var js: (any JSEvaluating)?
 
-    // MARK: Callbacks if our user wants to be informed when these events occur
-
     /// Notifies when book structure (TOC) is ready
     public var onBookStructureReady: ((BookStructureReadyMessage) -> Void)?
 
@@ -41,8 +39,6 @@ public final class ReaderCommsBridge {
     /// Notifies when element visibility is reported (for page flip timing during audio)
     public var onElementVisibility: ((ElementVisibilityMessage) -> Void)?
 
-    // MARK: - Search callbacks
-
     /// Notifies when search finds results in a section
     public var onSearchResults: ((SearchResultsMessage) -> Void)?
 
@@ -54,8 +50,6 @@ public final class ReaderCommsBridge {
 
     /// Notifies when search encounters an error
     public var onSearchError: ((SearchErrorMessage) -> Void)?
-
-    // MARK: - Highlight callbacks
 
     /// Notifies when user completes a text selection (for creating highlights)
     public var onTextSelected: ((TextSelectionMessage) -> Void)?
@@ -151,7 +145,6 @@ public final class ReaderCommsBridge {
         onElementVisibility?(message)
     }
 
-    // MARK: Swift commands JS to navigate left (previous page)
     public func sendJsGoLeftCommand() async throws {
         guard let js else {
             throw ReaderCommsBridgeError.jsNotAvailable
@@ -276,8 +269,6 @@ public final class ReaderCommsBridge {
         return try? JSONDecoder().decode(FirstVisiblePosition.self, from: jsonData)
     }
 
-    // MARK: - Highlight controls (Swift controls audio directly)
-
     /// Swift commands JS to highlight a specific text fragment
     /// JS will apply highlight CSS and report visibility for page flip timing
     /// - Parameters:
@@ -377,8 +368,6 @@ public final class ReaderCommsBridge {
         _ = try await js.evaluate(script)
     }
 
-    // MARK: - Search dispatch methods (JS → Swift)
-
     public func sendSwiftSearchResults(_ message: SearchResultsMessage) {
         debugLog(
             "[ReaderCommsBridge] sendSwiftSearchResults - \(message.results.count) results in \(message.sectionLabel)"
@@ -400,8 +389,6 @@ public final class ReaderCommsBridge {
         debugLog("[ReaderCommsBridge] sendSwiftSearchError - \(message.message)")
         onSearchError?(message)
     }
-
-    // MARK: - Search commands (Swift → JS)
 
     /// Swift commands JS to start a search
     public func sendJsStartSearchCommand(
@@ -459,8 +446,6 @@ public final class ReaderCommsBridge {
         )
     }
 
-    // MARK: - Highlight dispatch methods (JS → Swift)
-
     public func sendSwiftTextSelected(_ message: TextSelectionMessage) {
         debugLog(
             "[ReaderCommsBridge] sendSwiftTextSelected - section: \(message.sectionIndex), text: \(message.text.prefix(50))..."
@@ -499,8 +484,6 @@ public final class ReaderCommsBridge {
         debugLog("[ReaderCommsBridge] sendSwiftSelectionSearch")
         onSelectionSearch?(text)
     }
-
-    // MARK: - Highlight commands (Swift → JS)
 
     /// Swift commands JS to render user highlights
     public func sendJsRenderHighlights(_ highlights: [HighlightRenderData]) async throws {

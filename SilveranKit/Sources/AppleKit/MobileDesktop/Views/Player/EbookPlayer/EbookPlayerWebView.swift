@@ -542,8 +542,6 @@ private struct WebViewWrapper2: View {
     }
 }
 
-// MARK: - Platform-specific WebView Representable
-
 @available(macOS 14.0, iOS 17.0, *)
 private struct WebViewRepresentable2: PlatformViewRepresentable {
     @Binding var webView: WKWebView?

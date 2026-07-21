@@ -1116,8 +1116,6 @@ public actor FilesystemActor {
         )
     }
 
-    // MARK: - Smart Shelves Persistence
-
     public func saveSmartShelves(_ shelves: [SmartShelf]) throws {
         let configDir = getConfigDirectory()
         try ensureDirectoryExists(at: configDir)
@@ -1152,8 +1150,6 @@ public actor FilesystemActor {
         decoder.dateDecodingStrategy = .iso8601
         return try decoder.decode([SmartShelf].self, from: data)
     }
-
-    // MARK: - Download State Persistence
 
     private func getResumeDataDirectory() -> URL {
         applicationSupportBaseDirectory()

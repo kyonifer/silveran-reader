@@ -14,20 +14,53 @@ class EbookPlayerViewModel {
     let bookData: PlayerBookData?
     var settingsVM: SettingsViewModel
 
-    var bookStructure: [SectionInfo] = []
-    var tocEntries: [TocEntry] = []
+    private(set) var session: ReadingSession? = nil
     private var userSelectedTocId: String? = nil
-    var mediaOverlayManager: MediaOverlayManager? = nil
-    var progressManager: ReadingSessionActor? = nil
+    private var comicBookStructure: [SectionInfo] = []
+    private var comicProgressManager: ReadingSessionActor? = nil
+    private var bridgeInitialColorScheme: ColorScheme = .light
     var styleManager: ReaderStyleManager? = nil
     var searchManager: EbookSearchManager? = nil
-    var extractedEbookPath: URL? = nil
-    var ebookFileFormat: EbookFileFormat = .epub
     var comicPageURLs: [URL] = []
-    private var nativeLoadingTask: Task<Void, Never>? = nil
     #if os(iOS)
     private(set) var recoveryManager: WebViewRecoveryManager?
     #endif
+
+    var bookStructure: [SectionInfo] {
+        if !comicBookStructure.isEmpty {
+            return comicBookStructure
+        }
+        return session?.bookStructure ?? []
+    }
+
+    var tocEntries: [TocEntry] {
+        session?.tocEntries ?? []
+    }
+
+    var mediaOverlayManager: MediaOverlayManager? {
+        session?.mediaOverlayManager
+    }
+
+    var progressManager: ReadingSessionActor? {
+        comicProgressManager ?? session?.progressManager
+    }
+
+    var extractedEbookPath: URL? {
+        get { session?.extractedEbookPath }
+        set { session?.extractedEbookPath = newValue }
+    }
+
+    var ebookFileFormat: EbookFileFormat {
+        session?.ebookFileFormat ?? .epub
+    }
+
+    var hasAudioNarration: Bool {
+        session?.hasAudioNarration ?? false
+    }
+
+    var isJoiningExistingSession: Bool {
+        session?.isJoiningExistingSession ?? false
+    }
 
     var chapterList: [ChapterItem] {
         if !tocEntries.isEmpty {
@@ -49,8 +82,6 @@ class EbookPlayerViewModel {
             )
         }
     }
-
-    var hasAudioNarration: Bool = false
 
     var isComicBook: Bool {
         ebookFileFormat == .cbz
@@ -157,7 +188,6 @@ class EbookPlayerViewModel {
     var sleepTimerRemaining: TimeInterval? = nil
     var sleepTimerType: Any? = nil
     var lastRestartTime: Date? = nil
-    var isJoiningExistingSession = false
     var showKeybindingsPopover = false
     var showSearchPanel = false
     var pendingSearchReveal = false
@@ -171,7 +201,6 @@ class EbookPlayerViewModel {
 
     var showServerPositionDialog = false
     var pendingServerPosition: IncomingServerPosition? = nil
-    private var incomingPositionObserverId: UUID? = nil
 
     var serverPositionDescription: String {
         guard let position = pendingServerPosition else {
@@ -413,55 +442,66 @@ class EbookPlayerViewModel {
         #endif
 
         if let data = bookData {
-            debugLog("[EbookPlayerViewModel] Book: \(data.metadata.title)")
-            if data.category == .ebook {
-                debugLog("[EbookPlayerViewModel] No audio playback mode")
-            } else {
-                debugLog("[EbookPlayerViewModel] Synced audio playback mode")
-                hasAudioNarration = true
-            }
-            debugLog("[EbookPlayerViewModel] Preparing local ebook file")
-            let needsNativeAudio = data.category == .synced
-            nativeLoadingTask = Task { @MainActor in
-                do {
-                    let prepStarted = CFAbsoluteTimeGetCurrent()
-                    let prepared = try await BookServiceActor.shared.prepareEbookForReading(
-                        bookID: data.metadata.id,
-                        category: data.category,
-                    )
-                    let afterPrepare = CFAbsoluteTimeGetCurrent()
-                    debugLog(
-                        "[RestoreTrace][BookOpen] prepareEbookForReading deltaMs=\(String(format: "%.1f", (afterPrepare - prepStarted) * 1000))"
-                    )
-                    self.ebookFileFormat = EbookFileFormat(fileURL: prepared.originalURL)
-                    self.extractedEbookPath = prepared.readerURL
-                    debugLog(
-                        "[EbookPlayerViewModel] EPUB prepared for loading: \(prepared.readerURL.path)"
-                    )
+            let session = ReadingSessionStore.shared.obtain(
+                metadata: data.metadata,
+                category: data.category,
+                localMediaPath: data.localMediaPath,
+                settings: settingsVM,
+            )
+            self.session = session
+            configureSessionHooks(session)
+            session.prepare()
+        }
+    }
 
-                    if self.ebookFileFormat == .cbz {
-                        self.prepareComicPages(from: prepared.readerURL)
-                    } else if needsNativeAudio {
-                        await loadBookIntoActor(epubPath: prepared.originalURL)
-                    } else {
-                        await parseNativeTocEntries(epubPath: prepared.originalURL)
-                    }
-                    debugLog(
-                        "[RestoreTrace][BookOpen] \(needsNativeAudio ? "loadBookIntoActor" : "parseNativeTocEntries") deltaMs=\(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - afterPrepare) * 1000))"
-                    )
-                } catch {
-                    debugLog("[EbookPlayerViewModel] Failed to prepare EPUB: \(error)")
+    private func configureSessionHooks(_ session: ReadingSession) {
+        session.onComicPrepared = { [weak self] url in
+            self?.prepareComicPages(from: url)
+        }
+        session.onUserNavigation = { [weak self] in
+            self?.userSelectedTocId = nil
+        }
+        #if os(iOS)
+        session.isViewRecovering = { [weak self] in
+            self?.recoveryManager?.isInRecovery == true
+        }
+        session.onRecoveryStructureReady = { [weak self] in
+            _ = self?.recoveryManager?.handleBookStructureReadyIfRecovering()
+        }
+        #endif
+        session.configureMediaOverlayManager = { [weak self] manager in
+            guard let self else { return }
+            manager.setWakeLock = { ScreenWakeLock.shared.set($0) }
+            manager.setPlaybackRate(self.settingsVM.defaultPlaybackSpeed)
+        }
+        session.onReadaloudAvailabilityChanged = { [weak self] available in
+            self?.styleManager?.setReadaloudModeAvailable(available)
+        }
+        session.onViewStructureReady = { [weak self] in
+            guard let self else { return }
+            self.settingsVM.applyActiveTheme(for: self.bridgeInitialColorScheme)
+            self.styleManager?.sendInitialStyles(
+                isDarkMode: self.bridgeInitialColorScheme == .dark
+            )
+            await self.loadHighlights()
+        }
+        session.onIncomingServerPosition = { [weak self] position in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                if self.settingsVM.autoSyncToNewerServerPosition {
+                    await self.navigateToServerPosition(position.locator)
+                } else {
+                    self.pendingServerPosition = position
+                    self.showServerPositionDialog = true
                 }
             }
-
-            registerIncomingPositionObserver(bookId: data.metadata.id)
         }
     }
 
     private func prepareComicPages(from extractedDirectory: URL) {
         let urls = Self.comicImageURLs(in: extractedDirectory)
         comicPageURLs = urls
-        bookStructure = urls.enumerated().map { index, url in
+        comicBookStructure = urls.enumerated().map { index, url in
             SectionInfo(
                 index: index,
                 id: "\(index)",
@@ -470,25 +510,24 @@ class EbookPlayerViewModel {
                 mediaOverlay: [],
             )
         }
-        tocEntries = []
-        hasAudioNarration = false
-        mediaOverlayManager = nil
+        session?.hasAudioNarration = false
         searchManager = nil
         styleManager = nil
-        progressManager = ReadingSessionActor(
+        let manager = ReadingSessionActor(
             bridge: nil,
             settingsVM: settingsVM,
             bookID: bookData?.metadata.id,
             initialLocator: bookData?.metadata.position?.locator,
         )
-        progressManager?.bookStructure = bookStructure
-        progressManager?.bookTitle = bookData?.metadata.title
-        progressManager?.bookAuthor = bookData?.metadata.authors?.first?.name
-        progressManager?.handleNativeBookStructureReady(pageCount: urls.count)
+        manager.bookStructure = comicBookStructure
+        manager.bookTitle = bookData?.metadata.title
+        manager.bookAuthor = bookData?.metadata.authors?.first?.name
+        manager.handleNativeBookStructureReady(pageCount: urls.count)
+        comicProgressManager = manager
 
         Task { @MainActor in
             let syncInterval = await SettingsActor.shared.config.sync.progressSyncIntervalSeconds
-            self.progressManager?.startPeriodicSync(syncInterval: syncInterval)
+            self.comicProgressManager?.startPeriodicSync(syncInterval: syncInterval)
         }
     }
 
@@ -520,25 +559,6 @@ class EbookPlayerViewModel {
         progressManager?.handleNativePageSelected(index)
     }
 
-    private func registerIncomingPositionObserver(bookId: BookID) {
-        Task {
-            incomingPositionObserverId = await ProgressSyncActor.shared.addIncomingPositionObserver(
-                for: bookId
-            ) { [weak self] position in
-                Task { @MainActor [weak self] in
-                    guard let self else { return }
-                    if self.settingsVM.autoSyncToNewerServerPosition {
-                        await self.navigateToServerPosition(position.locator)
-                    } else {
-                        self.pendingServerPosition = position
-                        self.showServerPositionDialog = true
-                    }
-                }
-            }
-            debugLog("[EbookPlayerViewModel] Registered incoming position observer for \(bookId)")
-        }
-    }
-
     func navigateToServerPosition(_ locator: BookLocator) async {
         debugLog("[EbookPlayerViewModel] Navigating to server position: \(locator.href)")
         progressManager?.handleServerPositionUpdate(locator)
@@ -558,128 +578,11 @@ class EbookPlayerViewModel {
         showServerPositionDialog = false
     }
 
-    private func parseNativeTocEntries(epubPath: URL) async {
-        do {
-            let result = try SMILParser.parseEPUB(at: epubPath)
-            self.tocEntries = result.tocEntries
-            self.bookStructure = result.sections
-            debugLog(
-                "[EbookPlayerViewModel] Parsed \(result.tocEntries.count) native TOC entries for ebook-only mode"
-            )
-        } catch {
-            debugLog("[EbookPlayerViewModel] Failed to parse native TOC: \(error)")
-        }
-    }
-
-    private func loadBookIntoActor(epubPath: URL) async {
-        guard let currentBookID = bookData?.metadata.id else {
-            debugLog("[EbookPlayerViewModel] Cannot load SMIL actor without book identity")
-            return
-        }
-
-        do {
-            let result = try await AudioSessionActor.shared.openReadaloud(
-                bookID: currentBookID,
-                epubPath: epubPath,
-                title: bookData?.metadata.title,
-                author: bookData?.metadata.authors?.first?.name,
-            )
-
-            if result == .joinedLiveSession {
-                debugLog(
-                    "[EbookPlayerViewModel] Book already loaded and playing in SMILPlayerActor, joining existing session"
-                )
-                isJoiningExistingSession = true
-            }
-
-            let nativeStructure = await SMILPlayerActor.shared.getBookStructure()
-            self.bookStructure = nativeStructure
-            self.tocEntries = await SMILPlayerActor.shared.getTocEntries()
-            debugLog(
-                "[EbookPlayerViewModel] Native book structure loaded: \(nativeStructure.count) sections"
-            )
-
-            #if os(iOS)
-            if result == .openedFresh, let metadata = bookData?.metadata {
-                if let coverData = await BookServiceActor.shared.cachedCoverData(
-                    for: metadata.id,
-                    audio: false,
-                ) {
-                    await SMILPlayerActor.shared.setCoverImage(coverData)
-                    debugLog("[EbookPlayerViewModel] Cover image set on SMILPlayerActor")
-                }
-            }
-            #endif
-        } catch {
-            debugLog("[EbookPlayerViewModel] Failed to load book into actor: \(error)")
-        }
-    }
-
-    private func reloadBookIntoActor() async {
-        guard let localPath = bookData?.localMediaPath else {
-            debugLog("[EbookPlayerViewModel] reloadBookIntoActor - no local path")
-            return
-        }
-
-        debugLog("[EbookPlayerViewModel] Reloading book into actor")
-
-        let savedSectionIndex = mediaOverlayManager?.cachedSectionIndex ?? 0
-        let savedEntryIndex = mediaOverlayManager?.cachedEntryIndex ?? 0
-
-        await loadBookIntoActor(epubPath: localPath)
-
-        if savedSectionIndex > 0 || savedEntryIndex > 0 {
-            do {
-                try await SMILPlayerActor.shared.seekToEntry(
-                    sectionIndex: savedSectionIndex,
-                    entryIndex: savedEntryIndex,
-                )
-                debugLog(
-                    "[EbookPlayerViewModel] Restored position to section \(savedSectionIndex), entry \(savedEntryIndex)"
-                )
-            } catch {
-                debugLog("[EbookPlayerViewModel] Failed to restore position: \(error)")
-            }
-        }
-    }
-
-    private func navigateToCurrentActorPosition(bridge: ReaderCommsBridge) async {
-        guard let syncData = await SMILPlayerActor.shared.getBackgroundSyncData() else {
-            debugLog("[EbookPlayerViewModel] No sync data from actor, falling back to default")
-            progressManager?.handleBookStructureReady()
-            return
-        }
-
-        debugLog(
-            "[EbookPlayerViewModel] Navigating to actor position: section=\(syncData.sectionIndex), href=\(syncData.href), fragment=\(syncData.fragment)"
-        )
-
-        do {
-            let hrefWithFragment = "\(syncData.href)#\(syncData.fragment)"
-            try await bridge.sendJsGoToHrefCommand(href: hrefWithFragment)
-
-            progressManager?.selectedChapterId = syncData.sectionIndex
-            progressManager?.hasPerformedInitialSeek = true
-
-            debugLog(
-                "[EbookPlayerViewModel] Successfully joined session at section \(syncData.sectionIndex)"
-            )
-        } catch {
-            debugLog("[EbookPlayerViewModel] Failed to navigate to actor position: \(error)")
-            progressManager?.handleBookStructureReady()
-        }
-    }
-
     func handleOnDisappear(cleanupPlayback: Bool = true) {
         debugLog("[EbookPlayerViewModel] View disappearing")
         debugLog("[EbookPlayerViewModel] Window closing")
 
-        if let id = incomingPositionObserverId {
-            Task {
-                await ProgressSyncActor.shared.removeIncomingPositionObserver(id: id)
-            }
-            incomingPositionObserverId = nil
-        }
+        session?.removeIncomingPositionObserver()
 
         guard cleanupPlayback else {
             debugLog("[EbookPlayerViewModel] Background disappear - preserving SMIL playback")
@@ -687,14 +590,8 @@ class EbookPlayerViewModel {
         }
 
         Task { @MainActor in
-            await mediaOverlayManager?.cleanup()
-            await progressManager?.cleanup()
-            if let bookID = bookData?.metadata.id {
-                debugLog(
-                    "[EbookPlayerViewModel] onDisappear: closing audio session if owned by \(bookID)"
-                )
-                await AudioSessionActor.shared.close(ifOwnedBy: bookID)
-            }
+            await comicProgressManager?.cleanup()
+            await session?.close(.endSession)
         }
     }
 
@@ -703,30 +600,12 @@ class EbookPlayerViewModel {
             case .active:
                 Task { @MainActor in
                     await progressManager?.handleResume()
-
-                    mediaOverlayManager?.isInBackground = false
-                    let audioPlayedWhileBackgrounded =
-                        mediaOverlayManager?.backgroundAudioPlayed ?? false
-                    if audioPlayedWhileBackgrounded {
-                        await SMILPlayerActor.shared.reconcilePositionFromPlayer()
-                        if let syncData = await SMILPlayerActor.shared.getBackgroundSyncData() {
-                            debugLog(
-                                "[EbookPlayerViewModel] Resuming from background - syncing view to audio position"
-                            )
-                            await progressManager?.handleBackgroundSyncHandoff(syncData)
-                        }
-                    }
-                    mediaOverlayManager?.backgroundAudioPlayed = false
+                    await session?.handleSceneBecameActive()
                 }
             case .background:
                 debugLog("[EbookPlayerViewModel] Entering background - audio continues natively")
                 Task { @MainActor in
-                    mediaOverlayManager?.isInBackground = true
-                    let wasPlaying =
-                        await SMILPlayerActor.shared.getCurrentState()?.isPlaying ?? false
-                    if wasPlaying {
-                        mediaOverlayManager?.backgroundAudioPlayed = true
-                    }
+                    await session?.handleSceneEnteredBackground()
                 }
             case .inactive:
                 break
@@ -737,6 +616,7 @@ class EbookPlayerViewModel {
 
     func installBridgeHandlers(_ bridge: ReaderCommsBridge, initialColorScheme: ColorScheme) {
         debugLog("[EbookPlayerViewModel] Installing bridge handlers")
+        bridgeInitialColorScheme = initialColorScheme
 
         #if os(iOS)
         recoveryManager?.setBridge(bridge)
@@ -745,213 +625,33 @@ class EbookPlayerViewModel {
             debugLog(
                 "[EbookPlayerViewModel] Recovery mode - updating existing managers with new bridge"
             )
-            progressManager?.commsBridge = bridge
-            mediaOverlayManager?.commsBridge = bridge
+            session?.attachBridge(bridge, isRecovery: true)
             styleManager?.updateBridge(bridge)
             searchManager = EbookSearchManager(bridge: bridge)
-            setupBridgeCallbacks(bridge, initialColorScheme: initialColorScheme)
+            setupBridgeCallbacks(bridge)
             return
         }
         #endif
 
+        session?.attachBridge(bridge, isRecovery: false)
+
         searchManager = EbookSearchManager(bridge: bridge)
         debugLog("[EbookPlayerViewModel] SearchManager initialized")
-
-        progressManager = ReadingSessionActor(
-            bridge: bridge,
-            settingsVM: settingsVM,
-            bookID: bookData?.metadata.id,
-            initialLocator: bookData?.metadata.position?.locator,
-        )
-
-        if let metadata = bookData?.metadata {
-            progressManager?.bookTitle = metadata.title
-            progressManager?.bookAuthor = metadata.authors?.first?.name
-
-            Task {
-                if let coverData = await BookServiceActor.shared.cachedCoverData(
-                    for: metadata.id,
-                    audio: false,
-                ) {
-                    await MainActor.run {
-                        let base64 = coverData.base64EncodedString()
-                        self.progressManager?.bookCoverUrl = "data:image/jpeg;base64,\(base64)"
-                    }
-                }
-            }
-        }
 
         styleManager = ReaderStyleManager(
             settingsVM: settingsVM,
             bridge: bridge,
         )
 
-        setupBridgeCallbacks(bridge, initialColorScheme: initialColorScheme)
+        setupBridgeCallbacks(bridge)
     }
 
-    private func setupBridgeCallbacks(
-        _ bridge: ReaderCommsBridge,
-        initialColorScheme: ColorScheme,
-    ) {
-
-        bridge.onBookStructureReady = { [weak self] message in
-            guard let self else { return }
-            Task { @MainActor in
-                debugLog("[EbookPlayerViewModel] WebView ready (BookStructureReady)")
-
-                #if os(iOS)
-                let isRecovering = self.recoveryManager?.isInRecovery == true
-                #else
-                let isRecovering = false
-                #endif
-
-                if let loadingTask = self.nativeLoadingTask {
-                    debugLog(
-                        "[EbookPlayerViewModel] Waiting for native EPUB parsing to complete..."
-                    )
-                    await loadingTask.value
-                    debugLog("[EbookPlayerViewModel] Native EPUB parsing complete")
-                }
-
-                let useNativeStructure = !self.bookStructure.isEmpty
-                let structureToUse: [SectionInfo]
-
-                if useNativeStructure {
-                    structureToUse = self.bookStructure
-                } else {
-                    self.bookStructure = message.sections
-                    structureToUse = message.sections
-                }
-
-                self.progressManager?.bookStructure = structureToUse
-
-                if isRecovering {
-                    #if os(iOS)
-                    debugLog(
-                        "[EbookPlayerViewModel] Recovery mode - reusing existing MOM/SMILPlayerActor"
-                    )
-                    self.mediaOverlayManager?.commsBridge = bridge
-                    _ = self.recoveryManager?.handleBookStructureReadyIfRecovering()
-                    #endif
-                } else {
-                    let hasMediaOverlay = structureToUse.contains { !$0.mediaOverlay.isEmpty }
-
-                    if hasMediaOverlay {
-                        guard let currentBookID = self.bookData?.metadata.id else {
-                            debugLog(
-                                "[EbookPlayerViewModel] Cannot create media overlay manager without book identity"
-                            )
-                            return
-                        }
-                        let manager = MediaOverlayManager(
-                            bookStructure: structureToUse,
-                            bookID: currentBookID,
-                            bridge: bridge,
-                            settingsVM: self.settingsVM,
-                            reloadBookIntoActor: { [weak self] in
-                                await self?.reloadBookIntoActor()
-                            },
-                        )
-                        debugLog(
-                            "[EbookPlayerViewModel] Book has media overlay - MediaOverlayManager created (native structure: \(useNativeStructure))"
-                        )
-                        manager.setWakeLock = { ScreenWakeLock.shared.set($0) }
-                        manager.setPlaybackRate(self.settingsVM.defaultPlaybackSpeed)
-                        self.mediaOverlayManager = manager
-                        self.hasAudioNarration = true
-                        self.styleManager?.setReadaloudModeAvailable(true)
-                        self.progressManager?.mediaOverlayManager = manager
-                        manager.progressManager = self.progressManager
-                    } else {
-                        debugLog("[EbookPlayerViewModel] Book has no media overlay")
-                        self.mediaOverlayManager = nil
-                        self.hasAudioNarration = false
-                        self.styleManager?.setReadaloudModeAvailable(false)
-                        self.progressManager?.mediaOverlayManager = nil
-                    }
-
-                    if self.isJoiningExistingSession {
-                        debugLog(
-                            "[EbookPlayerViewModel] Joining session - navigating to current actor position"
-                        )
-                        await self.navigateToCurrentActorPosition(bridge: bridge)
-                    } else {
-                        self.progressManager?.handleBookStructureReady()
-                    }
-
-                    Task { @MainActor in
-                        let syncInterval = await SettingsActor.shared.config.sync
-                            .progressSyncIntervalSeconds
-                        self.progressManager?.startPeriodicSync(syncInterval: syncInterval)
-                    }
-                }
-
-                self.settingsVM.applyActiveTheme(for: initialColorScheme)
-                self.styleManager?.sendInitialStyles(isDarkMode: initialColorScheme == .dark)
-
-                await self.loadHighlights()
-            }
-        }
+    private func setupBridgeCallbacks(_ bridge: ReaderCommsBridge) {
 
         bridge.onOverlayToggled = { [weak self] in
             guard let self else { return }
             Task { @MainActor in
                 self.handleToggleOverlay()
-            }
-        }
-
-        bridge.onPageFlipped = { [weak self] message in
-            guard let self else { return }
-            Task { @MainActor in
-                self.userSelectedTocId = nil
-                self.progressManager?.handleUserNavSwipeDetected(message)
-            }
-        }
-
-        bridge.onMarginClickNav = { [weak self] message in
-            guard let self else { return }
-            Task { @MainActor in
-                self.userSelectedTocId = nil
-                if message.direction == "left" {
-                    self.progressManager?.handleUserNavLeft()
-                } else {
-                    self.progressManager?.handleUserNavRight()
-                }
-            }
-        }
-
-        bridge.onSentenceSkip = { [weak self] message in
-            guard let self else { return }
-            Task { @MainActor in
-                if message.direction == "previous" {
-                    self.handlePrevSentence()
-                } else {
-                    self.handleNextSentence()
-                }
-            }
-        }
-
-        bridge.onMediaOverlaySeek = { [weak self] message in
-            guard let self else { return }
-            Task { @MainActor in
-                await self.mediaOverlayManager?.handleSeekEvent(
-                    sectionIndex: message.sectionIndex,
-                    anchor: message.anchor,
-                )
-            }
-        }
-
-        bridge.onMediaOverlayProgress = { [weak self] message in
-            guard let self else { return }
-            Task { @MainActor in
-                self.mediaOverlayManager?.handleProgressUpdate(message)
-            }
-        }
-
-        bridge.onElementVisibility = { [weak self] message in
-            guard let self else { return }
-            Task { @MainActor in
-                self.mediaOverlayManager?.handleElementVisibility(message)
             }
         }
 
@@ -1035,8 +735,6 @@ class EbookPlayerViewModel {
             await searchManager?.navigateToResult(result)
         }
     }
-
-    // MARK: - Highlights / Bookmarks
 
     func loadHighlights() async {
         guard let bookID = bookData?.metadata.id else { return }

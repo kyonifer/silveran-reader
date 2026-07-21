@@ -12,7 +12,6 @@ struct SearchResultSection: Identifiable {
 @MainActor
 @Observable
 class EbookSearchManager {
-    // MARK: - Search State
 
     var isSearching: Bool = false
     var hasSearched: Bool = false
@@ -22,12 +21,8 @@ class EbookSearchManager {
     var totalResultCount: Int = 0
     var errorMessage: String?
 
-    // MARK: - Search Options
-
     var matchCase: Bool = false
     var matchWholeWords: Bool = false
-
-    // MARK: - Communication
 
     weak var commsBridge: ReaderCommsBridge?
 
@@ -63,8 +58,6 @@ class EbookSearchManager {
             }
         }
     }
-
-    // MARK: - Search Actions
 
     func startSearch(query: String) async {
         guard !query.isEmpty else { return }
@@ -113,8 +106,6 @@ class EbookSearchManager {
         searchResults.append(section)
         totalResultCount += message.results.count
     }
-
-    // MARK: - Navigation
 
     /// Navigate to a search result (view only, no audio sync)
     func navigateToResult(_ result: SearchResult) async {

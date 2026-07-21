@@ -140,8 +140,6 @@ struct CurrentlyDownloadingView: View {
         }
     }
 
-    // MARK: - Shared helpers
-
     fileprivate static func categoryLabel(for record: DownloadRecord) -> String {
         switch record.category {
             case .ebook: "Ebook"
@@ -239,8 +237,6 @@ struct CurrentlyDownloadingView: View {
         Self.formatBytes(bytes)
     }
 }
-
-// MARK: - iOS Row
 
 private struct DownloadRecordRow: View {
     let record: DownloadRecord

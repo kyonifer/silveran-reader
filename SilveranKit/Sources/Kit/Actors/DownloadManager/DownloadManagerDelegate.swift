@@ -31,8 +31,6 @@ final class DownloadManagerDelegate: NSObject, URLSessionDownloadDelegate, @unch
         }
     }
 
-    // MARK: - URLSessionDownloadDelegate
-
     func urlSession(
         _ session: URLSession,
         downloadTask: URLSessionDownloadTask,

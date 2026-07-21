@@ -1,7 +1,5 @@
 import Foundation
 
-// MARK: - Reading Settings
-
 public let kDefaultFontSize: Double = 24
 public let kDefaultFontFamily = "System Default"
 public let kDefaultLineSpacing: Double = 1.4
@@ -17,8 +15,6 @@ public let kDefaultHighlightThickness: Double = 1.0
 public let kDefaultEnableMarginClickNavigation = true
 public let kDefaultSingleColumnMode = true
 public let kDefaultScrollingMode = false
-
-// MARK: - Highlight Colors
 
 // Slot order is defined by HighlightColor's case order: Pink, Orange, Yellow,
 // Green, Blue, Purple. These palettes are indexed by that position and must
@@ -48,14 +44,10 @@ public let kDefaultUserHighlightLabel6 = kDefaultUserHighlightLabels[5]
 public let kDefaultUserHighlightMode = "underline"
 public let kDefaultReadaloudHighlightMode = "background"
 
-// MARK: - Playback Settings
-
 public let kDefaultPlaybackSpeed: Double = 1.0
 public let kDefaultVolume: Double = 1.0
 public let kDefaultStatsExpanded = false
 public let kDefaultLockViewToAudio = true
-
-// MARK: - Reading Bar Settings
 
 public let kDefaultReadingBarEnabled = true
 public let kDefaultShowPlayerControlsIOS = true
@@ -72,14 +64,10 @@ public let kDefaultShowOverlaySkipForward = true
 public let kDefaultShowOverlayPlayPause = true
 public let kDefaultShowMiniPlayerStats = false
 
-// MARK: - Sync Settings
-
 public let kDefaultProgressSyncIntervalSeconds: Double = 30
 public let kDefaultMetadataRefreshIntervalSeconds: Double = 300
 public let kDefaultIsManuallyOffline = false
 public let kDefaultAutoSyncToNewerServerPosition = false
-
-// MARK: - Library Settings
 
 public let kDefaultShowAudioIndicator = true
 public let kDefaultTabBarSlot1 = "books"
@@ -87,8 +75,6 @@ public let kDefaultTabBarSlot2 = "series"
 public let kDefaultTapToPlayPreferredPlayer = false
 public let kDefaultPreferAudioOverEbook = false
 public let kDefaultAccentColorHex = "#EB722F"
-
-// MARK: - tvOS Settings
 
 public let kDefaultTVSubtitleFontSize: Double = 48
 public let kDefaultTVFontFamily = "serif"

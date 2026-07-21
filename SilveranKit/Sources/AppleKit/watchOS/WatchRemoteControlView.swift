@@ -48,8 +48,6 @@ struct WatchRemoteControlView: View {
     }
 }
 
-// MARK: - Remote Controls Page
-
 private struct RemoteControlsPage: View {
     let state: RemotePlaybackState
     let viewModel: WatchViewModel
@@ -277,8 +275,6 @@ private struct RemoteControlsPage: View {
     }
 }
 
-// MARK: - Remote Chapter List
-
 private struct RemoteChapterListView: View {
     let state: RemotePlaybackState
     let viewModel: WatchViewModel
@@ -324,8 +320,6 @@ private struct RemoteChapterListView: View {
         .navigationBarTitleDisplayMode(.inline)
     }
 }
-
-// MARK: - Speed Picker Sheet
 
 private struct SpeedPickerSheet: View {
     let currentRate: Double

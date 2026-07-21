@@ -102,8 +102,6 @@ public enum SMILParser {
         return ParseResult(sections: labeledSections, tocEntries: tocEntries)
     }
 
-    // MARK: - Time Parsing
-
     /// Parse SMIL time formats: "h:mm:ss.fff", "m:ss", "5.5s", "100ms"
     static func parseSMILTime(_ str: String?) -> Double? {
         guard let str = str, !str.isEmpty else { return nil }
@@ -135,8 +133,6 @@ public enum SMILParser {
         return Double(trimmed)
     }
 
-    // MARK: - Container Parsing
-
     private static func findOPFPath(in archive: Archive) throws -> String {
         let containerPath = "META-INF/container.xml"
         let containerData = try extractFile(from: archive, path: containerPath)
@@ -162,8 +158,6 @@ public enum SMILParser {
         }
         return data
     }
-
-    // MARK: - OPF Parsing
 
     struct ManifestItem {
         let id: String
@@ -273,8 +267,6 @@ public enum SMILParser {
         return result
     }
 
-    // MARK: - SMIL Parsing
-
     struct RawSMILEntry {
         let textId: String
         let textHref: String
@@ -330,8 +322,6 @@ public enum SMILParser {
         return components.joined(separator: "/")
     }
 }
-
-// MARK: - XMLParser Delegates
 
 private class ContainerXMLDelegate: NSObject, XMLParserDelegate {
     var opfPath: String?

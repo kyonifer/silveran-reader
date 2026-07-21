@@ -38,8 +38,6 @@ public enum SilveranDate {
         case unparseable
     }
 
-    // MARK: - Parsing
-
     /// The one and only date parser. Defensively recognizes every format seen in real data.
     ///
     /// `context` is an optional human label (a book title) used only by the inconsistency
@@ -132,8 +130,6 @@ public enum SilveranDate {
         return utcCalendar.date(from: components)
     }
 
-    // MARK: - Sorting
-
     /// A lexicographically sortable, fixed-width key. `nil` sorts after every real date (it lands
     /// at the bottom of an ascending list, the top of a descending one).
     public static func sortKey(_ date: Date?) -> String {
@@ -156,8 +152,6 @@ public enum SilveranDate {
     public static func sortKey(_ string: String?, field: Field = .generic) -> String {
         sortKey(parse(string, field: field))
     }
-
-    // MARK: - Presentation (Date -> user-facing string)
 
     /// Abbreviated calendar date, no time, e.g. "Apr 11, 2026". Empty for `nil`.
     public static func full(_ date: Date?) -> String {
@@ -193,8 +187,6 @@ public enum SilveranDate {
         return "\(displayDateTime.string(from: date)) (\(zone))"
     }
 
-    // MARK: - Serialization (Date -> wire string)
-
     /// "yyyy-MM-dd" in UTC.
     public static func isoDay(from date: Date) -> String {
         isoDayFormatter.string(from: date)
@@ -213,8 +205,6 @@ public enum SilveranDate {
     public static func epochMillisString(from date: Date) -> String {
         String(Int64(date.timeIntervalSince1970 * 1000))
     }
-
-    // MARK: - Formatters
 
     private static let utcCalendar: Calendar = {
         var calendar = Calendar(identifier: .gregorian)
@@ -282,7 +272,6 @@ public enum SilveranDate {
     }()
 }
 
-// MARK: - DELETE-ME: temporary server date-format inconsistency detector
 //
 // This whole section exists only to gather concrete proof that the upstream Storyteller server
 // sends the same field in multiple date formats in real-world data. It records, per field, every

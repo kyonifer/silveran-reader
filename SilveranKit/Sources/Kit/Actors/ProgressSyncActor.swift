@@ -97,8 +97,6 @@ public actor ProgressSyncActor {
         return historyLoaded
     }
 
-    // MARK: - Primary API
-
     /// Sync progress with full introspection data for debugging.
     /// - Parameters:
     ///   - bookID: The book's source-scoped identity
@@ -189,8 +187,6 @@ public actor ProgressSyncActor {
         }
         return parts.joined(separator: " | ")
     }
-
-    // MARK: - Queue Management
 
     /// Flushes the pending queue to the server without making the caller wait: the
     /// send runs on a background task. Calls made while a flush is in flight are
@@ -340,8 +336,6 @@ public actor ProgressSyncActor {
         await removeFromQueue(bookID: bookID)
         await notifyObservers()
     }
-
-    // MARK: - Progress Source of Truth
 
     /// Called by LMA when metadata updates from server or disk.
     /// Performs timestamp-based reconciliation: only updates if incoming is newer than local,
@@ -546,16 +540,12 @@ public actor ProgressSyncActor {
         return nil
     }
 
-    // MARK: - Wake Detection
-
     public func recordWakeEvent() {
         let now = Date().timeIntervalSince1970
         let sleepDuration = now - lastWakeTimestamp
         debugLog("[PSA] recordWakeEvent: sleepDuration=\(sleepDuration)s")
         lastWakeTimestamp = now
     }
-
-    // MARK: - Observers
 
     @discardableResult
     public func addObserver(_ callback: @escaping @Sendable () -> Void) -> UUID {
@@ -575,8 +565,6 @@ public actor ProgressSyncActor {
     ) {
         syncNotificationCallback = callback
     }
-
-    // MARK: - Incoming Position Observers
 
     @discardableResult
     public func addIncomingPositionObserver(
@@ -657,8 +645,6 @@ public actor ProgressSyncActor {
             "[PSA] notifyIncomingPositionObservers: notified observers for bookID=\(bookID)"
         )
     }
-
-    // MARK: - Private Helpers
 
     private func updateServerPositionIfNewer(
         bookID: BookID,
@@ -787,8 +773,6 @@ public actor ProgressSyncActor {
         }
     }
 
-    // MARK: - Persistence
-
     private func loadQueueFromDisk() async {
         guard !queueLoaded else { return }
         do {
@@ -815,8 +799,6 @@ public actor ProgressSyncActor {
             debugLog("[PSA] saveQueueToDisk: failed - \(error)")
         }
     }
-
-    // MARK: - Sync History
 
     private func addHistoryEntry(
         bookID: BookID,

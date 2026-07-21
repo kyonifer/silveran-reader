@@ -190,8 +190,6 @@ struct ConditionEditorSheet: View {
         }
     }
 
-    // MARK: - Editor routing
-
     @ViewBuilder
     private var editorContent: some View {
         switch conditionType {
@@ -285,8 +283,6 @@ struct ConditionEditorSheet: View {
                 EmptyView()
         }
     }
-
-    // MARK: - Rating editor
 
     @ViewBuilder
     private var ratingEditor: some View {
@@ -406,8 +402,6 @@ struct ConditionEditorSheet: View {
         }
     }
 
-    // MARK: - Numeric editor (pages / duration / file size)
-
     @ViewBuilder
     private func numericEditor(unitLabel: String) -> some View {
         VStack(spacing: 20) {
@@ -481,8 +475,6 @@ struct ConditionEditorSheet: View {
         }
     }
 
-    // MARK: - Date editor (date added / date read / aligned at)
-
     private var dateEditor: some View {
         VStack(spacing: 20) {
             Picker("Comparison", selection: $dateComparison) {
@@ -510,8 +502,6 @@ struct ConditionEditorSheet: View {
         }
         .padding(.top)
     }
-
-    // MARK: - Publication Year editor
 
     @ViewBuilder
     private var publicationYearEditor: some View {
@@ -673,8 +663,6 @@ struct ConditionEditorSheet: View {
         }
     }
 
-    // MARK: - Multi-select editor
-
     @ViewBuilder
     private func multiSelectEditor(
         items: [String],
@@ -808,8 +796,6 @@ struct ConditionEditorSheet: View {
             .padding(.vertical, 8)
         }
     }
-
-    // MARK: - Validation & building
 
     private var canAdd: Bool {
         switch conditionType {

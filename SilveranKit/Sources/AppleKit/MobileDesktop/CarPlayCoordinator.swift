@@ -40,13 +40,11 @@ public final class CarPlayCoordinator {
     private var cachedBookStructure: [SectionInfo] = []
     private var cachedAudiobookChapters: [AudiobookSessionChapter] = []
     private var wasPlaying: Bool = false
-    private var syncTimer: Timer?
     private var activePlayer: ActivePlayer?
     private var currentBookID: BookID?
     private var currentBookTitle: String?
     private var currentAudiobookHref: String?
     private var isInitialized = false
-    private var isPositionRestored = false
 
     private init() {
         Task {
@@ -98,25 +96,12 @@ public final class CarPlayCoordinator {
                     }
                 }
 
-                if previouslyPlaying && !state.isPlaying {
-                    debugLog("[CarPlayCoordinator] SMIL playback paused, syncing progress")
-                    Task { @MainActor in
-                        await self.syncProgress(reason: .userPausedPlayback)
-                    }
-                    self.stopPeriodicSync()
-                } else if !previouslyPlaying && state.isPlaying {
-                    debugLog("[CarPlayCoordinator] SMIL playback started, starting periodic sync")
-                    Task { @MainActor in
-                        await self.startPeriodicSync()
-                    }
-                }
+                // SMIL progress syncing is owned by the ReadingSession.
             } else if previousBookID != nil {
                 debugLog("[CarPlayCoordinator] SMIL book unloaded")
                 self.currentBookID = nil
                 self.activePlayer = nil
                 self.currentAudiobookHref = nil
-                self.isPositionRestored = false
-                self.stopPeriodicSync()
             }
 
             self.onPlaybackStateChanged?()
@@ -140,8 +125,6 @@ public final class CarPlayCoordinator {
         cachedBookStructure = await SMILPlayerActor.shared.getBookStructure()
         onChaptersUpdated?()
     }
-
-    // MARK: - Public API for CarPlay
 
     public func getDownloadedBooks(category: LocalMediaCategory) async -> [BookMetadata] {
         let snapshot = await BookServiceActor.shared.librarySnapshot(policy: .cachedOnly)
@@ -283,6 +266,11 @@ public final class CarPlayCoordinator {
         debugLog(
             "[CarPlayCoordinator] loadM4BAudiobook start: carPlayConnected=\(isCarPlayConnected), playerViewActive=\(isPlayerViewActive)"
         )
+        if activePlayer == .smil, let previousID = currentBookID {
+            // The audiobook takes over the audio engine; a headless readaloud
+            // session has no owner left to close it, so end it here.
+            await ReadingSessionStore.shared.endIfViewDetached(for: previousID)
+        }
         activePlayer = .audiobook
         currentBookID = metadata.id
         currentBookTitle = metadata.title
@@ -306,8 +294,6 @@ public final class CarPlayCoordinator {
         cachedAudiobookChapters = (await AudioSessionActor.shared.currentState())?.chapters ?? []
         onChaptersUpdated?()
 
-        isPositionRestored = true
-
         debugLog(
             "[CarPlayCoordinator] M4B audiobook opened via AudioSessionActor, starting playback"
         )
@@ -318,24 +304,23 @@ public final class CarPlayCoordinator {
         debugLog(
             "[CarPlayCoordinator] loadSMILBook start: carPlayConnected=\(isCarPlayConnected), playerViewActive=\(isPlayerViewActive)"
         )
-        await AudioSessionActor.shared.closeAudiobookArmIfActive()
         activePlayer = .smil
         currentBookID = metadata.id
         currentBookTitle = metadata.title
         currentAudiobookHref = nil
         wasPlaying = false
 
-        let preparedMedia = try await BookServiceActor.shared.prepareEbookForReading(
-            bookID: metadata.id,
+        let session = ReadingSessionStore.shared.obtain(
+            metadata: metadata,
             category: .synced,
+            localMediaPath: nil,
+            settings: nil,
         )
-
-        try await SMILPlayerActor.shared.loadBook(
-            epubPath: preparedMedia.originalURL,
-            bookID: metadata.id,
-            title: metadata.title,
-            author: metadata.authors?.first?.name,
-        )
+        session.prepare()
+        await session.awaitPreparation()
+        if let error = session.lastPrepareError {
+            throw error
+        }
 
         await refreshBookStructure()
 
@@ -343,55 +328,10 @@ public final class CarPlayCoordinator {
             await SMILPlayerActor.shared.setCoverImage(coverData)
         }
 
-        isPositionRestored = false
+        await session.restoreEnginePositionFromSavedProgress()
 
-        var locatorToUse: BookLocator? = nil
-        if let psaProgress = await ProgressSyncActor.shared.getBookProgress(for: metadata.id),
-            let psaLocator = psaProgress.locator
-        {
-            debugLog(
-                "[CarPlayCoordinator] Got SMIL position from PSA (source: \(psaProgress.source))"
-            )
-            locatorToUse = psaLocator
-        } else if let metadataLocator = metadata.position?.locator {
-            debugLog("[CarPlayCoordinator] Using fallback SMIL position from metadata")
-            locatorToUse = metadataLocator
-        }
-
-        if let locator = locatorToUse {
-            let bookStructure = await SMILPlayerActor.shared.getBookStructure()
-            if let sectionIndex = findSectionIndex(for: locator.href, in: bookStructure),
-                let fragment = locator.locations?.fragments?.first
-            {
-                let success = await SMILPlayerActor.shared.seekToFragment(
-                    sectionIndex: sectionIndex,
-                    textId: fragment,
-                )
-                if success {
-                    debugLog(
-                        "[CarPlayCoordinator] Restored SMIL position to section \(sectionIndex), fragment: \(fragment)"
-                    )
-                }
-            } else if let totalProg = locator.locations?.totalProgression, totalProg > 0 {
-                let success = await SMILPlayerActor.shared.seekToTotalProgression(totalProg)
-                debugLog(
-                    "[CarPlayCoordinator] Restored SMIL position using totalProgression \(totalProg): \(success ? "success" : "failed")"
-                )
-            } else {
-                debugLog(
-                    "[CarPlayCoordinator] No usable SMIL position data, starting from beginning"
-                )
-            }
-        } else {
-            debugLog("[CarPlayCoordinator] No saved SMIL position, starting from beginning")
-        }
-
-        isPositionRestored = true
-
-        let playbackSpeed = await SettingsActor.shared.config.playback.defaultPlaybackSpeed
-        await SMILPlayerActor.shared.setPlaybackRate(playbackSpeed)
-        debugLog("[CarPlayCoordinator] SMIL book loaded at \(playbackSpeed)x, starting playback")
-        try await SMILPlayerActor.shared.play()
+        debugLog("[CarPlayCoordinator] SMIL book loaded, starting playback")
+        try await AudioSessionActor.shared.transport(.play)
     }
 
     public var isPlaying: Bool {
@@ -448,136 +388,5 @@ public final class CarPlayCoordinator {
         debugLog("[CarPlayCoordinator] Playback rate set to \(rate)x")
     }
 
-    // MARK: - Progress Sync
-
-    private func startPeriodicSync() async {
-        guard isCarPlayConnected else {
-            debugLog("[CarPlayCoordinator] Not starting periodic sync: CarPlay not connected")
-            return
-        }
-
-        stopPeriodicSync()
-
-        let syncInterval = await SettingsActor.shared.config.sync.progressSyncIntervalSeconds
-        debugLog("[CarPlayCoordinator] Starting periodic sync with interval \(syncInterval)s")
-
-        syncTimer = Timer.scheduledTimer(withTimeInterval: syncInterval, repeats: true) {
-            [weak self] _ in
-            Task { @MainActor in
-                await self?.syncProgress(reason: .periodicDuringActivePlayback)
-            }
-        }
-    }
-
-    private func stopPeriodicSync() {
-        syncTimer?.invalidate()
-        syncTimer = nil
-    }
-
-    private func syncProgress(reason: SyncReason) async {
-        guard isCarPlayConnected else {
-            debugLog("[CarPlayCoordinator] Cannot sync: CarPlay not connected")
-            return
-        }
-
-        guard let bookID = currentBookID else {
-            debugLog("[CarPlayCoordinator] Cannot sync: no book identity")
-            return
-        }
-
-        // If phone player is active, let it handle syncing to avoid duplicates
-        if isPlayerViewActive {
-            debugLog(
-                "[CarPlayCoordinator] Skipping sync: phone player view is active, it will handle syncing"
-            )
-            return
-        }
-
-        guard isPositionRestored else {
-            debugLog("[CarPlayCoordinator] Skipping sync: position not yet restored")
-            return
-        }
-
-        let locator: BookLocator
-        let timestampMs = floor(Date().timeIntervalSince1970 * 1000)
-        let sourceIdentifier: String
-        let locationDescription: String
-
-        switch activePlayer {
-            case .audiobook:
-                debugLog("[CarPlayCoordinator] Audiobook sync is handled by AudioSessionActor")
-                return
-
-            case .smil, .none:
-                guard let state = currentPlaybackState else {
-                    debugLog("[CarPlayCoordinator] Cannot sync SMIL: no playback state")
-                    return
-                }
-
-                guard state.currentSectionIndex < cachedBookStructure.count else {
-                    debugLog("[CarPlayCoordinator] Cannot sync: section index out of bounds")
-                    return
-                }
-
-                let section = cachedBookStructure[state.currentSectionIndex]
-                let href = section.id
-
-                let fragment: String?
-                if state.currentEntryIndex < section.mediaOverlay.count {
-                    fragment = section.mediaOverlay[state.currentEntryIndex].textId
-                } else {
-                    fragment = nil
-                }
-
-                let totalProgression = state.bookTotal > 0 ? state.bookElapsed / state.bookTotal : 0
-
-                let locations = BookLocator.Locations(
-                    fragments: fragment.map { [$0] },
-                    progression: nil,
-                    position: nil,
-                    totalProgression: totalProgression,
-                    cssSelector: nil,
-                    partialCfi: nil,
-                    domRange: nil,
-                )
-
-                locator = BookLocator(
-                    href: href,
-                    type: "application/xhtml+xml",
-                    title: state.chapterLabel,
-                    locations: locations,
-                    text: nil,
-                )
-
-                sourceIdentifier = "CarPlay · Readaloud"
-                let chapterLabel = state.chapterLabel ?? "Section \(state.currentSectionIndex + 1)"
-                let sectionProgress =
-                    section.mediaOverlay.count > 0
-                    ? Double(state.currentEntryIndex) / Double(section.mediaOverlay.count)
-                    : 0
-                locationDescription = "\(chapterLabel), \(Int(sectionProgress * 100))%"
-
-                debugLog(
-                    "[CarPlayCoordinator] Syncing SMIL progress: book=\(bookID), href=\(href), fragment=\(fragment ?? "none"), reason=\(reason)"
-                )
-        }
-
-        // Don't sync 0% positions - these are usually loading states that would reset progress
-        if let totalProg = locator.locations?.totalProgression, totalProg < 0.001 {
-            debugLog("[CarPlayCoordinator] Skipping sync: 0% position would reset progress")
-            return
-        }
-
-        let result = await ProgressSyncActor.shared.syncProgress(
-            bookID: bookID,
-            locator: locator,
-            timestamp: timestampMs,
-            reason: reason,
-            sourceIdentifier: sourceIdentifier,
-            locationDescription: locationDescription,
-        )
-
-        debugLog("[CarPlayCoordinator] Sync result: \(result)")
-    }
 }
 #endif

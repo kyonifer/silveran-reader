@@ -11,14 +11,11 @@ import Observation
 @SilveranUIActor
 @Observable
 public final class ReadingSessionActor {
-    // MARK: - Progress State
 
     public var chapterSeekBarValue: Double = 0.0
     public var bookFraction: Double? = nil
     public var chapterCurrentPage: Int? = nil
     public var chapterTotalPages: Int? = nil
-
-    // MARK: - Chapter State
 
     /// Current chapter index (source of truth, typically from JS progress events)
     /// Reflects JS reader reality but may need sync with Swift value (below).
@@ -52,8 +49,6 @@ public final class ReadingSessionActor {
 
     public var bookStructure: [SectionInfo] = []
 
-    // MARK: - Communication
-
     public weak var commsBridge: ReaderCommsBridge?
     public weak var mediaOverlayManager: MediaOverlayManager?
     private let settingsVM: any ReaderSettingsReading
@@ -69,8 +64,6 @@ public final class ReadingSessionActor {
     /// This happens when the book is first opened and has been
     /// read in a previous session.
     public var hasPerformedInitialSeek = false
-
-    // MARK: - User Navigation Detection
 
     private enum UserNavDirection: String {
         case left
@@ -92,8 +85,6 @@ public final class ReadingSessionActor {
     private var pendingChapterTransition: Int? = nil
     private var pendingSwiftCommandFlipEchoes = 0
     private var userNavFallbackTask: Task<Void, Never>? = nil
-
-    // MARK: - Progress Sync State
 
     /// Timestamp of last user activity (navigation or audio playback)
     private var lastActivityTimestamp: TimeInterval? = nil
@@ -121,8 +112,6 @@ public final class ReadingSessionActor {
     public var bookAuthor: String? = nil
     public var bookCoverUrl: String? = nil
 
-    // MARK: - Initialization
-
     public init(
         bridge: ReaderCommsBridge?,
         settingsVM: any ReaderSettingsReading,
@@ -137,6 +126,16 @@ public final class ReadingSessionActor {
             "[EPM] EbookProgressManager initialized with bookID: \(bookID?.description ?? "none"), locator: \(initialLocator?.href ?? "none")"
         )
 
+        installRelocateHandler(on: bridge)
+    }
+
+    /// Webview recovery: the fresh bridge needs the relocate handler reinstalled.
+    public func rebindBridge(_ bridge: ReaderCommsBridge?) {
+        commsBridge = bridge
+        installRelocateHandler(on: bridge)
+    }
+
+    private func installRelocateHandler(on bridge: ReaderCommsBridge?) {
         bridge?.onRelocated = { [weak self] message in
             Task { @SilveranUIActor in
                 self?.handleRelocated(message)
@@ -207,8 +206,6 @@ public final class ReadingSessionActor {
         scheduleDebouncedSync(reason: syncReason, useFragment: false)
     }
 
-    // MARK: - Progress Updates
-
     public func updateChapterProgress(currentPage: Int?, totalPages: Int?) {
         guard let current = currentPage, let total = totalPages, total > 0 else {
             chapterSeekBarValue = 0.0
@@ -272,8 +269,6 @@ public final class ReadingSessionActor {
         }
         return (sectionIndex: result.sectionIndex, anchor: result.textId)
     }
-
-    // MARK: - Initial Navigation
 
     /// Called when book structure is ready-- performs initial navigation
     /// Handles both text (ebook) and audio (audiobook) locators.
@@ -472,8 +467,6 @@ public final class ReadingSessionActor {
             }
         }
     }
-
-    // MARK: - Chapter Navigation
 
     /*
      Navigation flow (page flips + relocates):
@@ -876,8 +869,6 @@ public final class ReadingSessionActor {
         }
     }
 
-    // MARK: - User Navigation Methods
-
     /// User pressed left arrow or swiped right (previous page)
     public func handleUserNavLeft() {
         if isScrollingMode {
@@ -1054,8 +1045,6 @@ public final class ReadingSessionActor {
         }
     }
 
-    // MARK: - Background Sync Handoff
-
     /// Handle position handoff from SMILPlayerActor after returning from background
     /// Syncs the view to current audio position and updates server
     public func handleBackgroundSyncHandoff(_ syncData: AudioPositionSyncData) async {
@@ -1081,8 +1070,6 @@ public final class ReadingSessionActor {
         await syncProgressToServer(reason: .periodicDuringActivePlayback)
     }
 
-    // MARK: - Playback Control
-
     /// Toggle audio playback (records activity and delegates to MOM)
     public func togglePlaying() async {
         recordActivity()
@@ -1102,7 +1089,6 @@ public final class ReadingSessionActor {
         }
     }
 
-    // MARK: - Progress Sync
     //
     // Sync Strategy - Progress is synced to the server in multiple scenarios:
     //
@@ -1140,6 +1126,12 @@ public final class ReadingSessionActor {
         lastActivityTimestamp = floor(Date().timeIntervalSince1970 * 1000) / 1000
         let timestampMs = lastActivityTimestamp! * 1000
         debugLog("[EPM] Activity recorded at \(timestampMs) ms (unix epoch)")
+    }
+
+    /// Called by MOM before pause-triggered syncs; without it a headless
+    /// session with no navigation would skip the sync for lack of activity.
+    public func recordPlaybackActivity() {
+        recordActivity()
     }
 
     /// Schedule a debounced sync - cancels any pending sync and schedules a new one.
@@ -1262,6 +1254,16 @@ public final class ReadingSessionActor {
         }
     }
 
+    /// Fallback for headless sessions, where no relocate ever sets bookFraction.
+    private var audioBookFraction: Double? {
+        guard let mom = mediaOverlayManager,
+            let elapsed = mom.bookElapsedSeconds,
+            let total = mom.bookTotalSeconds,
+            total > 0
+        else { return nil }
+        return elapsed / total
+    }
+
     /// Build BookLocator from fragment (href#anchor format)
     private func buildLocatorFromFragment(_ fragment: String) -> BookLocator? {
         let parts = fragment.split(separator: "#", maxSplits: 1)
@@ -1278,7 +1280,7 @@ public final class ReadingSessionActor {
                 fragments: fragments,
                 progression: chapterSeekBarValue,
                 position: nil,
-                totalProgression: bookFraction,
+                totalProgression: bookFraction ?? audioBookFraction,
                 cssSelector: nil as String?,
                 partialCfi: nil as String?,
                 domRange: nil as BookLocator.Locations.DomRange?,
@@ -1312,8 +1314,6 @@ public final class ReadingSessionActor {
             text: nil as BookLocator.Text?,
         )
     }
-
-    // MARK: - Wake-from-Sleep Handling
 
     /// Handle app resume - check PSA for newer position and suppress nav actions
     public func handleResume() async {

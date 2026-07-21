@@ -1940,8 +1940,6 @@ public final class MediaViewModel {
         }
     }
 
-    // MARK: - Progress from PSA
-
     public func progress(for bookId: BookID) -> Double {
         if readBookIds.contains(bookId) { return 1.0 }
         return bookProgressCache[bookId]?.progressFraction ?? 0
@@ -2627,8 +2625,6 @@ public final class MediaViewModel {
         }
         return CoverImagePayload(data: data, cgImage: SendableCGImage(image))
     }
-
-    // MARK: - Smart Shelves
 
     public func loadSmartShelves() async {
         do {

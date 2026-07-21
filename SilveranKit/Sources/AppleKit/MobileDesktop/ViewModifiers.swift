@@ -91,8 +91,6 @@ struct WindowFrameAdjuster: NSViewRepresentable {
         }
     }
 
-    // MARK: - Init (first updateNSView only)
-
     private func initialize(window: NSWindow, coordinator c: Coordinator) {
         c.initialized = true
         c.lastExpandRight = expandRight
@@ -131,8 +129,6 @@ struct WindowFrameAdjuster: NSViewRepresentable {
             setupResizeObserver(window: window, coordinator: c, key: key)
         }
     }
-
-    // MARK: - Sidebar toggle (subsequent updateNSView calls)
 
     private func handleSidebarChange(window: NSWindow, coordinator c: Coordinator) {
         let state = WindowExpansionState.shared
@@ -177,8 +173,6 @@ struct WindowFrameAdjuster: NSViewRepresentable {
         }
     }
 
-    // MARK: - Persistence
-
     private func saveBaseWidth(window: NSWindow) {
         guard let key = savedWidthKey else { return }
         let base = WindowExpansionState.shared.baseWidth(for: window)
@@ -198,8 +192,6 @@ struct WindowFrameAdjuster: NSViewRepresentable {
             }
         }
     }
-
-    // MARK: - Coordinator
 
     class Coordinator: @unchecked Sendable {
         var initialized = false

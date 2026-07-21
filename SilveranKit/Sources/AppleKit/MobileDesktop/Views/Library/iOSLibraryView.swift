@@ -2061,8 +2061,6 @@ extension View {
     }
 }
 
-// MARK: - More Menu Category Views with Layout Switching
-
 struct MoreSeriesView: View {
     @Binding var searchText: String
     @Binding var showSettings: Bool

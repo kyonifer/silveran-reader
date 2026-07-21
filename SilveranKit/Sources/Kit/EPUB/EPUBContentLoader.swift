@@ -162,8 +162,6 @@ public enum EPUBContentLoader {
         return stripHTML(elementHTML)
     }
 
-    // MARK: - Private
-
     private static let paragraphBlockTags: Set<String> = [
         "p",
         "li",

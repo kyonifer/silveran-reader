@@ -54,8 +54,6 @@ struct EbookOverlayIos: View {
         }
     }
 
-    // MARK: - Top Position Layout (when mini player covers bottom)
-
     private var topPositionedLayout: some View {
         VStack {
             HStack(alignment: .top) {
@@ -130,8 +128,6 @@ struct EbookOverlayIos: View {
         }
     }
 
-    // MARK: - Bottom Position Layout (original/default)
-
     private var bottomPositionedLayout: some View {
         VStack {
             Spacer()
@@ -162,8 +158,6 @@ struct EbookOverlayIos: View {
         }
         .ignoresSafeArea(.all)
     }
-
-    // MARK: - Shared Components
 
     private var playbackControls: some View {
         HStack(spacing: 16) {
@@ -202,8 +196,6 @@ struct EbookOverlayIos: View {
         }
         .buttonStyle(.plain)
     }
-
-    // MARK: - Formatting
 
     private func formatPercent(_ value: Double) -> String {
         String(format: "%.0f%%", max(min(value, 1), 0) * 100)
