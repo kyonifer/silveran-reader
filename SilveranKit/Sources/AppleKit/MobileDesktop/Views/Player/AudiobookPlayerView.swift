@@ -72,12 +72,13 @@ public struct AudiobookPlayerView: View {
 
                 let observerID = stateObserverID
                 stateObserverID = nil
+                let bookID = bookData?.metadata.id
                 Task {
                     if let observerID {
                         await AudioSessionActor.shared.removeStateObserver(id: observerID)
                     }
-                    if !keepsSession {
-                        await AudioSessionActor.shared.closeAudiobook()
+                    if !keepsSession, let bookID {
+                        await AudioSessionActor.shared.close(ifOwnedBy: bookID)
                     }
                 }
             }

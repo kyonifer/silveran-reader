@@ -190,7 +190,12 @@ public final class MediaOverlayManager {
     }
 
     private func handleActorStateUpdate(_ state: SMILPlaybackState) {
-        guard state.bookID == bookID else { return }
+        guard state.bookID == bookID else {
+            if isPlaying {
+                Task { await handleEngineLostToOtherBook() }
+            }
+            return
+        }
 
         let previousSectionIndex = cachedSectionIndex
         let previousEntryIndex = cachedEntryIndex
@@ -244,6 +249,21 @@ public final class MediaOverlayManager {
                 }
             }
         }
+    }
+
+    private func handleEngineLostToOtherBook() async {
+        // Pushed states can be stragglers; confirm with the engine.
+        guard await SMILPlayerActor.shared.getLoadedBookID() != bookID else { return }
+        guard isPlaying else { return }
+
+        debugLog("[MOM] Engine taken by another book - degrading to idle")
+        isPlaying = false
+        pageFlipTask?.cancel()
+        pageFlipTask = nil
+        disableScreenWakeLock()
+        try? await commsBridge?.sendJsClearHighlight()
+        progressManager?.recordPlaybackActivity()
+        await progressManager?.syncProgressToServer(reason: .userPausedPlayback)
     }
 
     private func handleEntryAdvancement(sectionIndex: Int, entryIndex: Int) {
