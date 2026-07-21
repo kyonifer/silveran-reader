@@ -483,6 +483,7 @@ public final class ReadingSession {
                 await self.mediaOverlayManager?.handleSeekEvent(
                     sectionIndex: message.sectionIndex,
                     anchor: message.anchor,
+                    takeover: true,
                 )
             }
         }

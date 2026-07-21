@@ -383,7 +383,7 @@ public final class MediaOverlayManager {
     /// - User double-clicks on a sentence in the reader
     /// - Book opens at last reading position (future)
     /// Only seeks if the exact fragment exists in bookStructure for the requested section
-    public func handleSeekEvent(sectionIndex: Int, anchor: String) async {
+    public func handleSeekEvent(sectionIndex: Int, anchor: String, takeover: Bool = false) async {
         debugLog("[MOM] handleSeekEvent - section: \(sectionIndex), anchor: \(anchor)")
 
         guard let section = getSection(at: sectionIndex) else {
@@ -404,6 +404,15 @@ public final class MediaOverlayManager {
         }
 
         debugLog("[MOM] handleSeekEvent - fragment found, seeking to \(section.id)#\(anchor)")
+
+        if takeover, await SMILPlayerActor.shared.getLoadedBookID() != bookID {
+            debugLog("[MOM] handleSeekEvent - taking over engine for \(bookID)")
+            await reloadBookIntoActor()
+            guard await SMILPlayerActor.shared.getLoadedBookID() == bookID else {
+                debugLog("[MOM] handleSeekEvent - takeover failed, engine holds another book")
+                return
+            }
+        }
 
         let wasPlaying = isPlaying
 
