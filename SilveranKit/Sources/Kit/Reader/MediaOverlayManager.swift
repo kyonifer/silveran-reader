@@ -1,10 +1,5 @@
-#if os(iOS) || os(macOS)
 import Foundation
-import WebKit
-
-#if os(iOS)
-import UIKit
-#endif
+import Observation
 
 /// MediaOverlayManager - Single source of truth for audio sync decisions
 ///
@@ -13,15 +8,15 @@ import UIKit
 /// - Track current audio position
 /// - Handle chapter navigation without loops
 /// - Manage sync mode (enabled/disabled)
-@MainActor
+@SilveranUIActor
 @Observable
-class MediaOverlayManager {
+public final class MediaOverlayManager {
     // MARK: - Properties
 
     private let bookStructure: [SectionInfo]
     private let bookID: BookID
     private let reloadBookIntoActor: () async -> Void
-    private let settingsVM: SettingsViewModel
+    private let settingsVM: any ReaderSettingsReading
     /// Section indices that contain at least one SMIL entry (used to skip non-audio sections).
     private let audioSectionIndices: [Int]
     /// Map from section index → position in audioSectionIndices for fast prev/next audio section jumps.
@@ -31,27 +26,27 @@ class MediaOverlayManager {
     /// Cached TOC sections (labelled sections) to avoid refiltering on every access.
     private let tocSectionsCache: [SectionInfo]
 
-    weak var commsBridge: WebViewCommsBridge?
-    weak var progressManager: EbookProgressManager?
+    public weak var commsBridge: ReaderCommsBridge?
+    public weak var progressManager: ReadingSessionActor?
 
     /// Observer ID for SMILPlayerActor state changes
     private var smilObserverId: UUID?
 
     /// Cached state from SMILPlayerActor
-    private(set) var cachedSectionIndex: Int = 0
-    private(set) var cachedEntryIndex: Int = 0
+    public private(set) var cachedSectionIndex: Int = 0
+    public private(set) var cachedEntryIndex: Int = 0
     private var lastObservedFragment: String = ""
 
     /// Suppress actor-driven highlights briefly after user-initiated navigation
     private var suppressActorHighlightsUntil: Date? = nil
 
-    var isPlaying: Bool = false
-    var isInBackground: Bool = false
-    var backgroundAudioPlayed: Bool = false
+    public var isPlaying: Bool = false
+    public var isInBackground: Bool = false
+    public var backgroundAudioPlayed: Bool = false
 
-    /// Timer for delayed page flips during fractional sentence playback
+    /// Task for delayed page flips during fractional sentence playback
     /// (i.e. when a sentence is half on this page and half on the next)
-    private var pageFlipTimer: Timer?
+    private var pageFlipTask: Task<Void, Never>?
 
     /// Last time we flipped a page, used to debounce rapid flips
     /// (i.e. when a fractional sentence is paused then play starts again,
@@ -63,46 +58,44 @@ class MediaOverlayManager {
     /// When false: Audio only follows navigation when playing; paused navigation is independent
     private var syncEnabled: Bool { settingsVM.lockViewToAudio }
 
-    var playbackRate: Double = 1.0
-    var volume: Double = 1.0
+    public var playbackRate: Double = 1.0
+    public var volume: Double = 1.0
 
     // MARK: - Sleep Timer State
 
-    var sleepTimerActive: Bool = false
-    var sleepTimerRemaining: TimeInterval? = nil
-    var sleepTimerType: SleepTimerType? = nil
-    private var sleepTimer: Timer? = nil
+    public var sleepTimerActive: Bool = false
+    public var sleepTimerRemaining: TimeInterval? = nil
+    public var sleepTimerType: SleepTimerType? = nil
+    private var sleepTimerTask: Task<Void, Never>? = nil
 
     // MARK: - Screen Wake Lock State
 
-    #if os(macOS)
-    /// Activity token to prevent display sleep on macOS
-    private var displaySleepActivity: NSObjectProtocol?
-    #endif
+    /// Platform hook that keeps the screen awake during narration playback.
+    public var setWakeLock: ((Bool) -> Void)?
 
     // MARK: - Audio Progress State
 
-    var chapterElapsedSeconds: Double? = nil
-    var chapterTotalSeconds: Double? = nil
-    var bookElapsedSeconds: Double? = nil
-    var bookTotalSeconds: Double? = nil
+    public var chapterElapsedSeconds: Double? = nil
+    public var chapterTotalSeconds: Double? = nil
+    public var bookElapsedSeconds: Double? = nil
+    public var bookTotalSeconds: Double? = nil
 
     /// Current fragment being played (format: "href#anchor", e.g., "text/part0007.html#para-123")
-    var currentFragment: String? = nil
+    public var currentFragment: String? = nil
 
     // MARK: - Computed Properties
 
     /// Returns true if the book has any SMIL entries
-    var hasMediaOverlay: Bool {
+    public var hasMediaOverlay: Bool {
         !audioSectionIndices.isEmpty
     }
 
     /// Returns sections that are in the TOC (have labels)
-    var tocSections: [SectionInfo] {
+    public var tocSections: [SectionInfo] {
         tocSectionsCache
     }
 
-    var chapterTimeRemaining: TimeInterval? {
+    public var chapterTimeRemaining: TimeInterval? {
         guard let total = chapterTotalSeconds,
             let elapsed = chapterElapsedSeconds,
             playbackRate > 0
@@ -113,7 +106,7 @@ class MediaOverlayManager {
         return remaining / playbackRate
     }
 
-    var bookTimeRemaining: TimeInterval? {
+    public var bookTimeRemaining: TimeInterval? {
         guard let total = bookTotalSeconds,
             let elapsed = bookElapsedSeconds,
             playbackRate > 0
@@ -126,11 +119,11 @@ class MediaOverlayManager {
 
     // MARK: - Initialization
 
-    init(
+    public init(
         bookStructure: [SectionInfo],
         bookID: BookID,
-        bridge: WebViewCommsBridge,
-        settingsVM: SettingsViewModel,
+        bridge: ReaderCommsBridge,
+        settingsVM: any ReaderSettingsReading,
         reloadBookIntoActor: @escaping () async -> Void,
     ) {
         self.bookStructure = bookStructure
@@ -201,7 +194,7 @@ class MediaOverlayManager {
 
     private func setupActorObserver() async {
         let observerId = await SMILPlayerActor.shared.addStateObserver { [weak self] state in
-            Task { @MainActor [weak self] in
+            Task { @SilveranUIActor [weak self] in
                 self?.handleActorStateUpdate(state)
             }
         }
@@ -293,7 +286,7 @@ class MediaOverlayManager {
 
     /// Called when user selects a chapter directly (via sidebar/chapter button)
     /// Seeks audio to the first SMIL element of that chapter
-    func handleUserChapterNavigation(sectionIndex: Int) async {
+    public func handleUserChapterNavigation(sectionIndex: Int) async {
         debugLog("[MOM] User chapter nav → Section.\(sectionIndex)")
 
         guard syncEnabled || isPlaying else {
@@ -321,7 +314,7 @@ class MediaOverlayManager {
     /// Called when user initiates navigation (arrow keys, swipe, progress seek)
     /// This is called after a debounce period to handle the final settled location
     /// Returns true if a SMIL match was found and audio position updated, false otherwise
-    func handleUserNavEvent(section: Int, page: Int, totalPages: Int) async -> Bool {
+    public func handleUserNavEvent(section: Int, page: Int, totalPages: Int) async -> Bool {
         debugLog("[MOM] User nav → Section.\(section): \(page)/\(totalPages)")
 
         guard syncEnabled || isPlaying else {
@@ -395,7 +388,7 @@ class MediaOverlayManager {
     /// Called when navigation occurs naturally (media overlay auto-progression, resize events)
     /// Excludes user-initiated actions which are handled by handleUserNavEvent
     /// This also handles media overlay progress events (anchor changes during playback)
-    func handleNaturalNavEvent(section: Int, page: Int, totalPages: Int) async {
+    public func handleNaturalNavEvent(section: Int, page: Int, totalPages: Int) async {
         debugLog("[MOM] Natural nav → Section.\(section): \(page)/\(totalPages)")
     }
 
@@ -404,7 +397,7 @@ class MediaOverlayManager {
     /// - User double-clicks on a sentence in the reader
     /// - Book opens at last reading position (future)
     /// Only seeks if the exact fragment exists in bookStructure for the requested section
-    func handleSeekEvent(sectionIndex: Int, anchor: String) async {
+    public func handleSeekEvent(sectionIndex: Int, anchor: String) async {
         debugLog("[MOM] handleSeekEvent - section: \(sectionIndex), anchor: \(anchor)")
 
         guard let section = getSection(at: sectionIndex) else {
@@ -445,7 +438,7 @@ class MediaOverlayManager {
         }
     }
 
-    func togglePlaying() async {
+    public func togglePlaying() async {
         if isPlaying {
             await stopPlaying()
         } else {
@@ -453,7 +446,7 @@ class MediaOverlayManager {
         }
     }
 
-    func startPlaying() async {
+    public func startPlaying() async {
         guard !isPlaying else {
             debugLog("[MOM] startPlaying() - already playing, ignoring")
             return
@@ -489,7 +482,7 @@ class MediaOverlayManager {
         }
     }
 
-    func stopPlaying() async {
+    public func stopPlaying() async {
         guard isPlaying else {
             debugLog("[MOM] stopPlaying() - already stopped, ignoring")
             return
@@ -499,15 +492,15 @@ class MediaOverlayManager {
         disableScreenWakeLock()
         await SMILPlayerActor.shared.pause()
         isPlaying = false
-        pageFlipTimer?.invalidate()
-        pageFlipTimer = nil
+        pageFlipTask?.cancel()
+        pageFlipTask = nil
         debugLog("[MOM] stopPlaying() - paused")
     }
 
     // MARK: - External Event Handlers (no longer needed - actor handles remote commands)
     // These are kept for backward compatibility but can be removed once fully migrated
 
-    func nextSentence() {
+    public func nextSentence() {
         guard hasMediaOverlay else {
             debugLog("[MOM] nextSentence() - no media overlay available")
             return
@@ -591,7 +584,7 @@ class MediaOverlayManager {
         }
     }
 
-    func prevSentence() {
+    public func prevSentence() {
         guard hasMediaOverlay else {
             debugLog("[MOM] prevSentence() - no media overlay available")
             return
@@ -679,7 +672,7 @@ class MediaOverlayManager {
         }
     }
 
-    func setPlaybackRate(_ rate: Double) {
+    public func setPlaybackRate(_ rate: Double) {
         playbackRate = rate
         debugLog("[MOM] Playback rate set to: \(rate)x")
         Task {
@@ -688,7 +681,7 @@ class MediaOverlayManager {
     }
 
     /// Set volume level for audio narration (macOS only)
-    func setVolume(_ newVolume: Double) {
+    public func setVolume(_ newVolume: Double) {
         let clampedVolume = max(0.0, min(1.0, newVolume))
         volume = clampedVolume
         debugLog("[MOM] Volume set to: \(Int(clampedVolume * 100))%")
@@ -697,7 +690,7 @@ class MediaOverlayManager {
         }
     }
 
-    func startSleepTimer(duration: TimeInterval?, type: SleepTimerType) {
+    public func startSleepTimer(duration: TimeInterval?, type: SleepTimerType) {
         cancelSleepTimer()
 
         sleepTimerType = type
@@ -711,20 +704,20 @@ class MediaOverlayManager {
             sleepTimerActive = true
             sleepTimerRemaining = duration
 
-            sleepTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) {
-                [weak self] _ in
-                guard let self = self else { return }
-                Task { @MainActor in
+            sleepTimerTask = Task { @SilveranUIActor [weak self] in
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(1))
+                    guard !Task.isCancelled, let self else { return }
                     await self.updateSleepTimer()
                 }
             }
         }
     }
 
-    func cancelSleepTimer() {
+    public func cancelSleepTimer() {
         debugLog("[MOM] Sleep timer cancelled")
-        sleepTimer?.invalidate()
-        sleepTimer = nil
+        sleepTimerTask?.cancel()
+        sleepTimerTask = nil
         sleepTimerActive = false
         sleepTimerRemaining = nil
         sleepTimerType = nil
@@ -753,7 +746,7 @@ class MediaOverlayManager {
         }
     }
 
-    func checkChapterEndForSleepTimer(message: MediaOverlayProgressMessage) {
+    public func checkChapterEndForSleepTimer(message: MediaOverlayProgressMessage) {
         guard sleepTimerActive,
             sleepTimerType == .endOfChapter,
             isPlaying
@@ -775,12 +768,12 @@ class MediaOverlayManager {
     }
 
     /// Cleanup when closing the book (stops audio playback and sleep timer)
-    func cleanup() async {
+    public func cleanup() async {
         debugLog("[MOM] MediaOverlayManager cleanup - stopping audio playback and sleep timer")
 
         cancelSleepTimer()
-        pageFlipTimer?.invalidate()
-        pageFlipTimer = nil
+        pageFlipTask?.cancel()
+        pageFlipTask = nil
         disableScreenWakeLock()
 
         if let observerId = smilObserverId {
@@ -798,7 +791,7 @@ class MediaOverlayManager {
     }
 
     /// Handle progress update from media overlay (called via bridge)
-    func handleProgressUpdate(_ message: MediaOverlayProgressMessage) {
+    public func handleProgressUpdate(_ message: MediaOverlayProgressMessage) {
         chapterElapsedSeconds = message.chapterElapsedSeconds
         chapterTotalSeconds = message.chapterTotalSeconds
         bookElapsedSeconds = message.bookElapsedSeconds
@@ -815,30 +808,11 @@ class MediaOverlayManager {
     // MARK: - Screen Wake Lock
 
     private func enableScreenWakeLock() {
-        #if os(iOS)
-        UIApplication.shared.isIdleTimerDisabled = true
-        debugLog("[MOM] Screen wake lock enabled (iOS idle timer disabled)")
-        #elseif os(macOS)
-        guard displaySleepActivity == nil else { return }
-        displaySleepActivity = ProcessInfo.processInfo.beginActivity(
-            options: [.idleDisplaySleepDisabled, .userInitiated],
-            reason: "Audio narration playback",
-        )
-        debugLog("[MOM] Screen wake lock enabled (macOS display sleep disabled)")
-        #endif
+        setWakeLock?(true)
     }
 
     private func disableScreenWakeLock() {
-        #if os(iOS)
-        UIApplication.shared.isIdleTimerDisabled = false
-        debugLog("[MOM] Screen wake lock disabled (iOS idle timer enabled)")
-        #elseif os(macOS)
-        if let activity = displaySleepActivity {
-            ProcessInfo.processInfo.endActivity(activity)
-            displaySleepActivity = nil
-            debugLog("[MOM] Screen wake lock disabled (macOS display sleep enabled)")
-        }
-        #endif
+        setWakeLock?(false)
     }
 
     // MARK: - Helpers
@@ -890,7 +864,7 @@ class MediaOverlayManager {
         return result
     }
 
-    func getSection(at index: Int) -> SectionInfo? {
+    public func getSection(at index: Int) -> SectionInfo? {
         guard index >= 0 && index < bookStructure.count else { return nil }
         return bookStructure[index]
     }
@@ -918,9 +892,9 @@ class MediaOverlayManager {
     }
 
     /// Handle element visibility message from JS (for page flip timing)
-    func handleElementVisibility(_ message: ElementVisibilityMessage) {
-        pageFlipTimer?.invalidate()
-        pageFlipTimer = nil
+    public func handleElementVisibility(_ message: ElementVisibilityMessage) {
+        pageFlipTask?.cancel()
+        pageFlipTask = nil
 
         guard isPlaying else { return }
 
@@ -934,7 +908,8 @@ class MediaOverlayManager {
                 await self.flipPageIfNotDebounced()
             }
         } else if message.offScreenRatio > 0 {
-            Task {
+            pageFlipTask = Task { @SilveranUIActor [weak self] in
+                guard let self else { return }
                 guard let entry = await SMILPlayerActor.shared.getCurrentEntry() else { return }
                 let entryDuration = entry.end - entry.begin
                 let earlyOffset = message.visibleRatio >= 0.98 ? 0.0 : 1.0
@@ -947,17 +922,9 @@ class MediaOverlayManager {
                     "[MOM] Scheduling page flip in \(String(format: "%.2f", delay))s (entry duration: \(String(format: "%.2f", entryDuration))s, visible: \(String(format: "%.0f", message.visibleRatio * 100))%)"
                 )
 
-                await MainActor.run {
-                    self.pageFlipTimer = Timer.scheduledTimer(
-                        withTimeInterval: delay,
-                        repeats: false,
-                    ) {
-                        [weak self] _ in
-                        Task { @MainActor [weak self] in
-                            await self?.flipPageIfNotDebounced()
-                        }
-                    }
-                }
+                try? await Task.sleep(for: .seconds(delay))
+                guard !Task.isCancelled else { return }
+                await self.flipPageIfNotDebounced()
             }
         }
     }
@@ -975,5 +942,3 @@ class MediaOverlayManager {
         try? await commsBridge?.sendJsGoRightCommand()
     }
 }
-
-#endif

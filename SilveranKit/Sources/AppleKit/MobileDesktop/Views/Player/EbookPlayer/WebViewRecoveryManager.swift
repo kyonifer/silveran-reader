@@ -5,7 +5,7 @@ import WebKit
 @MainActor
 final class WebViewRecoveryManager {
     private weak var viewModel: EbookPlayerViewModel?
-    private weak var bridge: WebViewCommsBridge?
+    private weak var bridge: ReaderCommsBridge?
 
     private var isRecovering = false
     private var savedChapterId: Int?
@@ -15,7 +15,7 @@ final class WebViewRecoveryManager {
         self.viewModel = viewModel
     }
 
-    func setBridge(_ bridge: WebViewCommsBridge) {
+    func setBridge(_ bridge: ReaderCommsBridge) {
         self.bridge = bridge
     }
 

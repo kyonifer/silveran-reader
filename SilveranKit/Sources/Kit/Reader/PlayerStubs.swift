@@ -1,4 +1,3 @@
-#if os(iOS) || os(macOS)
 import Foundation
 
 public struct PlaybackProgressUpdateMessage: Codable {
@@ -53,5 +52,3 @@ public enum SleepTimerType: String, Codable {
     case duration
     case endOfChapter
 }
-
-#endif

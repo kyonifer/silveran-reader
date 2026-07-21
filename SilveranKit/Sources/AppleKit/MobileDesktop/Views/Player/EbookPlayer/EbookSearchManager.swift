@@ -29,9 +29,9 @@ class EbookSearchManager {
 
     // MARK: - Communication
 
-    weak var commsBridge: WebViewCommsBridge?
+    weak var commsBridge: ReaderCommsBridge?
 
-    init(bridge: WebViewCommsBridge? = nil) {
+    init(bridge: ReaderCommsBridge? = nil) {
         self.commsBridge = bridge
         setupBridgeCallbacks()
     }

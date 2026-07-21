@@ -59,7 +59,7 @@ public actor CustomFontsActor {
 
     private var cachedFamilies: [CustomFontFamily] = []
     private var cachedFontFaceCSS: String = ""
-    private var observers: [UUID: @Sendable @MainActor () -> Void] = [:]
+    private var observers: [UUID: @Sendable @SilveranUIActor () -> Void] = [:]
 
     public init(fileManager: FileManager = .default) {
         self.fileManager = fileManager
@@ -81,7 +81,7 @@ public actor CustomFontsActor {
     }
 
     @discardableResult
-    public func addObserver(_ callback: @Sendable @MainActor @escaping () -> Void) -> UUID {
+    public func addObserver(_ callback: @Sendable @SilveranUIActor @escaping () -> Void) -> UUID {
         let id = UUID()
         observers[id] = callback
         return id
@@ -92,7 +92,7 @@ public actor CustomFontsActor {
         cachedFontFaceCSS = generateFontFaceCSS()
 
         let observersList = Array(observers.values)
-        Task { @MainActor in
+        Task { @SilveranUIActor in
             for observer in observersList {
                 observer()
             }

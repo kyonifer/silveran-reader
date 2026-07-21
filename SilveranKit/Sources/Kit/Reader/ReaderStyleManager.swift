@@ -1,19 +1,18 @@
-#if os(iOS) || os(macOS)
+import Foundation
 import Observation
-import SwiftUI
 
-@MainActor
+@SilveranUIActor
 @Observable
-class ReaderStyleManager {
-    private weak var bridge: WebViewCommsBridge?
-    private var settingsVM: SettingsViewModel
-    private var colorScheme: ColorScheme = .light
+public final class ReaderStyleManager {
+    private weak var bridge: ReaderCommsBridge?
+    private var settingsVM: any ReaderSettingsReading
+    private var isDarkMode = false
     private var styleUpdateTask: Task<Void, Never>?
     private var fontFaceCSS: String = ""
     private var hasAudioNarration = false
     @ObservationIgnored private var fontObserverID: UUID?
 
-    init(settingsVM: SettingsViewModel, bridge: WebViewCommsBridge) {
+    public init(settingsVM: any ReaderSettingsReading, bridge: ReaderCommsBridge) {
         self.settingsVM = settingsVM
         self.bridge = bridge
         setupSettingsObserver()
@@ -24,34 +23,34 @@ class ReaderStyleManager {
     }
 
     private func registerFontObserver() async {
-        fontObserverID = await CustomFontsActor.shared.addObserver { @MainActor [weak self] in
+        fontObserverID = await CustomFontsActor.shared.addObserver { @SilveranUIActor [weak self] in
             guard let self else { return }
-            Task { @MainActor in
+            Task { @SilveranUIActor in
                 self.fontFaceCSS = await CustomFontsActor.shared.fontFaceCSS
                 await self.sendStyleUpdate()
             }
         }
     }
 
-    func refreshFontFaceCSS() async {
+    public func refreshFontFaceCSS() async {
         await CustomFontsActor.shared.refreshFonts()
         fontFaceCSS = await CustomFontsActor.shared.fontFaceCSS
         await sendStyleUpdate()
     }
 
-    func updateBridge(_ bridge: WebViewCommsBridge) {
+    public func updateBridge(_ bridge: ReaderCommsBridge) {
         self.bridge = bridge
     }
 
-    func setReadaloudModeAvailable(_ available: Bool) {
+    public func setReadaloudModeAvailable(_ available: Bool) {
         guard hasAudioNarration != available else { return }
         hasAudioNarration = available
         scheduleStyleUpdate()
     }
 
-    func sendInitialStyles(colorScheme scheme: ColorScheme) {
-        colorScheme = scheme
-        Task { @MainActor in
+    public func sendInitialStyles(isDarkMode initialIsDarkMode: Bool) {
+        isDarkMode = initialIsDarkMode
+        Task { @SilveranUIActor in
             await sendStyleUpdate()
         }
     }
@@ -77,7 +76,7 @@ class ReaderStyleManager {
             _ = settingsVM.userHighlightMode
             _ = settingsVM.readaloudHighlightMode
         } onChange: {
-            Task { @MainActor in
+            Task { @SilveranUIActor in
                 self.scheduleStyleUpdate()
                 self.setupSettingsObserver()
             }
@@ -93,17 +92,15 @@ class ReaderStyleManager {
         }
     }
 
-    func handleColorSchemeChange(_ newColorScheme: ColorScheme) {
-        colorScheme = newColorScheme
-        Task { @MainActor in
+    public func handleDarkModeChange(_ newIsDarkMode: Bool) {
+        isDarkMode = newIsDarkMode
+        Task { @SilveranUIActor in
             await sendStyleUpdate()
         }
     }
 
     private func sendStyleUpdate() async {
         guard let bridge = bridge else { return }
-
-        let isDarkMode = colorScheme == .dark
 
         let highlightColorRaw = settingsVM.highlightColor
         let backgroundColorRaw = settingsVM.backgroundColor
@@ -148,5 +145,3 @@ class ReaderStyleManager {
         )
     }
 }
-
-#endif

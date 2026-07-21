@@ -632,7 +632,7 @@ public actor SettingsActor {
     public static let shared = SettingsActor()
 
     private(set) public var config: SilveranGlobalConfig
-    private var observers: [UUID: @Sendable @MainActor () -> Void] = [:]
+    private var observers: [UUID: @Sendable @SilveranUIActor () -> Void] = [:]
 
     private let fileManager: FileManager
     private let storageURL: URL
@@ -715,7 +715,7 @@ public actor SettingsActor {
     }
 
     @discardableResult
-    public func request_notify(callback: @Sendable @MainActor @escaping () -> Void) -> UUID {
+    public func request_notify(callback: @Sendable @SilveranUIActor @escaping () -> Void) -> UUID {
         let id = UUID()
         observers[id] = callback
         return id
@@ -951,7 +951,7 @@ public actor SettingsActor {
         )
 
         let observersList = Array(observers.values)
-        Task { @MainActor in
+        Task { @SilveranUIActor in
             for observer in observersList {
                 observer()
             }

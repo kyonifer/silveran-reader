@@ -128,14 +128,28 @@ private func makeBookOpenScript(ebookPath: URL?) -> WKUserScript {
 }
 
 @available(macOS 14.0, iOS 17.0, *)
+@MainActor
 private class WebViewCoordinator2: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
     let onNavigationFinished: () -> Void
-    var commsBridge: WebViewCommsBridge?
+    let router = ReaderMessageRouter()
+    var jsEvaluator: WKWebViewJSEvaluator?
+    var commsBridge: ReaderCommsBridge? {
+        didSet { router.bridge = commsBridge }
+    }
     var onContentPurged: (() -> Void)?
     var onReaderReady: (() -> Void)?
 
     init(onNavigationFinished: @escaping () -> Void) {
         self.onNavigationFinished = onNavigationFinished
+        super.init()
+        router.onConsoleLog = { level, msg in
+            let prefix =
+                level == "error" ? "JS ERROR: " : level == "warn" ? "JS WARN: " : "JS: "
+            debugLog("[EbookPlayerWebView] \(prefix)\(msg)")
+        }
+        router.onReaderReady = { [weak self] in
+            self?.onReaderReady?()
+        }
     }
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
@@ -147,31 +161,7 @@ private class WebViewCoordinator2: NSObject, WKNavigationDelegate, WKScriptMessa
         _ userContentController: WKUserContentController,
         didReceive message: WKScriptMessage,
     ) {
-        switch message.name {
-            case "ConsoleLog":
-                if let body = message.body as? [String: Any],
-                    let level = body["level"] as? String,
-                    let msg = body["message"] as? String
-                {
-                    let prefix =
-                        level == "error" ? "JS ERROR: " : level == "warn" ? "JS WARN: " : "JS: "
-                    debugLog("[EbookPlayerWebView] \(prefix)\(msg)")
-                }
-                return
-
-            case "ReaderReady":
-                debugLog("[EbookPlayerWebView] Reader JS modules initialized")
-                onReaderReady?()
-                return
-
-            default:
-                break
-        }
-
-        guard let bridge = commsBridge else {
-            debugLog(
-                "[EbookPlayerWebView] CommsBridge not initialized for message: \(message.name)"
-            )
+        if router.route(name: message.name, body: message.body) {
             return
         }
 
@@ -179,79 +169,6 @@ private class WebViewCoordinator2: NSObject, WKNavigationDelegate, WKScriptMessa
 
         do {
             switch message.name {
-                case "BookStructureReady":
-                    let data = try JSONSerialization.data(withJSONObject: message.body)
-                    let msg = try decoder.decode(BookStructureReadyMessage.self, from: data)
-                    bridge.sendSwiftBookStructureReady(msg)
-
-                case "Relocated":
-                    let data = try JSONSerialization.data(withJSONObject: message.body)
-                    let msg = try decoder.decode(RelocatedMessage.self, from: data)
-                    bridge.sendSwiftRelocated(msg)
-
-                case "PageFlipped":
-                    let data = try JSONSerialization.data(withJSONObject: message.body)
-                    let msg = try decoder.decode(PageFlippedMessage.self, from: data)
-                    bridge.sendSwiftPageFlipped(msg)
-
-                case "OverlayToggled":
-                    let data = try JSONSerialization.data(withJSONObject: message.body)
-                    let msg = try decoder.decode(OverlayToggledMessage.self, from: data)
-                    bridge.sendSwiftOverlayToggled(msg)
-
-                case "MarginClickNav":
-                    let data = try JSONSerialization.data(withJSONObject: message.body)
-                    let msg = try decoder.decode(MarginClickNavMessage.self, from: data)
-                    bridge.sendSwiftMarginClickNav(msg)
-
-                case "SentenceSkip":
-                    let data = try JSONSerialization.data(withJSONObject: message.body)
-                    let msg = try decoder.decode(SentenceSkipMessage.self, from: data)
-                    bridge.sendSwiftSentenceSkip(msg)
-
-                case "mediaOverlaySeek":
-                    let data = try JSONSerialization.data(withJSONObject: message.body)
-                    let msg = try decoder.decode(MediaOverlaySeekMessage.self, from: data)
-                    bridge.sendSwiftMediaOverlaySeek(msg)
-
-                case "MediaOverlayProgress":
-                    let data = try JSONSerialization.data(withJSONObject: message.body)
-                    let msg = try decoder.decode(MediaOverlayProgressMessage.self, from: data)
-                    bridge.sendSwiftMediaOverlayProgress(msg)
-
-                case "ElementVisibility":
-                    let data = try JSONSerialization.data(withJSONObject: message.body)
-                    let msg = try decoder.decode(ElementVisibilityMessage.self, from: data)
-                    bridge.sendSwiftElementVisibility(msg)
-
-                case "SearchResults":
-                    let data = try JSONSerialization.data(withJSONObject: message.body)
-                    let msg = try decoder.decode(SearchResultsMessage.self, from: data)
-                    bridge.sendSwiftSearchResults(msg)
-
-                case "SearchProgress":
-                    let data = try JSONSerialization.data(withJSONObject: message.body)
-                    let msg = try decoder.decode(SearchProgressMessage.self, from: data)
-                    bridge.sendSwiftSearchProgress(msg)
-
-                case "SearchComplete":
-                    bridge.sendSwiftSearchComplete()
-
-                case "SearchError":
-                    let data = try JSONSerialization.data(withJSONObject: message.body)
-                    let msg = try decoder.decode(SearchErrorMessage.self, from: data)
-                    bridge.sendSwiftSearchError(msg)
-
-                case "TextSelection":
-                    let data = try JSONSerialization.data(withJSONObject: message.body)
-                    let msg = try decoder.decode(TextSelectionMessage.self, from: data)
-                    bridge.sendSwiftTextSelected(msg)
-
-                case "SelectionHighlight":
-                    let data = try JSONSerialization.data(withJSONObject: message.body)
-                    let msg = try decoder.decode(SelectionHighlightMessage.self, from: data)
-                    bridge.sendSwiftSelectionHighlight(msg)
-
                 case "SelectionDefine":
                     let data = try JSONSerialization.data(withJSONObject: message.body)
                     let msg = try decoder.decode(SelectionTextActionMessage.self, from: data)
@@ -278,35 +195,10 @@ private class WebViewCoordinator2: NSObject, WKNavigationDelegate, WKScriptMessa
                     (message.webView as? HighlightableWebView)?
                         .presentShare(for: text, atViewportRect: rect)
 
-                case "SelectionTranslate":
-                    let data = try JSONSerialization.data(withJSONObject: message.body)
-                    let msg = try decoder.decode(SelectionTextActionMessage.self, from: data)
-                    bridge.sendSwiftSelectionTranslate(msg.text)
-
-                case "SelectionSearch":
-                    let data = try JSONSerialization.data(withJSONObject: message.body)
-                    let msg = try decoder.decode(SelectionTextActionMessage.self, from: data)
-                    bridge.sendSwiftSelectionSearch(msg.text)
-
                 case "SelectionCopy":
                     let data = try JSONSerialization.data(withJSONObject: message.body)
                     let msg = try decoder.decode(SelectionTextActionMessage.self, from: data)
                     Self.copyToPasteboard(msg.text)
-
-                case "HighlightSetColor":
-                    let data = try JSONSerialization.data(withJSONObject: message.body)
-                    let msg = try decoder.decode(HighlightSetColorMessage.self, from: data)
-                    bridge.sendSwiftHighlightSetColor(msg)
-
-                case "HighlightDelete":
-                    let data = try JSONSerialization.data(withJSONObject: message.body)
-                    let msg = try decoder.decode(HighlightDeleteMessage.self, from: data)
-                    bridge.sendSwiftHighlightDelete(msg)
-
-                case "HighlightEdit":
-                    let data = try JSONSerialization.data(withJSONObject: message.body)
-                    let msg = try decoder.decode(HighlightEditMessage.self, from: data)
-                    bridge.sendSwiftHighlightEdit(msg)
 
                 case "FileAccessDiagnostic":
                     if let body = message.body as? [String: Any],
@@ -411,7 +303,7 @@ private class WebViewCoordinator2: NSObject, WKNavigationDelegate, WKScriptMessa
 #if os(iOS)
 @available(iOS 17.0, *)
 class HighlightableWebView: WKWebView {
-    var commsBridge: WebViewCommsBridge?
+    var commsBridge: ReaderCommsBridge?
 
     func presentDictionary(for term: String) {
         guard !term.isEmpty,
@@ -458,7 +350,7 @@ class HighlightableWebView: WKWebView {
 #if os(macOS)
 @available(macOS 14.0, *)
 class HighlightableWebView: WKWebView {
-    var commsBridge: WebViewCommsBridge?
+    var commsBridge: ReaderCommsBridge?
 
     func presentDictionary(for term: String, atViewportRect rect: CGRect?) {
         guard !term.isEmpty else { return }
@@ -547,14 +439,14 @@ private func makeWebViewConfiguration2(
 @available(macOS 14.0, iOS 17.0, *)
 struct EbookPlayerWebView: View {
     let ebookPath: URL?
-    @Binding var commsBridge: WebViewCommsBridge?
-    let onBridgeReady: ((WebViewCommsBridge) -> Void)?
+    @Binding var commsBridge: ReaderCommsBridge?
+    let onBridgeReady: ((ReaderCommsBridge) -> Void)?
     let onContentPurged: (() -> Void)?
 
     init(
         ebookPath: URL?,
-        commsBridge: Binding<WebViewCommsBridge?>,
-        onBridgeReady: ((WebViewCommsBridge) -> Void)?,
+        commsBridge: Binding<ReaderCommsBridge?>,
+        onBridgeReady: ((ReaderCommsBridge) -> Void)?,
         onContentPurged: (() -> Void)? = nil,
     ) {
         self.ebookPath = ebookPath
@@ -580,8 +472,8 @@ struct EbookPlayerWebView: View {
 @available(macOS 14.0, iOS 17.0, *)
 private struct WebViewWrapper2: View {
     let ebookPath: URL?
-    @Binding var commsBridge: WebViewCommsBridge?
-    let onBridgeReady: ((WebViewCommsBridge) -> Void)?
+    @Binding var commsBridge: ReaderCommsBridge?
+    let onBridgeReady: ((ReaderCommsBridge) -> Void)?
     let onContentPurged: (() -> Void)?
     @State private var webView: WKWebView?
 
@@ -655,9 +547,9 @@ private struct WebViewWrapper2: View {
 @available(macOS 14.0, iOS 17.0, *)
 private struct WebViewRepresentable2: PlatformViewRepresentable {
     @Binding var webView: WKWebView?
-    @Binding var commsBridge: WebViewCommsBridge?
+    @Binding var commsBridge: ReaderCommsBridge?
     let ebookPath: URL?
-    let onBridgeReady: ((WebViewCommsBridge) -> Void)?
+    let onBridgeReady: ((ReaderCommsBridge) -> Void)?
     let onReaderReady: () -> Void
     let onContentPurged: (() -> Void)?
 
@@ -708,7 +600,9 @@ private struct WebViewRepresentable2: PlatformViewRepresentable {
 
         DispatchQueue.main.async {
             self.webView = wkWebView
-            let bridge = WebViewCommsBridge(webView: wkWebView)
+            let evaluator = WKWebViewJSEvaluator(webView: wkWebView)
+            let bridge = ReaderCommsBridge(js: evaluator)
+            context.coordinator.jsEvaluator = evaluator
             context.coordinator.commsBridge = bridge
             self.commsBridge = bridge
             self.onBridgeReady?(bridge)

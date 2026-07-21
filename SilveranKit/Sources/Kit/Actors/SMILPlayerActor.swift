@@ -132,7 +132,8 @@ public actor SMILPlayerActor {
     private var lastPausedWhilePlayingTime: Date?
     private var isAdvancing: Bool = false
 
-    private var stateObservers: [UUID: @Sendable @MainActor (SMILPlaybackState) -> Void] = [:]
+    private var stateObservers: [UUID: @Sendable @SilveranUIActor (SMILPlaybackState) -> Void] =
+        [:]
     private var sessionID = UUID()
 
     private var nowPlayingConfigured = false
@@ -413,7 +414,7 @@ public actor SMILPlayerActor {
 
     public func addStateObserver(
         id: UUID = UUID(),
-        observer: @escaping @Sendable @MainActor (SMILPlaybackState) -> Void,
+        observer: @escaping @Sendable @SilveranUIActor (SMILPlaybackState) -> Void,
     ) async -> UUID {
         stateObservers[id] = observer
         if let state = await buildCurrentState() {

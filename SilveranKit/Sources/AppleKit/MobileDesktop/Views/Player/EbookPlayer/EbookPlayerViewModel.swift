@@ -18,7 +18,7 @@ class EbookPlayerViewModel {
     var tocEntries: [TocEntry] = []
     private var userSelectedTocId: String? = nil
     var mediaOverlayManager: MediaOverlayManager? = nil
-    var progressManager: EbookProgressManager? = nil
+    var progressManager: ReadingSessionActor? = nil
     var styleManager: ReaderStyleManager? = nil
     var searchManager: EbookSearchManager? = nil
     var extractedEbookPath: URL? = nil
@@ -99,7 +99,7 @@ class EbookPlayerViewModel {
     var collapseCardTrigger = 0
     #endif
     var showCustomizePopover = false
-    var commsBridge: WebViewCommsBridge? = nil
+    var commsBridge: ReaderCommsBridge? = nil
     var playbackProgressMessage: Any? = nil
 
     var chapterProgressBinding: Binding<Double> {
@@ -394,7 +394,7 @@ class EbookPlayerViewModel {
 
     func handleColorSchemeChange(_ colorScheme: ColorScheme) {
         settingsVM.applyActiveTheme(for: colorScheme)
-        styleManager?.handleColorSchemeChange(colorScheme)
+        styleManager?.handleDarkModeChange(colorScheme == .dark)
     }
 
     func handleAppBackgrounding() async {
@@ -475,7 +475,7 @@ class EbookPlayerViewModel {
         mediaOverlayManager = nil
         searchManager = nil
         styleManager = nil
-        progressManager = EbookProgressManager(
+        progressManager = ReadingSessionActor(
             bridge: nil,
             settingsVM: settingsVM,
             bookID: bookData?.metadata.id,
@@ -643,7 +643,7 @@ class EbookPlayerViewModel {
         }
     }
 
-    private func navigateToCurrentActorPosition(bridge: WebViewCommsBridge) async {
+    private func navigateToCurrentActorPosition(bridge: ReaderCommsBridge) async {
         guard let syncData = await SMILPlayerActor.shared.getBackgroundSyncData() else {
             debugLog("[EbookPlayerViewModel] No sync data from actor, falling back to default")
             progressManager?.handleBookStructureReady()
@@ -735,7 +735,7 @@ class EbookPlayerViewModel {
         }
     }
 
-    func installBridgeHandlers(_ bridge: WebViewCommsBridge, initialColorScheme: ColorScheme) {
+    func installBridgeHandlers(_ bridge: ReaderCommsBridge, initialColorScheme: ColorScheme) {
         debugLog("[EbookPlayerViewModel] Installing bridge handlers")
 
         #if os(iOS)
@@ -757,7 +757,7 @@ class EbookPlayerViewModel {
         searchManager = EbookSearchManager(bridge: bridge)
         debugLog("[EbookPlayerViewModel] SearchManager initialized")
 
-        progressManager = EbookProgressManager(
+        progressManager = ReadingSessionActor(
             bridge: bridge,
             settingsVM: settingsVM,
             bookID: bookData?.metadata.id,
@@ -790,7 +790,7 @@ class EbookPlayerViewModel {
     }
 
     private func setupBridgeCallbacks(
-        _ bridge: WebViewCommsBridge,
+        _ bridge: ReaderCommsBridge,
         initialColorScheme: ColorScheme,
     ) {
 
@@ -855,6 +855,7 @@ class EbookPlayerViewModel {
                         debugLog(
                             "[EbookPlayerViewModel] Book has media overlay - MediaOverlayManager created (native structure: \(useNativeStructure))"
                         )
+                        manager.setWakeLock = { ScreenWakeLock.shared.set($0) }
                         manager.setPlaybackRate(self.settingsVM.defaultPlaybackSpeed)
                         self.mediaOverlayManager = manager
                         self.hasAudioNarration = true
@@ -886,7 +887,7 @@ class EbookPlayerViewModel {
                 }
 
                 self.settingsVM.applyActiveTheme(for: initialColorScheme)
-                self.styleManager?.sendInitialStyles(colorScheme: initialColorScheme)
+                self.styleManager?.sendInitialStyles(isDarkMode: initialColorScheme == .dark)
 
                 await self.loadHighlights()
             }

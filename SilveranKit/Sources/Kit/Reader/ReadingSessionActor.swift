@@ -1,5 +1,5 @@
-#if os(iOS) || os(macOS)
 import Foundation
+import Observation
 
 /// EbookProgressManager - Tracks reading progress (non-audio)
 ///
@@ -8,21 +8,21 @@ import Foundation
 /// - Calculate fractional progress (chapter and book level)
 /// - Sync progress to server (when implemented)
 /// - Handle initial navigation to saved reading position
-@MainActor
+@SilveranUIActor
 @Observable
-class EbookProgressManager {
+public final class ReadingSessionActor {
     // MARK: - Progress State
 
-    var chapterSeekBarValue: Double = 0.0
-    var bookFraction: Double? = nil
-    var chapterCurrentPage: Int? = nil
-    var chapterTotalPages: Int? = nil
+    public var chapterSeekBarValue: Double = 0.0
+    public var bookFraction: Double? = nil
+    public var chapterCurrentPage: Int? = nil
+    public var chapterTotalPages: Int? = nil
 
     // MARK: - Chapter State
 
     /// Current chapter index (source of truth, typically from JS progress events)
     /// Reflects JS reader reality but may need sync with Swift value (below).
-    var selectedChapterId: Int? = nil {
+    public var selectedChapterId: Int? = nil {
         didSet {
             guard selectedChapterId != oldValue else { return }
             debugLog(
@@ -33,7 +33,7 @@ class EbookProgressManager {
     }
 
     /// UI-selected chapter index (what SwiftUI binds to)
-    var uiSelectedChapterId: Int? = nil {
+    public var uiSelectedChapterId: Int? = nil {
         didSet {
             debugLog(
                 "[EPM] uiSelectedChapterId changed: \(oldValue?.description ?? "nil") -> \(uiSelectedChapterId?.description ?? "nil")"
@@ -50,13 +50,13 @@ class EbookProgressManager {
         }
     }
 
-    var bookStructure: [SectionInfo] = []
+    public var bookStructure: [SectionInfo] = []
 
     // MARK: - Communication
 
-    weak var commsBridge: WebViewCommsBridge?
-    weak var mediaOverlayManager: MediaOverlayManager?
-    private let settingsVM: SettingsViewModel
+    public weak var commsBridge: ReaderCommsBridge?
+    public weak var mediaOverlayManager: MediaOverlayManager?
+    private let settingsVM: any ReaderSettingsReading
 
     /// When true, user is browsing freely without syncing progress (lockViewToAudio == false)
     private var isFreeBrowseMode: Bool { !settingsVM.lockViewToAudio }
@@ -68,7 +68,7 @@ class EbookProgressManager {
     /// Track whether we've performed initial seek to server location.
     /// This happens when the book is first opened and has been
     /// read in a previous session.
-    var hasPerformedInitialSeek = false
+    public var hasPerformedInitialSeek = false
 
     // MARK: - User Navigation Detection
 
@@ -104,8 +104,8 @@ class EbookProgressManager {
     /// Pending user nav sync reason (set when nav queued, used when nav confirmed in handleRelocated)
     private var pendingUserNavSyncReason: SyncReason? = nil
 
-    /// Timer for periodic progress syncs to server
-    private var syncTimer: Timer? = nil
+    /// Task for periodic progress syncs to server
+    private var syncTask: Task<Void, Never>? = nil
     private var bookID: BookID? = nil
 
     /// Debounced sync task - cancelled and recreated on each page flip to avoid sync spam
@@ -117,15 +117,15 @@ class EbookProgressManager {
     private let resumeSuppressionDuration: TimeInterval = 30
 
     /// Book metadata for lockscreen display
-    var bookTitle: String? = nil
-    var bookAuthor: String? = nil
-    var bookCoverUrl: String? = nil
+    public var bookTitle: String? = nil
+    public var bookAuthor: String? = nil
+    public var bookCoverUrl: String? = nil
 
     // MARK: - Initialization
 
-    init(
-        bridge: WebViewCommsBridge?,
-        settingsVM: SettingsViewModel,
+    public init(
+        bridge: ReaderCommsBridge?,
+        settingsVM: any ReaderSettingsReading,
         bookID: BookID? = nil,
         initialLocator: BookLocator? = nil,
     ) {
@@ -138,13 +138,13 @@ class EbookProgressManager {
         )
 
         bridge?.onRelocated = { [weak self] message in
-            Task { @MainActor in
+            Task { @SilveranUIActor in
                 self?.handleRelocated(message)
             }
         }
     }
 
-    func handleNativeBookStructureReady(pageCount: Int) {
+    public func handleNativeBookStructureReady(pageCount: Int) {
         guard !hasPerformedInitialSeek else { return }
         hasPerformedInitialSeek = true
 
@@ -152,21 +152,21 @@ class EbookProgressManager {
         applyNativePageSelection(restoredIndex, syncReason: nil)
     }
 
-    func handleNativePageSelected(_ index: Int) {
+    public func handleNativePageSelected(_ index: Int) {
         applyNativePageSelection(index, syncReason: .userSelectedChapter)
     }
 
-    func handleNativeNavLeft() {
+    public func handleNativeNavLeft() {
         guard let current = selectedChapterId, current > 0 else { return }
         applyNativePageSelection(current - 1, syncReason: .userFlippedPage)
     }
 
-    func handleNativeNavRight() {
+    public func handleNativeNavRight() {
         guard let current = selectedChapterId, current < bookStructure.count - 1 else { return }
         applyNativePageSelection(current + 1, syncReason: .userFlippedPage)
     }
 
-    func handleNativeProgressSeek(_ progress: Double) {
+    public func handleNativeProgressSeek(_ progress: Double) {
         guard !bookStructure.isEmpty else { return }
         let clamped = max(0.0, min(1.0, progress))
         let index = min(
@@ -209,7 +209,7 @@ class EbookProgressManager {
 
     // MARK: - Progress Updates
 
-    func updateChapterProgress(currentPage: Int?, totalPages: Int?) {
+    public func updateChapterProgress(currentPage: Int?, totalPages: Int?) {
         guard let current = currentPage, let total = totalPages, total > 0 else {
             chapterSeekBarValue = 0.0
             return
@@ -222,7 +222,7 @@ class EbookProgressManager {
     }
 
     /// Update book progress (fractional position in entire book)
-    func updateBookProgress(fraction: Double?) {
+    public func updateBookProgress(fraction: Double?) {
         bookFraction = fraction
         if let fraction = fraction {
             debugLog("[EPM] Book progress updated: \(String(format: "%.1f%%", fraction * 100))")
@@ -279,7 +279,7 @@ class EbookProgressManager {
     /// Handles both text (ebook) and audio (audiobook) locators.
     /// Audio locators are detected via type.contains("audio") to match server behavior:
     /// storyteller/web/src/components/reader/BookService.ts:892 (translateLocator)
-    func handleBookStructureReady() {
+    public func handleBookStructureReady() {
         guard !hasPerformedInitialSeek else {
             debugLog("[EPM] Initial seek already performed, skipping")
             return
@@ -292,7 +292,7 @@ class EbookProgressManager {
 
         hasPerformedInitialSeek = true
 
-        Task { @MainActor in
+        Task { @SilveranUIActor in
             do {
                 var locatorToUse = initialLocator
 
@@ -405,7 +405,7 @@ class EbookProgressManager {
         }
     }
 
-    func handleServerPositionUpdate(_ locator: BookLocator) {
+    public func handleServerPositionUpdate(_ locator: BookLocator) {
         guard let bridge = commsBridge else {
             debugLog("[EPM] Bridge not available for server position update")
             return
@@ -413,7 +413,7 @@ class EbookProgressManager {
 
         debugLog("[EPM] Navigating to server position: \(locator.href)")
 
-        Task { @MainActor in
+        Task { @SilveranUIActor in
             do {
                 let hasSMIL = mediaOverlayManager?.hasMediaOverlay == true
                 let isAudioLocator = locator.type.contains("audio")
@@ -588,7 +588,7 @@ class EbookProgressManager {
                 let total = message.totalPages,
                 let mom = mediaOverlayManager
             {
-                Task { @MainActor in
+                Task { @SilveranUIActor in
                     let foundSMILMatch = await mom.handleUserNavEvent(
                         section: section,
                         page: page,
@@ -607,7 +607,7 @@ class EbookProgressManager {
             let mom = mediaOverlayManager,
             canNotifyNaturalNav && pendingPageNav == nil && pendingSeekNav == nil
         {
-            Task { @MainActor in
+            Task { @SilveranUIActor in
                 await mom.handleNaturalNavEvent(section: section, page: page, totalPages: total)
             }
         }
@@ -749,7 +749,7 @@ class EbookProgressManager {
         cancelUserNavFallback()
 
         if let mom = mediaOverlayManager {
-            Task { @MainActor in
+            Task { @SilveranUIActor in
                 _ = await mom.handleUserNavEvent(section: section, page: page, totalPages: total)
             }
         }
@@ -757,7 +757,7 @@ class EbookProgressManager {
 
     private func scheduleUserNavFallback(source: String) {
         userNavFallbackTask?.cancel()
-        userNavFallbackTask = Task { @MainActor in
+        userNavFallbackTask = Task { @SilveranUIActor in
             do {
                 try await Task.sleep(for: .milliseconds(700))
             } catch {
@@ -858,7 +858,7 @@ class EbookProgressManager {
 
         selectedChapterId = newId
 
-        Task { @MainActor in
+        Task { @SilveranUIActor in
             do {
                 try await bridge.sendJsGoToFractionInSectionCommand(
                     sectionIndex: newId,
@@ -879,10 +879,10 @@ class EbookProgressManager {
     // MARK: - User Navigation Methods
 
     /// User pressed left arrow or swiped right (previous page)
-    func handleUserNavLeft() {
+    public func handleUserNavLeft() {
         if isScrollingMode {
             pendingUserNavSyncReason = .userFlippedPage
-            Task { @MainActor in
+            Task { @SilveranUIActor in
                 do {
                     try await commsBridge?.sendJsGoLeftCommand()
                 } catch {
@@ -897,7 +897,7 @@ class EbookProgressManager {
         if queuePageNav(direction: .left, source: "left-nav") {
             pendingSwiftCommandFlipEchoes += 1
         }
-        Task { @MainActor in
+        Task { @SilveranUIActor in
             do {
                 try await commsBridge?.sendJsGoLeftCommand()
             } catch {
@@ -910,10 +910,10 @@ class EbookProgressManager {
     }
 
     /// User pressed right arrow or swiped left (next page)
-    func handleUserNavRight() {
+    public func handleUserNavRight() {
         if isScrollingMode {
             pendingUserNavSyncReason = .userFlippedPage
-            Task { @MainActor in
+            Task { @SilveranUIActor in
                 do {
                     try await commsBridge?.sendJsGoRightCommand()
                 } catch {
@@ -928,7 +928,7 @@ class EbookProgressManager {
         if queuePageNav(direction: .right, source: "right-nav") {
             pendingSwiftCommandFlipEchoes += 1
         }
-        Task { @MainActor in
+        Task { @SilveranUIActor in
             do {
                 try await commsBridge?.sendJsGoRightCommand()
             } catch {
@@ -941,7 +941,7 @@ class EbookProgressManager {
     }
 
     /// User performed touch swipe on webview (JS already handled navigation)
-    func handleUserNavSwipeDetected(_ message: PageFlippedMessage) {
+    public func handleUserNavSwipeDetected(_ message: PageFlippedMessage) {
         // PageFlipped is the single source of truth for swipe gestures.
         // Swift-triggered goLeft/goRight can emit a PageFlipped echo; suppress those.
         if pendingSwiftCommandFlipEchoes > 0 {
@@ -967,7 +967,7 @@ class EbookProgressManager {
     }
 
     /// User clicked on a chapter in sidebar to navigate
-    func handleUserChapterSelected(_ newId: Int) {
+    public func handleUserChapterSelected(_ newId: Int) {
         performChapterNavigation(
             to: newId,
             reason: "user selection",
@@ -976,7 +976,7 @@ class EbookProgressManager {
     }
 
     /// User clicked on a TOC entry that has a specific href (with fragment anchor)
-    func handleUserChapterSelectedWithHref(_ newId: Int, href: String) {
+    public func handleUserChapterSelectedWithHref(_ newId: Int, href: String) {
         guard let bridge = commsBridge else {
             debugLog("[EPM] Cannot navigate - no bridge")
             return
@@ -1004,7 +1004,7 @@ class EbookProgressManager {
 
         debugLog("[EPM] Navigating to href: \(href) (sameSection=\(isSameSection))")
 
-        Task { @MainActor in
+        Task { @SilveranUIActor in
             do {
                 try await bridge.sendJsGoToHrefCommand(href: href)
 
@@ -1020,7 +1020,7 @@ class EbookProgressManager {
     }
 
     /// User dragged progress bar to seek within chapter (0.0 - 1.0)
-    func handleUserProgressSeek(_ progress: Double) {
+    public func handleUserProgressSeek(_ progress: Double) {
         let clampedProgress = max(0.0, min(1.0, progress))
         chapterSeekBarValue = clampedProgress
 
@@ -1041,7 +1041,7 @@ class EbookProgressManager {
             queueSeekNav(sectionIndex: currentChapterIndex)
         }
 
-        Task { @MainActor in
+        Task { @SilveranUIActor in
             do {
                 try await bridge.sendJsGoToFractionInSectionCommand(
                     sectionIndex: currentChapterIndex,
@@ -1058,7 +1058,7 @@ class EbookProgressManager {
 
     /// Handle position handoff from SMILPlayerActor after returning from background
     /// Syncs the view to current audio position and updates server
-    func handleBackgroundSyncHandoff(_ syncData: AudioPositionSyncData) async {
+    public func handleBackgroundSyncHandoff(_ syncData: AudioPositionSyncData) async {
         debugLog(
             "[EPM] Background sync handoff: section=\(syncData.sectionIndex), fragment=\(syncData.fragment)"
         )
@@ -1084,7 +1084,7 @@ class EbookProgressManager {
     // MARK: - Playback Control
 
     /// Toggle audio playback (records activity and delegates to MOM)
-    func togglePlaying() async {
+    public func togglePlaying() async {
         recordActivity()
 
         let wasPlaying = mediaOverlayManager?.isPlaying ?? false
@@ -1146,7 +1146,7 @@ class EbookProgressManager {
     /// This prevents lag from rapid page flips by only syncing after user settles.
     private func scheduleDebouncedSync(reason: SyncReason, useFragment: Bool) {
         debouncedSyncTask?.cancel()
-        debouncedSyncTask = Task { @MainActor in
+        debouncedSyncTask = Task { @SilveranUIActor in
             do {
                 try await Task.sleep(for: syncDebounceDelay)
             } catch {
@@ -1157,14 +1157,14 @@ class EbookProgressManager {
         }
     }
 
-    func startPeriodicSync(syncInterval: TimeInterval) {
+    public func startPeriodicSync(syncInterval: TimeInterval) {
         stopPeriodicSync()
         debugLog("[EPM] Starting periodic sync with interval \(syncInterval)s")
 
-        syncTimer = Timer.scheduledTimer(withTimeInterval: syncInterval, repeats: true) {
-            [weak self] _ in
-            Task { @MainActor in
-                guard let self else { return }
+        syncTask = Task { @SilveranUIActor [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(syncInterval))
+                guard !Task.isCancelled, let self else { return }
                 let isPlaying = self.mediaOverlayManager?.isPlaying ?? false
 
                 if isPlaying {
@@ -1174,9 +1174,9 @@ class EbookProgressManager {
         }
     }
 
-    func stopPeriodicSync() {
-        syncTimer?.invalidate()
-        syncTimer = nil
+    public func stopPeriodicSync() {
+        syncTask?.cancel()
+        syncTask = nil
         debugLog("[EPM] Stopped periodic sync")
     }
 
@@ -1184,7 +1184,7 @@ class EbookProgressManager {
     /// - Parameters:
     ///   - reason: Why this sync is occurring
     ///   - useFragment: If true and MOM has a current fragment, use it. If false, use totalProgression.
-    func syncProgressToServer(reason: SyncReason, useFragment: Bool = true) async {
+    public func syncProgressToServer(reason: SyncReason, useFragment: Bool = true) async {
         guard let bookID else {
             debugLog("[EPM] Cannot sync: no book identity")
             return
@@ -1316,7 +1316,7 @@ class EbookProgressManager {
     // MARK: - Wake-from-Sleep Handling
 
     /// Handle app resume - check PSA for newer position and suppress nav actions
-    func handleResume() async {
+    public func handleResume() async {
         lastResumeTime = Date()
         debugLog(
             "[EPM] Resume detected - suppressing nav actions for \(resumeSuppressionDuration)s"
@@ -1356,7 +1356,7 @@ class EbookProgressManager {
     }
 
     /// Cleanup and perform final sync (call on deinit or window close)
-    func cleanup() async {
+    public func cleanup() async {
         debugLog("[EPM] Cleanup: performing final sync")
         stopPeriodicSync()
         debouncedSyncTask?.cancel()
@@ -1364,5 +1364,3 @@ class EbookProgressManager {
         await syncProgressToServer(reason: .userClosedBook)
     }
 }
-
-#endif

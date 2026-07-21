@@ -449,4 +449,6 @@ public final class SettingsViewModel {
     }
 }
 
+extension SettingsViewModel: ReaderSettingsReading {}
+
 #endif

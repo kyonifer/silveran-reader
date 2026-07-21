@@ -1,197 +1,195 @@
-#if os(iOS) || os(macOS)
 import Foundation
-import WebKit
 
-/// WebViewCommsBridge - Bridge for Swift-JS communication
+/// ReaderCommsBridge - Bridge for Swift-JS communication
 ///
 /// Design principles:
 /// - NO message wrapper/envelope pattern (no send<T> method)
-/// - Swift calls JS directly via evaluateJavaScript
-/// - JS calls Swift via webkit.messageHandlers
-/// - Callbacks notify EbookPlayerView of events
+/// - Swift calls JS directly through the platform's JSEvaluating adapter
+/// - JS calls Swift via the platform's message-handler channel
+/// - Callbacks notify the reader session of events
 
-@MainActor
-class WebViewCommsBridge {
-    weak var webView: WKWebView?
+@SilveranUIActor
+public final class ReaderCommsBridge {
+    public weak var js: (any JSEvaluating)?
 
     // MARK: Callbacks if our user wants to be informed when these events occur
 
     /// Notifies when book structure (TOC) is ready
-    var onBookStructureReady: ((BookStructureReadyMessage) -> Void)?
+    public var onBookStructureReady: ((BookStructureReadyMessage) -> Void)?
 
     /// Notifies when relocate event occurs (page turn, navigation, etc.)
-    var onRelocated: ((RelocatedMessage) -> Void)?
+    public var onRelocated: ((RelocatedMessage) -> Void)?
 
     /// Notifies when user swipe gesture flips a page (iOS touch swipe detected by JS)
-    var onPageFlipped: ((PageFlippedMessage) -> Void)?
+    public var onPageFlipped: ((PageFlippedMessage) -> Void)?
 
     /// Notifies when user taps to toggle overlay (iOS only)
-    var onOverlayToggled: (() -> Void)?
+    public var onOverlayToggled: (() -> Void)?
 
     /// Notifies when user clicks margin zone to navigate (routed through EPM)
-    var onMarginClickNav: ((MarginClickNavMessage) -> Void)?
+    public var onMarginClickNav: ((MarginClickNavMessage) -> Void)?
 
     /// Notifies when WebView key handling requests sentence skip
-    var onSentenceSkip: ((SentenceSkipMessage) -> Void)?
+    public var onSentenceSkip: ((SentenceSkipMessage) -> Void)?
 
     /// Notifies when user double-clicks text to seek audio (or initial position)
-    var onMediaOverlaySeek: ((MediaOverlaySeekMessage) -> Void)?
+    public var onMediaOverlaySeek: ((MediaOverlaySeekMessage) -> Void)?
 
     /// Notifies when media overlay progress updates (audio playback progress)
-    var onMediaOverlayProgress: ((MediaOverlayProgressMessage) -> Void)?
+    public var onMediaOverlayProgress: ((MediaOverlayProgressMessage) -> Void)?
 
     /// Notifies when element visibility is reported (for page flip timing during audio)
-    var onElementVisibility: ((ElementVisibilityMessage) -> Void)?
+    public var onElementVisibility: ((ElementVisibilityMessage) -> Void)?
 
     // MARK: - Search callbacks
 
     /// Notifies when search finds results in a section
-    var onSearchResults: ((SearchResultsMessage) -> Void)?
+    public var onSearchResults: ((SearchResultsMessage) -> Void)?
 
     /// Notifies of search progress (0.0-1.0)
-    var onSearchProgress: ((SearchProgressMessage) -> Void)?
+    public var onSearchProgress: ((SearchProgressMessage) -> Void)?
 
     /// Notifies when search is complete
-    var onSearchComplete: (() -> Void)?
+    public var onSearchComplete: (() -> Void)?
 
     /// Notifies when search encounters an error
-    var onSearchError: ((SearchErrorMessage) -> Void)?
+    public var onSearchError: ((SearchErrorMessage) -> Void)?
 
     // MARK: - Highlight callbacks
 
     /// Notifies when user completes a text selection (for creating highlights)
-    var onTextSelected: ((TextSelectionMessage) -> Void)?
+    public var onTextSelected: ((TextSelectionMessage) -> Void)?
 
     /// Notifies when a selection-toolbar swatch is tapped (selection + chosen color)
-    var onSelectionHighlight: ((SelectionHighlightMessage) -> Void)?
+    public var onSelectionHighlight: ((SelectionHighlightMessage) -> Void)?
 
     /// Notifies when an existing highlight's color is changed from the toolbar
-    var onHighlightSetColor: ((HighlightSetColorMessage) -> Void)?
+    public var onHighlightSetColor: ((HighlightSetColorMessage) -> Void)?
 
     /// Notifies when an existing highlight is deleted from the toolbar
-    var onHighlightDelete: ((HighlightDeleteMessage) -> Void)?
+    public var onHighlightDelete: ((HighlightDeleteMessage) -> Void)?
 
     /// Notifies when an existing highlight should be edited (color/note) from the toolbar
-    var onHighlightEdit: ((HighlightEditMessage) -> Void)?
+    public var onHighlightEdit: ((HighlightEditMessage) -> Void)?
 
     /// Notifies when the selection should be translated via the system translate UI
-    var onSelectionTranslate: ((String) -> Void)?
+    public var onSelectionTranslate: ((String) -> Void)?
 
     /// Notifies when the selection should be piped into the in-book search panel
-    var onSelectionSearch: ((String) -> Void)?
+    public var onSelectionSearch: ((String) -> Void)?
 
-    init(webView: WKWebView? = nil) {
-        self.webView = webView
+    public init(js: (any JSEvaluating)? = nil) {
+        self.js = js
     }
 
     /// JS is sending Swift a BookStructureReady event when book TOC is loaded
-    func sendSwiftBookStructureReady(_ message: BookStructureReadyMessage) {
+    public func sendSwiftBookStructureReady(_ message: BookStructureReadyMessage) {
         debugLog(
-            "[WebViewCommsBridge] sendSwiftBookStructureReady - \(message.sections.count) sections"
+            "[ReaderCommsBridge] sendSwiftBookStructureReady - \(message.sections.count) sections"
         )
         onBookStructureReady?(message)
     }
 
     /// JS is sending Swift a Relocated event when user navigates, page turns, resizes, etc.
-    func sendSwiftRelocated(_ message: RelocatedMessage) {
-        debugLog("[WebViewCommsBridge] sendSwiftRelocated")
+    public func sendSwiftRelocated(_ message: RelocatedMessage) {
+        debugLog("[ReaderCommsBridge] sendSwiftRelocated")
         debugLog(
-            "[WebViewCommsBridge]   section: \(message.sectionIndex?.description ?? "nil"), page: \(message.pageIndex?.description ?? "nil")"
+            "[ReaderCommsBridge]   section: \(message.sectionIndex?.description ?? "nil"), page: \(message.pageIndex?.description ?? "nil")"
         )
-        debugLog("[WebViewCommsBridge]   href: \(message.href ?? "nil")")
-        debugLog("[WebViewCommsBridge]   cfi: \(message.cfi)")
+        debugLog("[ReaderCommsBridge]   href: \(message.href ?? "nil")")
+        debugLog("[ReaderCommsBridge]   cfi: \(message.cfi)")
         debugLog(
-            "[WebViewCommsBridge]   fraction: \(message.fraction?.description ?? "nil"), chapterFraction: \(message.chapterFraction?.description ?? "nil")"
+            "[ReaderCommsBridge]   fraction: \(message.fraction?.description ?? "nil"), chapterFraction: \(message.chapterFraction?.description ?? "nil")"
         )
         onRelocated?(message)
     }
 
     /// JS detected a user swipe that flipped the page
-    func sendSwiftPageFlipped(_ message: PageFlippedMessage) {
-        debugLog("[WebViewCommsBridge] sendSwiftPageFlipped - direction: \(message.direction)")
+    public func sendSwiftPageFlipped(_ message: PageFlippedMessage) {
+        debugLog("[ReaderCommsBridge] sendSwiftPageFlipped - direction: \(message.direction)")
         onPageFlipped?(message)
     }
 
     /// JS detected a user tap to toggle overlay visibility
-    func sendSwiftOverlayToggled(_: OverlayToggledMessage) {
-        debugLog("[WebViewCommsBridge] sendSwiftOverlayToggled")
+    public func sendSwiftOverlayToggled(_: OverlayToggledMessage) {
+        debugLog("[ReaderCommsBridge] sendSwiftOverlayToggled")
         onOverlayToggled?()
     }
 
     /// JS detected a margin click for navigation
-    func sendSwiftMarginClickNav(_ message: MarginClickNavMessage) {
-        debugLog("[WebViewCommsBridge] sendSwiftMarginClickNav - direction: \(message.direction)")
+    public func sendSwiftMarginClickNav(_ message: MarginClickNavMessage) {
+        debugLog("[ReaderCommsBridge] sendSwiftMarginClickNav - direction: \(message.direction)")
         onMarginClickNav?(message)
     }
 
-    func sendSwiftSentenceSkip(_ message: SentenceSkipMessage) {
-        debugLog("[WebViewCommsBridge] sendSwiftSentenceSkip - direction: \(message.direction)")
+    public func sendSwiftSentenceSkip(_ message: SentenceSkipMessage) {
+        debugLog("[ReaderCommsBridge] sendSwiftSentenceSkip - direction: \(message.direction)")
         onSentenceSkip?(message)
     }
 
     /// JS detected a media overlay seek event (double-click or initial position)
-    func sendSwiftMediaOverlaySeek(_ message: MediaOverlaySeekMessage) {
+    public func sendSwiftMediaOverlaySeek(_ message: MediaOverlaySeekMessage) {
         debugLog(
-            "[WebViewCommsBridge] sendSwiftMediaOverlaySeek - section: \(message.sectionIndex), anchor: \(message.anchor)"
+            "[ReaderCommsBridge] sendSwiftMediaOverlaySeek - section: \(message.sectionIndex), anchor: \(message.anchor)"
         )
         onMediaOverlaySeek?(message)
     }
 
     /// JS is sending Swift a media overlay progress update (audio playback position)
-    func sendSwiftMediaOverlayProgress(_ message: MediaOverlayProgressMessage) {
+    public func sendSwiftMediaOverlayProgress(_ message: MediaOverlayProgressMessage) {
         debugLog(
-            "[WebViewCommsBridge] sendSwiftMediaOverlayProgress - section: \(message.sectionIndex)"
+            "[ReaderCommsBridge] sendSwiftMediaOverlayProgress - section: \(message.sectionIndex)"
         )
         onMediaOverlayProgress?(message)
     }
 
     /// JS is reporting element visibility for page flip timing during audio narration
-    func sendSwiftElementVisibility(_ message: ElementVisibilityMessage) {
+    public func sendSwiftElementVisibility(_ message: ElementVisibilityMessage) {
         debugLog(
-            "[WebViewCommsBridge] sendSwiftElementVisibility - textId: \(message.textId), visible: \(message.visibleRatio), offScreen: \(message.offScreenRatio)"
+            "[ReaderCommsBridge] sendSwiftElementVisibility - textId: \(message.textId), visible: \(message.visibleRatio), offScreen: \(message.offScreenRatio)"
         )
         onElementVisibility?(message)
     }
 
     // MARK: Swift commands JS to navigate left (previous page)
-    func sendJsGoLeftCommand() async throws {
-        guard let webView = webView else {
-            throw WebViewCommsBridgeError.webViewNotAvailable
+    public func sendJsGoLeftCommand() async throws {
+        guard let js else {
+            throw ReaderCommsBridgeError.jsNotAvailable
         }
 
-        debugLog("[WebViewCommsBridge] sendJsGoLeftCommand()")
-        _ = try await webView.evaluateJavaScript("window.foliateManager.goLeft()")
+        debugLog("[ReaderCommsBridge] sendJsGoLeftCommand()")
+        _ = try await js.evaluate("window.foliateManager.goLeft()")
     }
 
     /// Swift commands JS to navigate right (next page)
-    func sendJsGoRightCommand() async throws {
-        guard let webView = webView else {
-            throw WebViewCommsBridgeError.webViewNotAvailable
+    public func sendJsGoRightCommand() async throws {
+        guard let js else {
+            throw ReaderCommsBridgeError.jsNotAvailable
         }
 
-        debugLog("[WebViewCommsBridge] sendJsGoRightCommand()")
-        _ = try await webView.evaluateJavaScript("window.foliateManager.goRight()")
+        debugLog("[ReaderCommsBridge] sendJsGoRightCommand()")
+        _ = try await js.evaluate("window.foliateManager.goRight()")
     }
 
     /// Swift commands JS to navigate to a specific href (with optional fragment)
-    func sendJsGoToHrefCommand(href: String) async throws {
-        guard let webView = webView else {
-            throw WebViewCommsBridgeError.webViewNotAvailable
+    public func sendJsGoToHrefCommand(href: String) async throws {
+        guard let js else {
+            throw ReaderCommsBridgeError.jsNotAvailable
         }
 
         let escapedHref = href.replacingOccurrences(of: "'", with: "\\'")
-        debugLog("[WebViewCommsBridge] sendJsGoToHrefCommand(href: \(href))")
-        _ = try await webView.evaluateJavaScript("window.foliateManager.goTo('\(escapedHref)')")
+        debugLog("[ReaderCommsBridge] sendJsGoToHrefCommand(href: \(href))")
+        _ = try await js.evaluate("window.foliateManager.goTo('\(escapedHref)')")
     }
 
     /// Swift commands JS to navigate to a Readium locator (href + optional fragment)
     /// Audio locators (type contains "audio") skip fragment navigation and use totalProgression
-    func sendJsGoToLocatorCommand(locator: BookLocator) async throws {
+    public func sendJsGoToLocatorCommand(locator: BookLocator) async throws {
         let isAudioLocator = locator.type.contains("audio")
         let totalProgression = locator.locations?.totalProgression
 
         if isAudioLocator, totalProgression == nil {
-            debugLog("[WebViewCommsBridge] Audio locator missing totalProgression; skipping nav")
+            debugLog("[ReaderCommsBridge] Audio locator missing totalProgression; skipping nav")
             return
         }
 
@@ -206,47 +204,48 @@ class WebViewCommsBridge {
     }
 
     /// Swift commands JS to navigate to a specific fraction within a section/chapter
-    func sendJsGoToFractionInSectionCommand(sectionIndex: Int, fraction: Double) async throws {
-        guard let webView = webView else {
-            throw WebViewCommsBridgeError.webViewNotAvailable
+    public func sendJsGoToFractionInSectionCommand(sectionIndex: Int, fraction: Double) async throws
+    {
+        guard let js else {
+            throw ReaderCommsBridgeError.jsNotAvailable
         }
 
         debugLog(
-            "[WebViewCommsBridge] sendJsGoToFractionInSectionCommand(section: \(sectionIndex), fraction: \(fraction))"
+            "[ReaderCommsBridge] sendJsGoToFractionInSectionCommand(section: \(sectionIndex), fraction: \(fraction))"
         )
 
         // goToFractionInSection is async, so we wrap it in an IIFE that returns undefined immediately
         // We fire-and-forget - we'll get the result via the Relocated message
-        _ = try await webView.evaluateJavaScript(
+        _ = try await js.evaluate(
             "(function() { window.foliateManager.goToFractionInSection(\(sectionIndex), \(fraction)); })()"
         )
     }
 
     /// Swift commands JS to navigate to a book-wide fraction (0.0 - 1.0)
     /// Used when translating audio locators to text positions via totalProgression
-    func sendJsGoToBookFractionCommand(fraction: Double) async throws {
-        guard let webView = webView else {
-            throw WebViewCommsBridgeError.webViewNotAvailable
+    public func sendJsGoToBookFractionCommand(fraction: Double) async throws {
+        guard let js else {
+            throw ReaderCommsBridgeError.jsNotAvailable
         }
 
-        debugLog("[WebViewCommsBridge] sendJsGoToBookFractionCommand(fraction: \(fraction))")
-        _ = try await webView.evaluateJavaScript(
+        debugLog("[ReaderCommsBridge] sendJsGoToBookFractionCommand(fraction: \(fraction))")
+        _ = try await js.evaluate(
             "(function() { window.foliateManager.goToBookFraction(\(fraction)); })()"
         )
     }
 
     /// Swift is requesting fully visible element IDs from JS
     /// Returns: Array of element IDs that are fully contained in the current page range
-    func sendJsGetFullyVisibleElementIds() async throws -> [String]? {
-        guard let webView = webView else {
-            throw WebViewCommsBridgeError.webViewNotAvailable
+    public func sendJsGetFullyVisibleElementIds() async throws -> [String]? {
+        guard let js else {
+            throw ReaderCommsBridgeError.jsNotAvailable
         }
 
-        let result = try await webView.evaluateJavaScript(
+        let result = try await js.evaluate(
             "JSON.stringify(window.foliateManager.getFullyVisibleElementIds())"
         )
 
-        guard let jsonString = result as? String,
+        guard let jsonString = result,
             let jsonData = jsonString.data(using: .utf8)
         else {
             return nil
@@ -258,16 +257,16 @@ class WebViewCommsBridge {
 
     /// Swift is requesting the first visible position from JS for bookmarks
     /// Returns: Position data including sectionIndex, CFI, text, href, title
-    func sendJsGetFirstVisiblePosition() async throws -> FirstVisiblePosition? {
-        guard let webView = webView else {
-            throw WebViewCommsBridgeError.webViewNotAvailable
+    public func sendJsGetFirstVisiblePosition() async throws -> FirstVisiblePosition? {
+        guard let js else {
+            throw ReaderCommsBridgeError.jsNotAvailable
         }
 
-        let result = try await webView.evaluateJavaScript(
+        let result = try await js.evaluate(
             "JSON.stringify(window.foliateManager.getFirstVisiblePosition())"
         )
 
-        guard let jsonString = result as? String,
+        guard let jsonString = result,
             jsonString != "null",
             let jsonData = jsonString.data(using: .utf8)
         else {
@@ -285,34 +284,38 @@ class WebViewCommsBridge {
     ///   - sectionIndex: The section index
     ///   - textId: The text element ID to highlight
     ///   - seekToLocation: If true, navigates the view to the element before highlighting
-    func sendJsHighlightFragment(sectionIndex: Int, textId: String, seekToLocation: Bool = false)
+    public func sendJsHighlightFragment(
+        sectionIndex: Int,
+        textId: String,
+        seekToLocation: Bool = false,
+    )
         async throws
     {
-        guard let webView = webView else {
-            throw WebViewCommsBridgeError.webViewNotAvailable
+        guard let js else {
+            throw ReaderCommsBridgeError.jsNotAvailable
         }
 
         let escapedTextId = textId.replacingOccurrences(of: "'", with: "\\'")
         debugLog(
-            "[WebViewCommsBridge] sendJsHighlightFragment(sectionIndex: \(sectionIndex), textId: \(textId), seekToLocation: \(seekToLocation))"
+            "[ReaderCommsBridge] sendJsHighlightFragment(sectionIndex: \(sectionIndex), textId: \(textId), seekToLocation: \(seekToLocation))"
         )
-        _ = try await webView.evaluateJavaScript(
+        _ = try await js.evaluate(
             "window.foliateManager.highlightFragment(\(sectionIndex), '\(escapedTextId)', \(seekToLocation))"
         )
     }
 
     /// Swift commands JS to clear any active highlight
-    func sendJsClearHighlight() async throws {
-        guard let webView = webView else {
-            throw WebViewCommsBridgeError.webViewNotAvailable
+    public func sendJsClearHighlight() async throws {
+        guard let js else {
+            throw ReaderCommsBridgeError.jsNotAvailable
         }
 
-        debugLog("[WebViewCommsBridge] sendJsClearHighlight()")
-        _ = try await webView.evaluateJavaScript("window.foliateManager.clearHighlight()")
+        debugLog("[ReaderCommsBridge] sendJsClearHighlight()")
+        _ = try await js.evaluate("window.foliateManager.clearHighlight()")
     }
 
     /// Swift commands JS to update reader styles (font, colors, margins, etc.)
-    func sendJsUpdateStyles(
+    public func sendJsUpdateStyles(
         fontSize: Double,
         fontFamily: String,
         lineSpacing: Double,
@@ -334,8 +337,8 @@ class WebViewCommsBridge {
         userHighlightMode: String,
         readaloudHighlightMode: String,
     ) async throws {
-        guard let webView = webView else {
-            throw WebViewCommsBridgeError.webViewNotAvailable
+        guard let js else {
+            throw ReaderCommsBridgeError.jsNotAvailable
         }
 
         var styles: [String: Any] = [
@@ -369,46 +372,46 @@ class WebViewCommsBridge {
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "'", with: "\\'")
 
-        debugLog("[WebViewCommsBridge] sendJsUpdateStyles()")
+        debugLog("[ReaderCommsBridge] sendJsUpdateStyles()")
         let script = "window.foliateManager.updateStyles('\(jsonString)')"
-        _ = try await webView.evaluateJavaScript(script)
+        _ = try await js.evaluate(script)
     }
 
     // MARK: - Search dispatch methods (JS → Swift)
 
-    func sendSwiftSearchResults(_ message: SearchResultsMessage) {
+    public func sendSwiftSearchResults(_ message: SearchResultsMessage) {
         debugLog(
-            "[WebViewCommsBridge] sendSwiftSearchResults - \(message.results.count) results in \(message.sectionLabel)"
+            "[ReaderCommsBridge] sendSwiftSearchResults - \(message.results.count) results in \(message.sectionLabel)"
         )
         onSearchResults?(message)
     }
 
-    func sendSwiftSearchProgress(_ message: SearchProgressMessage) {
-        debugLog("[WebViewCommsBridge] sendSwiftSearchProgress - \(message.progress)")
+    public func sendSwiftSearchProgress(_ message: SearchProgressMessage) {
+        debugLog("[ReaderCommsBridge] sendSwiftSearchProgress - \(message.progress)")
         onSearchProgress?(message)
     }
 
-    func sendSwiftSearchComplete() {
-        debugLog("[WebViewCommsBridge] sendSwiftSearchComplete")
+    public func sendSwiftSearchComplete() {
+        debugLog("[ReaderCommsBridge] sendSwiftSearchComplete")
         onSearchComplete?()
     }
 
-    func sendSwiftSearchError(_ message: SearchErrorMessage) {
-        debugLog("[WebViewCommsBridge] sendSwiftSearchError - \(message.message)")
+    public func sendSwiftSearchError(_ message: SearchErrorMessage) {
+        debugLog("[ReaderCommsBridge] sendSwiftSearchError - \(message.message)")
         onSearchError?(message)
     }
 
     // MARK: - Search commands (Swift → JS)
 
     /// Swift commands JS to start a search
-    func sendJsStartSearchCommand(
+    public func sendJsStartSearchCommand(
         query: String,
         matchCase: Bool = false,
         matchDiacritics: Bool = false,
         matchWholeWords: Bool = false,
     ) async throws {
-        guard let webView = webView else {
-            throw WebViewCommsBridgeError.webViewNotAvailable
+        guard let js else {
+            throw ReaderCommsBridgeError.jsNotAvailable
         }
 
         let escapedQuery =
@@ -424,85 +427,85 @@ class WebViewCommsBridge {
         let optionsJson = try JSONSerialization.data(withJSONObject: options)
         let optionsString = String(data: optionsJson, encoding: .utf8)!
 
-        debugLog("[WebViewCommsBridge] sendJsStartSearchCommand(query: \(query))")
-        _ = try await webView.evaluateJavaScript(
+        debugLog("[ReaderCommsBridge] sendJsStartSearchCommand(query: \(query))")
+        _ = try await js.evaluate(
             "(function() { window.foliateManager.startSearch('\(escapedQuery)', \(optionsString)); })()"
         )
     }
 
     /// Swift commands JS to clear search results
-    func sendJsClearSearchCommand() async throws {
-        guard let webView = webView else {
-            throw WebViewCommsBridgeError.webViewNotAvailable
+    public func sendJsClearSearchCommand() async throws {
+        guard let js else {
+            throw ReaderCommsBridgeError.jsNotAvailable
         }
 
-        debugLog("[WebViewCommsBridge] sendJsClearSearchCommand()")
-        _ = try await webView.evaluateJavaScript("window.foliateManager.clearSearch()")
+        debugLog("[ReaderCommsBridge] sendJsClearSearchCommand()")
+        _ = try await js.evaluate("window.foliateManager.clearSearch()")
     }
 
     /// Swift commands JS to navigate to a CFI (for search result navigation)
-    func sendJsGoToCFICommand(cfi: String) async throws {
-        guard let webView = webView else {
-            throw WebViewCommsBridgeError.webViewNotAvailable
+    public func sendJsGoToCFICommand(cfi: String) async throws {
+        guard let js else {
+            throw ReaderCommsBridgeError.jsNotAvailable
         }
 
         let escapedCFI =
             cfi
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "'", with: "\\'")
-        debugLog("[WebViewCommsBridge] sendJsGoToCFICommand(cfi: \(cfi))")
-        _ = try await webView.evaluateJavaScript(
+        debugLog("[ReaderCommsBridge] sendJsGoToCFICommand(cfi: \(cfi))")
+        _ = try await js.evaluate(
             "(function() { window.foliateManager.goToCFI('\(escapedCFI)'); })()"
         )
     }
 
     // MARK: - Highlight dispatch methods (JS → Swift)
 
-    func sendSwiftTextSelected(_ message: TextSelectionMessage) {
+    public func sendSwiftTextSelected(_ message: TextSelectionMessage) {
         debugLog(
-            "[WebViewCommsBridge] sendSwiftTextSelected - section: \(message.sectionIndex), text: \(message.text.prefix(50))..."
+            "[ReaderCommsBridge] sendSwiftTextSelected - section: \(message.sectionIndex), text: \(message.text.prefix(50))..."
         )
         onTextSelected?(message)
     }
 
-    func sendSwiftSelectionHighlight(_ message: SelectionHighlightMessage) {
-        debugLog("[WebViewCommsBridge] sendSwiftSelectionHighlight - color: \(message.colorId)")
+    public func sendSwiftSelectionHighlight(_ message: SelectionHighlightMessage) {
+        debugLog("[ReaderCommsBridge] sendSwiftSelectionHighlight - color: \(message.colorId)")
         onSelectionHighlight?(message)
     }
 
-    func sendSwiftHighlightSetColor(_ message: HighlightSetColorMessage) {
+    public func sendSwiftHighlightSetColor(_ message: HighlightSetColorMessage) {
         debugLog(
-            "[WebViewCommsBridge] sendSwiftHighlightSetColor - id: \(message.id), color: \(message.colorId)"
+            "[ReaderCommsBridge] sendSwiftHighlightSetColor - id: \(message.id), color: \(message.colorId)"
         )
         onHighlightSetColor?(message)
     }
 
-    func sendSwiftHighlightDelete(_ message: HighlightDeleteMessage) {
-        debugLog("[WebViewCommsBridge] sendSwiftHighlightDelete - id: \(message.id)")
+    public func sendSwiftHighlightDelete(_ message: HighlightDeleteMessage) {
+        debugLog("[ReaderCommsBridge] sendSwiftHighlightDelete - id: \(message.id)")
         onHighlightDelete?(message)
     }
 
-    func sendSwiftHighlightEdit(_ message: HighlightEditMessage) {
-        debugLog("[WebViewCommsBridge] sendSwiftHighlightEdit - id: \(message.id)")
+    public func sendSwiftHighlightEdit(_ message: HighlightEditMessage) {
+        debugLog("[ReaderCommsBridge] sendSwiftHighlightEdit - id: \(message.id)")
         onHighlightEdit?(message)
     }
 
-    func sendSwiftSelectionTranslate(_ text: String) {
-        debugLog("[WebViewCommsBridge] sendSwiftSelectionTranslate")
+    public func sendSwiftSelectionTranslate(_ text: String) {
+        debugLog("[ReaderCommsBridge] sendSwiftSelectionTranslate")
         onSelectionTranslate?(text)
     }
 
-    func sendSwiftSelectionSearch(_ text: String) {
-        debugLog("[WebViewCommsBridge] sendSwiftSelectionSearch")
+    public func sendSwiftSelectionSearch(_ text: String) {
+        debugLog("[ReaderCommsBridge] sendSwiftSelectionSearch")
         onSelectionSearch?(text)
     }
 
     // MARK: - Highlight commands (Swift → JS)
 
     /// Swift commands JS to render user highlights
-    func sendJsRenderHighlights(_ highlights: [HighlightRenderData]) async throws {
-        guard let webView = webView else {
-            throw WebViewCommsBridgeError.webViewNotAvailable
+    public func sendJsRenderHighlights(_ highlights: [HighlightRenderData]) async throws {
+        guard let js else {
+            throw ReaderCommsBridgeError.jsNotAvailable
         }
 
         let encoder = JSONEncoder()
@@ -511,29 +514,29 @@ class WebViewCommsBridge {
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "'", with: "\\'")
 
-        debugLog("[WebViewCommsBridge] sendJsRenderHighlights - \(highlights.count) highlights")
-        _ = try await webView.evaluateJavaScript(
+        debugLog("[ReaderCommsBridge] sendJsRenderHighlights - \(highlights.count) highlights")
+        _ = try await js.evaluate(
             "(function() { window.foliateManager.renderHighlights('\(jsonString)'); })()"
         )
     }
 
     /// Swift commands JS to remove a specific highlight
-    func sendJsRemoveHighlight(id: String) async throws {
-        guard let webView = webView else {
-            throw WebViewCommsBridgeError.webViewNotAvailable
+    public func sendJsRemoveHighlight(id: String) async throws {
+        guard let js else {
+            throw ReaderCommsBridgeError.jsNotAvailable
         }
 
         let escapedId = id.replacingOccurrences(of: "'", with: "\\'")
-        debugLog("[WebViewCommsBridge] sendJsRemoveHighlight(id: \(id))")
-        _ = try await webView.evaluateJavaScript(
+        debugLog("[ReaderCommsBridge] sendJsRemoveHighlight(id: \(id))")
+        _ = try await js.evaluate(
             "window.foliateManager.removeHighlight('\(escapedId)')"
         )
     }
 
     /// Swift pushes the configured highlight palette so the selection toolbar can render swatches
-    func sendJsSetHighlightPalette(_ entries: [HighlightPaletteEntry]) async throws {
-        guard let webView = webView else {
-            throw WebViewCommsBridgeError.webViewNotAvailable
+    public func sendJsSetHighlightPalette(_ entries: [HighlightPaletteEntry]) async throws {
+        guard let js else {
+            throw ReaderCommsBridgeError.jsNotAvailable
         }
 
         let jsonData = try JSONEncoder().encode(entries)
@@ -541,47 +544,45 @@ class WebViewCommsBridge {
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "'", with: "\\'")
 
-        _ = try await webView.evaluateJavaScript(
+        _ = try await js.evaluate(
             "(function() { window.foliateManager.setHighlightPalette('\(jsonString)'); })()"
         )
     }
 
     /// Tells the selection toolbar whether to offer a Translate button (system support is OS-version gated)
-    func sendJsSetTranslateAvailable(_ available: Bool) async throws {
-        guard let webView = webView else {
-            throw WebViewCommsBridgeError.webViewNotAvailable
+    public func sendJsSetTranslateAvailable(_ available: Bool) async throws {
+        guard let js else {
+            throw ReaderCommsBridgeError.jsNotAvailable
         }
 
-        _ = try await webView.evaluateJavaScript(
+        _ = try await js.evaluate(
             "(function() { window.foliateManager.setTranslateAvailable(\(available ? "true" : "false")); })()"
         )
     }
 
     /// Pushes the last-used highlight color so the toolbar shows it as the lead swatch
-    func sendJsSetDefaultHighlightColor(_ colorId: String) async throws {
-        guard let webView = webView else {
-            throw WebViewCommsBridgeError.webViewNotAvailable
+    public func sendJsSetDefaultHighlightColor(_ colorId: String) async throws {
+        guard let js else {
+            throw ReaderCommsBridgeError.jsNotAvailable
         }
 
         let escaped =
             colorId
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "'", with: "\\'")
-        _ = try await webView.evaluateJavaScript(
+        _ = try await js.evaluate(
             "(function() { window.foliateManager.setDefaultHighlightColor('\(escaped)'); })()"
         )
     }
 }
 
-enum WebViewCommsBridgeError: Error, LocalizedError {
-    case webViewNotAvailable
+public enum ReaderCommsBridgeError: Error, LocalizedError {
+    case jsNotAvailable
 
-    var errorDescription: String? {
+    public var errorDescription: String? {
         switch self {
-            case .webViewNotAvailable:
-                return "WebView is not available"
+            case .jsNotAvailable:
+                return "JS evaluator is not available"
         }
     }
 }
-
-#endif
