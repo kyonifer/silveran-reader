@@ -25,11 +25,13 @@ public struct CoverHSB: Equatable, Sendable {
 public enum CoverColorAverager {
     /// The platform adapter owns downsampling and supplies non-premultiplied RGBA bytes.
     public static func surfaceColor(rgbaPixels: [UInt8], dark: Bool) -> CoverRGB8 {
-        let surface = surfaceHSB(rgbaPixels: rgbaPixels)
+        let surface =
+            surfaceHSB(rgbaPixels: rgbaPixels)
             ?? CoverHSB(hue: 0.56, saturation: 0.34, brightness: 0.28)
 
         guard !dark else { return rgb(surface) }
-        let lightSaturation = surface.saturation < 0.08
+        let lightSaturation =
+            surface.saturation < 0.08
             ? 0 : min(max(surface.saturation * 0.24, 0.055), 0.16)
         return rgb(CoverHSB(hue: surface.hue, saturation: lightSaturation, brightness: 0.92))
     }
@@ -101,7 +103,8 @@ public enum CoverColorAverager {
     static func rgb(_ hsb: CoverHSB) -> CoverRGB8 {
         let chroma = hsb.brightness * hsb.saturation
         let hueSection = hsb.hue * 6
-        let intermediate = chroma
+        let intermediate =
+            chroma
             * (1 - abs(hueSection.truncatingRemainder(dividingBy: 2) - 1))
         let offset = hsb.brightness - chroma
 

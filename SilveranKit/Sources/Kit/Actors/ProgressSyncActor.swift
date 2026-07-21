@@ -634,7 +634,7 @@ public actor ProgressSyncActor {
 
         for bookID in downloadedBookIDs {
             if let position = await BookServiceActor.shared.fetchBookPosition(
-                bookID: bookID,
+                bookID: bookID
             ) {
                 await updateServerPositions([bookID: position])
             }

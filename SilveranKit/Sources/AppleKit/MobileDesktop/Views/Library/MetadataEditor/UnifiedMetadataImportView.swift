@@ -351,9 +351,11 @@ struct UnifiedMetadataImportView: View {
                     Button {
                         viewModel.toggleExpanded(field)
                     } label: {
-                        Image(systemName: viewModel.isExpanded(field) ? "chevron.up" : "chevron.down")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
+                        Image(
+                            systemName: viewModel.isExpanded(field) ? "chevron.up" : "chevron.down"
+                        )
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
                     }
                     .buttonStyle(.plain)
                 }
@@ -411,11 +413,17 @@ struct UnifiedMetadataImportView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(
                     RoundedRectangle(cornerRadius: 8)
-                        .fill(isSelected ? Color.accentColor.opacity(0.10) : Color.secondary.opacity(0.05))
+                        .fill(
+                            isSelected
+                                ? Color.accentColor.opacity(0.10) : Color.secondary.opacity(0.05)
+                        )
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 8)
-                        .stroke(isSelected ? Color.accentColor.opacity(0.5) : Color.clear, lineWidth: 1)
+                        .stroke(
+                            isSelected ? Color.accentColor.opacity(0.5) : Color.clear,
+                            lineWidth: 1,
+                        )
                 )
                 .contentShape(Rectangle())
             }
@@ -425,7 +433,7 @@ struct UnifiedMetadataImportView: View {
     }
 
     private func compactUnavailableRow(
-        _ column: UnifiedMetadataImportViewModel.Column,
+        _ column: UnifiedMetadataImportViewModel.Column
     ) -> some View {
         HStack(spacing: 8) {
             Image(systemName: "minus.circle")

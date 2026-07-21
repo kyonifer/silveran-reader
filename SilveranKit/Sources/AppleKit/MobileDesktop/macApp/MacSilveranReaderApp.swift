@@ -109,29 +109,29 @@ struct SilveranReaderApp: App {
     @ViewBuilder private var libraryViewContent: some View {
         if runtimeReady {
             LibraryView()
-            .environment(AppLaunchContext.environment)
-            .environment(mediaViewModel)
-            #if os(macOS)
-        .background(Color(nsColor: .windowBackgroundColor))
-            #else
-        .background(Color(uiColor: .systemBackground))
-            #endif
-            .task {
-                guard await SilveranRuntime.start() else { return }
-                await mediaViewModel.start()
-                await BookServiceActor.shared.setActive(true, source: .mac)
-                guard !didOpenSecondaryWindows else { return }
-                didOpenSecondaryWindows = true
-            }
-            .onOpenURL { url in
-                handleOpenURL(url)
-            }
-            .onChange(of: mediaViewModel.pendingOpenBookID) { _, _ in
-                openPendingBookIfReady()
-            }
-            .onChange(of: mediaViewModel.library.bookMetaData.count) { _, _ in
-                openPendingBookIfReady()
-            }
+                .environment(AppLaunchContext.environment)
+                .environment(mediaViewModel)
+                #if os(macOS)
+            .background(Color(nsColor: .windowBackgroundColor))
+                #else
+            .background(Color(uiColor: .systemBackground))
+                #endif
+                .task {
+                    guard await SilveranRuntime.start() else { return }
+                    await mediaViewModel.start()
+                    await BookServiceActor.shared.setActive(true, source: .mac)
+                    guard !didOpenSecondaryWindows else { return }
+                    didOpenSecondaryWindows = true
+                }
+                .onOpenURL { url in
+                    handleOpenURL(url)
+                }
+                .onChange(of: mediaViewModel.pendingOpenBookID) { _, _ in
+                    openPendingBookIfReady()
+                }
+                .onChange(of: mediaViewModel.library.bookMetaData.count) { _, _ in
+                    openPendingBookIfReady()
+                }
         } else {
             ProgressView("Loading...")
                 .task {

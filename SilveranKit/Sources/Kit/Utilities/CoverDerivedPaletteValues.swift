@@ -8,7 +8,7 @@ public struct CoverPaletteColor: Equatable, Sendable {
         hue: Double,
         saturation: Double,
         brightness: Double,
-        opacity: Double = 1
+        opacity: Double = 1,
     ) {
         self.hue = hue
         self.saturation = saturation
@@ -67,7 +67,7 @@ public struct CoverDerivedPaletteValues: Equatable, Sendable {
                 lightSurface: lightSurface,
                 lightContentBackground: gray(0.92),
                 lightCardBackground: gray(0.98),
-                lightCardBorder: gray(0, opacity: 0.1)
+                lightCardBorder: gray(0, opacity: 0.1),
             )
         }
 
@@ -77,7 +77,7 @@ public struct CoverDerivedPaletteValues: Equatable, Sendable {
         let lightSurface = CoverPaletteColor(
             hue: hue,
             saturation: min(max(saturation * 0.24, 0.055), 0.16),
-            brightness: 0.92
+            brightness: 0.92,
         )
 
         return CoverDerivedPaletteValues(
@@ -85,53 +85,53 @@ public struct CoverDerivedPaletteValues: Equatable, Sendable {
             accent: CoverPaletteColor(
                 hue: hue,
                 saturation: min(max(saturation * 0.72, 0.24), 0.62),
-                brightness: 0.9
+                brightness: 0.9,
             ),
             brightAccent: CoverPaletteColor(
                 hue: hue,
                 saturation: min(max(saturation * 0.48, 0.14), 0.42),
-                brightness: 1
+                brightness: 1,
             ),
             mutedAccent: CoverPaletteColor(
                 hue: hue,
                 saturation: min(max(saturation * 0.07, 0.015), 0.06),
-                brightness: 0.72
+                brightness: 0.72,
             ),
             accentBackground: CoverPaletteColor(
                 hue: hue,
                 saturation: min(max(saturation * 1.08, 0.3), 0.78),
                 brightness: min(max(brightness * 0.62, 0.1), 0.24),
-                opacity: 0.94
+                opacity: 0.94,
             ),
             contentBackground: contentBackground,
             cardBackground: CoverPaletteColor(
                 hue: hue,
                 saturation: min(max(saturation * 0.74, 0.17), 0.52),
-                brightness: min(max(brightness * 0.9, 0.22), 0.35)
+                brightness: min(max(brightness * 0.9, 0.22), 0.35),
             ),
             cardBorder: CoverPaletteColor(
                 hue: hue,
                 saturation: min(max(saturation * 0.58, 0.18), 0.5),
                 brightness: 0.82,
-                opacity: 0.16
+                opacity: 0.16,
             ),
             lightSurface: lightSurface,
             lightContentBackground: CoverPaletteColor(
                 hue: hue,
                 saturation: min(max(saturation * 0.28, 0.06), 0.18),
-                brightness: 0.93
+                brightness: 0.93,
             ),
             lightCardBackground: CoverPaletteColor(
                 hue: hue,
                 saturation: min(max(saturation * 0.16, 0.035), 0.11),
-                brightness: 0.985
+                brightness: 0.985,
             ),
             lightCardBorder: CoverPaletteColor(
                 hue: hue,
                 saturation: min(max(saturation * 0.45, 0.12), 0.32),
                 brightness: 0.42,
-                opacity: 0.18
-            )
+                opacity: 0.18,
+            ),
         )
     }
 
@@ -139,7 +139,7 @@ public struct CoverDerivedPaletteValues: Equatable, Sendable {
         return CoverPaletteColor(
             hue: hsb.hue,
             saturation: hsb.saturation,
-            brightness: hsb.brightness
+            brightness: hsb.brightness,
         )
     }
 
@@ -149,7 +149,7 @@ public struct CoverDerivedPaletteValues: Equatable, Sendable {
 
     private static func shadeWithBlack(
         _ color: CoverPaletteColor,
-        opacity: Double
+        opacity: Double,
     ) -> CoverPaletteColor {
         let retained = 1 - min(max(opacity, 0), 1)
         let source = color.rgb8
@@ -159,13 +159,13 @@ public struct CoverDerivedPaletteValues: Equatable, Sendable {
         let shaded = CoverColorAverager.hsb(
             red: Double(red) / 255,
             green: Double(green) / 255,
-            blue: Double(blue) / 255
+            blue: Double(blue) / 255,
         )
         return CoverPaletteColor(
             hue: shaded.hue,
             saturation: shaded.saturation,
             brightness: shaded.brightness,
-            opacity: color.opacity
+            opacity: color.opacity,
         )
     }
 }

@@ -94,15 +94,15 @@ public struct ChaptersButton: View {
     private var chaptersSheet: some View {
         NavigationStack {
             chapterSelectionList
-            .navigationTitle("Chapters")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") {
-                        showSheet = false
+                .navigationTitle("Chapters")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Done") {
+                            showSheet = false
+                        }
                     }
                 }
-            }
         }
         .presentationDetents([.medium, .large])
     }

@@ -308,7 +308,9 @@ public final class CarPlayCoordinator {
 
         isPositionRestored = true
 
-        debugLog("[CarPlayCoordinator] M4B audiobook opened via AudioSessionActor, starting playback")
+        debugLog(
+            "[CarPlayCoordinator] M4B audiobook opened via AudioSessionActor, starting playback"
+        )
         try await AudioSessionActor.shared.transport(.play)
     }
 

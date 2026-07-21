@@ -42,7 +42,7 @@ extension JavaClass<JavaAndroidBridgeCallbacks> {
         _ requestID: String,
         _ data: [UInt8],
         _ shouldPersist: Bool,
-        _ error: String
+        _ error: String,
     )
 }
 
@@ -136,7 +136,7 @@ func deliverAndroidCoverPayload(
         requestID,
         [UInt8](data),
         shouldPersist,
-        ""
+        "",
     )
 }
 
@@ -145,7 +145,7 @@ func deliverAndroidCoverError(requestID: String, error: Error) {
         requestID,
         [],
         false,
-        String(describing: error)
+        String(describing: error),
     )
 }
 

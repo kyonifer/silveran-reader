@@ -87,7 +87,9 @@ struct BookDetailCard<Content: View>: View {
     }
 
     private var cardBackground: Color {
-        if let palette { palette.cardBackground } else {
+        if let palette {
+            palette.cardBackground
+        } else {
             #if os(iOS)
             Color(uiColor: .secondarySystemGroupedBackground)
             #else
@@ -148,32 +150,30 @@ struct BookDetailCreatorSummary: View {
         role: String,
     ) -> some View {
         if !names.isEmpty {
-            (
-                Text(label).foregroundStyle(labelColor)
-                    + Text(names.joined(separator: ", ")).foregroundStyle(nameColor)
-            )
-            .lineLimit(isExpanded.wrappedValue ? nil : 1)
-            .textSelection(.enabled)
-            .padding(.trailing, shouldShowDisclosure(for: names) ? 18 : 0)
-            .overlay(alignment: .topTrailing) {
-                if shouldShowDisclosure(for: names) {
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.18)) {
-                            isExpanded.wrappedValue.toggle()
+            (Text(label).foregroundStyle(labelColor)
+                + Text(names.joined(separator: ", ")).foregroundStyle(nameColor))
+                .lineLimit(isExpanded.wrappedValue ? nil : 1)
+                .textSelection(.enabled)
+                .padding(.trailing, shouldShowDisclosure(for: names) ? 18 : 0)
+                .overlay(alignment: .topTrailing) {
+                    if shouldShowDisclosure(for: names) {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.18)) {
+                                isExpanded.wrappedValue.toggle()
+                            }
+                        } label: {
+                            Image(systemName: "chevron.down")
+                                .font(.caption.weight(.semibold))
+                                .rotationEffect(.degrees(isExpanded.wrappedValue ? 180 : 0))
+                                .frame(width: 16, height: 20)
                         }
-                    } label: {
-                        Image(systemName: "chevron.down")
-                            .font(.caption.weight(.semibold))
-                            .rotationEffect(.degrees(isExpanded.wrappedValue ? 180 : 0))
-                            .frame(width: 16, height: 20)
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel(
+                            isExpanded.wrappedValue ? "Collapse \(role)" : "Expand \(role)"
+                        )
                     }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.secondary)
-                    .accessibilityLabel(
-                        isExpanded.wrappedValue ? "Collapse \(role)" : "Expand \(role)"
-                    )
                 }
-            }
         }
     }
 
@@ -263,7 +263,8 @@ private struct CompactMediaButton: View {
     }
 
     private var isFailed: Bool {
-        !isDownloading && mediaViewModel.isCategoryDownloadFailed(for: item, category: option.category)
+        !isDownloading
+            && mediaViewModel.isCategoryDownloadFailed(for: item, category: option.category)
     }
 
     var body: some View {
@@ -372,7 +373,8 @@ private struct CompactMediaButton: View {
 
     private var playerData: PlayerBookData {
         let fresh = mediaViewModel.library.bookMetaData.first { $0.id == item.id } ?? item
-        let variant: MediaViewModel.CoverVariant = fresh.hasAvailableAudiobook ? .audioSquare : .standard
+        let variant: MediaViewModel.CoverVariant =
+            fresh.hasAvailableAudiobook ? .audioSquare : .standard
         return PlayerBookData(
             metadata: fresh,
             localMediaPath: mediaViewModel.localMediaPath(for: item.id, category: option.category),
@@ -398,7 +400,9 @@ struct BookDetailRelatedShelf: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: 10) {
                     ForEach(books) { book in
-                        Button { onSelect(book) } label: {
+                        Button {
+                            onSelect(book)
+                        } label: {
                             RelatedBookThumbnail(
                                 book: book,
                                 seriesPositionBadge: seriesPositionBadge(for: book),
@@ -414,9 +418,11 @@ struct BookDetailRelatedShelf: View {
     private func seriesPositionBadge(for book: BookMetadata) -> String? {
         guard let seriesName else { return nil }
         let normalized = seriesName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard let position = book.series?.first(where: {
-            $0.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == normalized
-        })?.formattedPosition else { return nil }
+        guard
+            let position = book.series?.first(where: {
+                $0.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == normalized
+            })?.formattedPosition
+        else { return nil }
         return position.hasPrefix("#") ? position : "#\(position)"
     }
 }
@@ -723,7 +729,9 @@ struct BookDetailDisclosureCard<Content: View>: View {
     }
 
     private var cardBackground: Color {
-        if let palette { palette.cardBackground } else {
+        if let palette {
+            palette.cardBackground
+        } else {
             #if os(iOS)
             Color(uiColor: .secondarySystemGroupedBackground)
             #else

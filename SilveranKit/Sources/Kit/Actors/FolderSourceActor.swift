@@ -946,7 +946,9 @@ public actor FolderSourceActor: BookSourceActor {
                 let byRole = Dictionary(grouping: stemCandidates, by: \.role)
                 var group: [FolderMediaCandidate] = []
                 for role in FolderSourceMediaRole.allCases {
-                    guard let roleCandidates = byRole[role], !roleCandidates.isEmpty else { continue }
+                    guard let roleCandidates = byRole[role], !roleCandidates.isEmpty else {
+                        continue
+                    }
                     let ordered = roleCandidates.sorted {
                         ($0.relativePaths.first ?? "") < ($1.relativePaths.first ?? "")
                     }
@@ -1034,7 +1036,10 @@ public actor FolderSourceActor: BookSourceActor {
         from state: FolderSourceLibraryState,
         folderURL: URL,
     ) -> LocalLibraryManager.ScanResult {
-        let mediaByID = Dictionary(state.media.map { ($0.uuid, $0) }, uniquingKeysWith: { a, _ in a })
+        let mediaByID = Dictionary(
+            state.media.map { ($0.uuid, $0) },
+            uniquingKeysWith: { a, _ in a },
+        )
         var metadata: [BookMetadata] = []
         var paths: [String: MediaPaths] = [:]
         var emittedWorkIDs: Set<String> = []

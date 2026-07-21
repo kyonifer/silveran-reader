@@ -14,7 +14,7 @@ public enum LastOpenBookStore {
         public init(
             category: LocalMediaCategory,
             openedAt: Date,
-            metadata: BookMetadata
+            metadata: BookMetadata,
         ) {
             self.category = category
             self.openedAt = openedAt
@@ -32,7 +32,7 @@ public enum LastOpenBookStore {
         let route = Route(
             category: bookData.category,
             openedAt: Date(),
-            metadata: bookData.metadata
+            metadata: bookData.metadata,
         )
         guard let data = try? JSONEncoder().encode(route) else { return }
         UserDefaults.standard.set(data, forKey: key)
@@ -69,10 +69,12 @@ public enum LastOpenBookStore {
             checkpoint = now
         }
 
-        guard let localMediaPath = await BookServiceActor.shared.resolveLocalMedia(
-            for: route.bookID,
-            category: route.category,
-        )?.url else { return nil }
+        guard
+            let localMediaPath = await BookServiceActor.shared.resolveLocalMedia(
+                for: route.bookID,
+                category: route.category,
+            )?.url
+        else { return nil }
         mark("resolvePath")
 
         // coverArt is not Codable, so it is lost when the route is persisted. Reload it from

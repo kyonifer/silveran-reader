@@ -92,7 +92,7 @@ struct CoverDerivedPalette {
             surfaceHSB: CoverHSB(
                 hue: hue,
                 saturation: saturation,
-                brightness: brightness
+                brightness: brightness,
             )
         )
         return CoverDerivedPalette(
@@ -116,7 +116,7 @@ struct CoverDerivedPalette {
             hue: value.hue,
             saturation: value.saturation,
             brightness: value.brightness,
-            opacity: value.opacity
+            opacity: value.opacity,
         )
     }
 

@@ -28,8 +28,7 @@ public final class LocalLibraryManager: Sendable {
         from fileURL: URL,
         category: LocalMediaCategory,
         sourceID: BookSourceID,
-    ) async throws -> BookMetadata
-    {
+    ) async throws -> BookMetadata {
         switch category {
             case .ebook, .synced:
                 if fileURL.pathExtension.lowercased() == "cbz" {

@@ -136,7 +136,7 @@ public struct CopyBookView: View {
     private func refreshAvailability() async {
         guard let book else { return }
         availableCategories = await BookServiceActor.shared.locallyAvailableMedia(
-            for: book.id,
+            for: book.id
         )
     }
 

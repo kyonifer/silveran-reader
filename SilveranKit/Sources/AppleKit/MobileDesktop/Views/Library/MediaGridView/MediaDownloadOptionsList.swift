@@ -224,7 +224,7 @@ struct CreateReadaloudRow: View {
             Task {
                 isCancelingAlignment = true
                 _ = await BookServiceActor.shared.cancelAlignment(
-                    for: item.id,
+                    for: item.id
                 )
                 await BookServiceActor.shared.fetchLibraryInformation()
                 isCancelingAlignment = false

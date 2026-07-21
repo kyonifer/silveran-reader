@@ -113,7 +113,7 @@ struct MediaCompactCardView: View {
             .overlay(alignment: .bottom) {
                 if progressStyle == .line && progress > 0 && !shouldRenderDoubleCover {
                     MediaProgressBar(progress: progress, backgroundOpacity: 0.3)
-                    .frame(height: 3)
+                        .frame(height: 3)
                 }
             }
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
@@ -125,8 +125,8 @@ struct MediaCompactCardView: View {
                             variant: shownVariant,
                             progress: progress,
                         )
-                            .padding(.trailing, 3)
-                            .padding(.bottom, 3)
+                        .padding(.trailing, 3)
+                        .padding(.bottom, 3)
                     } else if progressStyle == .text {
                         ProgressTextBadge(progress: progress)
                             .padding(.trailing, 3)

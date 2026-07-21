@@ -204,7 +204,7 @@ struct BookContextMenuContent: View {
             Button {
                 Task {
                     _ = await BookServiceActor.shared.cancelAlignment(
-                        for: item.id,
+                        for: item.id
                     )
                     await BookServiceActor.shared.fetchLibraryInformation()
                 }
@@ -275,7 +275,7 @@ struct BookContextMenuContent: View {
             Button {
                 Task {
                     _ = await BookServiceActor.shared.startAlignment(
-                        for: item.id,
+                        for: item.id
                     )
                     await BookServiceActor.shared.fetchLibraryInformation()
                 }
@@ -294,7 +294,7 @@ struct BookContextMenuContent: View {
             Button {
                 Task {
                     _ = await BookServiceActor.shared.upgradeEpub(
-                        for: item.id,
+                        for: item.id
                     )
                     await BookServiceActor.shared.fetchLibraryInformation()
                 }
@@ -438,7 +438,6 @@ struct BookContextMenuContent: View {
                 return "Readaloud"
         }
     }
-
 
     private func confirmDestructiveAction(
         title: String,

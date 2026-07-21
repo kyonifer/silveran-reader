@@ -985,9 +985,12 @@ private struct ReadaloudGeneratorForm: View {
         }
         #else
         if let movedDestinationURL {
-            Label("Saved to \(movedDestinationURL.lastPathComponent)", systemImage: "checkmark.circle")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Label(
+                "Saved to \(movedDestinationURL.lastPathComponent)",
+                systemImage: "checkmark.circle",
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
         } else {
             Button {
                 isFileMoverPresented = true

@@ -62,10 +62,9 @@ public actor DownloadManager {
 
         for record in persisted {
             if await BookServiceActor.shared.resolveLocalMedia(
-                    for: record.bookID,
-                    category: record.category,
-                ) != nil
-            {
+                for: record.bookID,
+                category: record.category,
+            ) != nil {
                 await deleteResumeData(for: record.id)
                 continue
             }
@@ -258,7 +257,7 @@ public actor DownloadManager {
         var book = bookMetadataCache[record.bookID]
         if book == nil && !hasResume {
             book = await BookServiceActor.shared.fetchBookDetails(
-                for: record.bookID,
+                for: record.bookID
             )
         }
 
@@ -415,7 +414,7 @@ public actor DownloadManager {
         var book = bookMetadataCache[record.bookID]
         if book == nil {
             book = await BookServiceActor.shared.fetchBookDetails(
-                for: record.bookID,
+                for: record.bookID
             )
         }
 
@@ -508,7 +507,7 @@ public actor DownloadManager {
             var book = bookMetadataCache[record.bookID]
             if book == nil {
                 book = await BookServiceActor.shared.fetchBookDetails(
-                    for: record.bookID,
+                    for: record.bookID
                 )
             }
 

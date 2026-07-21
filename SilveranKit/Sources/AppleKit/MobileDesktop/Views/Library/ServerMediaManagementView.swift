@@ -799,7 +799,7 @@ public struct ServerMediaManagementView: View {
         errorMessage = nil
 
         let success = await BookServiceActor.shared.cancelAlignment(
-            for: item.id,
+            for: item.id
         )
         if !success {
             errorMessage = "Failed to cancel alignment"

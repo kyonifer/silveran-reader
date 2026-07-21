@@ -1522,7 +1522,7 @@ struct MediaTableView: NSViewRepresentable {
             guard let item = sender.representedObject as? BookMetadata else { return }
             Task {
                 _ = await BookServiceActor.shared.cancelAlignment(
-                    for: item.id,
+                    for: item.id
                 )
                 await BookServiceActor.shared.fetchLibraryInformation()
             }
@@ -1532,7 +1532,7 @@ struct MediaTableView: NSViewRepresentable {
             guard let item = sender.representedObject as? BookMetadata else { return }
             Task {
                 _ = await BookServiceActor.shared.upgradeEpub(
-                    for: item.id,
+                    for: item.id
                 )
                 await BookServiceActor.shared.fetchLibraryInformation()
             }
@@ -1718,7 +1718,6 @@ struct MediaTableView: NSViewRepresentable {
             alert.addButton(withTitle: "Cancel")
             return alert.runModal() == .alertFirstButtonReturn
         }
-
 
         private func makeCoverCell(
             tableView: NSTableView,

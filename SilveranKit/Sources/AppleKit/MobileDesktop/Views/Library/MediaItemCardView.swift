@@ -557,8 +557,8 @@ struct MediaItemCardView: View {
                                     variant: coverVariant,
                                     progress: progress,
                                 )
-                                    .padding(.trailing, 4)
-                                    .padding(.bottom, 4)
+                                .padding(.trailing, 4)
+                                .padding(.bottom, 4)
                             } else if progressStyle == .text {
                                 ProgressTextBadge(progress: progress)
                                     .padding(.trailing, 4)
@@ -1101,7 +1101,7 @@ struct DoubleCoverView: View {
                     }
                     .frame(width: notchBadgeDiameter, height: notchBadgeDiameter)
                     .offset(x: badgeX, y: -badgeY)
-                        .zIndex(100)
+                    .zIndex(100)
                 }
 
                 if let notchProgress {
@@ -1113,9 +1113,9 @@ struct DoubleCoverView: View {
                         ringDiameter: 15,
                         backgroundDiameter: notchBadgeDiameter,
                     )
-                        .tint(palette.accent)
-                        .offset(x: badgeX, y: badgeY)
-                        .zIndex(100)
+                    .tint(palette.accent)
+                    .offset(x: badgeX, y: badgeY)
+                    .zIndex(100)
                 }
             }
         }
@@ -1165,7 +1165,7 @@ struct DoubleCoverView: View {
 
     private func derivedPalette(
         ebookState: MediaViewModel.CoverImageState,
-        audioState: MediaViewModel.CoverImageState
+        audioState: MediaViewModel.CoverImageState,
     ) -> CoverDerivedPalette {
         let image = ebookState.cgImage ?? audioState.cgImage
         return (image.flatMap(CoverDerivedPalette.make(from:)) ?? .fallback())

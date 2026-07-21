@@ -279,42 +279,38 @@ struct MediaGridInfoSidebar: View {
         if !authorNames.isEmpty || !narratorNames.isEmpty {
             VStack(spacing: 2) {
                 if !authorNames.isEmpty {
-                    (
-                        Text("Written by ")
-                            .foregroundStyle(heroColors.secondary)
-                            + Text(authorNames.joined(separator: ", "))
-                            .foregroundStyle(heroColors.primary.opacity(0.88))
-                    )
-                    .lineLimit(isAuthorSummaryExpanded ? nil : 1)
-                    .textSelection(.enabled)
-                    .padding(.trailing, shouldShowAuthorDisclosure ? 18 : 0)
-                    .overlay(alignment: .topTrailing) {
-                        if shouldShowAuthorDisclosure {
-                            creatorDisclosureButton(
-                                isExpanded: $isAuthorSummaryExpanded,
-                                role: "authors",
-                            )
+                    (Text("Written by ")
+                        .foregroundStyle(heroColors.secondary)
+                        + Text(authorNames.joined(separator: ", "))
+                        .foregroundStyle(heroColors.primary.opacity(0.88)))
+                        .lineLimit(isAuthorSummaryExpanded ? nil : 1)
+                        .textSelection(.enabled)
+                        .padding(.trailing, shouldShowAuthorDisclosure ? 18 : 0)
+                        .overlay(alignment: .topTrailing) {
+                            if shouldShowAuthorDisclosure {
+                                creatorDisclosureButton(
+                                    isExpanded: $isAuthorSummaryExpanded,
+                                    role: "authors",
+                                )
+                            }
                         }
-                    }
                 }
                 if !narratorNames.isEmpty {
-                    (
-                        Text("Narrated by ")
-                            .foregroundStyle(heroColors.secondary)
-                            + Text(narratorNames.joined(separator: ", "))
-                            .foregroundStyle(heroColors.primary.opacity(0.88))
-                    )
-                    .lineLimit(isNarratorSummaryExpanded ? nil : 1)
-                    .textSelection(.enabled)
-                    .padding(.trailing, shouldShowNarratorDisclosure ? 18 : 0)
-                    .overlay(alignment: .topTrailing) {
-                        if shouldShowNarratorDisclosure {
-                            creatorDisclosureButton(
-                                isExpanded: $isNarratorSummaryExpanded,
-                                role: "narrators",
-                            )
+                    (Text("Narrated by ")
+                        .foregroundStyle(heroColors.secondary)
+                        + Text(narratorNames.joined(separator: ", "))
+                        .foregroundStyle(heroColors.primary.opacity(0.88)))
+                        .lineLimit(isNarratorSummaryExpanded ? nil : 1)
+                        .textSelection(.enabled)
+                        .padding(.trailing, shouldShowNarratorDisclosure ? 18 : 0)
+                        .overlay(alignment: .topTrailing) {
+                            if shouldShowNarratorDisclosure {
+                                creatorDisclosureButton(
+                                    isExpanded: $isNarratorSummaryExpanded,
+                                    role: "narrators",
+                                )
+                            }
                         }
-                    }
                 }
             }
             .font(.callout)
@@ -612,9 +608,10 @@ struct MediaGridInfoSidebar: View {
         if let seriesList = currentItem.series, !seriesList.isEmpty {
             VStack(spacing: 3) {
                 ForEach(seriesList, id: \.name) { series in
-                    let label = series.formattedPosition.map {
-                        "\(series.name) • Book \($0)"
-                    } ?? series.name
+                    let label =
+                        series.formattedPosition.map {
+                            "\(series.name) • Book \($0)"
+                        } ?? series.name
                     if let onSeriesSelected {
                         Button(label) { onSeriesSelected(series.name) }
                             .buttonStyle(.plain)

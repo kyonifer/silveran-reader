@@ -486,9 +486,11 @@ public actor AppleWatchActor: NSObject {
     private func queueTransferCancellation(transferID: UUID) {
         guard let session else { return }
         let alreadyQueued = session.outstandingUserInfoTransfers.contains { transfer in
-            guard case .cancelTransfer(let reference) = try? WatchProtocolMessage.decode(
-                from: transfer.userInfo
-            ) else { return false }
+            guard
+                case .cancelTransfer(let reference) = try? WatchProtocolMessage.decode(
+                    from: transfer.userInfo
+                )
+            else { return false }
             return reference.transferID == transferID
         }
         guard !alreadyQueued,
@@ -755,9 +757,10 @@ public actor AppleWatchActor: NSObject {
     }
 
     private func credentialReply(sourceID: BookSourceID) async -> WatchCredentialReply? {
-        guard let source = await BookServiceActor.shared.bookSources.first(where: {
-            $0.id == sourceID && $0.kind == .storyteller
-        }),
+        guard
+            let source = await BookServiceActor.shared.bookSources.first(where: {
+                $0.id == sourceID && $0.kind == .storyteller
+            }),
             let credentials = try? await AuthenticationActor.shared.loadCredentials(
                 sourceID: sourceID
             )
@@ -925,7 +928,8 @@ extension AppleWatchActor: WCSessionDelegate {
         Task { await self.handleReachabilityChange(isReachable: isReachable) }
     }
 
-    nonisolated public func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
+    nonisolated public func session(_ session: WCSession, didReceiveMessage message: [String: Any])
+    {
         guard let decoded = try? WatchProtocolMessage.decode(from: message) else { return }
         Task { await self.handleIncomingMessage(decoded) }
     }
@@ -957,9 +961,11 @@ extension AppleWatchActor: WCSessionDelegate {
         _ session: WCSession,
         didReceiveApplicationContext applicationContext: [String: Any],
     ) {
-        guard case .context(let context) = try? WatchProtocolMessage.decode(
-            from: applicationContext
-        ) else { return }
+        guard
+            case .context(let context) = try? WatchProtocolMessage.decode(
+                from: applicationContext
+            )
+        else { return }
         Task { await self.handleApplicationContext(context) }
     }
 

@@ -127,9 +127,9 @@ public func bookDetailsJSON(
                     SilveranDate.parse(
                         book.updatedAt,
                         field: .updatedAt,
-                        context: book.title
+                        context: book.title,
                     )
-                )
+                ),
             )
         )
     }
@@ -263,19 +263,19 @@ public func coverResponseBytes(
                 deliverAndroidCoverPayload(
                     requestID: requestID,
                     data: data,
-                    shouldPersist: false
+                    shouldPersist: false,
                 )
             case .fetched(let cover):
                 deliverAndroidCoverPayload(
                     requestID: requestID,
                     data: cover.data,
-                    shouldPersist: true
+                    shouldPersist: true,
                 )
             case .missing, .skippedOffline:
                 deliverAndroidCoverPayload(
                     requestID: requestID,
                     data: Data(),
-                    shouldPersist: false
+                    shouldPersist: false,
                 )
         }
     } catch {
@@ -302,7 +302,8 @@ public func coverSurfaceColorARGB(rgbaBase64: String, dark: Bool) throws -> Int3
         throw AndroidBridgeError.invalidCoverPixels
     }
     let color = CoverColorAverager.surfaceColor(rgbaPixels: Array(data), dark: dark)
-    let argb = 0xFF00_0000 | UInt32(color.red) << 16 | UInt32(color.green) << 8
+    let argb =
+        0xFF00_0000 | UInt32(color.red) << 16 | UInt32(color.green) << 8
         | UInt32(color.blue)
     return Int32(bitPattern: argb)
 }
@@ -323,7 +324,7 @@ public func coverPaletteJSON(rgbaBase64: String, dark: Bool) throws -> String {
                 dark ? palette.contentBackground : palette.lightContentBackground
             ),
             cardBackground: argb(dark ? palette.cardBackground : palette.lightCardBackground),
-            cardBorder: argb(dark ? palette.cardBorder : palette.lightCardBorder)
+            cardBorder: argb(dark ? palette.cardBorder : palette.lightCardBorder),
         )
     )
 }
@@ -350,11 +351,12 @@ public func downloadBook(
     guard let book = snapshot.books.first(where: { $0.id == bookID }) else {
         throw AndroidBridgeError.bookNotFound(bookID.uuid)
     }
-    let available = switch mediaCategory {
-        case .ebook: book.hasAvailableEbook
-        case .audio: book.hasAvailableAudiobook
-        case .synced: book.hasAvailableReadaloud
-    }
+    let available =
+        switch mediaCategory {
+            case .ebook: book.hasAvailableEbook
+            case .audio: book.hasAvailableAudiobook
+            case .synced: book.hasAvailableReadaloud
+        }
     guard available else {
         throw AndroidBridgeError.mediaUnavailable(category: category, bookID: bookID.uuid)
     }
@@ -432,7 +434,7 @@ public func startLibraryObservation() async throws {
                 sourceID: record.bookID.sourceID,
                 category: record.category.rawValue,
                 state: downloadStateName(record.state) ?? "queued",
-                progress: downloadProgress(record)
+                progress: downloadProgress(record),
             )
         }
         guard let payload = try? encodeJSON(updates) else { return }
