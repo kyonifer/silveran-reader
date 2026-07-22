@@ -105,7 +105,7 @@ public final class ReadingSession {
     public var localMediaPath: URL?
     @ObservationIgnored var settings: any ReaderSettingsReading
 
-    public private(set) var progressManager: ReadingSessionActor?
+    public private(set) var progressManager: EphemeralProgressManager?
     public private(set) var mediaOverlayManager: MediaOverlayManager?
     public private(set) var commsBridge: ReaderCommsBridge?
     public private(set) var isViewAttached = false
@@ -330,7 +330,7 @@ public final class ReadingSession {
 
     private func setUpHeadlessManagers() {
         if progressManager == nil {
-            let manager = ReadingSessionActor(
+            let manager = EphemeralProgressManager(
                 bridge: nil,
                 settingsVM: settings,
                 bookID: bookID,
@@ -417,7 +417,7 @@ public final class ReadingSession {
             Task { await oldManager.detach() }
         }
 
-        let manager = ReadingSessionActor(
+        let manager = EphemeralProgressManager(
             bridge: bridge,
             settingsVM: settings,
             bookID: bookID,

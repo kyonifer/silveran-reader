@@ -26,7 +26,7 @@ public final class MediaOverlayManager {
     private let tocSectionsCache: [SectionInfo]
 
     public weak var commsBridge: ReaderCommsBridge?
-    public weak var progressManager: ReadingSessionActor?
+    public weak var progressManager: EphemeralProgressManager?
 
     /// Observer ID for SMILPlayerActor state changes
     private var smilObserverId: UUID?

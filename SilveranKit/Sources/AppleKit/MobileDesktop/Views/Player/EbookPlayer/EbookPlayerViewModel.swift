@@ -17,7 +17,7 @@ class EbookPlayerViewModel {
     private(set) var session: ReadingSession? = nil
     private var userSelectedTocId: String? = nil
     private var comicBookStructure: [SectionInfo] = []
-    private var comicProgressManager: ReadingSessionActor? = nil
+    private var comicProgressManager: EphemeralProgressManager? = nil
     private var bridgeInitialColorScheme: ColorScheme = .light
     var styleManager: ReaderStyleManager? = nil
     var searchManager: EbookSearchManager? = nil
@@ -41,7 +41,7 @@ class EbookPlayerViewModel {
         session?.mediaOverlayManager
     }
 
-    var progressManager: ReadingSessionActor? {
+    var progressManager: EphemeralProgressManager? {
         comicProgressManager ?? session?.progressManager
     }
 
@@ -513,7 +513,7 @@ class EbookPlayerViewModel {
         session?.hasAudioNarration = false
         searchManager = nil
         styleManager = nil
-        let manager = ReadingSessionActor(
+        let manager = EphemeralProgressManager(
             bridge: nil,
             settingsVM: settingsVM,
             bookID: bookData?.metadata.id,

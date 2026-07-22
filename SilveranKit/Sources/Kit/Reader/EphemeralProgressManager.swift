@@ -10,7 +10,7 @@ import Observation
 /// - Handle initial navigation to saved reading position
 @SilveranUIActor
 @Observable
-public final class ReadingSessionActor {
+public final class EphemeralProgressManager {
 
     public var chapterSeekBarValue: Double = 0.0
     public var bookFraction: Double? = nil
