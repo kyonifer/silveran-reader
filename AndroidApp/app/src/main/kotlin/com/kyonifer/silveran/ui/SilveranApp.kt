@@ -133,7 +133,9 @@ fun SilveranApp(viewModel: SilveranViewModel) {
                         refresh = viewModel::refreshLibrary,
                         openSettings = { screenName = Screen.Settings.name },
                     )
-                } else if (screen != Screen.Details) {
+                } else if (screen != Screen.Details &&
+                    !(screen == Screen.Reader && readerMode != "audio")
+                ) {
                     TopAppBar(
                         title = {
                             Text(
@@ -239,11 +241,12 @@ fun SilveranApp(viewModel: SilveranViewModel) {
                             mode = readerMode,
                             openResult = state.readerOpen,
                             readerState = state.reader,
+                            navigateBack = navigateBack,
                             readerControl = viewModel::readerControl,
                             readerMessageFromJS = viewModel::readerMessageFromJS,
                             registerWebView = viewModel::registerReaderWebView,
                             unregisterWebView = viewModel::unregisterReaderWebView,
-                            modifier = Modifier.padding(padding),
+                            modifier = Modifier,
                         )
                     }
                 }

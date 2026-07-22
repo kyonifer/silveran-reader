@@ -277,10 +277,13 @@ class SilveranBridgeClient(context: Context) {
             toc = toc,
             selectedChapterId = obj.optionalInt("selectedChapterId"),
             bookFraction = obj.optionalDouble("bookFraction"),
+            chapterFraction = obj.optionalDouble("chapterFraction"),
             chapterCurrentPage = obj.optionalInt("chapterCurrentPage"),
             chapterTotalPages = obj.optionalInt("chapterTotalPages"),
             isPlaying = obj.optBoolean("isPlaying"),
             playbackRate = obj.optDouble("playbackRate", 1.0),
+            bookTimeRemaining = obj.optionalDouble("bookTimeRemaining"),
+            chapterTimeRemaining = obj.optionalDouble("chapterTimeRemaining"),
             overlayToggleCount = obj.optInt("overlayToggleCount"),
             keepScreenOn = obj.optBoolean("keepScreenOn"),
         )

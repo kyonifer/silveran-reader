@@ -153,10 +153,13 @@ data class ReaderState(
     val toc: List<ReaderTocEntry>,
     val selectedChapterId: Int?,
     val bookFraction: Double?,
+    val chapterFraction: Double?,
     val chapterCurrentPage: Int?,
     val chapterTotalPages: Int?,
     val isPlaying: Boolean,
     val playbackRate: Double,
+    val bookTimeRemaining: Double?,
+    val chapterTimeRemaining: Double?,
     val overlayToggleCount: Int,
     val keepScreenOn: Boolean,
 )

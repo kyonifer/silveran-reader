@@ -22,8 +22,9 @@ const getCSS = ({
   customCSS = null,
 }) => {
   const activeClass = mediaActiveClass || "epub-media-overlay-active";
-  const fontFamilyCSS = fontFamily
-    ? `font-family: ${fontFamily} !important;`
+  const resolvedFontFamily = fontFamily === "System Default" ? "serif" : fontFamily;
+  const fontFamilyCSS = resolvedFontFamily
+    ? `font-family: ${resolvedFontFamily} !important;`
     : "";
   const marginLR = `${marginLeftRight}%`;
   const marginTB = `${marginTopBottom}%`;
@@ -90,6 +91,7 @@ const getCSS = ({
         letter-spacing: ${letterSpacing}em !important;
         ${foregroundColorCSS}
     }
+    .silveran-align { text-align: ${textAlign} !important; }
     [align="left"] { text-align: left; }
     [align="right"] { text-align: right; }
     [align="center"] { text-align: center; }
@@ -258,11 +260,28 @@ class FoliateManager {
           this.#handleDoubleClick(event, index, doc);
         });
 
+        this.#markAlignableText(doc);
         this.#bookmarkManager.setupSection(index, doc);
       }
     });
 
     debugLog("FoliateManager", "Event listeners attached");
+  }
+
+  // Books set text-align on their own classes, which outranks a bare element
+  // selector, so the alignment setting alone can never win. Tag the elements
+  // whose current alignment is not an explicit center/right, and let the
+  // tagged rule carry !important; anything the book deliberately centers
+  // (chapter heads, scene breaks) keeps its alignment.
+  #markAlignableText(doc) {
+    const win = doc.defaultView;
+    if (!win) return;
+
+    for (const el of doc.querySelectorAll("p, li, blockquote, dd")) {
+      const align = win.getComputedStyle(el).textAlign;
+      if (align === "center" || align === "right" || align === "end") continue;
+      el.classList.add("silveran-align");
+    }
   }
 
   #handleKeyDown(event) {

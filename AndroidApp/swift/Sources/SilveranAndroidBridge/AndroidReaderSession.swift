@@ -77,25 +77,25 @@ final class AndroidJSEvaluator: JSEvaluating {
 @SilveranUIActor
 @Observable
 final class AndroidReaderSettings: ReaderSettingsReading {
-    var fontSize: Double = 16
-    var fontFamily: String = "system"
-    var lineSpacing: Double = 1.5
+    var fontSize: Double = kDefaultFontSize
+    var fontFamily: String = kDefaultFontFamily
+    var lineSpacing: Double = kDefaultLineSpacing
     var marginLeftRight: Double = kDefaultMarginLeftRightIOS
     var marginTopBottom: Double = kDefaultMarginTopBottom
-    var wordSpacing: Double = 0
-    var letterSpacing: Double = 0
-    var textAlignment: String = "left"
+    var wordSpacing: Double = kDefaultWordSpacing
+    var letterSpacing: Double = kDefaultLetterSpacing
+    var textAlignment: String = kDefaultTextAlignment
     var highlightColor: String? = nil
-    var highlightThickness: Double = 1
+    var highlightThickness: Double = kDefaultHighlightThickness
     var backgroundColor: String? = nil
     var foregroundColor: String? = nil
     var customCSS: String? = nil
-    var singleColumnMode: Bool = true
-    var scrollingMode: Bool = false
-    var enableMarginClickNavigation: Bool = true
-    var userHighlightMode: String = "underline"
-    var readaloudHighlightMode: String = "underline"
-    var lockViewToAudio: Bool = true
+    var singleColumnMode: Bool = kDefaultSingleColumnMode
+    var scrollingMode: Bool = kDefaultScrollingMode
+    var enableMarginClickNavigation: Bool = kDefaultEnableMarginClickNavigation
+    var userHighlightMode: String = kDefaultUserHighlightMode
+    var readaloudHighlightMode: String = kDefaultReadaloudHighlightMode
+    var lockViewToAudio: Bool = kDefaultLockViewToAudio
 
     nonisolated init() {}
 
@@ -131,11 +131,11 @@ final class AndroidReaderSettings: ReaderSettingsReading {
         if let value = update.wordSpacing { wordSpacing = value }
         if let value = update.letterSpacing { letterSpacing = value }
         if let value = update.textAlignment { textAlignment = value }
-        if let value = update.highlightColor { highlightColor = value }
+        if let value = update.highlightColor { highlightColor = value.isEmpty ? nil : value }
         if let value = update.highlightThickness { highlightThickness = value }
-        if let value = update.backgroundColor { backgroundColor = value }
-        if let value = update.foregroundColor { foregroundColor = value }
-        if let value = update.customCSS { customCSS = value }
+        if let value = update.backgroundColor { backgroundColor = value.isEmpty ? nil : value }
+        if let value = update.foregroundColor { foregroundColor = value.isEmpty ? nil : value }
+        if let value = update.customCSS { customCSS = value.isEmpty ? nil : value }
         if let value = update.singleColumnMode { singleColumnMode = value }
         if let value = update.scrollingMode { scrollingMode = value }
         if let value = update.enableMarginClickNavigation { enableMarginClickNavigation = value }
@@ -168,6 +168,19 @@ final class AndroidReaderSession {
         let originalPath: String
         let hasAudioNarration: Bool
         let title: String
+    }
+
+    // Android has no theme management UI yet, so the built-in light/dark
+    // themes are always active, matching what iOS applies via applyActiveTheme.
+    private func applyBuiltInTheme() {
+        let theme: ReaderTheme = isDarkMode ? .builtInDark : .builtInLight
+        settings.backgroundColor = theme.backgroundColor
+        settings.foregroundColor = theme.foregroundColor
+        settings.highlightColor = theme.highlightColor
+        settings.highlightThickness = theme.highlightThickness
+        settings.readaloudHighlightMode = theme.readaloudHighlightMode
+        settings.userHighlightMode = theme.userHighlightMode
+        settings.customCSS = theme.customCSS
     }
 
     func open(bookID: BookID, mode: String) async throws -> String {
@@ -205,6 +218,7 @@ final class AndroidReaderSession {
         overlayToggleCount = 0
         keepScreenOn = false
         lastStatePayload = nil
+        applyBuiltInTheme()
 
         let styleManager = ReaderStyleManager(settingsVM: settings, bridge: bridge)
         self.styleManager = styleManager
@@ -306,6 +320,21 @@ final class AndroidReaderSession {
                         href: text,
                     )
                 }
+            case "selectTocEntry":
+                guard let entry = session.tocEntries[safe: Int(value)] else {
+                    throw AndroidBridgeError.invalidReaderCommand("selectTocEntry \(Int(value))")
+                }
+                let fragment = entry.href.components(separatedBy: "#").dropFirst().first
+                if let fragment,
+                    let sectionId = session.bookStructure[safe: entry.sectionIndex]?.id
+                {
+                    session.progressManager?.handleUserChapterSelectedWithHref(
+                        entry.sectionIndex,
+                        href: "\(sectionId)#\(fragment)",
+                    )
+                } else {
+                    session.progressManager?.handleUserChapterSelected(entry.sectionIndex)
+                }
             case "seekToFraction":
                 session.progressManager?.handleUserProgressSeek(value)
             case "togglePlayPause":
@@ -322,6 +351,7 @@ final class AndroidReaderSession {
                 try settings.apply(json: text)
             case "setDarkMode":
                 isDarkMode = value != 0
+                applyBuiltInTheme()
                 styleManager?.handleDarkModeChange(isDarkMode)
             case "sceneActive":
                 await session.handleSceneBecameActive()
@@ -346,10 +376,13 @@ final class AndroidReaderSession {
         let toc: [Toc]
         let selectedChapterId: Int?
         let bookFraction: Double?
+        let chapterFraction: Double?
         let chapterCurrentPage: Int?
         let chapterTotalPages: Int?
         let isPlaying: Bool
         let playbackRate: Double
+        let bookTimeRemaining: Double?
+        let chapterTimeRemaining: Double?
         let overlayToggleCount: Int
         let keepScreenOn: Bool
     }
@@ -385,10 +418,13 @@ final class AndroidReaderSession {
             },
             selectedChapterId: progressManager?.uiSelectedChapterId,
             bookFraction: progressManager?.bookFraction,
+            chapterFraction: progressManager?.chapterSeekBarValue,
             chapterCurrentPage: progressManager?.chapterCurrentPage,
             chapterTotalPages: progressManager?.chapterTotalPages,
             isPlaying: overlayManager?.isPlaying ?? false,
             playbackRate: overlayManager?.playbackRate ?? 1.0,
+            bookTimeRemaining: overlayManager?.bookTimeRemaining?.rounded(),
+            chapterTimeRemaining: overlayManager?.chapterTimeRemaining?.rounded(),
             overlayToggleCount: overlayToggleCount,
             keepScreenOn: keepScreenOn,
         )

@@ -1,7 +1,9 @@
 package com.kyonifer.silveran.ui
 
 import android.annotation.SuppressLint
+import android.app.Activity
 import android.content.Context
+import android.content.ContextWrapper
 import android.content.pm.ApplicationInfo
 import android.graphics.Bitmap
 import android.graphics.Color
@@ -11,32 +13,34 @@ import android.webkit.JavascriptInterface
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.RotateLeft
-import androidx.compose.material.icons.filled.RotateRight
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.webkit.WebViewAssetLoader
 import androidx.webkit.WebViewClientCompat
 import androidx.webkit.WebViewCompat
@@ -56,6 +60,7 @@ internal fun ReaderScreen(
     mode: String,
     openResult: ReaderOpenResult?,
     readerState: ReaderState?,
+    navigateBack: () -> Unit,
     readerControl: (String, Double, String) -> Unit,
     readerMessageFromJS: (String, String) -> Unit,
     registerWebView: (Any, WebView) -> Unit,
@@ -69,6 +74,12 @@ internal fun ReaderScreen(
     val webView = remember(book.id, mode) {
         createReaderWebView(context, readerMessageFromJS)
     }
+
+    var displaySettings by remember(book.id, mode) { mutableStateOf(ReaderDisplaySettings()) }
+    var chromeVisible by remember(book.id, mode) { mutableStateOf(true) }
+    var lastToggleCount by remember(book.id, mode) { mutableIntStateOf(0) }
+    var showToc by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
 
     DisposableEffect(webView) {
         registerWebView(webView, webView)
@@ -84,6 +95,14 @@ internal fun ReaderScreen(
         }
     }
 
+    // The Swift settings object outlives reader sessions; push the full local
+    // settings on open so a previous book's overrides can't leak in.
+    LaunchedEffect(webView, openResult) {
+        if (openResult != null) {
+            readerControl("updateReaderSettings", 0.0, displaySettings.toUpdateJson())
+        }
+    }
+
     LaunchedEffect(webView, openResult?.readerPath) {
         val open = openResult ?: return@LaunchedEffect
         val bookUrl = readerContentUrl(context.filesDir, open.readerPath) ?: return@LaunchedEffect
@@ -95,52 +114,132 @@ internal fun ReaderScreen(
         view.keepScreenOn = readerState?.keepScreenOn == true
     }
 
-    Box(modifier = modifier.fillMaxSize()) {
-        AndroidView(factory = { webView }, modifier = Modifier.fillMaxSize())
+    val toggleCount = readerState?.overlayToggleCount ?: 0
+    LaunchedEffect(toggleCount) {
+        if (toggleCount > lastToggleCount) {
+            chromeVisible = !chromeVisible
+        }
+        lastToggleCount = toggleCount
+    }
+
+    SystemBarsVisibility(visible = chromeVisible)
+
+    val (chromeBg, chromeFg) = readerChromeColors(isDark)
+
+    // WKWebView shrinks its layout viewport by the safe area, so on iOS the
+    // page's top margin starts below the status bar. Android's WebView gets
+    // the raw window; without this inset the toolbar lands on the first line
+    // of text. Sticky maximum so hiding the bars doesn't re-paginate.
+    val density = LocalDensity.current
+    val statusBarTop = WindowInsets.statusBars.getTop(density)
+    var webViewTopInset by remember(book.id, mode) { mutableIntStateOf(0) }
+    LaunchedEffect(statusBarTop) {
+        if (statusBarTop > webViewTopInset) webViewTopInset = statusBarTop
+    }
+
+    Box(modifier = modifier.fillMaxSize().background(chromeBg)) {
+        AndroidView(
+            factory = { webView },
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(top = with(density) { webViewTopInset.toDp() }),
+        )
         if (openResult == null) {
             CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
         }
-        if (readerState?.hasAudioNarration == true) {
-            ReadaloudControls(
-                isPlaying = readerState.isPlaying,
-                readerControl = readerControl,
-                modifier = Modifier.align(Alignment.BottomCenter),
+
+        ReaderBottomOverlay(
+            statsVisible = !chromeVisible,
+            hasAudioNarration = readerState?.hasAudioNarration == true,
+            isPlaying = readerState?.isPlaying == true,
+            bookFraction = readerState?.bookFraction,
+            currentPage = readerState?.chapterCurrentPage,
+            totalPages = readerState?.chapterTotalPages,
+            bookTimeRemaining = readerState?.bookTimeRemaining,
+            chapterTimeRemaining = readerState?.chapterTimeRemaining,
+            backgroundColor = chromeBg,
+            readerControl = readerControl,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
+
+        ReaderProgressHairline(
+            fraction = readerState?.chapterFraction ?: 0.0,
+            isDark = isDark,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
+
+        AnimatedVisibility(
+            visible = chromeVisible,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.align(Alignment.TopCenter),
+        ) {
+            ReaderTopBar(
+                backgroundColor = chromeBg,
+                contentColor = chromeFg,
+                onBack = navigateBack,
+                onShowToc = { showToc = true },
+                onShowSettings = { showSettings = true },
             )
         }
+    }
+
+    if (showToc) {
+        ReaderTocSheet(
+            toc = readerState?.toc.orEmpty(),
+            selectedIndex = selectedTocIndex(
+                readerState?.toc.orEmpty(),
+                readerState?.selectedChapterId,
+            ),
+            onSelect = { index ->
+                readerControl("selectTocEntry", index.toDouble(), "")
+                showToc = false
+            },
+            onDismiss = { showToc = false },
+        )
+    }
+
+    if (showSettings) {
+        ReaderSettingsSheet(
+            settings = displaySettings,
+            onChange = { updated, commit ->
+                displaySettings = updated
+                if (commit) {
+                    readerControl("updateReaderSettings", 0.0, updated.toUpdateJson())
+                }
+            },
+            onDismiss = { showSettings = false },
+        )
     }
 }
 
 @Composable
-private fun ReadaloudControls(
-    isPlaying: Boolean,
-    readerControl: (String, Double, String) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Surface(
-        modifier = modifier.padding(16.dp),
-        shape = MaterialTheme.shapes.extraLarge,
-        tonalElevation = 6.dp,
-        shadowElevation = 6.dp,
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconButton(onClick = { readerControl("prevSentence", 0.0, "") }) {
-                Icon(Icons.Filled.RotateLeft, contentDescription = "Skip back")
-            }
-            IconButton(onClick = { readerControl("togglePlayPause", 0.0, "") }) {
-                Icon(
-                    imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                    contentDescription = if (isPlaying) "Pause" else "Play",
-                )
-            }
-            IconButton(onClick = { readerControl("nextSentence", 0.0, "") }) {
-                Icon(Icons.Filled.RotateRight, contentDescription = "Skip forward")
-            }
+private fun SystemBarsVisibility(visible: Boolean) {
+    val view = LocalView.current
+    LaunchedEffect(visible) {
+        val window = view.context.findActivity()?.window ?: return@LaunchedEffect
+        val controller = WindowCompat.getInsetsController(window, view)
+        controller.systemBarsBehavior =
+            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        if (visible) {
+            controller.show(WindowInsetsCompat.Type.systemBars())
+        } else {
+            controller.hide(WindowInsetsCompat.Type.systemBars())
         }
     }
+    DisposableEffect(view) {
+        onDispose {
+            val window = view.context.findActivity()?.window ?: return@onDispose
+            WindowCompat.getInsetsController(window, view)
+                .show(WindowInsetsCompat.Type.systemBars())
+        }
+    }
+}
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
 }
 
 @SuppressLint("SetJavaScriptEnabled")
