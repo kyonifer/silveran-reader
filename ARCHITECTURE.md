@@ -18,7 +18,7 @@ The root package exports it as the [`SilveranKit` SwiftPM product](https://githu
 
 Important areas:
 
-- [`Models`](https://github.com/kyonifer/silveran-reader/tree/main/SilveranKit/Sources/Kit/Models) for shared data types.
+- [`Models`](https://github.com/kyonifer/silveran-reader/tree/main/SilveranKit/Sources/Kit/Models) for shared data types. Among them, [`BookMetadataCandidate`](https://github.com/kyonifer/silveran-reader/blob/main/SilveranKit/Sources/Kit/Models/BookMetadataCandidate.swift) and [`CoverCandidate`](https://github.com/kyonifer/silveran-reader/blob/main/SilveranKit/Sources/Kit/Models/CoverCandidate.swift) are the shapes every metadata and cover provider is adapted into, so the metadata editor and the Node addon compare the same fields.
 - [`Actors`](https://github.com/kyonifer/silveran-reader/tree/main/SilveranKit/Sources/Kit/Actors) for library, playback, downloads, Storyteller, and progress logic.
 - [`EPUB`](https://github.com/kyonifer/silveran-reader/tree/main/SilveranKit/Sources/Kit/EPUB) for EPUB and SMIL parsing.
 - [`Facades`](https://github.com/kyonifer/silveran-reader/tree/main/SilveranKit/Sources/Kit/Facades), described below.
@@ -63,6 +63,7 @@ Optional products sit beside the core and Apple package:
 
 - [`SilveranContentServer`](https://github.com/kyonifer/silveran-reader/tree/main/SilveranKit/Sources/ContentServer) implements the local content-server integration.
 - [`SilveranReadaloud`](https://github.com/kyonifer/silveran-reader/tree/main/SilveranKit/Sources/Readaloud) implements readaloud alignment.
+- [`SilveranNode`](https://github.com/kyonifer/silveran-reader/tree/main/SilveranKit/Sources/Node) is a dynamic library that exposes the metadata and cover lookups to Node.js as a Node-API addon. See [`docs/NODE_INTEGRATION.md`](https://github.com/kyonifer/silveran-reader/blob/main/docs/NODE_INTEGRATION.md).
 
 ## Apps
 
@@ -89,5 +90,6 @@ Build and run helpers live in [`scripts`](https://github.com/kyonifer/silveran-r
 - [`genxproj`](https://github.com/kyonifer/silveran-reader/blob/main/scripts/genxproj) regenerates `Silveran.xcodeproj` from [`XCodeApps/project.yml`](https://github.com/kyonifer/silveran-reader/blob/main/XCodeApps/project.yml).
 - [`macbuild`](https://github.com/kyonifer/silveran-reader/blob/main/scripts/macbuild), [`iosbuild`](https://github.com/kyonifer/silveran-reader/blob/main/scripts/iosbuild), [`tvbuild`](https://github.com/kyonifer/silveran-reader/blob/main/scripts/tvbuild), and [`watchbuild`](https://github.com/kyonifer/silveran-reader/blob/main/scripts/watchbuild) build Apple targets.
 - [`linuxbuild`](https://github.com/kyonifer/silveran-reader/blob/main/scripts/linuxbuild) and [`linuxrun`](https://github.com/kyonifer/silveran-reader/blob/main/scripts/linuxrun) build and run the Linux app shell.
+- [`nodebuild`](https://github.com/kyonifer/silveran-reader/blob/main/scripts/nodebuild) builds the Node addon.
 
 See [`CONTRIBUTING.md`](https://github.com/kyonifer/silveran-reader/blob/main/CONTRIBUTING.md) for local setup, build commands, and formatting expectations.

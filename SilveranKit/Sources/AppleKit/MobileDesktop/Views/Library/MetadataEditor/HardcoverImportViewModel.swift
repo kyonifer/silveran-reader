@@ -8,7 +8,7 @@ final class HardcoverImportViewModel {
     var searchQuery: String = ""
     var searchResults: [HardcoverSearchResult] = []
     var selectedResult: HardcoverSearchResult?
-    var fetchedDetails: HardcoverBookDetails?
+    var fetchedDetails: BookMetadataCandidate?
     var isSearching = false
     var isFetching = false
     var error: String?
@@ -17,7 +17,7 @@ final class HardcoverImportViewModel {
     var hasToken = false
     var isEditingToken = false
 
-    var infoDetails: [Int: HardcoverBookDetails] = [:]
+    var infoDetails: [Int: BookMetadataCandidate] = [:]
     var infoFetchingId: Int?
 
     func fetchInfo(for result: HardcoverSearchResult) async {
@@ -128,11 +128,11 @@ final class HardcoverImportViewModel {
     var selectedEditionId: Int?
     var selectedTextEditionId: Int?
     var selectedAudiobookEditionId: Int?
-    var selectedTextDetails: HardcoverBookDetails?
-    var selectedAudiobookDetails: HardcoverBookDetails?
+    var selectedTextDetails: BookMetadataCandidate?
+    var selectedAudiobookDetails: BookMetadataCandidate?
 
-    var selectedImports: [MetadataEditorViewModel.HardcoverImportSource: HardcoverBookDetails] {
-        var imports: [MetadataEditorViewModel.HardcoverImportSource: HardcoverBookDetails] = [:]
+    var selectedImports: [MetadataEditorViewModel.HardcoverImportSource: BookMetadataCandidate] {
+        var imports: [MetadataEditorViewModel.HardcoverImportSource: BookMetadataCandidate] = [:]
         if let selectedTextDetails {
             imports[.text] = selectedTextDetails
         } else if let fetchedDetails {
@@ -184,7 +184,7 @@ final class HardcoverImportViewModel {
     }
 
     func selectEdition(
-        _ edition: HardcoverEditionInfo,
+        _ edition: BookEditionCandidate,
         bookId: Int,
         source: MetadataEditorViewModel.HardcoverImportSource,
     ) {
@@ -207,9 +207,9 @@ final class HardcoverImportViewModel {
     }
 
     func detailsForEdition(
-        _ edition: HardcoverEditionInfo,
+        _ edition: BookEditionCandidate,
         bookId: Int,
-    ) -> HardcoverBookDetails? {
+    ) -> BookMetadataCandidate? {
         guard let bookDetails = infoDetails[bookId] else { return nil }
 
         let releaseDate: String? = {
@@ -220,7 +220,7 @@ final class HardcoverImportViewModel {
             return raw
         }()
 
-        let details = HardcoverBookDetails(
+        let details = BookMetadataCandidate(
             id: bookDetails.id,
             slug: bookDetails.slug,
             title: edition.title ?? bookDetails.title,

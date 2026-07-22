@@ -7,107 +7,12 @@ import FoundationNetworking
 public struct HardcoverSearchResult: Sendable, Identifiable {
     public let id: Int
     public let title: String
-    public let authorNames: [String]
-    public let releaseYear: Int?
-}
-
-public struct HardcoverEditionInfo: Sendable, Identifiable {
-    public let id: Int
-    public let format: String
-    public let editionInfo: String?
-    public let title: String?
     public let subtitle: String?
-    public let isbn13: String?
-    public let isbn10: String?
-    public let asin: String?
-    public let pages: Int?
-    public let audioSeconds: Int?
-    public let releaseDate: String?
-    public let language: String?
-    public let country: String?
-    public let publisher: String?
-    public let narrators: [String]
-    public let otherContributors: [(name: String, role: String)]
-    public let imageUrl: String?
-    public let imageWidth: Int?
-    public let imageHeight: Int?
-    public let rawJSON: String?
-}
-
-public struct HardcoverTagInfo: Sendable {
-    public let name: String
-    public let count: Int
-    public let category: String?
-
-    public init(name: String, count: Int, category: String?) {
-        self.name = name
-        self.count = count
-        self.category = category
-    }
-}
-
-public struct HardcoverBookDetails: Sendable {
-    public let id: Int?
-    public let slug: String?
-    public let title: String?
-    public let subtitle: String?
-    public let description: String?
-    public let releaseDate: String?
-    public let rating: Double?
-    public let language: String?
     public let authors: [String]
-    public let narrators: [String]
-    public let creators: [(name: String, role: String)]
-    public let series: [(name: String, position: Double?, featured: Bool)]
-    public let tags: [HardcoverTagInfo]
-    public let defaultAudioEdition: HardcoverEditionInfo?
-    public let editions: [HardcoverEditionInfo]
+    public let seriesName: String?
+    public let seriesPosition: String?
+    public let releaseYear: Int?
     public let imageUrl: String?
-    public let imageWidth: Int?
-    public let imageHeight: Int?
-    public let rawJSON: String?
-
-    public init(
-        id: Int? = nil,
-        slug: String? = nil,
-        title: String?,
-        subtitle: String?,
-        description: String?,
-        releaseDate: String?,
-        rating: Double?,
-        language: String? = nil,
-        authors: [String],
-        narrators: [String],
-        creators: [(name: String, role: String)],
-        series: [(name: String, position: Double?, featured: Bool)],
-        tags: [HardcoverTagInfo],
-        defaultAudioEdition: HardcoverEditionInfo? = nil,
-        editions: [HardcoverEditionInfo],
-        imageUrl: String? = nil,
-        imageWidth: Int? = nil,
-        imageHeight: Int? = nil,
-        rawJSON: String? = nil,
-    ) {
-        self.id = id
-        self.slug = slug
-        self.title = title
-        self.subtitle = subtitle
-        self.description = description
-        self.releaseDate = releaseDate
-        self.rating = rating
-        self.language = language
-        self.authors = authors
-        self.narrators = narrators
-        self.creators = creators
-        self.series = series
-        self.tags = tags
-        self.defaultAudioEdition = defaultAudioEdition
-        self.editions = editions
-        self.imageUrl = imageUrl
-        self.imageWidth = imageWidth
-        self.imageHeight = imageHeight
-        self.rawJSON = rawJSON
-    }
 }
 
 public actor HardcoverActor {
@@ -125,7 +30,8 @@ public actor HardcoverActor {
     }
 
     public func setToken(_ token: String?) {
-        self.token = token
+        let trimmed = token?.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.token = (trimmed?.isEmpty == false) ? trimmed : nil
     }
 
     public var hasToken: Bool { token != nil }
@@ -189,19 +95,37 @@ public actor HardcoverActor {
                 return nil
             }
 
-            let authorNames = doc["author_names"] as? [String] ?? []
+            let authors = doc["author_names"] as? [String] ?? []
             let releaseYear = doc["release_year"] as? Int
+            let featuredSeries = doc["featured_series"] as? [String: Any]
+            let seriesName =
+                featuredSeries?["series_name"] as? String
+                ?? (featuredSeries?["series"] as? [String: Any])?["name"] as? String
+                ?? (doc["series_names"] as? [String])?.first
+            let seriesPosition = (featuredSeries?["position"] ?? doc["featured_series_position"])
+                .flatMap { pos -> String? in
+                    if let n = pos as? Int { return String(n) }
+                    if let d = pos as? Double { return String(d) }
+                    return pos as? String
+                }
+            let imageUrl =
+                (doc["image"] as? [String: Any])?["url"] as? String
+                ?? doc["image"] as? String
 
             return HardcoverSearchResult(
                 id: id,
                 title: title,
-                authorNames: authorNames,
+                subtitle: doc["subtitle"] as? String,
+                authors: authors,
+                seriesName: seriesName,
+                seriesPosition: seriesPosition,
                 releaseYear: releaseYear,
+                imageUrl: imageUrl,
             )
         }
     }
 
-    public func fetchBookDetails(id: Int) async throws -> HardcoverBookDetails {
+    public func fetchBookDetails(id: Int) async throws -> BookMetadataCandidate {
         guard let token else { throw HardcoverError.noToken }
 
         let graphQL: [String: Any] = [
@@ -362,7 +286,7 @@ public actor HardcoverActor {
 
         let contributions = book["contributions"] as? [[String: Any]] ?? []
         var authors: [String] = []
-        var creators: [(name: String, role: String)] = []
+        var creators: [BookMetadataContributor] = []
 
         for contrib in contributions {
             guard let author = contrib["author"] as? [String: Any],
@@ -372,7 +296,7 @@ public actor HardcoverActor {
             if role.lowercased() == "author" || role.isEmpty {
                 authors.append(name)
             } else {
-                creators.append((name: name, role: role))
+                creators.append(BookMetadataContributor(name: name, role: role))
             }
         }
 
@@ -381,30 +305,30 @@ public actor HardcoverActor {
         let narrators = defaultAudioEdition?.narrators ?? []
 
         let bookSeries = book["book_series"] as? [[String: Any]] ?? []
-        let series: [(name: String, position: Double?, featured: Bool)] = bookSeries.compactMap {
-            bs in
+        let series: [BookMetadataSeriesRef] = bookSeries.compactMap { bs in
             guard let seriesObj = bs["series"] as? [String: Any],
                 let name = seriesObj["name"] as? String
             else { return nil }
             let position = bs["position"] as? Double
             let featured = bs["featured"] as? Bool ?? false
-            return (name: name, position: position, featured: featured)
+            return BookMetadataSeriesRef(name: name, position: position, featured: featured)
         }
 
         let taggableCounts = book["taggable_counts"] as? [[String: Any]] ?? []
-        let tags: [HardcoverTagInfo] = taggableCounts.compactMap { tc in
+        let tags: [BookMetadataTag] = taggableCounts.compactMap { tc in
             guard let tag = tc["tag"] as? [String: Any],
                 let name = tag["tag"] as? String
             else { return nil }
             let count = tc["count"] as? Int ?? 0
             let category = (tag["tag_category"] as? [String: Any])?["category"] as? String
-            return HardcoverTagInfo(name: name, count: count, category: category)
+            return BookMetadataTag(name: name, count: count, category: category)
         }
 
         let editionsRaw = book["editions"] as? [[String: Any]] ?? []
-        let editions: [HardcoverEditionInfo] = editionsRaw.compactMap(Self.parseEdition)
+        let editions: [BookEditionCandidate] = editionsRaw.compactMap(Self.parseEdition)
 
-        return HardcoverBookDetails(
+        return BookMetadataCandidate(
+            provider: .hardcover,
             id: id,
             slug: slug,
             title: title,
@@ -426,7 +350,7 @@ public actor HardcoverActor {
         )
     }
 
-    private static func parseEdition(_ ed: [String: Any]) -> HardcoverEditionInfo? {
+    private static func parseEdition(_ ed: [String: Any]) -> BookEditionCandidate? {
         guard let format = ed["edition_format"] as? String,
             let edId = ed["id"] as? Int
         else { return nil }
@@ -440,7 +364,7 @@ public actor HardcoverActor {
         let rawEditionJSON = Self.prettyJSONString(ed)
         let edContribs = ed["contributions"] as? [[String: Any]] ?? []
         var edNarrators: [String] = []
-        var edOther: [(name: String, role: String)] = []
+        var edOther: [BookMetadataContributor] = []
         for c in edContribs {
             guard let a = c["author"] as? [String: Any],
                 let name = a["name"] as? String
@@ -449,10 +373,10 @@ public actor HardcoverActor {
             if role.lowercased() == "narrator" {
                 edNarrators.append(name)
             } else if !role.isEmpty && role.lowercased() != "author" {
-                edOther.append((name: name, role: role))
+                edOther.append(BookMetadataContributor(name: name, role: role))
             }
         }
-        return HardcoverEditionInfo(
+        return BookEditionCandidate(
             id: edId,
             format: format,
             editionInfo: ed["edition_information"] as? String,
@@ -530,6 +454,7 @@ public enum HardcoverError: Error, LocalizedError {
     case unauthorized
     case rateLimited
     case bookNotFound
+    case invalidBookID(String)
     case unexpectedStatus(Int)
     case graphQLError(String)
 
@@ -541,6 +466,7 @@ public enum HardcoverError: Error, LocalizedError {
             case .unauthorized: return "Invalid or expired Hardcover token"
             case .rateLimited: return "Rate limited - try again in a minute"
             case .bookNotFound: return "Book not found on Hardcover"
+            case .invalidBookID(let id): return "Not a Hardcover book id: \(id)"
             case .unexpectedStatus(let code): return "Unexpected HTTP status: \(code)"
             case .graphQLError(let msg): return "Hardcover: \(msg)"
         }

@@ -25,6 +25,10 @@ Read [ARCHITECTURE.md](ARCHITECTURE.md) first. It maps the SwiftPM products, dep
 - Run `scripts/macbuild` and `scripts/iosbuild` to build in the terminal for those respective targets.
 - Run `scripts/macrun` and `scripts/iosrun` to launch the application once built. `iosrun` may need tweaking for your installed simulator.
 
+## Building the Node Addon
+
+`scripts/nodebuild` builds the `SilveranNode` addon on macOS or Linux. See [docs/NODE_INTEGRATION.md](docs/NODE_INTEGRATION.md) for the exports it provides and what a consumer needs at runtime.
+
 ## Building on Other Platforms
 
 Not supported yet, but coming soon. You can try playing around with the `scripts/linuxbuild` and `linuxrun` if you want to, though.

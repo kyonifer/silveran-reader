@@ -29,7 +29,7 @@ final class UnifiedMetadataImportViewModel {
     private var currentBook: MetadataEditorViewModel.EditableBook?
 
     /// The single chosen Hardcover candidate: work-level, or overlaid with one edition's fields.
-    var hardcoverCandidate: HardcoverBookDetails?
+    var hardcoverCandidate: BookMetadataCandidate?
     var hardcoverSelectionKey: String?
     var expandedHardcoverResultIds: Set<Int> = []
 
@@ -66,9 +66,9 @@ final class UnifiedMetadataImportViewModel {
         "description": "Description",
     ]
 
-    var audnexusCandidate: HardcoverBookDetails? { audnexus.fetchedDetails?.asImportDetails }
+    var audnexusCandidate: BookMetadataCandidate? { audnexus.fetchedDetails?.asMetadataCandidate }
 
-    func candidate(for column: Column) -> HardcoverBookDetails? {
+    func candidate(for column: Column) -> BookMetadataCandidate? {
         switch column {
             case .current: return nil
             case .audnexus: return audnexusCandidate
@@ -138,7 +138,7 @@ final class UnifiedMetadataImportViewModel {
         hardcoverSelectionKey = "work-\(result.id)"
     }
 
-    func selectHardcoverEdition(_ edition: HardcoverEditionInfo, result: HardcoverSearchResult) {
+    func selectHardcoverEdition(_ edition: BookEditionCandidate, result: HardcoverSearchResult) {
         guard let details = hardcover.detailsForEdition(edition, bookId: result.id) else { return }
         hardcoverCandidate = details
         hardcoverSelectionKey = "edition-\(edition.id)"
@@ -288,13 +288,13 @@ final class UnifiedMetadataImportViewModel {
 
     var changedCount: Int { selectedFieldIds().count }
 
-    func buildSyntheticDetails() -> HardcoverBookDetails {
-        func pick(_ field: String) -> HardcoverBookDetails? {
+    func buildSyntheticDetails() -> BookMetadataCandidate {
+        func pick(_ field: String) -> BookMetadataCandidate? {
             guard let column = fieldSource[field], column != .current else { return nil }
             return candidate(for: column)
         }
 
-        return HardcoverBookDetails(
+        return BookMetadataCandidate(
             title: pick("title")?.title,
             subtitle: pick("subtitle")?.subtitle,
             description: pick("description")?.description,
@@ -305,17 +305,17 @@ final class UnifiedMetadataImportViewModel {
             narrators: pick("narrators")?.narrators ?? [],
             creators: pick("creators")?.creators ?? [],
             series: pick("series")?.series ?? [],
-            tags: selectedTagNames().map { HardcoverTagInfo(name: $0, count: 0, category: nil) },
+            tags: selectedTagNames().map { BookMetadataTag(name: $0, count: 0, category: nil) },
             editions: [],
         )
     }
 
-    func buildImports() -> [MetadataEditorViewModel.HardcoverImportSource: HardcoverBookDetails] {
+    func buildImports() -> [MetadataEditorViewModel.HardcoverImportSource: BookMetadataCandidate] {
         let synthetic = buildSyntheticDetails()
         return [.text: synthetic, .audiobook: synthetic]
     }
 
-    static func displayValue(_ field: String, _ details: HardcoverBookDetails?) -> String {
+    static func displayValue(_ field: String, _ details: BookMetadataCandidate?) -> String {
         guard let details else { return "" }
         switch field {
             case "title": return details.title ?? ""

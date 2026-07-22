@@ -70,7 +70,7 @@ struct MetadataQuickEditView: View {
     @State private var lookupResults: [AudnexusSearchResult] = []
     // Only the tags field needs the full Audnexus record; every other field is derivable straight
     // from the lightweight search result, so details are fetched lazily per row and cached here.
-    @State private var lookupTagDetailsByAsin: [String: HardcoverBookDetails] = [:]
+    @State private var lookupTagDetailsByAsin: [String: BookMetadataCandidate] = [:]
     @State private var lookupError: String?
     @State private var audnexusRegion = "us"
     @State private var editorContentHeight: CGFloat = 0
@@ -359,8 +359,8 @@ struct MetadataQuickEditView: View {
             coverThumb(result.coverUrl)
             VStack(alignment: .leading, spacing: 2) {
                 Text(result.title).font(.callout.weight(.semibold)).lineLimit(2)
-                if !result.authorNames.isEmpty {
-                    Text(result.authorNames.joined(separator: ", "))
+                if !result.authors.isEmpty {
+                    Text(result.authors.joined(separator: ", "))
                         .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
                 if let year = result.releaseYear {
@@ -446,8 +446,8 @@ struct MetadataQuickEditView: View {
                 }
             case .stringList(let key, _):
                 switch key {
-                    case "authors": return result.authorNames.joined(separator: ", ")
-                    case "narrators": return result.narratorNames.joined(separator: ", ")
+                    case "authors": return result.authors.joined(separator: ", ")
+                    case "narrators": return result.narrators.joined(separator: ", ")
                     case "tags":
                         guard let details = lookupTagDetailsByAsin[result.asin] else { return nil }
                         return details.tags.map(\.name).joined(separator: ", ")
@@ -475,8 +475,8 @@ struct MetadataQuickEditView: View {
                 viewModel.markDirty(field: key, for: bookId)
             case .stringList(let key, _):
                 switch key {
-                    case "authors": viewModel.books[index].authors = result.authorNames
-                    case "narrators": viewModel.books[index].narrators = result.narratorNames
+                    case "authors": viewModel.books[index].authors = result.authors
+                    case "narrators": viewModel.books[index].narrators = result.narrators
                     case "tags":
                         guard let details = lookupTagDetailsByAsin[result.asin] else { return }
                         viewModel.books[index].tags = details.tags.map(\.name)
@@ -513,7 +513,7 @@ struct MetadataQuickEditView: View {
             asin: result.asin,
             region: audnexusRegion,
         ) {
-            lookupTagDetailsByAsin[result.asin] = details.asImportDetails
+            lookupTagDetailsByAsin[result.asin] = details.asMetadataCandidate
         }
     }
 

@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")" && pwd)"
+cd "${SCRIPT_DIR}/.."
+
+usage() {
+    cat <<'EOF'
+Usage: scripts/nodebuild [--debug] [swift build options]
+
+Builds the SilveranNode addon and copies it to .build/SilveranNode.node, the
+form Node's require() expects.
+
+Options:
+  -h, --help     Show this help.
+  --debug        Build the debug configuration. Default: release.
+EOF
+}
+
+CONFIGURATION=release
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+    -h | --help)
+        usage
+        exit 0
+        ;;
+    --debug)
+        CONFIGURATION=debug
+        shift
+        ;;
+    *)
+        break
+        ;;
+    esac
+done
+
+swift build -c "${CONFIGURATION}" --product SilveranNode "$@"
+
+BUILT="$(swift build -c "${CONFIGURATION}" --show-bin-path)"
+for candidate in libSilveranNode.dylib libSilveranNode.so; do
+    if [[ -f "${BUILT}/${candidate}" ]]; then
+        cp "${BUILT}/${candidate}" .build/SilveranNode.node
+        echo "Wrote .build/SilveranNode.node"
+        exit 0
+    fi
+done
+
+echo "No SilveranNode library found in ${BUILT}" >&2
+exit 1

@@ -108,9 +108,9 @@ final class AudnexusImportViewModel {
 
     /// Reuses the metadata editor's existing Hardcover import pipeline: the details go under both
     /// `.text` and `.audiobook` so narrator fields (routed to the audiobook source) also apply.
-    func buildImports() -> [MetadataEditorViewModel.HardcoverImportSource: HardcoverBookDetails]? {
+    func buildImports() -> [MetadataEditorViewModel.HardcoverImportSource: BookMetadataCandidate]? {
         guard let details = fetchedDetails else { return nil }
-        let converted = details.asImportDetails
+        let converted = details.asMetadataCandidate
         return [.text: converted, .audiobook: converted]
     }
 
@@ -126,46 +126,4 @@ final class AudnexusImportViewModel {
     }
 }
 
-extension AudnexusBookDetails {
-    /// Adapts an Audnexus record into the shared `HardcoverBookDetails` currency the metadata editor
-    /// applies. `creators` is left empty (Audnexus models only authors + narrators); series `featured`
-    /// defaults to true only for the primary series.
-    var asImportDetails: HardcoverBookDetails {
-        var series: [(name: String, position: Double?, featured: Bool)] = []
-        if let primary = seriesPrimary, !primary.name.isEmpty {
-            series.append(
-                (
-                    name: primary.name, position: primary.position.flatMap { Double($0) },
-                    featured: true,
-                )
-            )
-        }
-        if let secondary = seriesSecondary, !secondary.name.isEmpty {
-            series.append(
-                (
-                    name: secondary.name,
-                    position: secondary.position.flatMap { Double($0) },
-                    featured: false,
-                )
-            )
-        }
-
-        return HardcoverBookDetails(
-            title: title,
-            subtitle: subtitle,
-            description: description,
-            releaseDate: releaseDate,
-            rating: rating,
-            language: language,
-            authors: authors,
-            narrators: narrators,
-            creators: [],
-            series: series,
-            tags: genres.map { HardcoverTagInfo(name: $0.name, count: 0, category: $0.type) },
-            editions: [],
-            imageUrl: imageUrl,
-            rawJSON: rawJSON,
-        )
-    }
-}
 #endif

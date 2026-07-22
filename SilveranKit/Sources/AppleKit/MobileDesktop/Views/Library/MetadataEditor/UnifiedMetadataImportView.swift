@@ -7,7 +7,8 @@ struct UnifiedMetadataImportView: View {
     let bookAuthor: String?
     let currentBook: MetadataEditorViewModel.EditableBook
     let onImport:
-        ([MetadataEditorViewModel.HardcoverImportSource: HardcoverBookDetails], Set<String>) -> Void
+        ([MetadataEditorViewModel.HardcoverImportSource: BookMetadataCandidate], Set<String>) ->
+            Void
     @Environment(\.dismiss) private var dismiss
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
@@ -137,16 +138,16 @@ struct UnifiedMetadataImportView: View {
                 coverThumb(result.coverUrl)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(result.title).font(.callout.weight(.semibold)).lineLimit(2)
-                    if !result.authorNames.isEmpty {
-                        Text(result.authorNames.joined(separator: ", "))
+                    if !result.authors.isEmpty {
+                        Text(result.authors.joined(separator: ", "))
                             .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                     }
                     if let series = result.seriesName {
                         Text(result.seriesPosition.map { "\(series) #\($0)" } ?? series)
                             .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                     }
-                    if !result.narratorNames.isEmpty {
-                        Text("Narrated by \(result.narratorNames.joined(separator: ", "))")
+                    if !result.narrators.isEmpty {
+                        Text("Narrated by \(result.narrators.joined(separator: ", "))")
                             .font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
                     }
                 }
@@ -237,7 +238,7 @@ struct UnifiedMetadataImportView: View {
                     VStack(alignment: .leading, spacing: 1) {
                         Text(result.title).font(.callout.weight(.semibold)).lineLimit(2)
                         Text(
-                            [result.authorNames.first, result.releaseYear.map(String.init)]
+                            [result.authors.first, result.releaseYear.map(String.init)]
                                 .compactMap { $0 }.joined(separator: " - ")
                         )
                         .font(.caption).foregroundStyle(.secondary).lineLimit(1)
@@ -266,7 +267,7 @@ struct UnifiedMetadataImportView: View {
     }
 
     private func hardcoverEditionRow(
-        _ edition: HardcoverEditionInfo,
+        _ edition: BookEditionCandidate,
         result: HardcoverSearchResult,
     ) -> some View {
         let isSelected = viewModel.hardcoverSelectionKey == "edition-\(edition.id)"
@@ -741,7 +742,7 @@ struct UnifiedMetadataImportView: View {
         .clipShape(RoundedRectangle(cornerRadius: 4))
     }
 
-    private func editionYear(_ edition: HardcoverEditionInfo) -> String? {
+    private func editionYear(_ edition: BookEditionCandidate) -> String? {
         guard let raw = edition.releaseDate, raw.count >= 4 else { return nil }
         return String(raw.prefix(4))
     }

@@ -8,8 +8,8 @@ public struct AudnexusSearchResult: Sendable, Identifiable {
     public let asin: String
     public let title: String
     public let subtitle: String?
-    public let authorNames: [String]
-    public let narratorNames: [String]
+    public let authors: [String]
+    public let narrators: [String]
     public let seriesName: String?
     public let seriesPosition: String?
     public let releaseDate: String?
@@ -110,8 +110,8 @@ public actor AudnexusActor {
                 asin: asin,
                 title: title,
                 subtitle: product.subtitle,
-                authorNames: (product.authors ?? []).compactMap { $0.name },
-                narratorNames: (product.narrators ?? []).compactMap { $0.name },
+                authors: (product.authors ?? []).compactMap { $0.name },
+                narrators: (product.narrators ?? []).compactMap { $0.name },
                 seriesName: primarySeries?.title,
                 seriesPosition: primarySeries?.sequence?.nilIfBlank,
                 releaseDate: product.release_date,

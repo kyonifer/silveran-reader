@@ -55,7 +55,7 @@ final class MetadataEditorViewModel {
         var collectionUuids: [String]
 
         var dirtyFields: Set<String> = []
-        var hardcoverImports: [HardcoverImportSource: HardcoverBookDetails] = [:]
+        var hardcoverImports: [HardcoverImportSource: BookMetadataCandidate] = [:]
         var replacementEbookCover: (data: Data, filename: String)?
         var replacementAudiobookCover: (data: Data, filename: String)?
 
@@ -956,7 +956,7 @@ final class MetadataEditorViewModel {
     }
 
     func applyImport(
-        imports: [HardcoverImportSource: HardcoverBookDetails],
+        imports: [HardcoverImportSource: BookMetadataCandidate],
         fields: Set<String>,
         for bookId: BookID,
     ) {
@@ -967,7 +967,7 @@ final class MetadataEditorViewModel {
     }
 
     func applyImport(
-        details: HardcoverBookDetails,
+        details: BookMetadataCandidate,
         source: HardcoverImportSource = .text,
         fields: Set<String>,
         for bookId: BookID,
@@ -1088,7 +1088,7 @@ final class MetadataEditorViewModel {
 
     private func selectedHardcoverTagNames(
         from fields: Set<String>,
-        details: HardcoverBookDetails,
+        details: BookMetadataCandidate,
     ) -> [String] {
         let prefix = "tags:"
         let selectedKeys = Set(
@@ -1148,7 +1148,7 @@ final class MetadataEditorViewModel {
         return parts.joined(separator: "\n")
     }
 
-    private static func fallbackHardcoverDump(_ details: HardcoverBookDetails) -> String {
+    private static func fallbackHardcoverDump(_ details: BookMetadataCandidate) -> String {
         var lines: [String] = []
         func row(_ name: String, _ value: String?) {
             guard let value, !value.isEmpty else { return }
