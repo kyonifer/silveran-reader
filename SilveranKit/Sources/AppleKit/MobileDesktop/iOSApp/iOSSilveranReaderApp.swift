@@ -133,7 +133,7 @@ struct SilveranReaderApp: App {
                 await SilveranAppDelegate.scheduleProgressSyncRefreshIfNeeded()
             }
             do {
-                let webResourcesURL = try AppleKitResources.webResourcesDirectory()
+                let webResourcesURL = try KitResources.webResourcesDirectory()
                 try await FilesystemActor.shared.copyWebResources(from: webResourcesURL)
             } catch {
                 debugLog(

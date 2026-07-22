@@ -36,13 +36,7 @@ let package = Package(
                 .product(name: "SwiftSoup", package: "SwiftSoup"),
             ],
             path: "SilveranKit/Sources/Kit",
-        ),
-        .target(
-            name: "SilveranAppleKit",
-            dependencies: ["SilveranKit", "SilveranAppleWidgets"],
-            path: "SilveranKit/Sources/AppleKit",
             exclude: [
-                "WidgetSupport",
                 "Resources/WebResources/foliate-js/.github",
                 "Resources/WebResources/foliate-js/.git",
                 "Resources/WebResources/foliate-js/rollup",
@@ -58,6 +52,14 @@ let package = Package(
             resources: [
                 .copy("Resources/WebResources"),
                 .copy("Resources/assets/fonts"),
+            ],
+        ),
+        .target(
+            name: "SilveranAppleKit",
+            dependencies: ["SilveranKit", "SilveranAppleWidgets"],
+            path: "SilveranKit/Sources/AppleKit",
+            exclude: [
+                "WidgetSupport"
             ],
         ),
         .target(

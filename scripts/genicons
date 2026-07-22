@@ -9,7 +9,7 @@ ASSETS_DIR="XCodeApps/Assets.xcassets/AppIcon.appiconset"
 WATCH_ASSETS_DIR="XCodeApps/WatchAssets.xcassets/AppIcon.appiconset"
 TV_ASSETS_DIR="XCodeApps/TVAssets.xcassets/App Icon.brandassets"
 STORYTELLER_LOGO="XCodeApps/Assets.xcassets/StorytellerLogo.imageset/Storyteller_Logo.png"
-MAC_MASK="SilveranKit/Sources/AppleKit/Resources/assets/icons/macos_icon_mask.png"
+MAC_MASK="SilveranKit/Sources/Kit/Resources/assets/icons/macos_icon_mask.png"
 
 if [ ! -f "$STORYTELLER_LOGO" ]; then
     echo "Error: Storyteller_Logo.png not found in project"

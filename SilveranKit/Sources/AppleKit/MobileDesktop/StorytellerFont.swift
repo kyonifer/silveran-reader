@@ -1,4 +1,5 @@
 #if os(iOS) || os(macOS)
+import SilveranKit
 import SwiftUI
 
 #if canImport(CoreText)
@@ -27,7 +28,7 @@ public enum StorytellerFontRegistration {
         guard !registered else { return }
         registered = true
 
-        guard let fontsURL = AppleKitResources.fontsDirectory() else {
+        guard let fontsURL = KitResources.fontsDirectory() else {
             return
         }
 

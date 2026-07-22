@@ -242,7 +242,7 @@ val generateSharedResources = tasks.register<GenerateSharedResources>("generateS
     )
     youngSerifFont.set(
         rootProject.layout.projectDirectory.file(
-            "../SilveranKit/Sources/AppleKit/Resources/assets/fonts/YoungSerif.ttf"
+            "../SilveranKit/Sources/Kit/Resources/assets/fonts/YoungSerif.ttf"
         )
     )
 }

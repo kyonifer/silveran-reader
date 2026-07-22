@@ -29,7 +29,7 @@ struct SilveranReaderApp: App {
             guard await SilveranRuntime.start() else { return }
 
             do {
-                let webResourcesURL = try AppleKitResources.webResourcesDirectory()
+                let webResourcesURL = try KitResources.webResourcesDirectory()
                 try await FilesystemActor.shared.copyWebResources(from: webResourcesURL)
             } catch {
                 debugLog(
