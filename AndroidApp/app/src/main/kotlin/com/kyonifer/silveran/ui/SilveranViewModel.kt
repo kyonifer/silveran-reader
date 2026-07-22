@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.kyonifer.silveran.bridge.SilveranBridgeClient
+import com.kyonifer.silveran.model.AppSettings
 import com.kyonifer.silveran.model.AudiobookPlayerState
 import com.kyonifer.silveran.model.Book
 import com.kyonifer.silveran.model.BookDetails
@@ -28,6 +29,7 @@ import kotlinx.coroutines.sync.withLock
 data class SilveranUiState(
     val settingsLoaded: Boolean = false,
     val settings: StorytellerSettings = StorytellerSettings(),
+    val appSettings: AppSettings? = null,
     val books: List<Book> = emptyList(),
     val bookDetails: Map<BookID, BookDetails> = emptyMap(),
     val homeSections: List<HomeSection> = emptyList(),
@@ -147,6 +149,26 @@ class SilveranViewModel private constructor(
                 mutableState.value = mutableState.value.copy(savingSettings = false)
                 showError(error)
             }
+        }
+    }
+
+    fun updateAppSettings(
+        progressSyncIntervalSeconds: Double? = null,
+        metadataRefreshIntervalSeconds: Double? = null,
+        autoSyncToNewerServerPosition: Boolean? = null,
+    ) {
+        viewModelScope.launch {
+            runCatching {
+                client.saveAppSettings(
+                    progressSyncIntervalSeconds = progressSyncIntervalSeconds,
+                    metadataRefreshIntervalSeconds = metadataRefreshIntervalSeconds,
+                    autoSyncToNewerServerPosition = autoSyncToNewerServerPosition,
+                )
+            }
+                .onSuccess { saved ->
+                    mutableState.value = mutableState.value.copy(appSettings = saved)
+                }
+                .onFailure(::showError)
         }
     }
 
@@ -330,6 +352,9 @@ class SilveranViewModel private constructor(
             settingsLoaded = true,
             settings = settings,
         )
+        runCatching { client.appSettings() }.onSuccess { loaded ->
+            mutableState.value = mutableState.value.copy(appSettings = loaded)
+        }
     }
 
     private fun librarySnapshotDidChange() {

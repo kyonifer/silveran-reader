@@ -181,10 +181,18 @@ fun SilveranApp(viewModel: SilveranViewModel) {
                     settings = state.settings,
                     settingsLoaded = state.settingsLoaded,
                     saving = state.savingSettings,
+                    appSettings = state.appSettings,
                     modifier = Modifier.padding(padding),
                     save = { serverURL, username, password ->
                         settingsSavePending = true
                         viewModel.saveSettings(serverURL, username, password)
+                    },
+                    updateAppSettings = { progress, metadata, autoNavigate ->
+                        viewModel.updateAppSettings(
+                            progressSyncIntervalSeconds = progress,
+                            metadataRefreshIntervalSeconds = metadata,
+                            autoSyncToNewerServerPosition = autoNavigate,
+                        )
                     },
                 )
                 Screen.Details -> selectedBook?.let { book ->

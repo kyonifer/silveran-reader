@@ -99,6 +99,52 @@ private func saveStorytellerSettingsJSON(
     return try await encodeStorytellerSettings()
 }
 
+public func appSettingsJSON(requestID: String) async throws {
+    try await deliverAndroidBridgePayload(requestID: requestID) {
+        try requireAndroidBootstrap()
+        return try await encodeAppSettings()
+    }
+}
+
+public func saveAppSettings(requestID: String, json: String) async throws {
+    try await deliverAndroidBridgePayload(requestID: requestID) {
+        try requireAndroidBootstrap()
+        let update = try JSONDecoder().decode(
+            AndroidAppSettingsUpdate.self,
+            from: Data(json.utf8),
+        )
+        try await SettingsActor.shared.updateConfig(
+            progressSyncIntervalSeconds: update.progressSyncIntervalSeconds,
+            metadataRefreshIntervalSeconds: update.metadataRefreshIntervalSeconds,
+            autoSyncToNewerServerPosition: update.autoSyncToNewerServerPosition,
+        )
+        return try await encodeAppSettings()
+    }
+}
+
+private struct AndroidAppSettingsUpdate: Decodable {
+    var progressSyncIntervalSeconds: Double?
+    var metadataRefreshIntervalSeconds: Double?
+    var autoSyncToNewerServerPosition: Bool?
+}
+
+private struct AndroidAppSettings: Encodable {
+    let progressSyncIntervalSeconds: Double
+    let metadataRefreshIntervalSeconds: Double
+    let autoSyncToNewerServerPosition: Bool
+}
+
+private func encodeAppSettings() async throws -> String {
+    let sync = await SettingsActor.shared.config.sync
+    return try encodeJSON(
+        AndroidAppSettings(
+            progressSyncIntervalSeconds: sync.progressSyncIntervalSeconds,
+            metadataRefreshIntervalSeconds: sync.metadataRefreshIntervalSeconds,
+            autoSyncToNewerServerPosition: sync.autoSyncToNewerServerPosition,
+        )
+    )
+}
+
 public func librarySnapshotJSON(requestID: String, refresh: Bool) async throws {
     try await deliverAndroidBridgePayload(requestID: requestID) {
         try await makeLibrarySnapshotJSON(refresh: refresh)

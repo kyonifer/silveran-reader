@@ -91,6 +91,12 @@ data class SourceStatusUpdate(
     val message: String?,
 )
 
+data class AppSettings(
+    val progressSyncIntervalSeconds: Double,
+    val metadataRefreshIntervalSeconds: Double,
+    val autoSyncToNewerServerPosition: Boolean,
+)
+
 data class StorytellerSettings(
     val configured: Boolean = false,
     val sourceID: String? = null,

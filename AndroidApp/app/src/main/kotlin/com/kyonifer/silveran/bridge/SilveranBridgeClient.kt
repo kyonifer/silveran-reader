@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Log
 import android.util.LruCache
+import com.kyonifer.silveran.model.AppSettings
 import com.kyonifer.silveran.model.AudiobookChapter
 import com.kyonifer.silveran.model.AudiobookPlayerState
 import com.kyonifer.silveran.model.Book
@@ -116,6 +117,41 @@ class SilveranBridgeClient(context: Context) {
             SilveranAndroidBridge.storytellerSettingsJSON(requestID)
         }
         return withContext(Dispatchers.Default) { parseSettings(json) }
+    }
+
+    suspend fun appSettings(): AppSettings {
+        val json = AndroidBridgeCallbacks.requestPayload { requestID ->
+            SilveranAndroidBridge.appSettingsJSON(requestID)
+        }
+        return withContext(Dispatchers.Default) { parseAppSettings(json) }
+    }
+
+    suspend fun saveAppSettings(
+        progressSyncIntervalSeconds: Double? = null,
+        metadataRefreshIntervalSeconds: Double? = null,
+        autoSyncToNewerServerPosition: Boolean? = null,
+    ): AppSettings {
+        val update = JSONObject().apply {
+            progressSyncIntervalSeconds?.let { put("progressSyncIntervalSeconds", it) }
+            metadataRefreshIntervalSeconds?.let { put("metadataRefreshIntervalSeconds", it) }
+            autoSyncToNewerServerPosition?.let { put("autoSyncToNewerServerPosition", it) }
+        }.toString()
+        val json = AndroidBridgeCallbacks.requestPayload { requestID ->
+            SilveranAndroidBridge.saveAppSettings(requestID, update)
+        }
+        return withContext(Dispatchers.Default) { parseAppSettings(json) }
+    }
+
+    private fun parseAppSettings(json: String): AppSettings {
+        val obj = JSONObject(json)
+        return AppSettings(
+            progressSyncIntervalSeconds = obj.optDouble("progressSyncIntervalSeconds", 60.0),
+            metadataRefreshIntervalSeconds = obj.optDouble(
+                "metadataRefreshIntervalSeconds",
+                300.0,
+            ),
+            autoSyncToNewerServerPosition = obj.optBoolean("autoSyncToNewerServerPosition"),
+        )
     }
 
     suspend fun librarySnapshot(refresh: Boolean): LibrarySnapshot {
