@@ -7,8 +7,11 @@ import javax.imageio.ImageIO
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.tasks.InputDirectory
 import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.OutputDirectory
+import org.gradle.api.tasks.PathSensitive
+import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
 
 plugins {
@@ -119,6 +122,48 @@ abstract class GenerateSharedResources : DefaultTask() {
         val fontOutput = outputDirectory.file("font/young_serif.ttf").get().asFile
         fontOutput.parentFile.mkdirs()
         youngSerifFont.get().asFile.copyTo(fontOutput, overwrite = true)
+    }
+}
+
+/**
+ * Stages the shared reader web stack (foliate_wrap.html, FoliateManager.js,
+ * foliate-js, ...) from the common core into APK assets under reader/, where
+ * WebViewAssetLoader serves it at https://appassets.androidplatform.net/reader/.
+ */
+abstract class GenerateReaderAssets : DefaultTask() {
+    @get:InputDirectory
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val webResources: DirectoryProperty
+
+    @get:OutputDirectory
+    abstract val outputDirectory: DirectoryProperty
+
+    @TaskAction
+    fun generate() {
+        val source = webResources.get().asFile
+        val output = outputDirectory.dir("reader").get().asFile
+        output.deleteRecursively()
+        val excludedNames = setOf(
+            ".git",
+            ".github",
+            ".gitattributes",
+            ".gitignore",
+            "rollup",
+            "tests",
+            "node_modules",
+            "package.json",
+            "package-lock.json",
+            "rollup.config.js",
+            "eslint.config.js",
+        )
+        source.walkTopDown()
+            .onEnter { it.name !in excludedNames }
+            .filter { it.isFile && it.name !in excludedNames }
+            .forEach { file ->
+                val target = output.resolve(file.relativeTo(source).path)
+                target.parentFile.mkdirs()
+                file.copyTo(target, overwrite = true)
+            }
     }
 }
 
@@ -250,6 +295,14 @@ val generateSharedResources = tasks.register<GenerateSharedResources>("generateS
 val generatePlaybackSpeedIcons =
     tasks.register<GeneratePlaybackSpeedIcons>("generatePlaybackSpeedIcons")
 
+val generateReaderAssets = tasks.register<GenerateReaderAssets>("generateReaderAssets") {
+    webResources.set(
+        rootProject.layout.projectDirectory.dir(
+            "../SilveranKit/Sources/Kit/Resources/WebResources"
+        )
+    )
+}
+
 androidComponents {
     onVariants { variant ->
         variant.sources.res?.addGeneratedSourceDirectory(
@@ -259,6 +312,10 @@ androidComponents {
         variant.sources.res?.addGeneratedSourceDirectory(
             generatePlaybackSpeedIcons,
             GeneratePlaybackSpeedIcons::outputDirectory,
+        )
+        variant.sources.assets?.addGeneratedSourceDirectory(
+            generateReaderAssets,
+            GenerateReaderAssets::outputDirectory,
         )
     }
 }
@@ -275,6 +332,7 @@ dependencies {
     implementation("androidx.media3:media3-session:$media3Version")
     implementation(platform("androidx.compose:compose-bom:2025.06.01"))
     implementation("androidx.activity:activity-compose:1.10.1")
+    implementation("androidx.webkit:webkit:1.14.0")
     implementation("androidx.compose.material:material-icons-core")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.compose.material3:material3")

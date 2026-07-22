@@ -128,7 +128,7 @@ public actor SMILPlayerActor {
     private var playbackRate: Double = 1.0
     private var volume: Double = 1.0
 
-    private var updateTimer: Timer?
+    private var updateTask: Task<Void, Never>?
     private var isAdvancing: Bool = false
 
     private var stateObservers: [UUID: @Sendable @SilveranUIActor (SMILPlaybackState) -> Void] =
@@ -136,7 +136,7 @@ public actor SMILPlayerActor {
     private var sessionID = UUID()
 
     private var nowPlayingConfigured = false
-    private var nowPlayingUpdateTimer: Timer?
+    private var nowPlayingUpdateTask: Task<Void, Never>?
     private var coverImageData: Data?
 
     private init() {}
@@ -659,27 +659,29 @@ public actor SMILPlayerActor {
         }
     }
 
+    // Task.sleep loops instead of RunLoop timers: nothing drives the main
+    // RunLoop on Android, so a Timer there never fires.
     private func startUpdateTimer() {
         stopUpdateTimer()
-        let timer = Timer(timeInterval: 0.2, repeats: true) { _ in
-            Task { @SMILPlayerActor in
+        updateTask = Task { @SMILPlayerActor in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(200))
+                guard !Task.isCancelled else { return }
                 await SMILPlayerActor.shared.timerFired()
             }
         }
-        RunLoop.main.add(timer, forMode: .common)
-        updateTimer = timer
         debugLog("[SMILPlayerActor] Update timer started")
     }
 
     private func stopUpdateTimer() {
-        updateTimer?.invalidate()
-        updateTimer = nil
+        updateTask?.cancel()
+        updateTask = nil
     }
 
     private func timerFired() async {
-        // A tick spawned before pause() invalidated the timer could otherwise
+        // A tick spawned before pause() cancelled the loop could otherwise
         // flip isPlaying back on in the file-end branch below.
-        guard updateTimer != nil else {
+        guard updateTask != nil else {
             debugLog("[SMILPlayerActor] Ignoring update tick after timer stop")
             return
         }
@@ -960,13 +962,13 @@ public actor SMILPlayerActor {
 
     private func startNowPlayingUpdateTimer() {
         stopNowPlayingUpdateTimer()
-        let timer = Timer(timeInterval: 1.0, repeats: true) { _ in
-            Task { @SMILPlayerActor in
+        nowPlayingUpdateTask = Task { @SMILPlayerActor in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1))
+                guard !Task.isCancelled else { return }
                 await SMILPlayerActor.shared.updateNowPlayingIfPlaying()
             }
         }
-        RunLoop.main.add(timer, forMode: .common)
-        nowPlayingUpdateTimer = timer
     }
 
     private func updateNowPlayingIfPlaying() async {
@@ -976,8 +978,8 @@ public actor SMILPlayerActor {
     }
 
     private func stopNowPlayingUpdateTimer() {
-        nowPlayingUpdateTimer?.invalidate()
-        nowPlayingUpdateTimer = nil
+        nowPlayingUpdateTask?.cancel()
+        nowPlayingUpdateTask = nil
     }
 
     private func updateNowPlayingInfo() async {

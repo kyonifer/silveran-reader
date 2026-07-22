@@ -59,8 +59,12 @@ fun SilveranApp(viewModel: SilveranViewModel) {
     val canNavigateBack = screen == Screen.Details || screen == Screen.Reader ||
         (screen == Screen.Settings && state.settings.configured)
     val navigateBack = {
-        if (screen == Screen.Reader && readerMode == "audio") {
-            viewModel.closeAudiobook()
+        if (screen == Screen.Reader) {
+            if (readerMode == "audio") {
+                viewModel.closeAudiobook()
+            } else {
+                viewModel.closeReader()
+            }
         }
         screenName = when (screen) {
             Screen.Reader -> Screen.Details.name
@@ -84,8 +88,12 @@ fun SilveranApp(viewModel: SilveranViewModel) {
             (screen == Screen.Details || screen == Screen.Reader) &&
             selectedBook == null
         ) {
-            if (screen == Screen.Reader && readerMode == "audio") {
-                viewModel.closeAudiobook()
+            if (screen == Screen.Reader) {
+                if (readerMode == "audio") {
+                    viewModel.closeAudiobook()
+                } else {
+                    viewModel.closeReader()
+                }
             }
             screenName = Screen.Library.name
         }
@@ -93,6 +101,8 @@ fun SilveranApp(viewModel: SilveranViewModel) {
     LaunchedEffect(screen, readerMode, selectedBook?.id) {
         if (screen == Screen.Reader && readerMode == "audio") {
             selectedBook?.let(viewModel::openAudiobook)
+        } else if (screen == Screen.Reader) {
+            selectedBook?.let { viewModel.openReader(it, readerMode) }
         }
     }
     LaunchedEffect(screen, selectedBookSummary?.id, selectedBookSummary?.coverVersion) {
@@ -224,9 +234,15 @@ fun SilveranApp(viewModel: SilveranViewModel) {
                             declineServerPosition = viewModel::declineAudiobookServerPosition,
                         )
                     } else {
-                        ReaderPlaceholderScreen(
+                        ReaderScreen(
                             book = book,
                             mode = readerMode,
+                            openResult = state.readerOpen,
+                            readerState = state.reader,
+                            readerControl = viewModel::readerControl,
+                            readerMessageFromJS = viewModel::readerMessageFromJS,
+                            registerWebView = viewModel::registerReaderWebView,
+                            unregisterWebView = viewModel::unregisterReaderWebView,
                             modifier = Modifier.padding(padding),
                         )
                     }

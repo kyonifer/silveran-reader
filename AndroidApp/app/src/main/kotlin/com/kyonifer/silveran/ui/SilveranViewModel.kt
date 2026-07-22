@@ -13,6 +13,8 @@ import com.kyonifer.silveran.model.BookID
 import com.kyonifer.silveran.model.DownloadOperation
 import com.kyonifer.silveran.model.DownloadUpdate
 import com.kyonifer.silveran.model.HomeSection
+import com.kyonifer.silveran.model.ReaderOpenResult
+import com.kyonifer.silveran.model.ReaderState
 import com.kyonifer.silveran.model.SourceStatusUpdate
 import com.kyonifer.silveran.model.StorytellerSettings
 import kotlinx.coroutines.channels.Channel
@@ -39,6 +41,8 @@ data class SilveranUiState(
     val pendingDownloads: Set<DownloadOperation> = emptySet(),
     val audiobookLoading: Boolean = false,
     val audiobook: AudiobookPlayerState? = null,
+    val readerOpen: ReaderOpenResult? = null,
+    val reader: ReaderState? = null,
     val successfulSettingsSaves: Int = 0,
     val error: String? = null,
 )
@@ -54,12 +58,17 @@ class SilveranViewModel private constructor(
     private val libraryChanges = Channel<Unit>(Channel.CONFLATED)
     private var currentAudiobookID: BookID? = null
     private var audiobookRequest = 0L
+    private var currentReaderKey: Pair<BookID, String>? = null
+    private var readerRequest = 0L
     private var downloadUpdates: Map<DownloadOperation, DownloadUpdate> = emptyMap()
     private val bookDetailsLoading = mutableSetOf<BookID>()
 
     init {
         client.observeAudiobookChanges { audiobook ->
             mutableState.value = mutableState.value.copy(audiobook = audiobook)
+        }
+        client.observeReaderState { reader ->
+            mutableState.value = mutableState.value.copy(reader = reader)
         }
         client.observeDownloadChanges { updates ->
             viewModelScope.launch { applyDownloadUpdates(updates) }
@@ -209,6 +218,53 @@ class SilveranViewModel private constructor(
         }
     }
 
+    fun openReader(book: Book, mode: String) {
+        val key = book.id to mode
+        if (currentReaderKey == key) return
+        currentReaderKey = key
+        val request = ++readerRequest
+        mutableState.value = mutableState.value.copy(
+            readerOpen = null,
+            reader = null,
+            error = null,
+        )
+        viewModelScope.launch {
+            val result = runCatching { client.openReader(book, mode) }
+            if (request != readerRequest) return@launch
+            result
+                .onSuccess { open ->
+                    mutableState.value = mutableState.value.copy(readerOpen = open)
+                }
+                .onFailure { error ->
+                    currentReaderKey = null
+                    showError(error)
+                }
+        }
+    }
+
+    fun closeReader() {
+        if (currentReaderKey == null && mutableState.value.readerOpen == null) return
+        currentReaderKey = null
+        ++readerRequest
+        mutableState.value = mutableState.value.copy(readerOpen = null, reader = null)
+        viewModelScope.launch {
+            runCatching { client.closeReader() }.onFailure(::showError)
+        }
+    }
+
+    fun readerControl(command: String, value: Double = 0.0, text: String = "") {
+        viewModelScope.launch {
+            runCatching { client.readerControl(command, value, text) }.onFailure(::showError)
+        }
+    }
+
+    fun readerMessageFromJS(name: String, body: String) = client.readerMessageFromJS(name, body)
+
+    fun registerReaderWebView(owner: Any, webView: android.webkit.WebView) =
+        client.registerReaderWebView(owner, webView)
+
+    fun unregisterReaderWebView(owner: Any) = client.unregisterReaderWebView(owner)
+
     fun toggleAudiobookPlayback() = controlAudiobook("togglePlayPause")
 
     fun skipAudiobookBackward() = controlAudiobook("skipBackward")
@@ -248,9 +304,15 @@ class SilveranViewModel private constructor(
 
     fun cachedCover(book: Book, audio: Boolean): Bitmap? = client.cachedCover(book, audio)
 
-    fun appDidBecomeActive() = client.appDidBecomeActive()
+    fun appDidBecomeActive() {
+        client.appDidBecomeActive()
+        if (mutableState.value.readerOpen != null) readerControl("sceneActive")
+    }
 
-    fun appDidEnterBackground() = client.appDidEnterBackground()
+    fun appDidEnterBackground() {
+        client.appDidEnterBackground()
+        if (mutableState.value.readerOpen != null) readerControl("sceneBackground")
+    }
 
     fun clearError() {
         mutableState.value = mutableState.value.copy(error = null)
