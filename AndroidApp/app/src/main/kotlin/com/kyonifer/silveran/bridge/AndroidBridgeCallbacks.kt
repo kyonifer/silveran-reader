@@ -1,5 +1,8 @@
 package com.kyonifer.silveran.bridge
 
+import android.os.Handler
+import android.os.Looper
+import android.webkit.WebView
 import androidx.annotation.Keep
 import com.kyonifer.silveran.platform.AndroidNowPlayingBridge
 import java.util.UUID
@@ -19,8 +22,13 @@ object AndroidBridgeCallbacks {
     private var downloadListener: Registration<(String) -> Unit>? = null
     @Volatile
     private var sourceStatusListener: Registration<(String) -> Unit>? = null
+    @Volatile
+    private var readerStateListener: Registration<(String) -> Unit>? = null
+    @Volatile
+    private var readerWebView: Registration<WebView>? = null
     private val payloadRequests = ConcurrentHashMap<String, CompletableDeferred<String>>()
     private val coverRequests = ConcurrentHashMap<String, CompletableDeferred<CoverPayload>>()
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     fun observe(owner: Any, onChange: () -> Unit) {
         listener = Registration(owner, onChange)
@@ -33,6 +41,19 @@ object AndroidBridgeCallbacks {
         if (audiobookListener?.owner === owner) audiobookListener = null
         if (downloadListener?.owner === owner) downloadListener = null
         if (sourceStatusListener?.owner === owner) sourceStatusListener = null
+        if (readerStateListener?.owner === owner) readerStateListener = null
+    }
+
+    fun observeReaderState(owner: Any, onChange: (String) -> Unit) {
+        readerStateListener = Registration(owner, onChange)
+    }
+
+    fun registerReaderWebView(owner: Any, webView: WebView) {
+        readerWebView = Registration(owner, webView)
+    }
+
+    fun unregisterReaderWebView(owner: Any) {
+        if (readerWebView?.owner === owner) readerWebView = null
     }
 
     fun observeAudiobook(owner: Any, onChange: (String) -> Unit) {
@@ -66,6 +87,26 @@ object AndroidBridgeCallbacks {
     @JvmStatic
     fun sourceStatusDidChange(payload: String) {
         sourceStatusListener?.callback?.invoke(payload)
+    }
+
+    @JvmStatic
+    fun readerStateDidChange(payload: String) {
+        android.util.Log.d("SilveranReaderState", payload)
+        readerStateListener?.callback?.invoke(payload)
+    }
+
+    @JvmStatic
+    fun evaluateReaderJS(requestID: String, script: String) {
+        mainHandler.post {
+            val webView = readerWebView?.callback
+            if (webView == null) {
+                SilveranAndroidBridge.readerJSResult(requestID, "", "No reader WebView registered")
+            } else {
+                webView.evaluateJavascript(script) { value ->
+                    SilveranAndroidBridge.readerJSResult(requestID, value ?: "null", "")
+                }
+            }
+        }
     }
 
     suspend fun requestPayload(start: (String) -> CompletableFuture<Void>): String {

@@ -415,6 +415,42 @@ public func controlAudiobook(command: String, value: Double, text: String) async
     )
 }
 
+public func openReader(
+    requestID: String,
+    bookID: String,
+    sourceID: String,
+    mode: String,
+) async throws {
+    try await deliverAndroidBridgePayload(requestID: requestID) {
+        try requireAndroidBootstrap()
+        return try await AndroidReaderSession.shared.open(
+            bookID: BookID(sourceID: sourceID, uuid: bookID),
+            mode: mode,
+        )
+    }
+}
+
+public func closeReader() async {
+    await AndroidReaderSession.shared.close()
+}
+
+public func readerMessageFromJS(name: String, body: String) async {
+    await AndroidReaderSession.shared.handleMessage(name: name, body: body)
+}
+
+public func readerJSResult(requestID: String, result: String, error: String) async {
+    await AndroidReaderSession.shared.completeJSRequest(
+        requestID: requestID,
+        result: result,
+        error: error,
+    )
+}
+
+public func readerControl(command: String, value: Double, text: String) async throws {
+    try requireAndroidBootstrap()
+    try await AndroidReaderSession.shared.control(command: command, value: value, text: text)
+}
+
 public func startLibraryObservation() async throws {
     try requireAndroidBootstrap()
     guard androidObserverStore.claimInstallation() else { return }
@@ -751,6 +787,10 @@ enum AndroidBridgeError: Error, LocalizedError, CustomStringConvertible {
     case audiobookNotOpen
     case invalidAudiobookCommand(String)
     case secureStorageFailure(String)
+    case readerNotOpen
+    case invalidReaderCommand(String)
+    case readerPrepareFailed(String)
+    case readerJSFailed(String)
 
     var errorDescription: String? {
         switch self {
@@ -786,6 +826,14 @@ enum AndroidBridgeError: Error, LocalizedError, CustomStringConvertible {
                 return "Unknown audiobook command: \(command)"
             case .secureStorageFailure(let account):
                 return "Android secure storage failed for account \(account)."
+            case .readerNotOpen:
+                return "No reader is open."
+            case .invalidReaderCommand(let command):
+                return "Unknown reader command: \(command)"
+            case .readerPrepareFailed(let bookID):
+                return "Could not prepare book \(bookID) for reading."
+            case .readerJSFailed(let message):
+                return "Reader JS evaluation failed: \(message)"
         }
     }
 

@@ -15,6 +15,9 @@ import com.kyonifer.silveran.model.DownloadOperation
 import com.kyonifer.silveran.model.DownloadUpdate
 import com.kyonifer.silveran.model.HomeSection
 import com.kyonifer.silveran.model.LibrarySnapshot
+import com.kyonifer.silveran.model.ReaderOpenResult
+import com.kyonifer.silveran.model.ReaderState
+import com.kyonifer.silveran.model.ReaderTocEntry
 import com.kyonifer.silveran.model.ServerPosition
 import com.kyonifer.silveran.model.SourceStatusUpdate
 import com.kyonifer.silveran.model.StorytellerSettings
@@ -192,6 +195,95 @@ class SilveranBridgeClient(context: Context) {
         text: String = "",
     ) {
         SilveranAndroidBridge.controlAudiobook(command, value, text).awaitResult()
+    }
+
+    suspend fun openReader(book: Book, mode: String): ReaderOpenResult {
+        val json = AndroidBridgeCallbacks.requestPayload { requestID ->
+            SilveranAndroidBridge.openReader(
+                requestID,
+                book.id.uuid,
+                book.id.sourceID,
+                mode,
+            )
+        }
+        return withContext(Dispatchers.Default) { parseReaderOpenResult(json) }
+    }
+
+    suspend fun closeReader() {
+        SilveranAndroidBridge.closeReader().awaitResult()
+    }
+
+    suspend fun readerControl(
+        command: String,
+        value: Double = 0.0,
+        text: String = "",
+    ) {
+        SilveranAndroidBridge.readerControl(command, value, text).awaitResult()
+    }
+
+    // Called from the WebView's JavascriptInterface thread; fire-and-forget.
+    fun readerMessageFromJS(name: String, body: String) {
+        SilveranAndroidBridge.readerMessageFromJS(name, body)
+    }
+
+    fun registerReaderWebView(owner: Any, webView: android.webkit.WebView) {
+        AndroidBridgeCallbacks.registerReaderWebView(owner, webView)
+    }
+
+    fun unregisterReaderWebView(owner: Any) {
+        AndroidBridgeCallbacks.unregisterReaderWebView(owner)
+    }
+
+    fun observeReaderState(onChange: (ReaderState) -> Unit) {
+        AndroidBridgeCallbacks.observeReaderState(this) { payload ->
+            runCatching { parseReaderState(payload) }
+                .getOrNull()
+                ?.let(onChange)
+        }
+    }
+
+    private fun parseReaderOpenResult(json: String): ReaderOpenResult {
+        val obj = JSONObject(json)
+        return ReaderOpenResult(
+            readerPath = obj.getString("readerPath"),
+            originalPath = obj.optString("originalPath"),
+            hasAudioNarration = obj.optBoolean("hasAudioNarration"),
+            title = obj.optString("title"),
+        )
+    }
+
+    private fun parseReaderState(json: String): ReaderState {
+        val obj = JSONObject(json)
+        val tocArray = obj.optJSONArray("toc")
+        val toc = buildList {
+            if (tocArray != null) {
+                for (index in 0 until tocArray.length()) {
+                    val entry = tocArray.getJSONObject(index)
+                    add(
+                        ReaderTocEntry(
+                            label = entry.optString("label"),
+                            href = entry.optString("href"),
+                            level = entry.optInt("level"),
+                            sectionIndex = entry.optInt("sectionIndex"),
+                        )
+                    )
+                }
+            }
+        }
+        return ReaderState(
+            title = obj.optString("title"),
+            author = obj.optString("author"),
+            hasAudioNarration = obj.optBoolean("hasAudioNarration"),
+            toc = toc,
+            selectedChapterId = obj.optionalInt("selectedChapterId"),
+            bookFraction = obj.optionalDouble("bookFraction"),
+            chapterCurrentPage = obj.optionalInt("chapterCurrentPage"),
+            chapterTotalPages = obj.optionalInt("chapterTotalPages"),
+            isPlaying = obj.optBoolean("isPlaying"),
+            playbackRate = obj.optDouble("playbackRate", 1.0),
+            overlayToggleCount = obj.optInt("overlayToggleCount"),
+            keepScreenOn = obj.optBoolean("keepScreenOn"),
+        )
     }
 
     suspend fun cover(book: Book, audio: Boolean, width: Int, height: Int): Bitmap? {

@@ -131,3 +131,32 @@ data class AudiobookPlayerState(
     val sleepTimerRemaining: Double?,
     val pendingServerPosition: ServerPosition?,
 )
+
+data class ReaderOpenResult(
+    val readerPath: String,
+    val originalPath: String,
+    val hasAudioNarration: Boolean,
+    val title: String,
+)
+
+data class ReaderTocEntry(
+    val label: String,
+    val href: String,
+    val level: Int,
+    val sectionIndex: Int,
+)
+
+data class ReaderState(
+    val title: String,
+    val author: String,
+    val hasAudioNarration: Boolean,
+    val toc: List<ReaderTocEntry>,
+    val selectedChapterId: Int?,
+    val bookFraction: Double?,
+    val chapterCurrentPage: Int?,
+    val chapterTotalPages: Int?,
+    val isPlaying: Boolean,
+    val playbackRate: Double,
+    val overlayToggleCount: Int,
+    val keepScreenOn: Boolean,
+)

@@ -44,6 +44,12 @@ extension JavaClass<JavaAndroidBridgeCallbacks> {
         _ shouldPersist: Bool,
         _ error: String,
     )
+
+    @JavaStaticMethod
+    func evaluateReaderJS(_ requestID: String, _ script: String)
+
+    @JavaStaticMethod
+    func readerStateDidChange(_ payload: String)
 }
 
 enum AndroidPlatformBootstrap {
@@ -125,6 +131,14 @@ func notifyAndroidDownloadStateDidChange(_ payload: String) {
 
 func notifyAndroidSourceStatusDidChange(_ payload: String) {
     try? JavaClass<JavaAndroidBridgeCallbacks>().sourceStatusDidChange(payload)
+}
+
+func notifyAndroidEvaluateReaderJS(requestID: String, script: String) {
+    try? JavaClass<JavaAndroidBridgeCallbacks>().evaluateReaderJS(requestID, script)
+}
+
+func notifyAndroidReaderStateDidChange(_ payload: String) {
+    try? JavaClass<JavaAndroidBridgeCallbacks>().readerStateDidChange(payload)
 }
 
 func deliverAndroidCoverPayload(
