@@ -80,6 +80,9 @@ internal fun ReaderScreen(
     readerMessageFromJS: (String, String) -> Unit,
     registerWebView: (Any, WebView) -> Unit,
     unregisterWebView: (Any) -> Unit,
+    coverRevision: Int,
+    cover: suspend (Book, Boolean, Int, Int) -> android.graphics.Bitmap?,
+    cachedCover: (Book, Boolean) -> android.graphics.Bitmap?,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -213,6 +216,31 @@ internal fun ReaderScreen(
                 onShowBookmarks = { showBookmarks = true },
                 onShowToc = { showToc = true },
                 onShowSettings = { showSettings = true },
+            )
+        }
+
+        AnimatedVisibility(
+            visible = chromeVisible && readerState?.hasAudioNarration == true,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.align(Alignment.BottomCenter),
+        ) {
+            val tocIndex = selectedTocIndex(
+                readerState?.toc.orEmpty(),
+                readerState?.selectedChapterId,
+            )
+            ReaderMiniPlayer(
+                book = book,
+                chapterLabel = tocIndex?.let { readerState?.toc?.getOrNull(it)?.label },
+                isPlaying = readerState?.isPlaying == true,
+                playbackRate = readerState?.playbackRate ?: 1.0,
+                backgroundColor = chromeBg,
+                contentColor = chromeFg,
+                onTogglePlay = { readerControl("togglePlayPause", 0.0, "") },
+                onRateChange = { readerControl("setRate", it, "") },
+                coverRevision = coverRevision,
+                cover = cover,
+                cachedCover = cachedCover,
             )
         }
     }

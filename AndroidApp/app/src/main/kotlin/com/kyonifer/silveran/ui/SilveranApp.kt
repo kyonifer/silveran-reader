@@ -2,8 +2,10 @@ package com.kyonifer.silveran.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -39,6 +41,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.kyonifer.silveran.model.Book
@@ -94,9 +97,15 @@ fun SilveranApp(viewModel: SilveranViewModel) {
     val navigateBack = {
         if (screen == Screen.Reader) {
             if (readerMode == "audio") {
-                viewModel.closeAudiobook()
+                if (state.audiobook?.isPlaying != true) {
+                    viewModel.closeAudiobook()
+                }
             } else {
-                viewModel.closeReader()
+                val keepsPlaying = state.reader?.isPlaying == true &&
+                    state.reader?.hasAudioNarration == true
+                if (!keepsPlaying) {
+                    viewModel.closeReader()
+                }
             }
         }
         if (screen == Screen.Category && categoryGroup.isNotEmpty()) {
@@ -229,6 +238,7 @@ fun SilveranApp(viewModel: SilveranViewModel) {
                 }
             },
         ) { padding ->
+            Box(modifier = Modifier.fillMaxSize()) {
             when (screen) {
                 Screen.Library -> LibraryScreen(
                     state = state,
@@ -347,10 +357,59 @@ fun SilveranApp(viewModel: SilveranViewModel) {
                             readerMessageFromJS = viewModel::readerMessageFromJS,
                             registerWebView = viewModel::registerReaderWebView,
                             unregisterWebView = viewModel::unregisterReaderWebView,
+                            coverRevision = state.coverRevision,
+                            cover = viewModel::cover,
+                            cachedCover = viewModel::cachedCover,
                             modifier = Modifier,
                         )
                     }
                 }
+            }
+            if (screen != Screen.Reader) {
+                if (state.readerOpen != null && state.reader?.hasAudioNarration == true) {
+                    GlobalMiniPlayerBar(
+                        book = state.books.firstOrNull { it.id == state.readerBookID },
+                        title = state.reader?.title
+                            ?: state.readerOpen?.title.orEmpty(),
+                        subtitle = state.reader?.author,
+                        isPlaying = state.reader?.isPlaying == true,
+                        onTogglePlay = { viewModel.readerControl("togglePlayPause") },
+                        onOpen = {
+                            state.readerBookID?.let { id ->
+                                selectedBookID = id
+                                readerMode = state.readerModeName ?: "synced"
+                                screenName = Screen.Reader.name
+                            }
+                        },
+                        onClose = viewModel::closeReader,
+                        coverRevision = state.coverRevision,
+                        cover = viewModel::cover,
+                        cachedCover = viewModel::cachedCover,
+                        modifier = Modifier.align(Alignment.BottomCenter),
+                    )
+                } else if (state.audiobook != null) {
+                    val audiobook = state.audiobook
+                    GlobalMiniPlayerBar(
+                        book = state.books.firstOrNull { it.id == audiobook?.bookID },
+                        title = audiobook?.title.orEmpty(),
+                        subtitle = audiobook?.author,
+                        isPlaying = audiobook?.isPlaying == true,
+                        onTogglePlay = viewModel::toggleAudiobookPlayback,
+                        onOpen = {
+                            audiobook?.let {
+                                selectedBookID = it.bookID
+                                readerMode = "audio"
+                                screenName = Screen.Reader.name
+                            }
+                        },
+                        onClose = viewModel::closeAudiobook,
+                        coverRevision = state.coverRevision,
+                        cover = viewModel::cover,
+                        cachedCover = viewModel::cachedCover,
+                        modifier = Modifier.align(Alignment.BottomCenter),
+                    )
+                }
+            }
             }
         }
         }

@@ -541,7 +541,7 @@ private fun StatRow(
 }
 
 @Composable
-private fun PlaybackSpeedDialog(
+internal fun PlaybackSpeedDialog(
     currentRate: Double,
     dismiss: () -> Unit,
     select: (Double) -> Unit,
@@ -664,7 +664,7 @@ private fun PlaybackSpeedDialog(
 
 // Android Auto's speed badges are generated on the 0.05 grid from 0.5x to 3x;
 // staying on that grid keeps the badge numerically exact.
-private fun snapPlaybackRate(rate: Double): Double =
+internal fun snapPlaybackRate(rate: Double): Double =
     ((rate * 20).roundToInt() / 20.0).coerceIn(0.5, 3.0)
 
 @Composable
@@ -808,7 +808,7 @@ private fun volumeIcon(volume: Double): ImageVector = when {
     else -> Icons.AutoMirrored.Filled.VolumeUp
 }
 
-private fun formatPlaybackRate(rate: Double): String =
+internal fun formatPlaybackRate(rate: Double): String =
     if (rate == rate.roundToInt().toDouble()) {
         "${rate.roundToInt()}x"
     } else {

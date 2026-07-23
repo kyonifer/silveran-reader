@@ -45,6 +45,8 @@ data class SilveranUiState(
     val audiobook: AudiobookPlayerState? = null,
     val readerOpen: ReaderOpenResult? = null,
     val reader: ReaderState? = null,
+    val readerBookID: BookID? = null,
+    val readerModeName: String? = null,
     val successfulSettingsSaves: Int = 0,
     val error: String? = null,
 )
@@ -248,6 +250,8 @@ class SilveranViewModel private constructor(
         mutableState.value = mutableState.value.copy(
             readerOpen = null,
             reader = null,
+            readerBookID = book.id,
+            readerModeName = mode,
             error = null,
         )
         viewModelScope.launch {
@@ -268,7 +272,12 @@ class SilveranViewModel private constructor(
         if (currentReaderKey == null && mutableState.value.readerOpen == null) return
         currentReaderKey = null
         ++readerRequest
-        mutableState.value = mutableState.value.copy(readerOpen = null, reader = null)
+        mutableState.value = mutableState.value.copy(
+            readerOpen = null,
+            reader = null,
+            readerBookID = null,
+            readerModeName = null,
+        )
         viewModelScope.launch {
             runCatching { client.closeReader() }.onFailure(::showError)
         }
