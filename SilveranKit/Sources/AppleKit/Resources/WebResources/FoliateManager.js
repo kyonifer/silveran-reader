@@ -177,6 +177,11 @@ class FoliateManager {
     debugLog("FoliateManager", "Opening file in foliate-view...");
     await this.#view.open(file);
 
+    // Foliate emits the final relocate event after its snap animation completes.
+    // Without animated mode, releasing a swipe jumps to the target page and
+    // publishes the new locator synchronously.
+    this.#view.renderer?.setAttribute("animated", "");
+
     this.#bookmarkManager.setView(this.#view);
 
     debugLog("FoliateManager", "Book opened, reporting structure to Swift");
