@@ -1053,9 +1053,13 @@ class FoliateManager {
       const pageInfo = this.#getElementPageInfo(el, doc, renderer);
       const intersectsCurrentPage = !renderer.scrolled && pageInfo?.visibleArea > 0;
       if (!intersectsCurrentPage) {
-        debugLog("FoliateManager", `seekToLocation enabled, navigating to ${sectionHref}#${textId}`);
+        const smooth = renderer.scrolled;
+        debugLog(
+          "FoliateManager",
+          `seekToLocation enabled, navigating to ${sectionHref}#${textId} (smooth: ${smooth})`,
+        );
         this.#pendingHighlight = { sectionIndex, textId };
-        this.#view.goTo(`${sectionHref}#${textId}`);
+        this.#view.goTo(`${sectionHref}#${textId}`, { smooth });
         return;
       }
       debugLog("FoliateManager", `Element ${textId} already intersects the current page; skipping anchor navigation`);
