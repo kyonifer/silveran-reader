@@ -222,6 +222,11 @@ class MediaOverlayManager {
 
         let wasPlaying = isPlaying
         isPlaying = state.isPlaying
+        if wasPlaying != isPlaying {
+            Task {
+                try? await commsBridge?.sendJsSetPlaybackActive(isPlaying)
+            }
+        }
         if isInBackground && state.isPlaying {
             backgroundAudioPlayed = true
         }
@@ -473,6 +478,7 @@ class MediaOverlayManager {
 
             try await SMILPlayerActor.shared.play()
             isPlaying = true
+            try? await commsBridge?.sendJsSetPlaybackActive(true)
 
             if let entry = await SMILPlayerActor.shared.getCurrentEntry() {
                 let (currentSectionIndex, _) = await SMILPlayerActor.shared.getCurrentPosition()
@@ -499,6 +505,7 @@ class MediaOverlayManager {
         disableScreenWakeLock()
         await SMILPlayerActor.shared.pause()
         isPlaying = false
+        try? await commsBridge?.sendJsSetPlaybackActive(false)
         pageFlipTimer?.invalidate()
         pageFlipTimer = nil
         debugLog("[MOM] stopPlaying() - paused")
@@ -793,6 +800,7 @@ class MediaOverlayManager {
             await SMILPlayerActor.shared.pause()
         }
 
+        try? await commsBridge?.sendJsSetPlaybackActive(false)
         try? await commsBridge?.sendJsClearHighlight()
         debugLog("[MOM] Cleanup completed")
     }
@@ -923,6 +931,8 @@ class MediaOverlayManager {
         pageFlipTimer = nil
 
         guard isPlaying else { return }
+        let sectionIndex = cachedSectionIndex
+        let textId = message.textId
 
         debugLog(
             "[MOM] Element visibility: textId=\(message.textId), visible=\(message.visibleRatio), offScreen=\(message.offScreenRatio)"
@@ -931,7 +941,7 @@ class MediaOverlayManager {
         if message.offScreenRatio >= 0.9 {
             debugLog("[MOM] Element almost fully off-screen, flipping immediately")
             Task {
-                await self.flipPageIfNotDebounced()
+                await self.flipPageIfNotDebounced(sectionIndex: sectionIndex, textId: textId)
             }
         } else if message.offScreenRatio > 0 {
             Task {
@@ -954,7 +964,10 @@ class MediaOverlayManager {
                     ) {
                         [weak self] _ in
                         Task { @MainActor [weak self] in
-                            await self?.flipPageIfNotDebounced()
+                            await self?.flipPageIfNotDebounced(
+                                sectionIndex: sectionIndex,
+                                textId: textId
+                            )
                         }
                     }
                 }
@@ -962,7 +975,7 @@ class MediaOverlayManager {
         }
     }
 
-    private func flipPageIfNotDebounced() async {
+    private func flipPageIfNotDebounced(sectionIndex: Int, textId: String) async {
         guard isPlaying else { return }
 
         if let last = lastFlipTime, Date().timeIntervalSince(last) < 0.3 {
@@ -971,8 +984,12 @@ class MediaOverlayManager {
         }
 
         lastFlipTime = Date()
-        debugLog("[MOM] Page flip")
-        try? await commsBridge?.sendJsGoRightCommand()
+        let didFlip =
+            (try? await commsBridge?.sendJsGoRightForAudioCommand(
+                sectionIndex: sectionIndex,
+                textId: textId
+            )) ?? false
+        debugLog(didFlip ? "[MOM] Page flip" : "[MOM] Page flip skipped or deferred")
     }
 }
 

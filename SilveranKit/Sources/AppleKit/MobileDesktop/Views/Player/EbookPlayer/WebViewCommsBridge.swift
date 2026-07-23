@@ -173,6 +173,29 @@ class WebViewCommsBridge {
         _ = try await webView.evaluateJavaScript("window.foliateManager.goRight()")
     }
 
+    /// Requests an audio-follow page flip. JS may defer it while the reader is being touched.
+    func sendJsGoRightForAudioCommand(sectionIndex: Int, textId: String) async throws -> Bool {
+        guard let webView = webView else {
+            throw WebViewCommsBridgeError.webViewNotAvailable
+        }
+
+        debugLog(
+            "[WebViewCommsBridge] sendJsGoRightForAudioCommand(sectionIndex: \(sectionIndex), textId: \(textId))"
+        )
+        let result = try await webView.callAsyncJavaScript(
+            """
+            return window.foliateManager.goRightForAudio(sectionIndex, textId);
+            """,
+            arguments: [
+                "sectionIndex": sectionIndex,
+                "textId": textId,
+            ],
+            in: nil,
+            contentWorld: .page,
+        )
+        return result as? Bool ?? false
+    }
+
     /// Swift commands JS to navigate to a specific href (with optional fragment)
     func sendJsGoToHrefCommand(href: String) async throws {
         guard let webView = webView else {
@@ -278,6 +301,18 @@ class WebViewCommsBridge {
     }
 
     // MARK: - Highlight controls (Swift controls audio directly)
+
+    /// Updates reader interaction policy for active audio playback.
+    func sendJsSetPlaybackActive(_ active: Bool) async throws {
+        guard let webView = webView else {
+            throw WebViewCommsBridgeError.webViewNotAvailable
+        }
+
+        debugLog("[WebViewCommsBridge] sendJsSetPlaybackActive(\(active))")
+        _ = try await webView.evaluateJavaScript(
+            "window.foliateManager.setPlaybackActive(\(active))"
+        )
+    }
 
     /// Swift commands JS to highlight a specific text fragment
     /// JS will apply highlight CSS and report visibility for page flip timing

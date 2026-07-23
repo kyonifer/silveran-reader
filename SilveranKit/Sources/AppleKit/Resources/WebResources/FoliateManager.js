@@ -4,6 +4,10 @@ import { SpanHighlighter } from "./SpanHighlighter.js";
 import { debugLog } from "./DebugConfig.js";
 import BookmarkManager from "./BookmarkManager.js";
 
+const PLAYBACK_SELECTION_CLASS = "silveran-playback-active";
+const PLAYBACK_SELECTION_STYLE_ID = "silveran-playback-selection-style";
+const SCROLL_FOLLOW_RESUME_DELAY_MS = 2000;
+
 const getCSS = ({
   lineSpacing = 1.4,
   textAlign = "justify",
@@ -157,6 +161,13 @@ class FoliateManager {
   #highlightedSectionIndex = null;
   #resizeHandler = null;
   #pendingHighlight = null;
+  #isPlaybackActive = false;
+  #readerTouchActive = false;
+  #scrollAutoFollowSuppressed = false;
+  #scrollAutoFollowResumeTimer = null;
+  #latestPlaybackTarget = null;
+  #pagedAutoFollowDeferred = false;
+  #deferredAudioPageFlip = null;
   #bookmarkManager = (() => {
     console.log("[FoliateManager] Creating BookmarkManager instance");
     return new BookmarkManager();
@@ -181,6 +192,28 @@ class FoliateManager {
     // Without animated mode, releasing a swipe jumps to the target page and
     // publishes the new locator synchronously.
     this.#view.renderer?.setAttribute("animated", "");
+    this.#view.renderer?.addEventListener("scroll", () => {
+      this.#handleReaderScroll();
+    });
+    this.#view.renderer?.addEventListener("touchstart", (event) => {
+      this.#handleReaderTouchStart(event);
+    }, { capture: true, passive: true });
+    const handleRendererTouchEnd = (event) => {
+      this.#handleReaderTouchEnd(event);
+    };
+    this.#view.renderer?.addEventListener(
+      "touchend",
+      handleRendererTouchEnd,
+      { capture: true, passive: true },
+    );
+    this.#view.renderer?.addEventListener(
+      "touchcancel",
+      handleRendererTouchEnd,
+      { capture: true, passive: true },
+    );
+    this.#view.renderer?.addEventListener("wheel", () => {
+      this.#handleReaderWheel();
+    }, { capture: true, passive: true });
 
     this.#bookmarkManager.setView(this.#view);
 
@@ -205,6 +238,33 @@ class FoliateManager {
       const { doc, index } = detail;
       if (doc) {
         let isDragging = false;
+
+        this.#applyPlaybackSelectionPolicy(doc);
+
+        doc.addEventListener("touchstart", (event) => {
+          this.#handleReaderTouchStart(event);
+        }, { capture: true, passive: true });
+
+        const handleTouchEnd = (event) => {
+          this.#handleReaderTouchEnd(event);
+        };
+        doc.addEventListener("touchend", handleTouchEnd, { capture: true, passive: true });
+        doc.addEventListener("touchcancel", handleTouchEnd, { capture: true, passive: true });
+
+        doc.addEventListener("wheel", () => {
+          this.#handleReaderWheel();
+        }, { capture: true, passive: true });
+
+        doc.addEventListener("selectstart", (event) => {
+          if (this.#isPlaybackActive) event.preventDefault();
+        }, { capture: true });
+
+        doc.addEventListener("selectionchange", () => {
+          if (!this.#isPlaybackActive) return;
+          const selection = doc.getSelection?.();
+          selection?.removeAllRanges();
+          this.#bookmarkManager.hideSelectionToolbar();
+        });
 
         doc.addEventListener("touchmove", (event) => {
           const selection = doc.getSelection?.();
@@ -268,6 +328,131 @@ class FoliateManager {
     });
 
     debugLog("FoliateManager", "Event listeners attached");
+  }
+
+  #applyPlaybackSelectionPolicy(doc) {
+    if (!doc?.documentElement) return;
+
+    if (!doc.getElementById(PLAYBACK_SELECTION_STYLE_ID)) {
+      const style = doc.createElement("style");
+      style.id = PLAYBACK_SELECTION_STYLE_ID;
+      style.textContent = `
+        html.${PLAYBACK_SELECTION_CLASS},
+        html.${PLAYBACK_SELECTION_CLASS} * {
+          -webkit-user-select: none !important;
+          user-select: none !important;
+          -webkit-touch-callout: none !important;
+        }
+      `;
+      (doc.head || doc.documentElement).appendChild(style);
+    }
+
+    doc.documentElement.classList.toggle(
+      PLAYBACK_SELECTION_CLASS,
+      this.#isPlaybackActive,
+    );
+
+    if (this.#isPlaybackActive) {
+      const selection = doc.getSelection?.();
+      selection?.removeAllRanges();
+      this.#bookmarkManager.hideSelectionToolbar();
+    }
+  }
+
+  #isAutoFollowSuppressed(renderer = this.#view?.renderer) {
+    if (!this.#isPlaybackActive) return false;
+    return renderer?.scrolled
+      ? this.#readerTouchActive || this.#scrollAutoFollowSuppressed
+      : this.#readerTouchActive;
+  }
+
+  #suppressScrollAutoFollow() {
+    if (!this.#isPlaybackActive || !this.#view?.renderer?.scrolled) return;
+    this.#scrollAutoFollowSuppressed = true;
+    this.#pendingHighlight = null;
+    if (this.#scrollAutoFollowResumeTimer !== null) {
+      clearTimeout(this.#scrollAutoFollowResumeTimer);
+      this.#scrollAutoFollowResumeTimer = null;
+    }
+  }
+
+  #scheduleScrollAutoFollowResume() {
+    if (!this.#isPlaybackActive || !this.#scrollAutoFollowSuppressed) return;
+    if (this.#scrollAutoFollowResumeTimer !== null) {
+      clearTimeout(this.#scrollAutoFollowResumeTimer);
+      this.#scrollAutoFollowResumeTimer = null;
+    }
+    if (this.#readerTouchActive) return;
+
+    this.#scrollAutoFollowResumeTimer = setTimeout(() => {
+      this.#scrollAutoFollowResumeTimer = null;
+      if (!this.#isPlaybackActive || this.#readerTouchActive) return;
+      this.#scrollAutoFollowSuppressed = false;
+      this.#resumeLatestPlaybackTarget();
+    }, SCROLL_FOLLOW_RESUME_DELAY_MS);
+  }
+
+  #resumeLatestPlaybackTarget() {
+    const target = this.#latestPlaybackTarget;
+    if (!this.#isPlaybackActive || !target) return;
+    this.highlightFragment(target.sectionIndex, target.textId, true);
+  }
+
+  #resumePagedAutoFollow() {
+    if (!this.#isPlaybackActive || this.#readerTouchActive) return;
+    if (!this.#pagedAutoFollowDeferred) return;
+    this.#pagedAutoFollowDeferred = false;
+
+    const target = this.#latestPlaybackTarget;
+    const deferredFlip = this.#deferredAudioPageFlip;
+    this.#deferredAudioPageFlip = null;
+
+    if (
+      deferredFlip &&
+      (!target ||
+        (target.sectionIndex === deferredFlip.sectionIndex &&
+          target.textId === deferredFlip.textId))
+    ) {
+      if (target) this.#pendingHighlight = target;
+      this.#view?.goRight();
+      return;
+    }
+
+    this.#resumeLatestPlaybackTarget();
+  }
+
+  #handleReaderTouchStart(event) {
+    this.#readerTouchActive = (event.touches?.length ?? 1) > 0;
+    if (!this.#isPlaybackActive) return;
+
+    this.#pendingHighlight = null;
+    if (this.#view?.renderer?.scrolled) {
+      this.#suppressScrollAutoFollow();
+    }
+  }
+
+  #handleReaderTouchEnd(event) {
+    this.#readerTouchActive = (event.touches?.length ?? 0) > 0;
+    if (!this.#isPlaybackActive || this.#readerTouchActive) return;
+
+    if (this.#view?.renderer?.scrolled) {
+      this.#scheduleScrollAutoFollowResume();
+    } else {
+      this.#resumePagedAutoFollow();
+    }
+  }
+
+  #handleReaderWheel() {
+    if (!this.#isPlaybackActive || !this.#view?.renderer?.scrolled) return;
+    this.#suppressScrollAutoFollow();
+    this.#scheduleScrollAutoFollowResume();
+  }
+
+  #handleReaderScroll() {
+    if (!this.#isPlaybackActive || !this.#view?.renderer?.scrolled) return;
+    if (this.#scrollAutoFollowSuppressed) {
+      this.#scheduleScrollAutoFollowResume();
+    }
   }
 
   #handleKeyDown(event) {
@@ -518,6 +703,64 @@ class FoliateManager {
     this.#view.goRight();
   }
 
+  goRightForAudio(sectionIndex, textId) {
+    debugLog(
+      "FoliateManager",
+      `goRightForAudio(sectionIndex: ${sectionIndex}, textId: ${textId})`,
+    );
+    if (!this.#view) {
+      console.warn("[FM2] goRightForAudio() called but view not initialized");
+      return false;
+    }
+
+    const latestTarget = this.#latestPlaybackTarget;
+    if (
+      latestTarget &&
+      (latestTarget.sectionIndex !== sectionIndex || latestTarget.textId !== textId)
+    ) {
+      debugLog("FoliateManager", "Ignoring stale audio-follow page flip");
+      return false;
+    }
+
+    if (this.#isAutoFollowSuppressed()) {
+      if (!this.#view.renderer?.scrolled) {
+        this.#pagedAutoFollowDeferred = true;
+        this.#deferredAudioPageFlip = { sectionIndex, textId };
+      }
+      return false;
+    }
+
+    this.#view.goRight();
+    return true;
+  }
+
+  setPlaybackActive(active) {
+    const nextActive = !!active;
+    debugLog("FoliateManager", `setPlaybackActive(${nextActive})`);
+    this.#isPlaybackActive = nextActive;
+
+    for (const { doc } of this.#view?.renderer?.getContents?.() || []) {
+      this.#applyPlaybackSelectionPolicy(doc);
+    }
+
+    if (nextActive) {
+      if (this.#readerTouchActive && this.#view?.renderer?.scrolled) {
+        this.#suppressScrollAutoFollow();
+      }
+      return;
+    }
+
+    if (this.#scrollAutoFollowResumeTimer !== null) {
+      clearTimeout(this.#scrollAutoFollowResumeTimer);
+      this.#scrollAutoFollowResumeTimer = null;
+    }
+    this.#scrollAutoFollowSuppressed = false;
+    this.#latestPlaybackTarget = null;
+    this.#pagedAutoFollowDeferred = false;
+    this.#deferredAudioPageFlip = null;
+    this.#pendingHighlight = null;
+  }
+
   goTo(href) {
     debugLog("FoliateManager", "goTo() - href:", href);
     if (!this.#view) {
@@ -764,6 +1007,28 @@ class FoliateManager {
 
   #handleDoubleClick(event, sectionIndex, doc) {
     debugLog("FoliateManager", `Double-click detected in section ${sectionIndex}`);
+
+    if (this.#isPlaybackActive) {
+      const target =
+        event.target?.nodeType === Node.ELEMENT_NODE
+          ? event.target
+          : event.target?.parentElement;
+      const anchor = target?.closest?.("[id]")?.id;
+      if (!anchor) {
+        console.warn("[FM2] No sentence anchor found from playback double-tap");
+        return;
+      }
+
+      event.preventDefault();
+      const selection = doc.getSelection?.();
+      selection?.removeAllRanges();
+      debugLog(
+        "FoliateManager",
+        `Sending playback double-tap seek: section=${sectionIndex}, anchor=${anchor}`,
+      );
+      this.#reportSeekEvent(sectionIndex, anchor);
+      return;
+    }
 
     const selection = doc.getSelection?.();
     if (!selection) {
@@ -1024,10 +1289,25 @@ class FoliateManager {
       return;
     }
 
+    const playbackFollowSuppressed =
+      seekToLocation &&
+      this.#isPlaybackActive &&
+      this.#isAutoFollowSuppressed(renderer);
+    if (playbackFollowSuppressed && !renderer.scrolled) {
+      this.#pagedAutoFollowDeferred = true;
+    }
+    if (seekToLocation && this.#isPlaybackActive) {
+      this.#latestPlaybackTarget = { sectionIndex, textId };
+    }
+
     const contents = renderer.getContents?.();
     const sectionHref = this.#view.book?.sections?.[sectionIndex]?.id;
 
     if (!contents || !contents.length) {
+      if (playbackFollowSuppressed) {
+        this.#pendingHighlight = null;
+        return;
+      }
       debugLog("FoliateManager", "No contents loaded, storing pending highlight and navigating");
       this.#pendingHighlight = { sectionIndex, textId };
       if (sectionHref) this.#view.goTo(`${sectionHref}#${textId}`);
@@ -1036,6 +1316,10 @@ class FoliateManager {
 
     const content = contents.find(c => c.index === sectionIndex);
     if (!content?.doc) {
+      if (playbackFollowSuppressed) {
+        this.#pendingHighlight = null;
+        return;
+      }
       debugLog("FoliateManager", `Section ${sectionIndex} not currently loaded, storing pending highlight and navigating`);
       this.#pendingHighlight = { sectionIndex, textId };
       if (sectionHref) this.#view.goTo(`${sectionHref}#${textId}`);
@@ -1045,6 +1329,10 @@ class FoliateManager {
     const doc = content.doc;
     const el = doc.getElementById(textId);
     if (!el) {
+      if (playbackFollowSuppressed) {
+        this.#pendingHighlight = null;
+        return;
+      }
       debugLog("FoliateManager", `Element ${textId} not found yet in section ${sectionIndex}, storing as pending`);
       this.#pendingHighlight = { sectionIndex, textId };
       if (seekToLocation && sectionHref) this.#view.goTo(`${sectionHref}#${textId}`);
@@ -1074,6 +1362,11 @@ class FoliateManager {
     const playbackActiveClass = this.#view?.book?.media?.playbackActiveClass;
     if (playbackActiveClass) {
       doc.documentElement.classList.add(playbackActiveClass);
+    }
+
+    if (playbackFollowSuppressed) {
+      this.#pendingHighlight = null;
+      return;
     }
 
     if (navigation) {
