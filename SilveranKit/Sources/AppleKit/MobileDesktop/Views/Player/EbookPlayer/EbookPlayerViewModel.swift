@@ -962,6 +962,7 @@ class EbookPlayerViewModel {
                 await self.mediaOverlayManager?.handleSeekEvent(
                     sectionIndex: message.sectionIndex,
                     anchor: message.anchor,
+                    startPlayback: message.startPlayback ?? false,
                 )
             }
         }

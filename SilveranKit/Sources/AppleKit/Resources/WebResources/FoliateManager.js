@@ -1075,7 +1075,8 @@ class FoliateManager {
 
     window.webkit?.messageHandlers?.mediaOverlaySeek?.postMessage({
       sectionIndex: sectionIndex,
-      anchor: anchor
+      anchor: anchor,
+      startPlayback: true,
     });
   }
 

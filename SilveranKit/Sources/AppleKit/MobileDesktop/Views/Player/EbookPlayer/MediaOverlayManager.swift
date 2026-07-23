@@ -409,8 +409,14 @@ class MediaOverlayManager {
     /// - User double-clicks on a sentence in the reader
     /// - Book opens at last reading position (future)
     /// Only seeks if the exact fragment exists in bookStructure for the requested section
-    func handleSeekEvent(sectionIndex: Int, anchor: String) async {
-        debugLog("[MOM] handleSeekEvent - section: \(sectionIndex), anchor: \(anchor)")
+    func handleSeekEvent(
+        sectionIndex: Int,
+        anchor: String,
+        startPlayback: Bool = false
+    ) async {
+        debugLog(
+            "[MOM] handleSeekEvent - section: \(sectionIndex), anchor: \(anchor), startPlayback: \(startPlayback)"
+        )
 
         guard let section = getSection(at: sectionIndex) else {
             debugLog("[MOM] ERROR: handleSeekEvent - invalid section index: \(sectionIndex)")
@@ -439,7 +445,13 @@ class MediaOverlayManager {
         )
         if success {
             debugLog("[MOM] handleSeekEvent - seek successful")
-            await sendHighlightCommand(sectionIndex: sectionIndex, textId: anchor)
+
+            if startPlayback && !wasPlaying {
+                debugLog("[MOM] handleSeekEvent - starting playback")
+                await startPlaying()
+            } else {
+                await sendHighlightCommand(sectionIndex: sectionIndex, textId: anchor)
+            }
 
             if wasPlaying {
                 debugLog("[MOM] handleSeekEvent - resuming playback")

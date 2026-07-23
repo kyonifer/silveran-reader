@@ -52,6 +52,7 @@ struct SentenceSkipMessage: Codable {
 struct MediaOverlaySeekMessage: Codable {
     let sectionIndex: Int
     let anchor: String
+    let startPlayback: Bool?
 }
 
 // SectionInfo and SMILEntry are defined in Common/Models/SMILTypes.swift
