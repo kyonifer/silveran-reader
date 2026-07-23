@@ -46,9 +46,17 @@ fun SilveranApp(viewModel: SilveranViewModel) {
     var readerMode by rememberSaveable { mutableStateOf("ebook") }
     var libraryTabName by rememberSaveable { mutableStateOf(LibraryTab.Home.name) }
     var librarySearchText by rememberSaveable { mutableStateOf("") }
+    var librarySortFieldName by rememberSaveable { mutableStateOf(LibrarySortField.Title.name) }
+    var librarySortAscending by rememberSaveable { mutableStateOf(true) }
+    var libraryFiltersJson by rememberSaveable { mutableStateOf("") }
     var settingsSavePending by remember { mutableStateOf(false) }
     val screen = Screen.valueOf(screenName)
     val libraryTab = LibraryTab.valueOf(libraryTabName)
+    val librarySortField = LibrarySortField.entries
+        .firstOrNull { it.name == librarySortFieldName } ?: LibrarySortField.Title
+    val libraryFilters = remember(libraryFiltersJson) {
+        LibraryFilterState.decode(libraryFiltersJson)
+    }
     val selectedBookSummary = state.books.firstOrNull { it.id == selectedBookID }
     val selectedBook = selectedBookSummary?.let { book ->
         state.bookDetails[book.id]
@@ -167,6 +175,16 @@ fun SilveranApp(viewModel: SilveranViewModel) {
                     state = state,
                     tab = libraryTab,
                     searchText = librarySearchText,
+                    sortField = librarySortField,
+                    sortAscending = librarySortAscending,
+                    filters = libraryFilters,
+                    selectSort = { field, ascending ->
+                        librarySortFieldName = field.name
+                        librarySortAscending = ascending
+                    },
+                    updateFilters = { updated ->
+                        libraryFiltersJson = updated.encode()
+                    },
                     modifier = Modifier.padding(padding),
                     configure = { screenName = Screen.Settings.name },
                     select = { book ->

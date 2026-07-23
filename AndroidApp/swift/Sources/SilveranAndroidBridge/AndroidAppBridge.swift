@@ -249,6 +249,18 @@ private func makeLibrarySnapshotJSON(refresh: Bool) async throws -> String {
                     : (progress[book.id]?.progressFraction ?? 0),
                 pageCount: book.pageCountValue,
                 durationDisplay: book.durationDisplay,
+                durationSeconds: book.sortableDuration,
+                sortTitle: book.sortableTitle,
+                sortAuthor: book.sortableAuthor,
+                sortNarrator: book.sortableNarrator,
+                sortSeriesName: book.sortableSeries.name,
+                sortSeriesPosition: Double(book.sortableSeries.position),
+                sortAdded: book.sortableAdded,
+                sortLastRead: book.sortableLastRead,
+                sortPublicationDate: book.sortablePublicationDate,
+                publicationYear: book.sortablePublicationYear,
+                status: book.status?.name,
+                fileSizeBytes: book.sortableFileSize,
                 coverVersion: book.updatedAt ?? "",
                 media: media,
             )
@@ -541,6 +553,18 @@ private struct AndroidBook: Encodable {
     let progress: Double
     let pageCount: Int?
     let durationDisplay: String
+    let durationSeconds: Double
+    let sortTitle: String
+    let sortAuthor: String
+    let sortNarrator: String
+    let sortSeriesName: String
+    let sortSeriesPosition: Double
+    let sortAdded: String
+    let sortLastRead: String
+    let sortPublicationDate: String
+    let publicationYear: String
+    let status: String?
+    let fileSizeBytes: Int
     let coverVersion: String
     let media: [AndroidMedia]
 }
