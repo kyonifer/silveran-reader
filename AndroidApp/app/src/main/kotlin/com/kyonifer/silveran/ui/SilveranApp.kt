@@ -2,13 +2,25 @@ package com.kyonifer.silveran.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -16,21 +28,27 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
+import androidx.compose.material3.rememberDrawerState
+import androidx.compose.material3.DrawerValue
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import com.kyonifer.silveran.model.Book
 import com.kyonifer.silveran.model.BookDetails
 import com.kyonifer.silveran.model.BookID
+import kotlinx.coroutines.launch
 
 private enum class Screen {
     Library,
+    Category,
     Settings,
     Details,
     Reader,
@@ -49,7 +67,11 @@ fun SilveranApp(viewModel: SilveranViewModel) {
     var librarySortFieldName by rememberSaveable { mutableStateOf(LibrarySortField.Title.name) }
     var librarySortAscending by rememberSaveable { mutableStateOf(true) }
     var libraryFiltersJson by rememberSaveable { mutableStateOf("") }
+    var categoryKindName by rememberSaveable { mutableStateOf("") }
+    var categoryGroup by rememberSaveable { mutableStateOf("") }
     var settingsSavePending by remember { mutableStateOf(false) }
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val drawerScope = rememberCoroutineScope()
     val screen = Screen.valueOf(screenName)
     val libraryTab = LibraryTab.valueOf(libraryTabName)
     val librarySortField = LibrarySortField.entries
@@ -57,6 +79,8 @@ fun SilveranApp(viewModel: SilveranViewModel) {
     val libraryFilters = remember(libraryFiltersJson) {
         LibraryFilterState.decode(libraryFiltersJson)
     }
+    val categoryKind = LibraryCategoryKind.entries
+        .firstOrNull { it.name == categoryKindName }
     val selectedBookSummary = state.books.firstOrNull { it.id == selectedBookID }
     val selectedBook = selectedBookSummary?.let { book ->
         state.bookDetails[book.id]
@@ -65,6 +89,7 @@ fun SilveranApp(viewModel: SilveranViewModel) {
             ?: book
     }
     val canNavigateBack = screen == Screen.Details || screen == Screen.Reader ||
+        screen == Screen.Category ||
         (screen == Screen.Settings && state.settings.configured)
     val navigateBack = {
         if (screen == Screen.Reader) {
@@ -74,9 +99,18 @@ fun SilveranApp(viewModel: SilveranViewModel) {
                 viewModel.closeReader()
             }
         }
-        screenName = when (screen) {
-            Screen.Reader -> Screen.Details.name
-            else -> Screen.Library.name
+        if (screen == Screen.Category && categoryGroup.isNotEmpty()) {
+            categoryGroup = ""
+        } else {
+            screenName = when (screen) {
+                Screen.Reader -> Screen.Details.name
+                Screen.Details ->
+                    if (categoryKindName.isNotEmpty()) Screen.Category.name else Screen.Library.name
+                else -> Screen.Library.name
+            }
+            if (screen == Screen.Category) {
+                categoryKindName = ""
+            }
         }
     }
 
@@ -127,6 +161,30 @@ fun SilveranApp(viewModel: SilveranViewModel) {
     MaterialTheme(
         colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme(),
     ) {
+        ModalNavigationDrawer(
+            drawerState = drawerState,
+            gesturesEnabled = screen == Screen.Library && drawerState.isOpen,
+            drawerContent = {
+                LibraryDrawer(
+                    refreshEnabled = !state.libraryBusy && state.settings.configured,
+                    onSelectTab = { tab ->
+                        libraryTabName = tab.name
+                        screenName = Screen.Library.name
+                        drawerScope.launch { drawerState.close() }
+                    },
+                    onSelectCategory = { kind ->
+                        categoryKindName = kind.name
+                        categoryGroup = ""
+                        screenName = Screen.Category.name
+                        drawerScope.launch { drawerState.close() }
+                    },
+                    onRefresh = {
+                        viewModel.refreshLibrary()
+                        drawerScope.launch { drawerState.close() }
+                    },
+                )
+            },
+        ) {
         Scaffold(
             snackbarHost = { SnackbarHost(snackbar) },
             topBar = {
@@ -135,10 +193,9 @@ fun SilveranApp(viewModel: SilveranViewModel) {
                         selectedTab = libraryTab,
                         searchText = librarySearchText,
                         refreshing = state.refreshingLibrary,
-                        refreshEnabled = !state.libraryBusy && state.settings.configured,
                         selectTab = { libraryTabName = it.name },
                         updateSearch = { librarySearchText = it },
-                        refresh = viewModel::refreshLibrary,
+                        openMenu = { drawerScope.launch { drawerState.open() } },
                         openSettings = { screenName = Screen.Settings.name },
                     )
                 } else if (screen != Screen.Details &&
@@ -149,6 +206,8 @@ fun SilveranApp(viewModel: SilveranViewModel) {
                             Text(
                                 when (screen) {
                                     Screen.Library -> "Library"
+                                    Screen.Category ->
+                                        categoryGroup.ifEmpty { categoryKind?.label ?: "" }
                                     Screen.Settings -> "Server settings"
                                     Screen.Details -> ""
                                     Screen.Reader -> if (readerMode == "audio") "Player" else "Reader"
@@ -195,6 +254,22 @@ fun SilveranApp(viewModel: SilveranViewModel) {
                     cover = viewModel::cover,
                     cachedCover = viewModel::cachedCover,
                 )
+                Screen.Category -> categoryKind?.let { kind ->
+                    CategoryBrowserScreen(
+                        kind = kind,
+                        group = categoryGroup.ifEmpty { null },
+                        books = state.books,
+                        select = { book ->
+                            selectedBookID = book.id
+                            screenName = Screen.Details.name
+                        },
+                        selectGroup = { categoryGroup = it },
+                        coverRevision = state.coverRevision,
+                        cover = viewModel::cover,
+                        cachedCover = viewModel::cachedCover,
+                        modifier = Modifier.padding(padding),
+                    )
+                }
                 Screen.Settings -> SettingsScreen(
                     settings = state.settings,
                     settingsLoaded = state.settingsLoaded,
@@ -277,6 +352,62 @@ fun SilveranApp(viewModel: SilveranViewModel) {
                     }
                 }
             }
+        }
+        }
+    }
+}
+
+@Composable
+private fun LibraryDrawer(
+    refreshEnabled: Boolean,
+    onSelectTab: (LibraryTab) -> Unit,
+    onSelectCategory: (LibraryCategoryKind) -> Unit,
+    onRefresh: () -> Unit,
+) {
+    ModalDrawerSheet {
+        Column(
+            modifier = Modifier
+                .verticalScroll(rememberScrollState())
+                .padding(vertical = 12.dp),
+        ) {
+            Text(
+                "Browse",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(horizontal = 28.dp, vertical = 12.dp),
+            )
+            NavigationDrawerItem(
+                label = { Text("Books") },
+                icon = { Icon(Icons.AutoMirrored.Filled.MenuBook, contentDescription = null) },
+                selected = false,
+                onClick = { onSelectTab(LibraryTab.Library) },
+                modifier = Modifier.padding(horizontal = 12.dp),
+            )
+            NavigationDrawerItem(
+                label = { Text("Downloaded") },
+                icon = { Icon(Icons.Filled.Download, contentDescription = null) },
+                selected = false,
+                onClick = { onSelectTab(LibraryTab.Downloaded) },
+                modifier = Modifier.padding(horizontal = 12.dp),
+            )
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+            LibraryCategoryKind.entries.forEach { kind ->
+                NavigationDrawerItem(
+                    label = { Text(kind.label) },
+                    icon = { Icon(kind.icon, contentDescription = null) },
+                    selected = false,
+                    onClick = { onSelectCategory(kind) },
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                )
+            }
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+            NavigationDrawerItem(
+                label = { Text("Refresh Library") },
+                icon = { Icon(Icons.Filled.Refresh, contentDescription = null) },
+                selected = false,
+                onClick = { if (refreshEnabled) onRefresh() },
+                modifier = Modifier.padding(horizontal = 12.dp),
+            )
+            Spacer(modifier = Modifier.height(12.dp))
         }
     }
 }

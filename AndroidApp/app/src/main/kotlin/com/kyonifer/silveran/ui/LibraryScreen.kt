@@ -36,7 +36,7 @@ import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FilterList
-import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CircularProgressIndicator
@@ -618,7 +618,7 @@ private fun HomeSections(
 }
 
 @Composable
-private fun BookGrid(
+internal fun BookGrid(
     books: List<Book>,
     select: (Book) -> Unit,
     coverRevision: Int,
@@ -694,10 +694,9 @@ internal fun LibraryHeader(
     selectedTab: LibraryTab,
     searchText: String,
     refreshing: Boolean,
-    refreshEnabled: Boolean,
     selectTab: (LibraryTab) -> Unit,
     updateSearch: (String) -> Unit,
-    refresh: () -> Unit,
+    openMenu: () -> Unit,
     openSettings: () -> Unit,
 ) {
     val focusManager = LocalFocusManager.current
@@ -711,6 +710,16 @@ internal fun LibraryHeader(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                IconButton(onClick = openMenu) {
+                    if (refreshing) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            strokeWidth = 2.dp,
+                        )
+                    } else {
+                        Icon(Icons.Filled.Menu, contentDescription = "Browse library")
+                    }
+                }
                 TextField(
                     value = searchText,
                     onValueChange = updateSearch,
@@ -735,16 +744,6 @@ internal fun LibraryHeader(
                         unfocusedIndicatorColor = Color.Transparent,
                     ),
                 )
-                IconButton(onClick = refresh, enabled = refreshEnabled) {
-                    if (refreshing) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(24.dp),
-                            strokeWidth = 2.dp,
-                        )
-                    } else {
-                        Icon(Icons.Default.Refresh, contentDescription = "Refresh library")
-                    }
-                }
                 IconButton(onClick = openSettings) {
                     Icon(Icons.Default.Settings, contentDescription = "Server settings")
                 }
