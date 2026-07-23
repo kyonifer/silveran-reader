@@ -1,6 +1,6 @@
 [submodule "SilveranKit/Sources/AppleKit/Resources/WebResources/foliate-js"]
 	path = SilveranKit/Sources/AppleKit/Resources/WebResources/foliate-js
-	url = https://github.com/kyonifer/foliate-js.git
+	url = https://github.com/trcoffman/foliate-js.git
 [submodule "SilveranKit/Sources/AppleKit/Resources/assets"]
 	path = SilveranKit/Sources/AppleKit/Resources/assets
 	url = https://github.com/kyonifer/s-r-assets.git
