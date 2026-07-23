@@ -160,6 +160,21 @@ final class AndroidReaderSession {
     private var isDarkMode = false
     private var overlayToggleCount = 0
     private var keepScreenOn = false
+    private var customThemes: [ReaderTheme] = []
+    private var builtInThemeOverrides: [ReaderTheme] = []
+    private var defaultPlaybackSpeed = kDefaultPlaybackSpeed
+    private var selectedLightThemeId = ReaderTheme.builtInLight.id
+    private var selectedDarkThemeId = ReaderTheme.builtInDark.id
+    private var searchQuery = ""
+    private var isSearching = false
+    private var searchProgress = 0.0
+    private var searchSections: [SearchResultsMessage] = []
+    private var searchError: String?
+    private var currentBookID: BookID?
+    private var highlights: [Highlight] = []
+    private var pendingSelection: TextSelectionMessage?
+    private var pendingEditHighlightID: UUID?
+    private var translateAvailable = false
 
     nonisolated private init() {}
 
@@ -170,10 +185,45 @@ final class AndroidReaderSession {
         let title: String
     }
 
-    // Android has no theme management UI yet, so the built-in light/dark
-    // themes are always active, matching what iOS applies via applyActiveTheme.
-    private func applyBuiltInTheme() {
-        let theme: ReaderTheme = isDarkMode ? .builtInDark : .builtInLight
+    private func loadPersistedConfig() async {
+        let config = await SettingsActor.shared.config
+        settings.fontSize = config.reading.fontSize
+        settings.fontFamily = config.reading.fontFamily
+        settings.lineSpacing = config.reading.lineSpacing
+        settings.marginLeftRight = config.reading.marginLeftRight
+        settings.marginTopBottom = config.reading.marginTopBottom
+        settings.wordSpacing = config.reading.wordSpacing
+        settings.letterSpacing = config.reading.letterSpacing
+        settings.textAlignment = config.reading.textAlignment
+        settings.singleColumnMode = config.reading.singleColumnMode
+        settings.scrollingMode = config.reading.scrollingMode
+        settings.enableMarginClickNavigation = config.reading.enableMarginClickNavigation
+        settings.lockViewToAudio = config.playback.lockViewToAudio
+        defaultPlaybackSpeed = config.playback.defaultPlaybackSpeed
+        customThemes = config.themes.customThemes
+        builtInThemeOverrides = config.themes.builtInThemeOverrides
+        selectedLightThemeId = config.themes.selectedLightThemeId
+        selectedDarkThemeId = config.themes.selectedDarkThemeId
+    }
+
+    private var activeThemeId: String {
+        isDarkMode ? selectedDarkThemeId : selectedLightThemeId
+    }
+
+    private var activeTheme: ReaderTheme {
+        builtInThemeOverrides.first(where: { $0.id == activeThemeId })
+            ?? ReaderTheme.resolve(id: activeThemeId, customThemes: customThemes)
+            ?? (isDarkMode ? .builtInDark : .builtInLight)
+    }
+
+    private var allThemes: [ReaderTheme] {
+        ReaderTheme.allBuiltIn.map { stock in
+            builtInThemeOverrides.first(where: { $0.id == stock.id }) ?? stock
+        } + customThemes
+    }
+
+    private func applyActiveTheme() {
+        let theme = activeTheme
         settings.backgroundColor = theme.backgroundColor
         settings.foregroundColor = theme.foregroundColor
         settings.highlightColor = theme.highlightColor
@@ -218,12 +268,20 @@ final class AndroidReaderSession {
         overlayToggleCount = 0
         keepScreenOn = false
         lastStatePayload = nil
-        applyBuiltInTheme()
+        resetSearchState()
+        currentBookID = bookID
+        highlights = []
+        pendingSelection = nil
+        pendingEditHighlightID = nil
+        await loadPersistedConfig()
+        applyActiveTheme()
 
         let styleManager = ReaderStyleManager(settingsVM: settings, bridge: bridge)
         self.styleManager = styleManager
 
+        let persistedRate = defaultPlaybackSpeed
         session.configureMediaOverlayManager = { [weak self] manager in
+            manager.setPlaybackRate(persistedRate)
             manager.setWakeLock = { on in
                 Task { @SilveranUIActor in
                     self?.keepScreenOn = on
@@ -236,12 +294,68 @@ final class AndroidReaderSession {
         session.onViewStructureReady = { [weak self] in
             guard let self else { return }
             self.styleManager?.sendInitialStyles(isDarkMode: self.isDarkMode)
+            Task { @SilveranUIActor in
+                await self.loadHighlights()
+            }
         }
 
         session.prepare()
         session.attachBridge(bridge, isRecovery: false)
         bridge.onOverlayToggled = { [weak self] in
             self?.overlayToggleCount += 1
+        }
+        bridge.onSearchResults = { [weak self] message in
+            Task { @SilveranUIActor in
+                self?.searchSections.append(message)
+            }
+        }
+        bridge.onSearchProgress = { [weak self] message in
+            Task { @SilveranUIActor in
+                self?.searchProgress = message.progress
+            }
+        }
+        bridge.onSearchComplete = { [weak self] in
+            Task { @SilveranUIActor in
+                self?.isSearching = false
+                self?.searchProgress = 1.0
+            }
+        }
+        bridge.onSearchError = { [weak self] message in
+            Task { @SilveranUIActor in
+                self?.isSearching = false
+                self?.searchError = message.message
+            }
+        }
+        bridge.onTextSelected = { [weak self] message in
+            Task { @SilveranUIActor in
+                self?.pendingSelection = message
+            }
+        }
+        bridge.onSelectionHighlight = { [weak self] message in
+            Task { @SilveranUIActor in
+                await self?.addHighlight(
+                    from: message.selection,
+                    color: HighlightColor(rawValue: message.colorId),
+                    note: nil,
+                )
+                self?.rememberLastUsedColor(message.colorId)
+            }
+        }
+        bridge.onHighlightSetColor = { [weak self] message in
+            Task { @SilveranUIActor in
+                await self?.setHighlightColor(id: message.id, colorId: message.colorId)
+                self?.rememberLastUsedColor(message.colorId)
+            }
+        }
+        bridge.onHighlightDelete = { [weak self] message in
+            Task { @SilveranUIActor in
+                await self?.deleteHighlight(id: message.id)
+            }
+        }
+        bridge.onHighlightEdit = { [weak self] message in
+            Task { @SilveranUIActor in
+                self?.pendingEditHighlightID = UUID(uuidString: message.id)
+            }
         }
 
         await session.awaitPreparation()
@@ -345,14 +459,52 @@ final class AndroidReaderSession {
                 session.mediaOverlayManager?.prevSentence()
             case "setRate":
                 session.mediaOverlayManager?.setPlaybackRate(value)
+                defaultPlaybackSpeed = value
+                try await SettingsActor.shared.updateConfig(defaultPlaybackSpeed: value)
             case "setVolume":
                 session.mediaOverlayManager?.setVolume(value)
             case "updateReaderSettings":
                 try settings.apply(json: text)
+                try await persistDisplaySettings()
+            case "resetReaderSettings":
+                resetDisplaySettings()
+                try await persistDisplaySettings()
+            case "saveHighlight":
+                try await applyHighlightEdit(json: text)
+            case "cancelSelection":
+                pendingSelection = nil
+                pendingEditHighlightID = nil
+            case "deleteHighlight":
+                await deleteHighlight(id: text)
+            case "goToHighlight":
+                try await goToHighlight(id: text)
+            case "startSearch":
+                try await startSearch(json: text)
+            case "clearSearch":
+                resetSearchState()
+                try? await bridge?.sendJsClearSearchCommand()
+            case "goToSearchResult":
+                try await bridge?.sendJsGoToCFICommand(cfi: text)
+            case "selectTheme":
+                try await selectTheme(id: text, dark: isDarkMode)
+            case "selectLightTheme":
+                try await selectTheme(id: text, dark: false)
+            case "selectDarkTheme":
+                try await selectTheme(id: text, dark: true)
+            case "saveTheme":
+                try await saveTheme(json: text)
+            case "deleteTheme":
+                try await deleteTheme(id: text)
+            case "resetTheme":
+                try await resetTheme(id: text)
+            case "setTranslateAvailable":
+                translateAvailable = value != 0
+                try? await bridge?.sendJsSetTranslateAvailable(translateAvailable)
             case "setDarkMode":
                 isDarkMode = value != 0
-                applyBuiltInTheme()
+                applyActiveTheme()
                 styleManager?.handleDarkModeChange(isDarkMode)
+                await sendHighlightsToJS()
             case "sceneActive":
                 await session.handleSceneBecameActive()
             case "sceneBackground":
@@ -362,12 +514,491 @@ final class AndroidReaderSession {
         }
     }
 
+    private static let lastUsedHighlightColorKey = "lastUsedHighlightColorId"
+
+    private var lastUsedHighlightColorId: String {
+        UserDefaults.standard.string(forKey: Self.lastUsedHighlightColorKey)
+            ?? HighlightColor.allCases.first!.rawValue
+    }
+
+    private func rememberLastUsedColor(_ colorId: String) {
+        guard HighlightColor(rawValue: colorId) != nil else { return }
+        guard colorId != lastUsedHighlightColorId else { return }
+        UserDefaults.standard.set(colorId, forKey: Self.lastUsedHighlightColorKey)
+        Task { try? await bridge?.sendJsSetDefaultHighlightColor(colorId) }
+    }
+
+    private func themeHighlightColor(_ color: HighlightColor) -> String {
+        let theme = activeTheme
+        switch color {
+            case .pink: return theme.userHighlightColor1
+            case .orange: return theme.userHighlightColor2
+            case .yellow: return theme.userHighlightColor3
+            case .green: return theme.userHighlightColor4
+            case .blue: return theme.userHighlightColor5
+            case .purple: return theme.userHighlightColor6
+        }
+    }
+
+    private func themeHighlightLabel(_ color: HighlightColor) -> String {
+        let theme = activeTheme
+        switch color {
+            case .pink: return theme.userHighlightLabel1
+            case .orange: return theme.userHighlightLabel2
+            case .yellow: return theme.userHighlightLabel3
+            case .green: return theme.userHighlightLabel4
+            case .blue: return theme.userHighlightLabel5
+            case .purple: return theme.userHighlightLabel6
+        }
+    }
+
+    private func loadHighlights() async {
+        guard let bookID = currentBookID else { return }
+        highlights = await BookmarkActor.shared.getHighlights(bookID: bookID)
+        await sendHighlightsToJS()
+    }
+
+    private func sendHighlightsToJS() async {
+        guard let bridge, let session else { return }
+
+        let entries = HighlightColor.allCases.map { color in
+            HighlightPaletteEntry(
+                id: color.rawValue,
+                color: themeHighlightColor(color),
+                label: themeHighlightLabel(color),
+            )
+        }
+        do {
+            try await bridge.sendJsSetHighlightPalette(entries)
+            try await bridge.sendJsSetTranslateAvailable(translateAvailable)
+            try await bridge.sendJsSetDefaultHighlightColor(lastUsedHighlightColorId)
+        } catch {
+            debugLog("[AndroidReaderSession] Failed to send highlight palette: \(error)")
+        }
+
+        let structure = session.bookStructure
+        let renderData = highlights.compactMap { highlight -> HighlightRenderData? in
+            guard let cfi = highlight.locator.locations?.partialCfi,
+                let color = highlight.color,
+                let sectionIndex = findSectionIndex(
+                    for: highlight.locator.href,
+                    in: structure,
+                )
+            else { return nil }
+            return HighlightRenderData(
+                id: highlight.id.uuidString,
+                sectionIndex: sectionIndex,
+                cfi: cfi,
+                color: themeHighlightColor(color),
+            )
+        }
+        do {
+            try await bridge.sendJsRenderHighlights(renderData)
+        } catch {
+            debugLog("[AndroidReaderSession] Failed to render highlights: \(error)")
+        }
+    }
+
+    private func addHighlight(
+        from selection: TextSelectionMessage,
+        color: HighlightColor?,
+        note: String?,
+    ) async {
+        guard let bookID = currentBookID else { return }
+
+        let locator = BookLocator(
+            href: selection.href,
+            type: "application/xhtml+xml",
+            title: selection.title,
+            locations: BookLocator.Locations(
+                fragments: [selection.cfi],
+                progression: nil,
+                position: nil,
+                totalProgression: nil,
+                cssSelector: selection.startCssSelector,
+                partialCfi: selection.cfi,
+                domRange: BookLocator.Locations.DomRange(
+                    start: BookLocator.Locations.DomRangeBoundary(
+                        cssSelector: selection.startCssSelector,
+                        textNodeIndex: selection.startTextNodeIndex,
+                        charOffset: selection.startCharOffset,
+                    ),
+                    end: BookLocator.Locations.DomRangeBoundary(
+                        cssSelector: selection.endCssSelector,
+                        textNodeIndex: selection.endTextNodeIndex,
+                        charOffset: selection.endCharOffset,
+                    ),
+                ),
+            ),
+            text: BookLocator.Text(
+                after: nil,
+                before: nil,
+                highlight: selection.text,
+            ),
+        )
+        let highlight = Highlight(
+            bookID: bookID,
+            locator: locator,
+            text: selection.text,
+            color: color,
+            note: note,
+        )
+        await BookmarkActor.shared.addHighlight(highlight)
+        highlights = await BookmarkActor.shared.getHighlights(bookID: bookID)
+        pendingSelection = nil
+        await sendHighlightsToJS()
+    }
+
+    private func setHighlightColor(id: String, colorId: String) async {
+        guard let uuid = UUID(uuidString: id),
+            let existing = highlights.first(where: { $0.id == uuid }),
+            let color = HighlightColor(rawValue: colorId)
+        else { return }
+        await updateHighlight(existing, color: color, note: existing.note)
+    }
+
+    private func updateHighlight(
+        _ existing: Highlight,
+        color: HighlightColor?,
+        note: String?,
+    ) async {
+        guard let bookID = currentBookID else { return }
+        let updated = Highlight(
+            id: existing.id,
+            bookID: existing.bookID,
+            locator: existing.locator,
+            text: existing.text,
+            color: color,
+            note: note,
+            createdAt: existing.createdAt,
+        )
+        await BookmarkActor.shared.updateHighlight(updated)
+        highlights = await BookmarkActor.shared.getHighlights(bookID: bookID)
+        await sendHighlightsToJS()
+    }
+
+    private func deleteHighlight(id: String) async {
+        guard let bookID = currentBookID, let uuid = UUID(uuidString: id) else { return }
+        await BookmarkActor.shared.deleteHighlight(id: uuid, bookID: bookID)
+        highlights = await BookmarkActor.shared.getHighlights(bookID: bookID)
+        try? await bridge?.sendJsRemoveHighlight(id: uuid.uuidString)
+    }
+
+    private func goToHighlight(id: String) async throws {
+        guard let bridge,
+            let uuid = UUID(uuidString: id),
+            let highlight = highlights.first(where: { $0.id == uuid })
+        else { return }
+        if let cfi = highlight.locator.locations?.partialCfi {
+            try await bridge.sendJsGoToCFICommand(cfi: cfi)
+        } else {
+            var href = highlight.locator.href
+            if let fragment = highlight.locator.locations?.fragments?.first {
+                href = "\(href)#\(fragment)"
+            }
+            try await bridge.sendJsGoToHrefCommand(href: href)
+        }
+    }
+
+    private struct HighlightEdit: Decodable {
+        var id: String?
+        var colorId: String?
+        var note: String?
+    }
+
+    private func applyHighlightEdit(json: String) async throws {
+        let edit = try JSONDecoder().decode(HighlightEdit.self, from: Data(json.utf8))
+        let color = edit.colorId.flatMap(HighlightColor.init(rawValue:))
+        let note = edit.note?.isEmpty == true ? nil : edit.note
+
+        if let id = edit.id, let uuid = UUID(uuidString: id) {
+            guard let existing = highlights.first(where: { $0.id == uuid }) else { return }
+            await updateHighlight(existing, color: color, note: note)
+            pendingEditHighlightID = nil
+        } else if let selection = pendingSelection {
+            await addHighlight(from: selection, color: color, note: note)
+            if let colorId = edit.colorId {
+                rememberLastUsedColor(colorId)
+            }
+        }
+    }
+
+    private func resetSearchState() {
+        searchQuery = ""
+        isSearching = false
+        searchProgress = 0
+        searchSections = []
+        searchError = nil
+    }
+
+    private struct SearchRequest: Decodable {
+        var query: String
+        var matchCase: Bool?
+        var matchWholeWords: Bool?
+    }
+
+    private func startSearch(json: String) async throws {
+        guard let bridge else {
+            throw AndroidBridgeError.readerNotOpen
+        }
+        let request = try JSONDecoder().decode(SearchRequest.self, from: Data(json.utf8))
+        guard !request.query.isEmpty else { return }
+        resetSearchState()
+        searchQuery = request.query
+        isSearching = true
+        do {
+            try await bridge.sendJsStartSearchCommand(
+                query: request.query,
+                matchCase: request.matchCase ?? false,
+                matchDiacritics: false,
+                matchWholeWords: request.matchWholeWords ?? false,
+            )
+        } catch {
+            isSearching = false
+            searchError = error.localizedDescription
+            throw error
+        }
+    }
+
+    private func resetDisplaySettings() {
+        settings.fontSize = kDefaultFontSize
+        settings.fontFamily = kDefaultFontFamily
+        settings.lineSpacing = kDefaultLineSpacing
+        settings.marginLeftRight = kDefaultMarginLeftRightIOS
+        settings.marginTopBottom = kDefaultMarginTopBottom
+        settings.wordSpacing = kDefaultWordSpacing
+        settings.letterSpacing = kDefaultLetterSpacing
+        settings.textAlignment = kDefaultTextAlignment
+        settings.singleColumnMode = kDefaultSingleColumnMode
+        settings.scrollingMode = kDefaultScrollingMode
+        settings.enableMarginClickNavigation = kDefaultEnableMarginClickNavigation
+    }
+
+    private func persistDisplaySettings() async throws {
+        try await SettingsActor.shared.updateConfig(
+            fontSize: settings.fontSize,
+            fontFamily: settings.fontFamily,
+            lineSpacing: settings.lineSpacing,
+            marginLeftRight: settings.marginLeftRight,
+            marginTopBottom: settings.marginTopBottom,
+            wordSpacing: settings.wordSpacing,
+            letterSpacing: settings.letterSpacing,
+            textAlignment: settings.textAlignment,
+            enableMarginClickNavigation: settings.enableMarginClickNavigation,
+            singleColumnMode: settings.singleColumnMode,
+            scrollingMode: settings.scrollingMode,
+            lockViewToAudio: settings.lockViewToAudio,
+        )
+    }
+
+    private func selectTheme(id: String, dark: Bool) async throws {
+        guard ReaderTheme.resolve(id: id, customThemes: customThemes) != nil else {
+            throw AndroidBridgeError.invalidReaderCommand("selectTheme \(id)")
+        }
+        if dark {
+            selectedDarkThemeId = id
+            try await SettingsActor.shared.updateConfig(selectedDarkThemeId: id)
+        } else {
+            selectedLightThemeId = id
+            try await SettingsActor.shared.updateConfig(selectedLightThemeId: id)
+        }
+        applyActiveTheme()
+        await sendHighlightsToJS()
+    }
+
+    private struct ThemeEdit: Decodable {
+        var id: String?
+        var name: String
+        var appearance: String?
+        var backgroundColor: String
+        var foregroundColor: String
+        var highlightColor: String?
+        var highlightThickness: Double?
+        var readaloudHighlightMode: String?
+        var userHighlightMode: String?
+        var userHighlightColors: [String]?
+        var userHighlightLabels: [String]?
+        var customCSS: String?
+    }
+
+    private func saveTheme(json: String) async throws {
+        let edit = try JSONDecoder().decode(ThemeEdit.self, from: Data(json.utf8))
+
+        // Edits to a built-in theme are stored as an override keeping the stock
+        // name and appearance, so Reset to Stock can always restore it.
+        if let id = edit.id, let stock = ReaderTheme.allBuiltIn.first(where: { $0.id == id }) {
+            var theme = builtInThemeOverrides.first(where: { $0.id == id }) ?? stock
+            apply(edit, to: &theme)
+            if let index = builtInThemeOverrides.firstIndex(where: { $0.id == id }) {
+                builtInThemeOverrides[index] = theme
+            } else {
+                builtInThemeOverrides.append(theme)
+            }
+            try await SettingsActor.shared.updateConfig(
+                builtInThemeOverrides: builtInThemeOverrides
+            )
+            applyActiveTheme()
+            await sendHighlightsToJS()
+            return
+        }
+
+        var theme: ReaderTheme
+        let existingIndex = edit.id.flatMap { id in
+            customThemes.firstIndex(where: { $0.id == id })
+        }
+        if let existingIndex {
+            theme = customThemes[existingIndex]
+        } else {
+            theme = ReaderTheme(
+                name: edit.name,
+                backgroundColor: edit.backgroundColor,
+                foregroundColor: edit.foregroundColor,
+                highlightColor: edit.highlightColor
+                    ?? (isDarkMode
+                        ? ReaderTheme.builtInDark.highlightColor
+                        : ReaderTheme.builtInLight.highlightColor),
+            )
+        }
+        theme.name = edit.name
+        theme.appearance = edit.appearance.flatMap(ThemeAppearance.init(rawValue:)) ?? .any
+        apply(edit, to: &theme)
+
+        if let existingIndex {
+            customThemes[existingIndex] = theme
+        } else {
+            customThemes.append(theme)
+        }
+        try await SettingsActor.shared.updateConfig(customThemes: customThemes)
+        applyActiveTheme()
+        await sendHighlightsToJS()
+    }
+
+    private func apply(_ edit: ThemeEdit, to theme: inout ReaderTheme) {
+        theme.backgroundColor = edit.backgroundColor
+        theme.foregroundColor = edit.foregroundColor
+        if let value = edit.highlightColor { theme.highlightColor = value }
+        if let value = edit.highlightThickness { theme.highlightThickness = value }
+        if let value = edit.readaloudHighlightMode { theme.readaloudHighlightMode = value }
+        if let value = edit.userHighlightMode { theme.userHighlightMode = value }
+        if let colors = edit.userHighlightColors, colors.count == 6 {
+            theme.userHighlightColor1 = colors[0]
+            theme.userHighlightColor2 = colors[1]
+            theme.userHighlightColor3 = colors[2]
+            theme.userHighlightColor4 = colors[3]
+            theme.userHighlightColor5 = colors[4]
+            theme.userHighlightColor6 = colors[5]
+        }
+        if let labels = edit.userHighlightLabels, labels.count == 6 {
+            theme.userHighlightLabel1 = labels[0]
+            theme.userHighlightLabel2 = labels[1]
+            theme.userHighlightLabel3 = labels[2]
+            theme.userHighlightLabel4 = labels[3]
+            theme.userHighlightLabel5 = labels[4]
+            theme.userHighlightLabel6 = labels[5]
+        }
+        if let value = edit.customCSS {
+            theme.customCSS = value.isEmpty ? nil : value
+        }
+    }
+
+    private func resetTheme(id: String) async throws {
+        builtInThemeOverrides.removeAll { $0.id == id }
+        try await SettingsActor.shared.updateConfig(builtInThemeOverrides: builtInThemeOverrides)
+        applyActiveTheme()
+        await sendHighlightsToJS()
+    }
+
+    private func deleteTheme(id: String) async throws {
+        customThemes.removeAll { $0.id == id }
+        if selectedLightThemeId == id {
+            selectedLightThemeId = ReaderTheme.builtInLight.id
+        }
+        if selectedDarkThemeId == id {
+            selectedDarkThemeId = ReaderTheme.builtInDark.id
+        }
+        try await SettingsActor.shared.updateConfig(
+            selectedLightThemeId: selectedLightThemeId,
+            selectedDarkThemeId: selectedDarkThemeId,
+            customThemes: customThemes,
+        )
+        applyActiveTheme()
+        await sendHighlightsToJS()
+    }
+
     private struct ReaderState: Encodable {
         struct Toc: Encodable {
             let label: String
             let href: String
             let level: Int
             let sectionIndex: Int
+        }
+
+        struct Theme: Encodable {
+            let id: String
+            let name: String
+            let isBuiltIn: Bool
+            let isEdited: Bool
+            let appearance: String
+            let backgroundColor: String
+            let foregroundColor: String
+            let highlightColor: String
+            let highlightThickness: Double
+            let readaloudHighlightMode: String
+            let userHighlightMode: String
+            let userHighlightColors: [String]
+            let userHighlightLabels: [String]
+            let customCSS: String?
+        }
+
+        struct HighlightItem: Encodable {
+            let id: String
+            let text: String
+            let colorId: String?
+            let note: String?
+            let isBookmark: Bool
+            let chapterTitle: String?
+        }
+
+        struct PaletteEntry: Encodable {
+            let id: String
+            let color: String
+            let label: String
+        }
+
+        struct PendingEdit: Encodable {
+            let id: String
+            let text: String
+            let colorId: String?
+            let note: String?
+        }
+
+        struct Search: Encodable {
+            struct Section: Encodable {
+                let label: String
+                let results: [SearchResult]
+            }
+
+            let query: String
+            let isSearching: Bool
+            let progress: Double
+            let totalCount: Int
+            let sections: [Section]
+            let error: String?
+        }
+
+        struct DisplaySettings: Encodable {
+            let fontSize: Double
+            let fontFamily: String
+            let lineSpacing: Double
+            let marginLeftRight: Double
+            let marginTopBottom: Double
+            let wordSpacing: Double
+            let letterSpacing: Double
+            let textAlignment: String
+            let singleColumnMode: Bool
+            let scrollingMode: Bool
+            let enableMarginClickNavigation: Bool
+            let lockViewToAudio: Bool
         }
 
         let title: String
@@ -385,6 +1016,18 @@ final class AndroidReaderSession {
         let chapterTimeRemaining: Double?
         let overlayToggleCount: Int
         let keepScreenOn: Bool
+        let backgroundColor: String
+        let foregroundColor: String
+        let activeThemeId: String
+        let selectedLightThemeId: String
+        let selectedDarkThemeId: String
+        let themes: [Theme]
+        let settings: DisplaySettings
+        let search: Search
+        let highlights: [HighlightItem]
+        let highlightPalette: [PaletteEntry]
+        let pendingSelectionText: String?
+        let pendingEdit: PendingEdit?
     }
 
     // The reader state lives across several @Observable objects whose
@@ -427,6 +1070,92 @@ final class AndroidReaderSession {
             chapterTimeRemaining: overlayManager?.chapterTimeRemaining?.rounded(),
             overlayToggleCount: overlayToggleCount,
             keepScreenOn: keepScreenOn,
+            backgroundColor: settings.backgroundColor
+                ?? (isDarkMode ? kDefaultBackgroundColorDark : kDefaultBackgroundColorLight),
+            foregroundColor: settings.foregroundColor
+                ?? (isDarkMode ? kDefaultForegroundColorDark : kDefaultForegroundColorLight),
+            activeThemeId: activeThemeId,
+            selectedLightThemeId: selectedLightThemeId,
+            selectedDarkThemeId: selectedDarkThemeId,
+            themes: allThemes.map { theme in
+                ReaderState.Theme(
+                    id: theme.id,
+                    name: theme.name,
+                    isBuiltIn: theme.isBuiltIn,
+                    isEdited: theme.isBuiltIn
+                        && builtInThemeOverrides.contains(where: { $0.id == theme.id }),
+                    appearance: theme.appearance.rawValue,
+                    backgroundColor: theme.backgroundColor,
+                    foregroundColor: theme.foregroundColor,
+                    highlightColor: theme.highlightColor,
+                    highlightThickness: theme.highlightThickness,
+                    readaloudHighlightMode: theme.readaloudHighlightMode,
+                    userHighlightMode: theme.userHighlightMode,
+                    userHighlightColors: [
+                        theme.userHighlightColor1, theme.userHighlightColor2,
+                        theme.userHighlightColor3, theme.userHighlightColor4,
+                        theme.userHighlightColor5, theme.userHighlightColor6,
+                    ],
+                    userHighlightLabels: [
+                        theme.userHighlightLabel1, theme.userHighlightLabel2,
+                        theme.userHighlightLabel3, theme.userHighlightLabel4,
+                        theme.userHighlightLabel5, theme.userHighlightLabel6,
+                    ],
+                    customCSS: theme.customCSS,
+                )
+            },
+            settings: ReaderState.DisplaySettings(
+                fontSize: settings.fontSize,
+                fontFamily: settings.fontFamily,
+                lineSpacing: settings.lineSpacing,
+                marginLeftRight: settings.marginLeftRight,
+                marginTopBottom: settings.marginTopBottom,
+                wordSpacing: settings.wordSpacing,
+                letterSpacing: settings.letterSpacing,
+                textAlignment: settings.textAlignment,
+                singleColumnMode: settings.singleColumnMode,
+                scrollingMode: settings.scrollingMode,
+                enableMarginClickNavigation: settings.enableMarginClickNavigation,
+                lockViewToAudio: settings.lockViewToAudio,
+            ),
+            search: ReaderState.Search(
+                query: searchQuery,
+                isSearching: isSearching,
+                progress: searchProgress,
+                totalCount: searchSections.reduce(0) { $0 + $1.results.count },
+                sections: searchSections.map {
+                    ReaderState.Search.Section(label: $0.sectionLabel, results: $0.results)
+                },
+                error: searchError,
+            ),
+            highlights: highlights.map {
+                ReaderState.HighlightItem(
+                    id: $0.id.uuidString,
+                    text: $0.displayText,
+                    colorId: $0.color?.rawValue,
+                    note: $0.note,
+                    isBookmark: $0.isBookmark,
+                    chapterTitle: $0.chapterTitle,
+                )
+            },
+            highlightPalette: HighlightColor.allCases.map {
+                ReaderState.PaletteEntry(
+                    id: $0.rawValue,
+                    color: themeHighlightColor($0),
+                    label: themeHighlightLabel($0),
+                )
+            },
+            pendingSelectionText: pendingSelection?.text,
+            pendingEdit: pendingEditHighlightID.flatMap { id in
+                highlights.first(where: { $0.id == id }).map {
+                    ReaderState.PendingEdit(
+                        id: $0.id.uuidString,
+                        text: $0.displayText,
+                        colorId: $0.color?.rawValue,
+                        note: $0.note,
+                    )
+                }
+            },
         )
 
         guard let payload = try? encodeReaderJSON(state), payload != lastStatePayload else {

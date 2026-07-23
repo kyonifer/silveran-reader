@@ -1,6 +1,8 @@
 package com.kyonifer.silveran.model
 
 import java.io.Serializable
+import org.json.JSONArray
+import org.json.JSONObject
 
 data class BookID(
     val sourceID: String,
@@ -164,6 +166,116 @@ data class ReaderTocEntry(
     val sectionIndex: Int,
 )
 
+data class ReaderTheme(
+    val id: String,
+    val name: String,
+    val isBuiltIn: Boolean,
+    val isEdited: Boolean,
+    val appearance: String,
+    val backgroundColor: String,
+    val foregroundColor: String,
+    val highlightColor: String,
+    val highlightThickness: Double,
+    val readaloudHighlightMode: String,
+    val userHighlightMode: String,
+    val userHighlightColors: List<String>,
+    val userHighlightLabels: List<String>,
+    val customCSS: String?,
+) {
+    fun availableForLight(): Boolean = appearance != "dark"
+
+    fun availableForDark(): Boolean = appearance != "light"
+
+    fun toEditJson(includeId: Boolean): String = JSONObject().apply {
+        if (includeId) put("id", id)
+        put("name", name)
+        put("appearance", appearance)
+        put("backgroundColor", backgroundColor)
+        put("foregroundColor", foregroundColor)
+        put("highlightColor", highlightColor)
+        put("highlightThickness", highlightThickness)
+        put("readaloudHighlightMode", readaloudHighlightMode)
+        put("userHighlightMode", userHighlightMode)
+        put("userHighlightColors", JSONArray(userHighlightColors))
+        put("userHighlightLabels", JSONArray(userHighlightLabels))
+        put("customCSS", customCSS.orEmpty())
+    }.toString()
+}
+
+// Defaults mirror AndroidReaderSettings, which mirrors SettingsDefaults.swift.
+data class ReaderDisplaySettings(
+    val fontSize: Double = 24.0,
+    val fontFamily: String = "System Default",
+    val lineSpacing: Double = 1.4,
+    val marginLeftRight: Double = 2.0,
+    val marginTopBottom: Double = 8.0,
+    val wordSpacing: Double = 0.0,
+    val letterSpacing: Double = 0.0,
+    val textAlignment: String = "justify",
+    val singleColumnMode: Boolean = true,
+    val scrollingMode: Boolean = false,
+    val enableMarginClickNavigation: Boolean = true,
+    val lockViewToAudio: Boolean = true,
+) {
+    fun toUpdateJson(): String = JSONObject().apply {
+        put("fontSize", fontSize)
+        put("fontFamily", fontFamily)
+        put("lineSpacing", lineSpacing)
+        put("marginLeftRight", marginLeftRight)
+        put("marginTopBottom", marginTopBottom)
+        put("wordSpacing", wordSpacing)
+        put("letterSpacing", letterSpacing)
+        put("textAlignment", textAlignment)
+        put("singleColumnMode", singleColumnMode)
+        put("scrollingMode", scrollingMode)
+        put("enableMarginClickNavigation", enableMarginClickNavigation)
+        put("lockViewToAudio", lockViewToAudio)
+    }.toString()
+}
+
+data class ReaderSearchResult(
+    val cfi: String,
+    val pre: String,
+    val match: String,
+    val post: String,
+)
+
+data class ReaderSearchSection(
+    val label: String,
+    val results: List<ReaderSearchResult>,
+)
+
+data class ReaderSearchState(
+    val query: String = "",
+    val isSearching: Boolean = false,
+    val progress: Double = 0.0,
+    val totalCount: Int = 0,
+    val sections: List<ReaderSearchSection> = emptyList(),
+    val error: String? = null,
+)
+
+data class ReaderHighlight(
+    val id: String,
+    val text: String,
+    val colorId: String?,
+    val note: String?,
+    val isBookmark: Boolean,
+    val chapterTitle: String?,
+)
+
+data class ReaderHighlightPaletteEntry(
+    val id: String,
+    val color: String,
+    val label: String,
+)
+
+data class ReaderPendingEdit(
+    val id: String,
+    val text: String,
+    val colorId: String?,
+    val note: String?,
+)
+
 data class ReaderState(
     val title: String,
     val author: String,
@@ -180,4 +292,16 @@ data class ReaderState(
     val chapterTimeRemaining: Double?,
     val overlayToggleCount: Int,
     val keepScreenOn: Boolean,
+    val backgroundColor: String?,
+    val foregroundColor: String?,
+    val activeThemeId: String?,
+    val selectedLightThemeId: String?,
+    val selectedDarkThemeId: String?,
+    val themes: List<ReaderTheme>,
+    val settings: ReaderDisplaySettings?,
+    val search: ReaderSearchState,
+    val highlights: List<ReaderHighlight>,
+    val highlightPalette: List<ReaderHighlightPaletteEntry>,
+    val pendingSelectionText: String?,
+    val pendingEdit: ReaderPendingEdit?,
 )

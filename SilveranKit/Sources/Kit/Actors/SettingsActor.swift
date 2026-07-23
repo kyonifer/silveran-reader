@@ -545,15 +545,18 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
         public var selectedLightThemeId: String
         public var selectedDarkThemeId: String
         public var customThemes: [ReaderTheme]
+        public var builtInThemeOverrides: [ReaderTheme]
 
         public init(
             selectedLightThemeId: String = "builtin-light",
             selectedDarkThemeId: String = "builtin-dark",
             customThemes: [ReaderTheme] = [],
+            builtInThemeOverrides: [ReaderTheme] = [],
         ) {
             self.selectedLightThemeId = selectedLightThemeId
             self.selectedDarkThemeId = selectedDarkThemeId
             self.customThemes = customThemes
+            self.builtInThemeOverrides = builtInThemeOverrides
         }
 
         public init(from decoder: Decoder) throws {
@@ -569,10 +572,14 @@ public struct SilveranGlobalConfig: Codable, Equatable, Sendable {
             customThemes =
                 (try? container?.decode([ReaderTheme].self, forKey: .customThemes))
                 ?? []
+            builtInThemeOverrides =
+                (try? container?.decode([ReaderTheme].self, forKey: .builtInThemeOverrides))
+                ?? []
         }
 
         private enum CodingKeys: String, CodingKey {
             case selectedLightThemeId, selectedDarkThemeId, customThemes
+            case builtInThemeOverrides
         }
     }
 
@@ -788,6 +795,7 @@ public actor SettingsActor {
         selectedLightThemeId: String? = nil,
         selectedDarkThemeId: String? = nil,
         customThemes: [ReaderTheme]? = nil,
+        builtInThemeOverrides: [ReaderTheme]? = nil,
     ) throws {
         var updated = config
 
@@ -938,6 +946,9 @@ public actor SettingsActor {
         }
         if let customThemes {
             updated.themes.customThemes = customThemes
+        }
+        if let builtInThemeOverrides {
+            updated.themes.builtInThemeOverrides = builtInThemeOverrides
         }
 
         #if os(iOS)

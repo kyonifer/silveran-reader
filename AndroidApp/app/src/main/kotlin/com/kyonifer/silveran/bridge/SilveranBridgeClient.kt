@@ -16,8 +16,16 @@ import com.kyonifer.silveran.model.DownloadOperation
 import com.kyonifer.silveran.model.DownloadUpdate
 import com.kyonifer.silveran.model.HomeSection
 import com.kyonifer.silveran.model.LibrarySnapshot
+import com.kyonifer.silveran.model.ReaderDisplaySettings
+import com.kyonifer.silveran.model.ReaderHighlight
+import com.kyonifer.silveran.model.ReaderHighlightPaletteEntry
 import com.kyonifer.silveran.model.ReaderOpenResult
+import com.kyonifer.silveran.model.ReaderPendingEdit
+import com.kyonifer.silveran.model.ReaderSearchResult
+import com.kyonifer.silveran.model.ReaderSearchSection
+import com.kyonifer.silveran.model.ReaderSearchState
 import com.kyonifer.silveran.model.ReaderState
+import com.kyonifer.silveran.model.ReaderTheme
 import com.kyonifer.silveran.model.ReaderTocEntry
 import com.kyonifer.silveran.model.ServerPosition
 import com.kyonifer.silveran.model.SourceStatusUpdate
@@ -322,6 +330,156 @@ class SilveranBridgeClient(context: Context) {
             chapterTimeRemaining = obj.optionalDouble("chapterTimeRemaining"),
             overlayToggleCount = obj.optInt("overlayToggleCount"),
             keepScreenOn = obj.optBoolean("keepScreenOn"),
+            backgroundColor = obj.optString("backgroundColor").takeIf { it.isNotEmpty() },
+            foregroundColor = obj.optString("foregroundColor").takeIf { it.isNotEmpty() },
+            activeThemeId = obj.optString("activeThemeId").takeIf { it.isNotEmpty() },
+            selectedLightThemeId = obj.optString("selectedLightThemeId").takeIf { it.isNotEmpty() },
+            selectedDarkThemeId = obj.optString("selectedDarkThemeId").takeIf { it.isNotEmpty() },
+            themes = parseReaderThemes(obj.optJSONArray("themes")),
+            settings = obj.optJSONObject("settings")?.let(::parseReaderDisplaySettings),
+            search = obj.optJSONObject("search")?.let(::parseReaderSearch)
+                ?: ReaderSearchState(),
+            highlights = parseReaderHighlights(obj.optJSONArray("highlights")),
+            highlightPalette = parseHighlightPalette(obj.optJSONArray("highlightPalette")),
+            pendingSelectionText = obj.optionalString("pendingSelectionText"),
+            pendingEdit = obj.optJSONObject("pendingEdit")?.let { edit ->
+                ReaderPendingEdit(
+                    id = edit.getString("id"),
+                    text = edit.optString("text"),
+                    colorId = edit.optionalString("colorId"),
+                    note = edit.optionalString("note"),
+                )
+            },
+        )
+    }
+
+    private fun parseReaderHighlights(array: JSONArray?): List<ReaderHighlight> = buildList {
+        if (array != null) {
+            for (index in 0 until array.length()) {
+                val item = array.getJSONObject(index)
+                add(
+                    ReaderHighlight(
+                        id = item.getString("id"),
+                        text = item.optString("text"),
+                        colorId = item.optionalString("colorId"),
+                        note = item.optionalString("note"),
+                        isBookmark = item.optBoolean("isBookmark"),
+                        chapterTitle = item.optionalString("chapterTitle"),
+                    )
+                )
+            }
+        }
+    }
+
+    private fun parseHighlightPalette(
+        array: JSONArray?,
+    ): List<ReaderHighlightPaletteEntry> = buildList {
+        if (array != null) {
+            for (index in 0 until array.length()) {
+                val item = array.getJSONObject(index)
+                add(
+                    ReaderHighlightPaletteEntry(
+                        id = item.getString("id"),
+                        color = item.optString("color"),
+                        label = item.optString("label"),
+                    )
+                )
+            }
+        }
+    }
+
+    private fun parseReaderSearch(obj: JSONObject): ReaderSearchState {
+        val sectionArray = obj.optJSONArray("sections")
+        val sections = buildList {
+            if (sectionArray != null) {
+                for (index in 0 until sectionArray.length()) {
+                    val section = sectionArray.getJSONObject(index)
+                    val resultArray = section.optJSONArray("results")
+                    add(
+                        ReaderSearchSection(
+                            label = section.optString("label"),
+                            results = buildList {
+                                if (resultArray != null) {
+                                    for (resultIndex in 0 until resultArray.length()) {
+                                        val result = resultArray.getJSONObject(resultIndex)
+                                        add(
+                                            ReaderSearchResult(
+                                                cfi = result.getString("cfi"),
+                                                pre = result.optString("pre"),
+                                                match = result.optString("match"),
+                                                post = result.optString("post"),
+                                            )
+                                        )
+                                    }
+                                }
+                            },
+                        )
+                    )
+                }
+            }
+        }
+        return ReaderSearchState(
+            query = obj.optString("query"),
+            isSearching = obj.optBoolean("isSearching"),
+            progress = obj.optDouble("progress", 0.0),
+            totalCount = obj.optInt("totalCount"),
+            sections = sections,
+            error = obj.optionalString("error"),
+        )
+    }
+
+    private fun parseStringList(array: JSONArray?): List<String> = buildList {
+        if (array != null) {
+            for (index in 0 until array.length()) {
+                add(array.optString(index))
+            }
+        }
+    }
+
+    private fun parseReaderThemes(array: JSONArray?): List<ReaderTheme> = buildList {
+        if (array != null) {
+            for (index in 0 until array.length()) {
+                val theme = array.getJSONObject(index)
+                add(
+                    ReaderTheme(
+                        id = theme.getString("id"),
+                        name = theme.optString("name"),
+                        isBuiltIn = theme.optBoolean("isBuiltIn"),
+                        isEdited = theme.optBoolean("isEdited"),
+                        appearance = theme.optString("appearance", "any"),
+                        backgroundColor = theme.optString("backgroundColor"),
+                        foregroundColor = theme.optString("foregroundColor"),
+                        highlightColor = theme.optString("highlightColor"),
+                        highlightThickness = theme.optDouble("highlightThickness", 1.0),
+                        readaloudHighlightMode = theme.optString("readaloudHighlightMode", "background"),
+                        userHighlightMode = theme.optString("userHighlightMode", "underline"),
+                        userHighlightColors = parseStringList(theme.optJSONArray("userHighlightColors")),
+                        userHighlightLabels = parseStringList(theme.optJSONArray("userHighlightLabels")),
+                        customCSS = theme.optionalString("customCSS"),
+                    )
+                )
+            }
+        }
+    }
+
+    private fun parseReaderDisplaySettings(obj: JSONObject): ReaderDisplaySettings {
+        val defaults = ReaderDisplaySettings()
+        return ReaderDisplaySettings(
+            fontSize = obj.optDouble("fontSize", defaults.fontSize),
+            fontFamily = obj.optString("fontFamily", defaults.fontFamily),
+            lineSpacing = obj.optDouble("lineSpacing", defaults.lineSpacing),
+            marginLeftRight = obj.optDouble("marginLeftRight", defaults.marginLeftRight),
+            marginTopBottom = obj.optDouble("marginTopBottom", defaults.marginTopBottom),
+            wordSpacing = obj.optDouble("wordSpacing", defaults.wordSpacing),
+            letterSpacing = obj.optDouble("letterSpacing", defaults.letterSpacing),
+            textAlignment = obj.optString("textAlignment", defaults.textAlignment),
+            singleColumnMode = obj.optBoolean("singleColumnMode", defaults.singleColumnMode),
+            scrollingMode = obj.optBoolean("scrollingMode", defaults.scrollingMode),
+            enableMarginClickNavigation = obj.optBoolean(
+                "enableMarginClickNavigation",
+                defaults.enableMarginClickNavigation,
+            ),
+            lockViewToAudio = obj.optBoolean("lockViewToAudio", defaults.lockViewToAudio),
         )
     }
 

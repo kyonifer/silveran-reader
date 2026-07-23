@@ -46,7 +46,9 @@ import androidx.webkit.WebViewClientCompat
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import com.kyonifer.silveran.model.Book
+import com.kyonifer.silveran.model.ReaderDisplaySettings
 import com.kyonifer.silveran.model.ReaderOpenResult
+import com.kyonifer.silveran.model.ReaderSearchState
 import com.kyonifer.silveran.model.ReaderState
 import java.io.File
 import org.json.JSONObject
@@ -76,10 +78,14 @@ internal fun ReaderScreen(
     }
 
     var displaySettings by remember(book.id, mode) { mutableStateOf(ReaderDisplaySettings()) }
+    var settingsInitialized by remember(book.id, mode) { mutableStateOf(false) }
     var chromeVisible by remember(book.id, mode) { mutableStateOf(true) }
     var lastToggleCount by remember(book.id, mode) { mutableIntStateOf(0) }
     var showToc by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
+    var showManageThemes by remember { mutableStateOf(false) }
+    var showSearch by remember { mutableStateOf(false) }
+    var showBookmarks by remember { mutableStateOf(false) }
 
     DisposableEffect(webView) {
         registerWebView(webView, webView)
@@ -95,11 +101,13 @@ internal fun ReaderScreen(
         }
     }
 
-    // The Swift settings object outlives reader sessions; push the full local
-    // settings on open so a previous book's overrides can't leak in.
-    LaunchedEffect(webView, openResult) {
-        if (openResult != null) {
-            readerControl("updateReaderSettings", 0.0, displaySettings.toUpdateJson())
+    // The Swift side loads persisted settings on open; adopt them as the
+    // sheet's starting values, then treat local edits as authoritative.
+    LaunchedEffect(readerState?.settings) {
+        val persisted = readerState?.settings ?: return@LaunchedEffect
+        if (!settingsInitialized) {
+            displaySettings = persisted
+            settingsInitialized = true
         }
     }
 
@@ -124,7 +132,9 @@ internal fun ReaderScreen(
 
     SystemBarsVisibility(visible = chromeVisible)
 
-    val (chromeBg, chromeFg) = readerChromeColors(isDark)
+    val (fallbackBg, fallbackFg) = readerChromeColors(isDark)
+    val chromeBg = parseHexColor(readerState?.backgroundColor) ?: fallbackBg
+    val chromeFg = parseHexColor(readerState?.foregroundColor) ?: fallbackFg
 
     // WKWebView shrinks its layout viewport by the safe area, so on iOS the
     // page's top margin starts below the status bar. Android's WebView gets
@@ -178,10 +188,92 @@ internal fun ReaderScreen(
                 backgroundColor = chromeBg,
                 contentColor = chromeFg,
                 onBack = navigateBack,
+                onShowSearch = { showSearch = true },
+                onShowBookmarks = { showBookmarks = true },
                 onShowToc = { showToc = true },
                 onShowSettings = { showSettings = true },
             )
         }
+    }
+
+    if (showBookmarks) {
+        ReaderBookmarksSheet(
+            highlights = readerState?.highlights.orEmpty(),
+            palette = readerState?.highlightPalette.orEmpty(),
+            onSelect = { highlight ->
+                readerControl("goToHighlight", 0.0, highlight.id)
+                showBookmarks = false
+            },
+            onDelete = { highlight ->
+                readerControl("deleteHighlight", 0.0, highlight.id)
+            },
+            onDismiss = { showBookmarks = false },
+        )
+    }
+
+    val highlightPalette = readerState?.highlightPalette.orEmpty()
+    readerState?.pendingSelectionText?.let { selectionText ->
+        HighlightEditorDialog(
+            title = "Add Highlight",
+            selectedText = selectionText,
+            palette = highlightPalette,
+            initialColorId = null,
+            initialNote = "",
+            isEditing = false,
+            onSave = { colorId, note ->
+                val payload = JSONObject().apply {
+                    colorId?.let { put("colorId", it) }
+                    put("note", note)
+                }.toString()
+                readerControl("saveHighlight", 0.0, payload)
+            },
+            onDelete = null,
+            onDismiss = { readerControl("cancelSelection", 0.0, "") },
+        )
+    }
+
+    readerState?.pendingEdit?.let { edit ->
+        HighlightEditorDialog(
+            title = "Edit Highlight",
+            selectedText = edit.text,
+            palette = highlightPalette,
+            initialColorId = edit.colorId,
+            initialNote = edit.note.orEmpty(),
+            isEditing = true,
+            onSave = { colorId, note ->
+                val payload = JSONObject().apply {
+                    put("id", edit.id)
+                    colorId?.let { put("colorId", it) }
+                    put("note", note)
+                }.toString()
+                readerControl("saveHighlight", 0.0, payload)
+            },
+            onDelete = {
+                readerControl("deleteHighlight", 0.0, edit.id)
+                readerControl("cancelSelection", 0.0, "")
+            },
+            onDismiss = { readerControl("cancelSelection", 0.0, "") },
+        )
+    }
+
+    if (showSearch) {
+        ReaderSearchSheet(
+            search = readerState?.search ?: ReaderSearchState(),
+            onSearch = { query, matchCase, matchWholeWords ->
+                val request = JSONObject().apply {
+                    put("query", query)
+                    put("matchCase", matchCase)
+                    put("matchWholeWords", matchWholeWords)
+                }.toString()
+                readerControl("startSearch", 0.0, request)
+            },
+            onClear = { readerControl("clearSearch", 0.0, "") },
+            onSelect = { cfi ->
+                readerControl("goToSearchResult", 0.0, cfi)
+                showSearch = false
+            },
+            onDismiss = { showSearch = false },
+        )
     }
 
     if (showToc) {
@@ -202,13 +294,38 @@ internal fun ReaderScreen(
     if (showSettings) {
         ReaderSettingsSheet(
             settings = displaySettings,
+            themes = readerState?.themes.orEmpty(),
+            selectedLightThemeId = readerState?.selectedLightThemeId,
+            selectedDarkThemeId = readerState?.selectedDarkThemeId,
+            hasAudioNarration = readerState?.hasAudioNarration == true,
             onChange = { updated, commit ->
                 displaySettings = updated
                 if (commit) {
                     readerControl("updateReaderSettings", 0.0, updated.toUpdateJson())
                 }
             },
+            onReset = {
+                readerControl("resetReaderSettings", 0.0, "")
+                settingsInitialized = false
+            },
+            onSelectLightTheme = { readerControl("selectLightTheme", 0.0, it) },
+            onSelectDarkTheme = { readerControl("selectDarkTheme", 0.0, it) },
+            onShowManageThemes = { showManageThemes = true },
             onDismiss = { showSettings = false },
+        )
+    }
+
+    if (showManageThemes) {
+        ManageThemesSheet(
+            themes = readerState?.themes.orEmpty(),
+            selectedLightThemeId = readerState?.selectedLightThemeId,
+            selectedDarkThemeId = readerState?.selectedDarkThemeId,
+            onSelectLightTheme = { readerControl("selectLightTheme", 0.0, it) },
+            onSelectDarkTheme = { readerControl("selectDarkTheme", 0.0, it) },
+            onSaveTheme = { readerControl("saveTheme", 0.0, it) },
+            onDeleteTheme = { readerControl("deleteTheme", 0.0, it) },
+            onResetTheme = { readerControl("resetTheme", 0.0, it) },
+            onDismiss = { showManageThemes = false },
         )
     }
 }

@@ -1,7 +1,9 @@
 package com.kyonifer.silveran.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,42 +21,71 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FormatAlignJustify
 import androidx.compose.material.icons.automirrored.filled.FormatAlignLeft
 import androidx.compose.material.icons.automirrored.filled.FormatAlignRight
 import androidx.compose.material.icons.filled.FormatSize
 import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.automirrored.filled.RotateLeft
 import androidx.compose.material.icons.automirrored.filled.RotateRight
 import androidx.compose.material.icons.automirrored.filled.Toc
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import com.kyonifer.silveran.model.ReaderDisplaySettings
+import com.kyonifer.silveran.model.ReaderHighlight
+import com.kyonifer.silveran.model.ReaderHighlightPaletteEntry
+import com.kyonifer.silveran.model.ReaderSearchState
+import com.kyonifer.silveran.model.ReaderTheme
 import com.kyonifer.silveran.model.ReaderTocEntry
 import kotlin.math.roundToInt
 import org.json.JSONObject
 
-// Mirrors ReaderTheme.builtInLight/builtInDark, which the Swift side applies
-// as the active theme until Android grows the custom theme system.
+// Fallback matching ReaderTheme.builtInLight/builtInDark for frames where the
+// Swift side has not yet published effective theme colors.
 internal fun readerChromeColors(isDark: Boolean): Pair<Color, Color> {
     return if (isDark) {
         Color(0xFF1A1A1A) to Color(0xFFEEEEEE)
@@ -63,33 +94,9 @@ internal fun readerChromeColors(isDark: Boolean): Pair<Color, Color> {
     }
 }
 
-// Defaults mirror AndroidReaderSettings, which mirrors SettingsDefaults.swift.
-internal data class ReaderDisplaySettings(
-    val fontSize: Double = 24.0,
-    val fontFamily: String = "System Default",
-    val lineSpacing: Double = 1.4,
-    val marginLeftRight: Double = 2.0,
-    val marginTopBottom: Double = 8.0,
-    val wordSpacing: Double = 0.0,
-    val letterSpacing: Double = 0.0,
-    val textAlignment: String = "justify",
-    val singleColumnMode: Boolean = true,
-    val scrollingMode: Boolean = false,
-    val enableMarginClickNavigation: Boolean = true,
-) {
-    fun toUpdateJson(): String = JSONObject().apply {
-        put("fontSize", fontSize)
-        put("fontFamily", fontFamily)
-        put("lineSpacing", lineSpacing)
-        put("marginLeftRight", marginLeftRight)
-        put("marginTopBottom", marginTopBottom)
-        put("wordSpacing", wordSpacing)
-        put("letterSpacing", letterSpacing)
-        put("textAlignment", textAlignment)
-        put("singleColumnMode", singleColumnMode)
-        put("scrollingMode", scrollingMode)
-        put("enableMarginClickNavigation", enableMarginClickNavigation)
-    }.toString()
+internal fun parseHexColor(value: String?): Color? {
+    if (value.isNullOrEmpty()) return null
+    return runCatching { Color(android.graphics.Color.parseColor(value)) }.getOrNull()
 }
 
 internal fun selectedTocIndex(toc: List<ReaderTocEntry>, sectionIndex: Int?): Int? {
@@ -104,6 +111,8 @@ internal fun ReaderTopBar(
     backgroundColor: Color,
     contentColor: Color,
     onBack: () -> Unit,
+    onShowSearch: () -> Unit,
+    onShowBookmarks: () -> Unit,
     onShowToc: () -> Unit,
     onShowSettings: () -> Unit,
     modifier: Modifier = Modifier,
@@ -121,11 +130,318 @@ internal fun ReaderTopBar(
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
             }
             Spacer(modifier = Modifier.weight(1f))
+            IconButton(onClick = onShowSearch) {
+                Icon(Icons.Filled.Search, contentDescription = "Search in book")
+            }
+            IconButton(onClick = onShowBookmarks) {
+                Icon(Icons.Filled.Bookmark, contentDescription = "Highlights and bookmarks")
+            }
             IconButton(onClick = onShowToc) {
                 Icon(Icons.AutoMirrored.Filled.Toc, contentDescription = "Contents")
             }
             IconButton(onClick = onShowSettings) {
                 Icon(Icons.Filled.FormatSize, contentDescription = "Customize reader")
+            }
+        }
+    }
+}
+
+@Composable
+internal fun HighlightEditorDialog(
+    title: String,
+    selectedText: String,
+    palette: List<ReaderHighlightPaletteEntry>,
+    initialColorId: String?,
+    initialNote: String,
+    isEditing: Boolean,
+    onSave: (String?, String) -> Unit,
+    onDelete: (() -> Unit)?,
+    onDismiss: () -> Unit,
+) {
+    var colorId by remember { mutableStateOf(initialColorId ?: palette.firstOrNull()?.id) }
+    var bookmarkOnly by remember { mutableStateOf(isEditing && initialColorId == null) }
+    var note by remember { mutableStateOf(initialNote) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    "“$selectedText”",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 4,
+                )
+                if (!bookmarkOnly) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        palette.forEach { entry ->
+                            val swatch = parseHexColor(entry.color) ?: Color.Gray
+                            Box(
+                                modifier = Modifier
+                                    .width(32.dp)
+                                    .height(32.dp)
+                                    .background(swatch, CircleShape)
+                                    .border(
+                                        width = if (entry.id == colorId) 3.dp else 1.dp,
+                                        color = if (entry.id == colorId) {
+                                            MaterialTheme.colorScheme.primary
+                                        } else {
+                                            Color.Gray.copy(alpha = 0.5f)
+                                        },
+                                        shape = CircleShape,
+                                    )
+                                    .clickable { colorId = entry.id },
+                            )
+                        }
+                    }
+                }
+                OutlinedTextField(
+                    value = note,
+                    onValueChange = { note = it },
+                    label = { Text("Note (optional)") },
+                    minLines = 2,
+                    maxLines = 4,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                SettingSwitch(
+                    label = "Bookmark only (no highlight color)",
+                    checked = bookmarkOnly,
+                    onToggle = { bookmarkOnly = it },
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onSave(if (bookmarkOnly) null else colorId, note.trim()) },
+            ) {
+                Text("Save")
+            }
+        },
+        dismissButton = {
+            Row {
+                if (onDelete != null) {
+                    TextButton(onClick = onDelete) {
+                        Text("Delete", color = MaterialTheme.colorScheme.error)
+                    }
+                }
+                TextButton(onClick = onDismiss) {
+                    Text("Cancel")
+                }
+            }
+        },
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun ReaderBookmarksSheet(
+    highlights: List<ReaderHighlight>,
+    palette: List<ReaderHighlightPaletteEntry>,
+    onSelect: (ReaderHighlight) -> Unit,
+    onDelete: (ReaderHighlight) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val paletteColors = palette.associate { it.id to parseHexColor(it.color) }
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+    ) {
+        Text(
+            "Highlights & Bookmarks",
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+        )
+        if (highlights.isEmpty()) {
+            Text(
+                "Select text in the book to add a highlight or bookmark.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 24.dp),
+            )
+        }
+        LazyColumn(modifier = Modifier.fillMaxHeight(0.7f)) {
+            itemsIndexed(highlights) { _, highlight ->
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onSelect(highlight) }
+                        .padding(horizontal = 24.dp, vertical = 10.dp),
+                ) {
+                    if (highlight.isBookmark) {
+                        Icon(
+                            Icons.Filled.Bookmark,
+                            contentDescription = "Bookmark",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.width(20.dp),
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .width(14.dp)
+                                .height(14.dp)
+                                .background(
+                                    paletteColors[highlight.colorId] ?: Color.Gray,
+                                    CircleShape,
+                                ),
+                        )
+                    }
+                    Column(
+                        modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        Text(
+                            highlight.text,
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 2,
+                        )
+                        highlight.note?.takeIf { it.isNotBlank() }?.let { note ->
+                            Text(
+                                note,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 2,
+                            )
+                        }
+                        highlight.chapterTitle?.let { chapter ->
+                            Text(
+                                chapter,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                            )
+                        }
+                    }
+                    IconButton(onClick = { onDelete(highlight) }) {
+                        Icon(Icons.Filled.Close, contentDescription = "Delete")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun ReaderSearchSheet(
+    search: ReaderSearchState,
+    onSearch: (String, Boolean, Boolean) -> Unit,
+    onClear: () -> Unit,
+    onSelect: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var query by remember { mutableStateOf(search.query) }
+    var matchCase by remember { mutableStateOf(false) }
+    var matchWholeWords by remember { mutableStateOf(false) }
+    val focusManager = LocalFocusManager.current
+    val submit = {
+        if (query.isNotBlank()) {
+            focusManager.clearFocus()
+            onSearch(query.trim(), matchCase, matchWholeWords)
+        }
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxHeight(0.75f)
+                .padding(horizontal = 24.dp)
+                .navigationBarsPadding(),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                label = { Text("Search in book") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = { submit() }),
+                trailingIcon = {
+                    if (query.isNotEmpty()) {
+                        IconButton(
+                            onClick = {
+                                query = ""
+                                onClear()
+                            },
+                        ) {
+                            Icon(Icons.Filled.Close, contentDescription = "Clear search")
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                FilterChip(
+                    selected = matchCase,
+                    onClick = { matchCase = !matchCase },
+                    label = { Text("Match Case") },
+                )
+                FilterChip(
+                    selected = matchWholeWords,
+                    onClick = { matchWholeWords = !matchWholeWords },
+                    label = { Text("Whole Words") },
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                TextButton(onClick = submit, enabled = query.isNotBlank()) {
+                    Text("Search")
+                }
+            }
+
+            if (search.isSearching) {
+                LinearProgressIndicator(
+                    progress = { search.progress.toFloat().coerceIn(0f, 1f) },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            search.error?.let { error ->
+                Text(error, color = MaterialTheme.colorScheme.error)
+            }
+            if (search.query.isNotEmpty() && !search.isSearching && search.error == null) {
+                Text(
+                    if (search.totalCount == 1) {
+                        "1 result for “${search.query}”"
+                    } else {
+                        "${search.totalCount} results for “${search.query}”"
+                    },
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            LazyColumn {
+                search.sections.forEach { section ->
+                    if (section.results.isEmpty()) return@forEach
+                    item {
+                        Text(
+                            section.label,
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
+                        )
+                    }
+                    itemsIndexed(section.results) { _, result ->
+                        Text(
+                            buildAnnotatedString {
+                                append(result.pre)
+                                withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
+                                    append(result.match)
+                                }
+                                append(result.post)
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onSelect(result.cfi) }
+                                .padding(vertical = 8.dp),
+                        )
+                    }
+                }
             }
         }
     }
@@ -298,7 +614,10 @@ internal fun ReaderTocSheet(
     val listState = rememberLazyListState(
         initialFirstVisibleItemIndex = (selectedIndex ?: 0).coerceAtLeast(0),
     )
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+    ) {
         Text(
             "Contents",
             style = MaterialTheme.typography.titleMedium,
@@ -335,10 +654,21 @@ internal fun ReaderTocSheet(
 @Composable
 internal fun ReaderSettingsSheet(
     settings: ReaderDisplaySettings,
+    themes: List<ReaderTheme>,
+    selectedLightThemeId: String?,
+    selectedDarkThemeId: String?,
+    hasAudioNarration: Boolean,
     onChange: (ReaderDisplaySettings, Boolean) -> Unit,
+    onReset: () -> Unit,
+    onSelectLightTheme: (String) -> Unit,
+    onSelectDarkTheme: (String) -> Unit,
+    onShowManageThemes: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+    ) {
         // Capped height so the page stays visible behind the sheet for live
         // preview, like the 0.7-fraction detent on iOS.
         Column(
@@ -355,10 +685,12 @@ internal fun ReaderSettingsSheet(
             ) {
                 Text("Customize Reader", style = MaterialTheme.typography.titleMedium)
                 Spacer(modifier = Modifier.weight(1f))
-                TextButton(onClick = { onChange(ReaderDisplaySettings(), true) }) {
-                    Text("Reset")
+                TextButton(onClick = onReset) {
+                    Text("Reset to Defaults")
                 }
             }
+
+            SettingsSectionHeader("Reader")
 
             SettingSlider(
                 label = "Font Size",
@@ -412,6 +744,8 @@ internal fun ReaderSettingsSheet(
                 onSelect = { onChange(settings.copy(textAlignment = it), true) },
             )
 
+            HorizontalDivider()
+
             SettingSlider(
                 label = "Margins (Left/Right)",
                 value = settings.marginLeftRight,
@@ -437,6 +771,8 @@ internal fun ReaderSettingsSheet(
                 },
             )
 
+            HorizontalDivider()
+
             SettingSlider(
                 label = "Word Spacing",
                 value = settings.wordSpacing,
@@ -453,18 +789,107 @@ internal fun ReaderSettingsSheet(
                 onPreview = { onChange(settings.copy(letterSpacing = roundTo(it, 2)), false) },
                 onCommit = { onChange(settings.copy(letterSpacing = roundTo(it, 2)), true) },
             )
+
+            HorizontalDivider()
+
+            SettingsSectionHeader("Themes")
+
+            ThemePickerRow(
+                label = "Light Mode Theme",
+                themes = themes.filter { it.availableForLight() },
+                selectedId = selectedLightThemeId,
+                onSelect = onSelectLightTheme,
+            )
+            ThemePickerRow(
+                label = "Dark Mode Theme",
+                themes = themes.filter { it.availableForDark() },
+                selectedId = selectedDarkThemeId,
+                onSelect = onSelectDarkTheme,
+            )
+            TextButton(onClick = onShowManageThemes) {
+                Icon(Icons.Filled.Palette, contentDescription = null)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Manage Themes...")
+            }
+
+            if (hasAudioNarration) {
+                HorizontalDivider()
+                SettingsSectionHeader("Playback")
+                SettingSwitch(
+                    label = "Free Browse When Paused",
+                    checked = !settings.lockViewToAudio,
+                    onToggle = { onChange(settings.copy(lockViewToAudio = !it), true) },
+                )
+            }
         }
     }
 }
 
-private fun roundTo(value: Float, decimals: Int): Double {
+@Composable
+internal fun SettingsSectionHeader(title: String) {
+    Text(
+        title,
+        style = MaterialTheme.typography.titleSmall,
+        modifier = Modifier.padding(top = 4.dp),
+    )
+}
+
+@Composable
+private fun ThemePickerRow(
+    label: String,
+    themes: List<ReaderTheme>,
+    selectedId: String?,
+    onSelect: (String) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val selected = themes.firstOrNull { it.id == selectedId }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.weight(1f),
+        )
+        Box {
+            TextButton(onClick = { expanded = true }) {
+                selected?.let {
+                    ThemeSwatch(it, size = 22.dp)
+                    Spacer(modifier = Modifier.width(8.dp))
+                }
+                Text(selected?.name ?: "Select")
+                Icon(Icons.Filled.ArrowDropDown, contentDescription = null)
+            }
+            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                themes.forEach { theme ->
+                    DropdownMenuItem(
+                        text = { Text(theme.name) },
+                        leadingIcon = { ThemeSwatch(theme, size = 24.dp) },
+                        trailingIcon = {
+                            if (theme.id == selectedId) {
+                                Icon(Icons.Filled.Check, contentDescription = "Selected")
+                            }
+                        },
+                        onClick = {
+                            expanded = false
+                            onSelect(theme.id)
+                        },
+                    )
+                }
+            }
+        }
+    }
+}
+
+internal fun roundTo(value: Float, decimals: Int): Double {
     var factor = 1.0
     repeat(decimals) { factor *= 10 }
     return (value * factor).roundToInt() / factor
 }
 
 @Composable
-private fun SettingSlider(
+internal fun SettingSlider(
     label: String,
     value: Double,
     range: ClosedFloatingPointRange<Float>,
@@ -488,7 +913,7 @@ private fun SettingSlider(
 }
 
 @Composable
-private fun SettingSwitch(
+internal fun SettingSwitch(
     label: String,
     checked: Boolean,
     onToggle: (Boolean) -> Unit,
@@ -505,7 +930,7 @@ private fun SettingSwitch(
 }
 
 @Composable
-private fun ChipRow(
+internal fun ChipRow(
     label: String,
     options: List<Pair<String, String>>,
     selected: String,
