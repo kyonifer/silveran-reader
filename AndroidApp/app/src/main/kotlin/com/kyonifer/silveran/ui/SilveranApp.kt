@@ -167,6 +167,11 @@ fun SilveranApp(viewModel: SilveranViewModel) {
     }
     BackHandler(enabled = canNavigateBack, onBack = navigateBack)
 
+    KeepPlaybackServiceConnected(
+        active = state.audiobook != null ||
+            (state.readerOpen != null && state.reader?.hasAudioNarration == true),
+    )
+
     MaterialTheme(
         colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme(),
     ) {

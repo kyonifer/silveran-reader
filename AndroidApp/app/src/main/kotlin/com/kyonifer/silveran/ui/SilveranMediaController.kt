@@ -92,6 +92,26 @@ internal fun MediaSessionAudiobookPlayerScreen(
     }
 }
 
+// Media3 only promotes SilveranMediaLibraryService to a foreground service
+// while a controller is connected when playback starts, so readaloud audio
+// needs a standing connection even though the reader UI never uses the
+// controller itself.
+@Composable
+internal fun KeepPlaybackServiceConnected(active: Boolean) {
+    val context = LocalContext.current.applicationContext
+    DisposableEffect(active) {
+        if (!active) {
+            return@DisposableEffect onDispose {}
+        }
+        val token = SessionToken(
+            context,
+            ComponentName(context, SilveranMediaLibraryService::class.java),
+        )
+        val future = MediaController.Builder(context, token).buildAsync()
+        onDispose { MediaController.releaseFuture(future) }
+    }
+}
+
 private data class MediaControllerConnection(
     val controller: MediaController? = null,
     val error: String? = null,

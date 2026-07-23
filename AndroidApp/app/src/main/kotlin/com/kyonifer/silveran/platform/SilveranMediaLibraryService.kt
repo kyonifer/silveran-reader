@@ -53,12 +53,19 @@ class SilveranMediaLibraryService : MediaLibraryService() {
     private var bootstrapped = false
     private lateinit var client: SilveranBridgeClient
 
-    private val playbackRateListener = object : Player.Listener {
+    private val buttonPreferencesListener = object : Player.Listener {
         override fun onPlaybackParametersChanged(playbackParameters: PlaybackParameters) {
-            session?.setMediaButtonPreferences(
-                mediaButtonPreferences(playbackParameters.speed.toDouble()),
-            )
+            refreshMediaButtonPreferences()
         }
+
+        override fun onAvailableCommandsChanged(availableCommands: Player.Commands) {
+            refreshMediaButtonPreferences()
+        }
+    }
+
+    private fun refreshMediaButtonPreferences() {
+        val session = session ?: return
+        session.setMediaButtonPreferences(mediaButtonPreferences(session.player))
     }
 
     override fun onCreate() {
@@ -73,19 +80,17 @@ class SilveranMediaLibraryService : MediaLibraryService() {
         val player = AndroidNowPlayingBridge.sessionPlayer()
         session = MediaLibrarySession.Builder(this, player, libraryCallback)
             .setSessionActivity(sessionActivity)
-            .setMediaButtonPreferences(
-                mediaButtonPreferences(player.playbackParameters.speed.toDouble()),
-            )
+            .setMediaButtonPreferences(mediaButtonPreferences(player))
             .setPeriodicPositionUpdateEnabled(false)
             .build()
-        player.addListener(playbackRateListener)
+        player.addListener(buttonPreferencesListener)
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? =
         session
 
     override fun onDestroy() {
-        session?.player?.removeListener(playbackRateListener)
+        session?.player?.removeListener(buttonPreferencesListener)
         session?.release()
         session = null
         serviceScope.cancel()
@@ -281,21 +286,32 @@ class SilveranMediaLibraryService : MediaLibraryService() {
         return CommandButton.Builder(CommandButton.ICON_UNDEFINED).setCustomIconResId(iconResId)
     }
 
-    private fun mediaButtonPreferences(playbackRate: Double): List<CommandButton> = listOf(
-        CommandButton.Builder(CommandButton.ICON_SKIP_BACK_15)
-            .setDisplayName("Back 15 seconds")
-            .setPlayerCommand(Player.COMMAND_SEEK_BACK)
-            .build(),
-        CommandButton.Builder(CommandButton.ICON_SKIP_FORWARD_15)
-            .setDisplayName("Forward 15 seconds")
-            .setPlayerCommand(Player.COMMAND_SEEK_FORWARD)
-            .build(),
-        speedIconButton(playbackRate)
-            .setDisplayName("Playback speed")
-            .setSessionCommand(cyclePlaybackRateCommand)
-            .setSlots(CommandButton.SLOT_OVERFLOW)
-            .build(),
-    )
+    // Readaloud sessions advertise no rate command, so the cycle-speed button
+    // (which routes to the audiobook actor) is only offered when rate changes
+    // are supported.
+    private fun mediaButtonPreferences(player: Player): List<CommandButton> = buildList {
+        add(
+            CommandButton.Builder(CommandButton.ICON_SKIP_BACK_15)
+                .setDisplayName("Back 15 seconds")
+                .setPlayerCommand(Player.COMMAND_SEEK_BACK)
+                .build(),
+        )
+        add(
+            CommandButton.Builder(CommandButton.ICON_SKIP_FORWARD_15)
+                .setDisplayName("Forward 15 seconds")
+                .setPlayerCommand(Player.COMMAND_SEEK_FORWARD)
+                .build(),
+        )
+        if (player.isCommandAvailable(Player.COMMAND_SET_SPEED_AND_PITCH)) {
+            add(
+                speedIconButton(player.playbackParameters.speed.toDouble())
+                    .setDisplayName("Playback speed")
+                    .setSessionCommand(cyclePlaybackRateCommand)
+                    .setSlots(CommandButton.SLOT_OVERFLOW)
+                    .build(),
+            )
+        }
+    }
 
     private companion object {
         const val CYCLE_PLAYBACK_RATE_ACTION =
