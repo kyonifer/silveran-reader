@@ -394,9 +394,11 @@ class FoliateManager {
     window.webkit?.messageHandlers?.Relocated?.postMessage(payload);
 
     if (this.#pendingHighlight) {
-      const { sectionIndex: pendingSectionIndex, textId } = this.#pendingHighlight;
+      const pendingHighlight = this.#pendingHighlight;
+      const { sectionIndex: pendingSectionIndex, textId } = pendingHighlight;
       debugLog("FoliateManager", `Checking pending highlight: section=${pendingSectionIndex}, textId=${textId}`);
       setTimeout(() => {
+        if (this.#pendingHighlight !== pendingHighlight) return;
         this.highlightFragment(pendingSectionIndex, textId);
       }, 50);
     }
@@ -1049,23 +1051,16 @@ class FoliateManager {
       return;
     }
 
+    let navigation = null;
     if (seekToLocation && sectionHref) {
       const pageInfo = this.#getElementPageInfo(el, doc, renderer);
       const intersectsCurrentPage = !renderer.scrolled && pageInfo?.visibleArea > 0;
       if (!intersectsCurrentPage) {
-        const smooth = renderer.scrolled;
-        debugLog(
-          "FoliateManager",
-          `seekToLocation enabled, navigating to ${sectionHref}#${textId} (smooth: ${smooth})`,
-        );
-        this.#pendingHighlight = { sectionIndex, textId };
-        this.#view.goTo(`${sectionHref}#${textId}`, { smooth });
-        return;
+        navigation = { smooth: renderer.scrolled };
+      } else {
+        debugLog("FoliateManager", `Element ${textId} already intersects the current page; skipping anchor navigation`);
       }
-      debugLog("FoliateManager", `Element ${textId} already intersects the current page; skipping anchor navigation`);
     }
-
-    this.#pendingHighlight = null;
 
     const activeClass = this.#view?.book?.media?.activeClass || "epub-media-overlay-active";
     el.classList.add(activeClass);
@@ -1080,6 +1075,18 @@ class FoliateManager {
     if (playbackActiveClass) {
       doc.documentElement.classList.add(playbackActiveClass);
     }
+
+    if (navigation) {
+      debugLog(
+        "FoliateManager",
+        `seekToLocation enabled, navigating to ${sectionHref}#${textId} (smooth: ${navigation.smooth})`,
+      );
+      this.#pendingHighlight = { sectionIndex, textId };
+      this.#view.goTo(`${sectionHref}#${textId}`, navigation);
+      return;
+    }
+
+    this.#pendingHighlight = null;
 
     const splitInfo = this.#getElementSplitInfo(el, doc, renderer);
     const visibleRatio = splitInfo?.visibleRatio ?? 1.0;
