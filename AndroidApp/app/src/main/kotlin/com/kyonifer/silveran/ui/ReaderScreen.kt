@@ -2,17 +2,30 @@ package com.kyonifer.silveran.ui
 
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.content.ActivityNotFoundException
+import android.content.ComponentName
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.ContextWrapper
+import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.net.Uri
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.ViewGroup
 import android.webkit.JavascriptInterface
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
+import androidx.browser.customtabs.CustomTabsClient
+import androidx.browser.customtabs.CustomTabsIntent
+import androidx.browser.customtabs.CustomTabsServiceConnection
+import androidx.browser.customtabs.CustomTabsSession
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -98,6 +111,14 @@ internal fun ReaderScreen(
     LaunchedEffect(webView, openResult, isDark) {
         if (openResult != null) {
             readerControl("setDarkMode", if (isDark) 1.0 else 0.0, "")
+        }
+    }
+
+    LaunchedEffect(openResult) {
+        if (openResult != null) {
+            val available = hasTranslateHandler(context)
+            readerControl("setTranslateAvailable", if (available) 1.0 else 0.0, "")
+            WebSheetSession.warmUp(context)
         }
     }
 
@@ -359,6 +380,133 @@ private tailrec fun Context.findActivity(): Activity? = when (this) {
     else -> null
 }
 
+private val selectionActionMessages =
+    setOf("SelectionDefine", "SelectionShare", "SelectionCopy", "SelectionTranslate")
+
+private fun handleSelectionActionMessage(context: Context, name: String, body: String): Boolean {
+    if (name !in selectionActionMessages) return false
+    val text = runCatching { JSONObject(body).optString("text") }.getOrDefault("")
+    if (text.isBlank()) return true
+    Handler(Looper.getMainLooper()).post {
+        try {
+            when (name) {
+                "SelectionShare" -> shareSelection(context, text)
+                "SelectionDefine" -> defineSelection(context, text)
+                "SelectionTranslate" -> translateSelection(context, text)
+                "SelectionCopy" -> copySelection(context, text)
+            }
+        } catch (e: ActivityNotFoundException) {
+            Log.w("Silveran", "No activity to handle $name", e)
+        }
+    }
+    return true
+}
+
+private fun shareSelection(context: Context, text: String) {
+    val send = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_TEXT, text)
+    }
+    context.startActivity(Intent.createChooser(send, null))
+}
+
+private fun processTextIntent(text: String) = Intent(Intent.ACTION_PROCESS_TEXT).apply {
+    type = "text/plain"
+    putExtra(Intent.EXTRA_PROCESS_TEXT, text)
+    putExtra(Intent.EXTRA_PROCESS_TEXT_READONLY, true)
+}
+
+private fun defineSelection(context: Context, text: String) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        val define = Intent(Intent.ACTION_DEFINE).putExtra(Intent.EXTRA_TEXT, text)
+        val handler = define.resolveActivity(context.packageManager)
+        if (handler != null && handler.packageName != "com.google.android.googlequicksearchbox") {
+            context.startActivity(define)
+            return
+        }
+    }
+    openWebSheet(
+        context,
+        "https://en.wiktionary.org/w/index.php?go=Go&search=" + Uri.encode(text.trim()),
+    )
+}
+
+private fun translateSelection(context: Context, text: String) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        val translate = Intent(Intent.ACTION_TRANSLATE).putExtra(Intent.EXTRA_TEXT, text)
+        if (translate.resolveActivity(context.packageManager) != null) {
+            context.startActivity(translate)
+            return
+        }
+    }
+    val process = processTextIntent(text)
+    if (process.resolveActivity(context.packageManager) != null) {
+        context.startActivity(Intent.createChooser(process, null))
+        return
+    }
+    openWebSheet(context, "https://translate.google.com/?sl=auto&text=" + Uri.encode(text))
+}
+
+private object WebSheetSession {
+    private var binding = false
+
+    @Volatile var session: CustomTabsSession? = null
+
+    fun warmUp(context: Context) {
+        if (binding || session != null) return
+        val pkg = CustomTabsClient.getPackageName(context, null) ?: return
+        binding = true
+        val bound = CustomTabsClient.bindCustomTabsService(
+            context.applicationContext,
+            pkg,
+            object : CustomTabsServiceConnection() {
+                override fun onCustomTabsServiceConnected(
+                    name: ComponentName,
+                    client: CustomTabsClient,
+                ) {
+                    client.warmup(0)
+                    session = client.newSession(null)
+                }
+
+                override fun onServiceDisconnected(name: ComponentName) {
+                    session = null
+                    binding = false
+                }
+            },
+        )
+        if (!bound) binding = false
+    }
+}
+
+private fun openWebSheet(context: Context, url: String) {
+    WebSheetSession.warmUp(context)
+    val heightPx = (context.resources.displayMetrics.heightPixels * 0.6).toInt()
+    val builder = WebSheetSession.session
+        ?.let { CustomTabsIntent.Builder(it) }
+        ?: CustomTabsIntent.Builder()
+    val tab = builder
+        .setInitialActivityHeightPx(heightPx, CustomTabsIntent.ACTIVITY_HEIGHT_FIXED)
+        .setToolbarCornerRadiusDp(16)
+        .setShowTitle(true)
+        .build()
+    tab.launchUrl(context, Uri.parse(url))
+}
+
+private fun copySelection(context: Context, text: String) {
+    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    clipboard.setPrimaryClip(ClipData.newPlainText("Selection", text))
+}
+
+private fun hasTranslateHandler(context: Context): Boolean {
+    val pm = context.packageManager
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+        Intent(Intent.ACTION_TRANSLATE).resolveActivity(pm) != null
+    ) {
+        return true
+    }
+    return processTextIntent("").resolveActivity(pm) != null
+}
+
 @SuppressLint("SetJavaScriptEnabled")
 private fun createReaderWebView(
     context: Context,
@@ -400,6 +548,7 @@ private fun createReaderWebView(
                     // Swift's debugLog goes to stdout, which Android drops;
                     // mirror the JS console into logcat.
                     if (name == "ConsoleLog") Log.d("SilveranJS", body)
+                    if (handleSelectionActionMessage(context, name, body)) return
                     readerMessageFromJS(name, body)
                 }
             },
