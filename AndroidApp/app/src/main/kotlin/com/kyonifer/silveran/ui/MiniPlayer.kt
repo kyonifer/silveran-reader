@@ -35,8 +35,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.unit.dp
 import com.kyonifer.silveran.model.Book
 
@@ -127,16 +125,14 @@ internal fun GlobalMiniPlayerBar(
 // Matches the 50pt compact height of the iOS DraggableAudioCard.
 internal val ReaderMiniPlayerHeight = 50.dp
 
-// In-reader compact bar shown with the chrome, like the iOS DraggableAudioCard
-// compact state: cover, title/chapter, playback speed, play/pause.
+// Compact state of ReaderAudioCard, which supplies the surface behind it so
+// both states share one background while dragging.
 @Composable
 internal fun ReaderMiniPlayer(
     book: Book,
     chapterLabel: String?,
     isPlaying: Boolean,
     playbackRate: Double,
-    backgroundColor: Color,
-    contentColor: Color,
     onTogglePlay: () -> Unit,
     onRateChange: (Double) -> Unit,
     coverRevision: Int,
@@ -145,85 +141,76 @@ internal fun ReaderMiniPlayer(
     modifier: Modifier = Modifier,
 ) {
     var showSpeed by remember { mutableStateOf(false) }
-    Surface(
-        color = contentColor.copy(alpha = 0.08f).compositeOver(backgroundColor),
-        contentColor = contentColor,
-        tonalElevation = 3.dp,
-        shadowElevation = 6.dp,
-        modifier = modifier,
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp)
+            .height(ReaderMiniPlayerHeight),
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
+        BookCover(
+            book = book,
+            width = 120,
+            height = 120,
+            revision = coverRevision,
+            load = cover,
+            cached = cachedCover,
+            modifier = Modifier.size(40.dp),
+            artworkScale = 1f,
+            showsPanel = false,
+            layersMedia = false,
+            showsReadaloudBadge = false,
+        )
+        Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(horizontal = 12.dp)
-                .height(ReaderMiniPlayerHeight),
+                .weight(1f)
+                .padding(horizontal = 10.dp),
         ) {
-            BookCover(
-                book = book,
-                width = 120,
-                height = 120,
-                revision = coverRevision,
-                load = cover,
-                cached = cachedCover,
-                modifier = Modifier.size(40.dp),
-                artworkScale = 1f,
-                showsPanel = false,
-                layersMedia = false,
-                showsReadaloudBadge = false,
+            Text(
+                book.title,
+                style = MaterialTheme.typography.titleSmall,
+                maxLines = 1,
             )
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 10.dp),
-            ) {
+            chapterLabel?.takeIf { it.isNotBlank() }?.let {
                 Text(
-                    book.title,
-                    style = MaterialTheme.typography.titleSmall,
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
                     maxLines = 1,
                 )
-                chapterLabel?.takeIf { it.isNotBlank() }?.let {
-                    Text(
-                        it,
-                        style = MaterialTheme.typography.bodySmall,
-                        maxLines = 1,
-                    )
-                }
             }
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(10.dp))
-                    .clickable { showSpeed = true }
-                    .size(width = 44.dp, height = 44.dp),
-            ) {
-                Icon(
-                    Icons.Filled.Speed,
-                    contentDescription = "Playback speed",
-                    modifier = Modifier.size(20.dp),
-                )
-                Text(
-                    formatPlaybackRate(playbackRate),
-                    style = MaterialTheme.typography.labelSmall,
-                )
-            }
-            Spacer(Modifier.width(8.dp))
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(CircleShape)
-                    .background(LocalContentColor.current.copy(alpha = 0.1f))
-                    .clickable(onClick = onTogglePlay),
-            ) {
-                Icon(
-                    imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                    contentDescription = if (isPlaying) "Pause" else "Play",
-                    modifier = Modifier.size(24.dp),
-                )
-            }
+        }
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier
+                .clip(RoundedCornerShape(10.dp))
+                .clickable { showSpeed = true }
+                .size(width = 44.dp, height = 44.dp),
+        ) {
+            Icon(
+                Icons.Filled.Speed,
+                contentDescription = "Playback speed",
+                modifier = Modifier.size(20.dp),
+            )
+            Text(
+                formatPlaybackRate(playbackRate),
+                style = MaterialTheme.typography.labelSmall,
+            )
+        }
+        Spacer(Modifier.width(8.dp))
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .size(44.dp)
+                .clip(CircleShape)
+                .background(LocalContentColor.current.copy(alpha = 0.1f))
+                .clickable(onClick = onTogglePlay),
+        ) {
+            Icon(
+                imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                contentDescription = if (isPlaying) "Pause" else "Play",
+                modifier = Modifier.size(24.dp),
+            )
         }
     }
     if (showSpeed) {

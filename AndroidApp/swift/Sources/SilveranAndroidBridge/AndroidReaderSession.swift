@@ -175,6 +175,7 @@ final class AndroidReaderSession {
     private var pendingSelection: TextSelectionMessage?
     private var pendingEditHighlightID: UUID?
     private var translateAvailable = false
+    private var lastChapterRestart: Date?
 
     nonisolated private init() {}
 
@@ -451,6 +452,10 @@ final class AndroidReaderSession {
                 }
             case "seekToFraction":
                 session.progressManager?.handleUserProgressSeek(value)
+            case "prevChapter":
+                prevChapter(session)
+            case "nextChapter":
+                nextChapter(session)
             case "togglePlayPause":
                 await session.progressManager?.togglePlaying()
             case "nextSentence":
@@ -463,6 +468,14 @@ final class AndroidReaderSession {
                 try await SettingsActor.shared.updateConfig(defaultPlaybackSpeed: value)
             case "setVolume":
                 session.mediaOverlayManager?.setVolume(value)
+            case "startSleepTimer":
+                let type: SleepTimerType = text == "endOfChapter" ? .endOfChapter : .duration
+                session.mediaOverlayManager?.startSleepTimer(
+                    duration: type == .duration ? value : nil,
+                    type: type,
+                )
+            case "cancelSleepTimer":
+                session.mediaOverlayManager?.cancelSleepTimer()
             case "updateReaderSettings":
                 try settings.apply(json: text)
                 try await persistDisplaySettings()
@@ -512,6 +525,37 @@ final class AndroidReaderSession {
             default:
                 throw AndroidBridgeError.invalidReaderCommand(command)
         }
+    }
+
+    // Matches EbookPlayerViewModel.handlePrevChapter: the first press restarts
+    // the current chapter, a second press within the grace window steps back.
+    private func prevChapter(_ session: ReadingSession) {
+        guard let progressManager = session.progressManager,
+            let currentIndex = progressManager.selectedChapterId
+        else { return }
+
+        let now = Date()
+        let justRestarted = lastChapterRestart.map { now.timeIntervalSince($0) < 2.0 } ?? false
+
+        if progressManager.chapterSeekBarValue > 0.01 && !justRestarted {
+            progressManager.handleUserProgressSeek(0)
+            lastChapterRestart = now
+        } else if currentIndex > 0 {
+            progressManager.handleUserChapterSelected(currentIndex - 1)
+            lastChapterRestart = nil
+        } else {
+            progressManager.handleUserProgressSeek(0)
+            lastChapterRestart = now
+        }
+    }
+
+    private func nextChapter(_ session: ReadingSession) {
+        guard let progressManager = session.progressManager,
+            let currentIndex = progressManager.selectedChapterId,
+            currentIndex < session.bookStructure.count - 1
+        else { return }
+        progressManager.handleUserChapterSelected(currentIndex + 1)
+        lastChapterRestart = nil
     }
 
     private static let lastUsedHighlightColorKey = "lastUsedHighlightColorId"
@@ -1012,8 +1056,14 @@ final class AndroidReaderSession {
         let chapterTotalPages: Int?
         let isPlaying: Bool
         let playbackRate: Double
+        let volume: Double
         let bookTimeRemaining: Double?
         let chapterTimeRemaining: Double?
+        let chapterElapsedSeconds: Double?
+        let chapterTotalSeconds: Double?
+        let sleepTimerActive: Bool
+        let sleepTimerRemaining: Double?
+        let sleepTimerType: String?
         let overlayToggleCount: Int
         let keepScreenOn: Bool
         let backgroundColor: String
@@ -1066,8 +1116,14 @@ final class AndroidReaderSession {
             chapterTotalPages: progressManager?.chapterTotalPages,
             isPlaying: overlayManager?.isPlaying ?? false,
             playbackRate: overlayManager?.playbackRate ?? 1.0,
+            volume: overlayManager?.volume ?? 1.0,
             bookTimeRemaining: overlayManager?.bookTimeRemaining?.rounded(),
             chapterTimeRemaining: overlayManager?.chapterTimeRemaining?.rounded(),
+            chapterElapsedSeconds: overlayManager?.chapterElapsedSeconds?.rounded(),
+            chapterTotalSeconds: overlayManager?.chapterTotalSeconds?.rounded(),
+            sleepTimerActive: overlayManager?.sleepTimerActive ?? false,
+            sleepTimerRemaining: overlayManager?.sleepTimerRemaining?.rounded(),
+            sleepTimerType: overlayManager?.sleepTimerType?.rawValue,
             overlayToggleCount: overlayToggleCount,
             keepScreenOn: keepScreenOn,
             backgroundColor: settings.backgroundColor

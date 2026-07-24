@@ -602,13 +602,13 @@ private fun StatRow(
     }
 }
 
-private fun formatTimeHoursMinutes(time: Double?): String {
+internal fun formatTimeHoursMinutes(time: Double?): String {
     if (time == null || !time.isFinite()) return "—h—m"
     val totalSeconds = time.roundToInt().coerceAtLeast(0)
     return "${totalSeconds / 3600}h${(totalSeconds % 3600) / 60}m"
 }
 
-private fun formatTimeMinutesSeconds(time: Double?): String {
+internal fun formatTimeMinutesSeconds(time: Double?): String {
     if (time == null || !time.isFinite()) return "—m—s"
     val totalSeconds = time.roundToInt().coerceAtLeast(0)
     return "${totalSeconds / 60}m${totalSeconds % 60}s"

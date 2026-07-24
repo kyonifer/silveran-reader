@@ -487,7 +487,7 @@ private fun PlayerControls(
 }
 
 @Composable
-private fun SecondaryControl(
+internal fun SecondaryControl(
     icon: ImageVector,
     label: String,
     contentDescription: String,
@@ -668,7 +668,7 @@ internal fun snapPlaybackRate(rate: Double): Double =
     ((rate * 20).roundToInt() / 20.0).coerceIn(0.5, 3.0)
 
 @Composable
-private fun VolumeDialog(
+internal fun VolumeDialog(
     currentVolume: Double,
     dismiss: () -> Unit,
     select: (Double) -> Unit,
@@ -758,7 +758,7 @@ private fun ChaptersDialog(
 }
 
 @Composable
-private fun SleepTimerDialog(
+internal fun SleepTimerDialog(
     dismiss: () -> Unit,
     selectDuration: (Double) -> Unit,
     selectEndOfChapter: () -> Unit,
@@ -802,7 +802,7 @@ private fun sleepTimerLabel(state: AudiobookPlayerState): String = when (state.s
     else -> "Sleep"
 }
 
-private fun volumeIcon(volume: Double): ImageVector = when {
+internal fun volumeIcon(volume: Double): ImageVector = when {
     volume <= 0 -> Icons.AutoMirrored.Filled.VolumeOff
     volume < 0.5 -> Icons.AutoMirrored.Filled.VolumeDown
     else -> Icons.AutoMirrored.Filled.VolumeUp
@@ -815,7 +815,7 @@ internal fun formatPlaybackRate(rate: Double): String =
         "${String.format(Locale.US, "%.2f", rate).trimEnd('0')}x"
     }
 
-private fun formatPlaybackTime(seconds: Double): String {
+internal fun formatPlaybackTime(seconds: Double): String {
     val totalSeconds = seconds.takeIf(Double::isFinite)?.coerceAtLeast(0.0)?.roundToInt() ?: 0
     val hours = totalSeconds / 3_600
     val minutes = totalSeconds % 3_600 / 60

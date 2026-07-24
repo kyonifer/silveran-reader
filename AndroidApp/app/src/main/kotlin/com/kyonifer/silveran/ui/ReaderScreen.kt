@@ -182,9 +182,11 @@ internal fun ReaderScreen(
             CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
         }
 
+        val hasAudioNarration = readerState?.hasAudioNarration == true
+
         ReaderBottomOverlay(
             statsVisible = !chromeVisible,
-            hasAudioNarration = readerState?.hasAudioNarration == true,
+            hasAudioNarration = hasAudioNarration,
             isPlaying = readerState?.isPlaying == true,
             bookFraction = readerState?.bookFraction,
             currentPage = readerState?.chapterCurrentPage,
@@ -219,30 +221,25 @@ internal fun ReaderScreen(
             )
         }
 
-        AnimatedVisibility(
-            visible = chromeVisible && readerState?.hasAudioNarration == true,
-            enter = fadeIn(),
-            exit = fadeOut(),
-            modifier = Modifier.align(Alignment.BottomCenter),
-        ) {
-            val tocIndex = selectedTocIndex(
-                readerState?.toc.orEmpty(),
-                readerState?.selectedChapterId,
-            )
-            ReaderMiniPlayer(
-                book = book,
-                chapterLabel = tocIndex?.let { readerState?.toc?.getOrNull(it)?.label },
-                isPlaying = readerState?.isPlaying == true,
-                playbackRate = readerState?.playbackRate ?: 1.0,
-                backgroundColor = chromeBg,
-                contentColor = chromeFg,
-                onTogglePlay = { readerControl("togglePlayPause", 0.0, "") },
-                onRateChange = { readerControl("setRate", it, "") },
-                coverRevision = coverRevision,
-                cover = cover,
-                cachedCover = cachedCover,
-            )
-        }
+        val tocIndex = selectedTocIndex(
+            readerState?.toc.orEmpty(),
+            readerState?.selectedChapterId,
+        )
+        ReaderAudioCard(
+            visible = hasAudioNarration && chromeVisible,
+            book = book,
+            readerState = readerState,
+            chapterLabel = tocIndex?.let { readerState?.toc?.getOrNull(it)?.label },
+            showStats = false,
+            backgroundColor = chromeBg,
+            contentColor = chromeFg,
+            readerControl = readerControl,
+            onShowChapters = { showToc = true },
+            coverRevision = coverRevision,
+            cover = cover,
+            cachedCover = cachedCover,
+            modifier = Modifier.fillMaxSize(),
+        )
     }
 
     if (showBookmarks) {
