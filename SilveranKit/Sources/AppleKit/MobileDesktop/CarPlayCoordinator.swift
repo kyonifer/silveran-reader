@@ -239,98 +239,32 @@ public final class CarPlayCoordinator {
     {
         debugLog("[CarPlayCoordinator] loadAndPlayBook: \(metadata.title), category: \(category)")
 
-        guard
-            let localMedia = await BookServiceActor.shared.resolveLocalMedia(
-                for: metadata.id,
-                category: category,
-            )
-        else {
-            debugLog("[CarPlayCoordinator] No local path for book \(metadata.uuid)")
-            throw CarPlayError.noLocalPath
-        }
-        debugLog("[CarPlayCoordinator] Found local path: \(localMedia.url)")
-
-        if category == .audio {
-            try await loadM4BAudiobook(metadata: metadata, localPath: localMedia.url)
-        } else {
-            try await loadSMILBook(metadata: metadata)
-        }
-    }
-
-    public enum CarPlayError: Error {
-        case noLocalPath
-    }
-
-    private func loadM4BAudiobook(metadata: BookMetadata, localPath: URL) async throws {
-        debugLog(
-            "[CarPlayCoordinator] loadM4BAudiobook start: carPlayConnected=\(isCarPlayConnected)"
-        )
-        if activePlayer == .smil, let previousID = currentBookID {
-            // The audiobook takes over the audio engine; a headless readaloud
-            // session has no owner left to close it, so end it here.
-            await ReadingSessionStore.shared.endIfViewDetached(for: previousID)
-        }
-        activePlayer = .audiobook
+        activePlayer = category == .audio ? .audiobook : .smil
         currentBookID = metadata.id
         currentBookTitle = metadata.title
         currentAudiobookHref = nil
         wasPlaying = false
 
-        if audiobookObserverId == nil {
+        if category == .audio, audiobookObserverId == nil {
             audiobookObserverId = await AudiobookActor.shared.addStateObserver {
                 [weak self] state in
                 Task { @MainActor [weak self] in
                     self?.handleAudiobookStateChange(state)
                 }
             }
-            debugLog(
-                "[CarPlayCoordinator] Audiobook observer registered: \(String(describing: audiobookObserverId))"
-            )
         }
 
-        try await AudioSessionActor.shared.openAudiobook(book: metadata, mediaURL: localPath)
-
-        cachedAudiobookChapters = (await AudioSessionActor.shared.currentState())?.chapters ?? []
-        onChaptersUpdated?()
-
-        debugLog(
-            "[CarPlayCoordinator] M4B audiobook opened via AudioSessionActor, starting playback"
-        )
+        try await HeadlessAudioSession.open(bookID: metadata.id, category: category)
         try await AudioSessionActor.shared.transport(.play)
-    }
 
-    private func loadSMILBook(metadata: BookMetadata) async throws {
-        debugLog(
-            "[CarPlayCoordinator] loadSMILBook start: carPlayConnected=\(isCarPlayConnected)"
-        )
-        activePlayer = .smil
-        currentBookID = metadata.id
-        currentBookTitle = metadata.title
-        currentAudiobookHref = nil
-        wasPlaying = false
-
-        let session = ReadingSessionStore.shared.obtain(
-            metadata: metadata,
-            category: .synced,
-            localMediaPath: nil,
-            settings: nil,
-        )
-        session.prepare()
-        await session.awaitPreparation()
-        if let error = session.lastPrepareError {
-            throw error
+        if category == .audio {
+            cachedAudiobookChapters =
+                (await AudioSessionActor.shared.currentState())?.chapters ?? []
+            onChaptersUpdated?()
+        } else {
+            await refreshBookStructure()
         }
-
-        await refreshBookStructure()
-
-        if let coverData = await getCoverImageData(for: metadata.id) {
-            await SMILPlayerActor.shared.setCoverImage(coverData)
-        }
-
-        await session.restoreEnginePositionFromSavedProgress()
-
-        debugLog("[CarPlayCoordinator] SMIL book loaded, starting playback")
-        try await AudioSessionActor.shared.transport(.play)
+        debugLog("[CarPlayCoordinator] Playback started for \(metadata.title)")
     }
 
     public var isPlaying: Bool {
@@ -375,15 +309,7 @@ public final class CarPlayCoordinator {
     }
 
     public func setPlaybackRate(_ rate: Double) async {
-        switch activePlayer {
-            case .audiobook:
-                await AudiobookActor.shared.setPlaybackRate(rate)
-            case .smil:
-                await SMILPlayerActor.shared.setPlaybackRate(rate)
-            case .none:
-                break
-        }
-        try? await SettingsActor.shared.updateConfig(defaultPlaybackSpeed: rate)
+        await AudioSessionActor.shared.setPlaybackRate(rate)
         debugLog("[CarPlayCoordinator] Playback rate set to \(rate)x")
     }
 

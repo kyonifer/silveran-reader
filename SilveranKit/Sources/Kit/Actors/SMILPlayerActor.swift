@@ -135,7 +135,6 @@ public actor SMILPlayerActor {
         [:]
     private var sessionID = UUID()
 
-    private var nowPlayingConfigured = false
     private var nowPlayingUpdateTask: Task<Void, Never>?
     private var coverImageData: Data?
 
@@ -911,14 +910,11 @@ public actor SMILPlayerActor {
 
     private func setupNowPlaying() async {
         guard let presenter = SilveranPlatform.nowPlaying else { return }
-        if nowPlayingConfigured {
-            debugLog("[SMILPlayerActor] Now-playing already configured, skipping setup")
-            return
-        }
 
         // Scrubbing SMIL from the lock screen is unsupported for now; disabling
         // the command keeps the system scrubber inert instead of snapping back.
         await presenter.configureCommands(
+            owner: .readaloud,
             skipForwardInterval: 15,
             skipBackwardInterval: 15,
             supportsChangePlaybackPosition: false,
@@ -946,18 +942,15 @@ public actor SMILPlayerActor {
             }
         }
 
-        nowPlayingConfigured = true
         setActiveAudioPlayer(.smil)
         debugLog("[SMILPlayerActor] Now-playing remote commands configured")
     }
 
     private func teardownNowPlaying() async {
-        guard nowPlayingConfigured else { return }
-        nowPlayingConfigured = false
         guard let presenter = SilveranPlatform.nowPlaying else { return }
         debugLog("[SMILPlayerActor] Tearing down now-playing")
-        await presenter.clear()
-        await presenter.teardownCommands()
+        await presenter.clear(owner: .readaloud)
+        await presenter.teardownCommands(owner: .readaloud)
     }
 
     private func startNowPlayingUpdateTimer() {
@@ -983,10 +976,10 @@ public actor SMILPlayerActor {
     }
 
     private func updateNowPlayingInfo() async {
-        guard nowPlayingConfigured, let presenter = SilveranPlatform.nowPlaying else { return }
+        guard let presenter = SilveranPlatform.nowPlaying else { return }
 
         guard !bookStructure.isEmpty else {
-            await presenter.clear()
+            await presenter.clear(owner: .readaloud)
             return
         }
 
@@ -1002,7 +995,8 @@ public actor SMILPlayerActor {
                 playbackRate: state?.playbackRate ?? 1.0,
                 isPlaying: state?.isPlaying ?? false,
                 artwork: coverImageData,
-            )
+            ),
+            owner: .readaloud,
         )
     }
 }

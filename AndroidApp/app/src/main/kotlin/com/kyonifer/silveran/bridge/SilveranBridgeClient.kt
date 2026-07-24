@@ -241,6 +241,20 @@ class SilveranBridgeClient(context: Context) {
         SilveranAndroidBridge.controlAudiobook(command, value, text).awaitResult()
     }
 
+    suspend fun openHeadlessPlayback(bookID: BookID, category: String) {
+        audiobookOperations.withLock {
+            SilveranAndroidBridge.openHeadlessPlayback(
+                bookID.uuid,
+                bookID.sourceID,
+                category,
+            ).awaitResult()
+        }
+    }
+
+    suspend fun cyclePlaybackRate() {
+        SilveranAndroidBridge.cyclePlaybackRate().awaitResult()
+    }
+
     suspend fun openReader(book: Book, mode: String): ReaderOpenResult {
         val json = AndroidBridgeCallbacks.requestPayload { requestID ->
             SilveranAndroidBridge.openReader(

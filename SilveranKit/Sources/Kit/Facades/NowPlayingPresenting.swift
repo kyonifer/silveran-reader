@@ -44,21 +44,21 @@ public enum RemoteCommand: Sendable {
     case previousTrack
 }
 
-/// System now-playing surface (lock screen, control center, remote commands).
-/// A single presenter is shared by whichever player is active.
+public enum NowPlayingOwner: String, Sendable {
+    case readaloud
+    case audiobook
+}
+
 public protocol NowPlayingPresenting: Sendable {
-    func update(_ info: NowPlayingInfo) async
-    func clear() async
-    /// Registers system remote commands with the given skip intervals and
-    /// routes incoming commands to the handler. Unsupported commands are
-    /// disabled system-side so the platform UI does not offer them (e.g. the
-    /// lock screen scrubber renders inert when position changes are off).
+    func update(_ info: NowPlayingInfo, owner: NowPlayingOwner) async
+    func clear(owner: NowPlayingOwner) async
     func configureCommands(
+        owner: NowPlayingOwner,
         skipForwardInterval: TimeInterval,
         skipBackwardInterval: TimeInterval,
         supportsChangePlaybackPosition: Bool,
         supportsChangePlaybackRate: Bool,
         handler: @escaping @Sendable (RemoteCommand) -> Void,
     ) async
-    func teardownCommands() async
+    func teardownCommands(owner: NowPlayingOwner) async
 }

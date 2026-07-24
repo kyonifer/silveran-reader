@@ -752,6 +752,7 @@ public actor AudiobookActor {
         if let presenter = SilveranPlatform.nowPlaying {
             debugLog("[AudiobookActor] Configuring remote commands")
             await presenter.configureCommands(
+                owner: .audiobook,
                 skipForwardInterval: 15,
                 skipBackwardInterval: 15,
                 supportsChangePlaybackPosition: true,
@@ -770,23 +771,16 @@ public actor AudiobookActor {
 
     private func handleRemoteCommand(_ command: RemoteCommand) async {
         switch command {
-            case .play:
-                debugLog("[AudiobookActor] Remote play command received")
+            case .play, .togglePlayPause:
+                debugLog("[AudiobookActor] Remote play/toggle command received")
                 do {
-                    try await play()
+                    try await togglePlayPause()
                 } catch {
-                    debugLog("[AudiobookActor] Remote play failed: \(error)")
+                    debugLog("[AudiobookActor] Remote play/toggle failed: \(error)")
                 }
             case .pause:
                 debugLog("[AudiobookActor] Remote pause command received")
                 await pause()
-            case .togglePlayPause:
-                debugLog("[AudiobookActor] Remote toggle command received")
-                do {
-                    try await togglePlayPause()
-                } catch {
-                    debugLog("[AudiobookActor] Remote toggle failed: \(error)")
-                }
             case .skipForward(let interval):
                 debugLog("[AudiobookActor] Remote skip forward command received")
                 await skipForward(interval)
@@ -804,7 +798,7 @@ public actor AudiobookActor {
     private func updateNowPlayingInfo() async {
         guard let presenter = SilveranPlatform.nowPlaying else { return }
         guard player != nil else {
-            await presenter.clear()
+            await presenter.clear(owner: .audiobook)
             return
         }
 
@@ -834,7 +828,7 @@ public actor AudiobookActor {
             info.elapsedTime = currentTime
         }
 
-        await presenter.update(info)
+        await presenter.update(info, owner: .audiobook)
     }
 
     public func seekWithinCurrentChapter(to timeInChapter: TimeInterval) async {
@@ -912,8 +906,8 @@ public actor AudiobookActor {
         artworkData = nil
 
         if let presenter = SilveranPlatform.nowPlaying {
-            await presenter.teardownCommands()
-            await presenter.clear()
+            await presenter.clear(owner: .audiobook)
+            await presenter.teardownCommands(owner: .audiobook)
         }
         if await SMILPlayerActor.shared.activeAudioPlayer == .audiobook {
             await SMILPlayerActor.shared.setActiveAudioPlayer(.none)

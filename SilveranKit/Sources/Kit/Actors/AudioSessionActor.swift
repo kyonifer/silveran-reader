@@ -128,6 +128,10 @@ public enum AudioSessionTransportCommand: Sendable {
 public actor AudioSessionActor {
     public static let shared = AudioSessionActor()
 
+    public static let playbackRateSteps: [Double] = [
+        0.75, 1.0, 1.1, 1.2, 1.3, 1.5, 2.0, 5.0,
+    ]
+
     private var currentKind: AudioSessionKind?
     private var readaloudTitle: String?
     private var smilObserverID: UUID?
@@ -358,6 +362,28 @@ public actor AudioSessionActor {
         }
     }
 
+    public func setPlaybackRate(_ rate: Double) async {
+        let clamped = min(max(rate, 0.5), 10)
+        switch currentKind {
+            case .audiobook:
+                await AudiobookActor.shared.setPlaybackRate(clamped)
+                await publishState()
+            case .readaloud:
+                await SMILPlayerActor.shared.setPlaybackRate(clamped)
+            case nil:
+                return
+        }
+        try? await SettingsActor.shared.updateConfig(defaultPlaybackSpeed: clamped)
+    }
+
+    public func cyclePlaybackRate() async {
+        let current = await currentSnapshot()?.playbackRate ?? 1
+        let next =
+            Self.playbackRateSteps.first { $0 > current + 0.001 }
+            ?? Self.playbackRateSteps[0]
+        await setPlaybackRate(next)
+    }
+
     public func control(_ command: AudiobookSessionCommand) async throws {
         guard metadata != nil else { throw AudiobookSessionError.audiobookNotOpen }
 
@@ -377,9 +403,7 @@ public actor AudioSessionActor {
             case .selectChapter(let chapterID):
                 await AudiobookActor.shared.seekToChapter(href: chapterID)
             case .setPlaybackRate(let value):
-                let rate = min(max(value, 0.5), 10)
-                await AudiobookActor.shared.setPlaybackRate(rate)
-                try await SettingsActor.shared.updateConfig(defaultPlaybackSpeed: rate)
+                await setPlaybackRate(value)
             case .setVolume(let value):
                 let volume = min(max(value, 0), 1)
                 await AudiobookActor.shared.setVolume(volume)

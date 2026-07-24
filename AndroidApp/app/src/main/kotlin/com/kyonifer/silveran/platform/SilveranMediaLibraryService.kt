@@ -2,6 +2,7 @@ package com.kyonifer.silveran.platform
 
 import android.app.PendingIntent
 import android.content.Intent
+import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
@@ -11,6 +12,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
+import androidx.media3.common.Timeline
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.CommandButton
 import androidx.media3.session.LibraryResult
@@ -34,16 +36,20 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.io.ByteArrayOutputStream
 import kotlin.coroutines.resume
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
-/** Hosts Silveran's now-playing Player and downloaded audiobook catalog for Android Auto. */
+/** Hosts Silveran's now-playing Player and downloaded audio catalog for Android Auto. */
 @OptIn(UnstableApi::class)
 class SilveranMediaLibraryService : MediaLibraryService() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -59,6 +65,10 @@ class SilveranMediaLibraryService : MediaLibraryService() {
         }
 
         override fun onAvailableCommandsChanged(availableCommands: Player.Commands) {
+            refreshMediaButtonPreferences()
+        }
+
+        override fun onTimelineChanged(timeline: Timeline, reason: Int) {
             refreshMediaButtonPreferences()
         }
     }
@@ -126,51 +136,49 @@ class SilveranMediaLibraryService : MediaLibraryService() {
             page: Int,
             pageSize: Int,
             params: LibraryParams?,
-        ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> =
-            when (parentId) {
-                ROOT_MEDIA_ID -> Futures.immediateFuture(
+        ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
+            if (parentId == ROOT_MEDIA_ID) {
+                return Futures.immediateFuture(
                     LibraryResult.ofItemList(
-                        listOf(audiobooksMediaItem).requestedPage(page, pageSize),
+                        AutoCategory.entries.map(AutoCategory::folderItem)
+                            .requestedPage(page, pageSize),
                         params,
                     ),
                 )
-                AUDIOBOOKS_MEDIA_ID -> serviceFuture {
-                    LibraryResult.ofItemList(
-                        downloadedAudiobooks()
-                            .map(Book::asAndroidAutoMediaItem)
-                            .requestedPage(page, pageSize),
-                        params,
-                    )
-                }
-                else -> Futures.immediateFuture(
+            }
+            val category = AutoCategory.forFolderId(parentId)
+                ?: return Futures.immediateFuture(
                     LibraryResult.ofError(SessionError.ERROR_BAD_VALUE, params),
                 )
+            return serviceFuture {
+                LibraryResult.ofItemList(
+                    bookMediaItems(downloadedBooks(category), category)
+                        .requestedPage(page, pageSize),
+                    params,
+                )
             }
+        }
 
         override fun onGetItem(
             session: MediaLibrarySession,
             browser: MediaSession.ControllerInfo,
             mediaId: String,
-        ): ListenableFuture<LibraryResult<MediaItem>> =
-            when (mediaId) {
-                ROOT_MEDIA_ID -> Futures.immediateFuture(
-                    LibraryResult.ofItem(rootMediaItem, null),
-                )
-                AUDIOBOOKS_MEDIA_ID -> Futures.immediateFuture(
-                    LibraryResult.ofItem(audiobooksMediaItem, null),
-                )
-                else -> serviceFuture {
-                    val bookID = bookIDFromMediaId(mediaId)
-                    val book = bookID?.let { id ->
-                        downloadedAudiobooks().firstOrNull { it.id == id }
-                    }
-                    if (book == null) {
-                        LibraryResult.ofError(SessionError.ERROR_BAD_VALUE)
-                    } else {
-                        LibraryResult.ofItem(book.asAndroidAutoMediaItem(), null)
-                    }
+        ): ListenableFuture<LibraryResult<MediaItem>> {
+            if (mediaId == ROOT_MEDIA_ID) {
+                return Futures.immediateFuture(LibraryResult.ofItem(rootMediaItem, null))
+            }
+            AutoCategory.forFolderId(mediaId)?.let {
+                return Futures.immediateFuture(LibraryResult.ofItem(it.folderItem, null))
+            }
+            return serviceFuture {
+                val book = resolveBook(mediaId)
+                if (book == null) {
+                    LibraryResult.ofError(SessionError.ERROR_BAD_VALUE)
+                } else {
+                    LibraryResult.ofItem(bookMediaItem(book.first, book.second), null)
                 }
             }
+        }
 
         override fun onSetMediaItems(
             mediaSession: MediaSession,
@@ -181,16 +189,14 @@ class SilveranMediaLibraryService : MediaLibraryService() {
         ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> =
             serviceFuture {
                 val requestedID = mediaItems.singleOrNull()?.mediaId
-                    ?: throw IllegalArgumentException("Expected one Silveran audiobook")
-                val bookID = bookIDFromMediaId(requestedID)
-                    ?: throw IllegalArgumentException("Invalid Silveran audiobook ID")
-                val book = downloadedAudiobooks().firstOrNull { it.id == bookID }
-                    ?: throw IllegalArgumentException("Audiobook is not downloaded")
+                    ?: throw IllegalArgumentException("Expected one Silveran book")
+                val (book, category) = resolveBook(requestedID)
+                    ?: throw IllegalArgumentException("Book is not downloaded: $requestedID")
 
-                client.openAudiobook(book.id)
-                awaitNowPlayingCommands()
+                client.openHeadlessPlayback(book.id, category.mediaCategory)
+                awaitPlaybackCommands()
                 MediaSession.MediaItemsWithStartPosition(
-                    listOf(book.asAndroidAutoMediaItem()),
+                    listOf(bookMediaItem(book, category)),
                     0,
                     0L,
                 )
@@ -209,22 +215,60 @@ class SilveranMediaLibraryService : MediaLibraryService() {
             }
             return serviceFuture {
                 ensureBootstrapped()
-                client.controlAudiobook("cyclePlaybackRate")
+                client.cyclePlaybackRate()
                 SessionResult(SessionResult.RESULT_SUCCESS)
             }
         }
     }
 
-    private suspend fun downloadedAudiobooks(): List<Book> {
+    private suspend fun resolveBook(mediaId: String): Pair<Book, AutoCategory>? {
+        val (category, bookID) = parseBookMediaId(mediaId) ?: return null
+        val book = downloadedBooks(category).firstOrNull { it.id == bookID } ?: return null
+        return book to category
+    }
+
+    private suspend fun downloadedBooks(category: AutoCategory): List<Book> {
         ensureBootstrapped()
         return client.librarySnapshot(refresh = false).books
-            .filter { book ->
-                book.media.any { media -> media.category == AUDIO_CATEGORY && media.downloaded }
-            }
+            .filter(category::includes)
             .sortedWith(
-                compareBy<Book, String>(String.CASE_INSENSITIVE_ORDER) { it.title }
+                compareByDescending<Book> { it.sortLastRead }
+                    .thenBy(String.CASE_INSENSITIVE_ORDER) { it.title }
                     .thenBy { it.id.uuid },
             )
+    }
+
+    private suspend fun bookMediaItems(
+        books: List<Book>,
+        category: AutoCategory,
+    ): List<MediaItem> = coroutineScope {
+        books.map { book -> async { bookMediaItem(book, category) } }.awaitAll()
+    }
+
+    private suspend fun bookMediaItem(book: Book, category: AutoCategory): MediaItem {
+        val metadata = MediaMetadata.Builder()
+            .setTitle(book.title)
+            .setArtist(book.authors.takeIf(String::isNotBlank))
+            .setIsBrowsable(false)
+            .setIsPlayable(true)
+            .setMediaType(MediaMetadata.MEDIA_TYPE_AUDIO_BOOK)
+        coverArtworkBytes(book)?.let { bytes ->
+            metadata.setArtworkData(bytes, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
+        }
+        return MediaItem.Builder()
+            .setMediaId(bookMediaId(book, category))
+            .setMediaMetadata(metadata.build())
+            .build()
+    }
+
+    private suspend fun coverArtworkBytes(book: Book): ByteArray? {
+        val bitmap = runCatching {
+            client.cover(book, audio = true, width = COVER_ART_SIZE, height = COVER_ART_SIZE)
+                ?: client.cover(book, audio = false, width = COVER_ART_SIZE, height = COVER_ART_SIZE)
+        }.getOrNull() ?: return null
+        val output = ByteArrayOutputStream()
+        bitmap.compress(Bitmap.CompressFormat.JPEG, 85, output)
+        return output.toByteArray()
     }
 
     private suspend fun ensureBootstrapped() {
@@ -237,7 +281,7 @@ class SilveranMediaLibraryService : MediaLibraryService() {
         }
     }
 
-    private suspend fun awaitNowPlayingCommands() {
+    private suspend fun awaitPlaybackCommands() {
         // Swift's presenter posts its configure/update calls to this looper.
         // This barrier makes them visible before Media3 evaluates its follow-up play.
         suspendCancellableCoroutine { continuation ->
@@ -246,7 +290,7 @@ class SilveranMediaLibraryService : MediaLibraryService() {
             }
         }
         check(session?.player?.isCommandAvailable(Player.COMMAND_PLAY_PAUSE) == true) {
-            "Silveran audiobook commands were not installed"
+            "Silveran playback commands were not installed"
         }
     }
 
@@ -286,9 +330,6 @@ class SilveranMediaLibraryService : MediaLibraryService() {
         return CommandButton.Builder(CommandButton.ICON_UNDEFINED).setCustomIconResId(iconResId)
     }
 
-    // Readaloud sessions advertise no rate command, so the cycle-speed button
-    // (which routes to the audiobook actor) is only offered when rate changes
-    // are supported.
     private fun mediaButtonPreferences(player: Player): List<CommandButton> = buildList {
         add(
             CommandButton.Builder(CommandButton.ICON_SKIP_BACK_15)
@@ -302,7 +343,7 @@ class SilveranMediaLibraryService : MediaLibraryService() {
                 .setPlayerCommand(Player.COMMAND_SEEK_FORWARD)
                 .build(),
         )
-        if (player.isCommandAvailable(Player.COMMAND_SET_SPEED_AND_PITCH)) {
+        if (player.isCommandAvailable(Player.COMMAND_PLAY_PAUSE)) {
             add(
                 speedIconButton(player.playbackParameters.speed.toDouble())
                     .setDisplayName("Playback speed")
@@ -320,11 +361,44 @@ class SilveranMediaLibraryService : MediaLibraryService() {
     }
 }
 
+private enum class AutoCategory(
+    val folderId: String,
+    val mediaCategory: String,
+    val title: String,
+) {
+    READALOUD("silveran-readalouds", "synced", "Readalouds"),
+    AUDIOBOOK("silveran-audiobooks", "audio", "Audiobooks");
+
+    fun includes(book: Book): Boolean = when (this) {
+        READALOUD -> book.hasDownloaded(mediaCategory)
+        AUDIOBOOK -> book.hasDownloaded(mediaCategory) && !book.hasDownloaded(READALOUD.mediaCategory)
+    }
+
+    val folderItem: MediaItem by lazy {
+        MediaItem.Builder()
+            .setMediaId(folderId)
+            .setMediaMetadata(
+                MediaMetadata.Builder()
+                    .setTitle(title)
+                    .setIsBrowsable(true)
+                    .setIsPlayable(false)
+                    .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_AUDIO_BOOKS)
+                    .build(),
+            )
+            .build()
+    }
+
+    companion object {
+        fun forFolderId(id: String): AutoCategory? = entries.firstOrNull { it.folderId == id }
+
+        fun forMediaCategory(category: String): AutoCategory? =
+            entries.firstOrNull { it.mediaCategory == category }
+    }
+}
+
 private const val ROOT_MEDIA_ID = "silveran-root"
-private const val AUDIOBOOKS_MEDIA_ID = "silveran-audiobooks"
 private const val MEDIA_ID_SCHEME = "silveran"
-private const val AUDIOBOOK_MEDIA_ID_AUTHORITY = "audiobook"
-private const val AUDIO_CATEGORY = "audio"
+private const val COVER_ART_SIZE = 256
 
 private val rootMediaItem: MediaItem = MediaItem.Builder()
     .setMediaId(ROOT_MEDIA_ID)
@@ -337,48 +411,25 @@ private val rootMediaItem: MediaItem = MediaItem.Builder()
     )
     .build()
 
-private val audiobooksMediaItem: MediaItem = MediaItem.Builder()
-    .setMediaId(AUDIOBOOKS_MEDIA_ID)
-    .setMediaMetadata(
-        MediaMetadata.Builder()
-            .setTitle("Downloaded audiobooks")
-            .setIsBrowsable(true)
-            .setIsPlayable(false)
-            .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_AUDIO_BOOKS)
-            .build(),
-    )
-    .build()
+private fun Book.hasDownloaded(category: String): Boolean =
+    media.any { it.category == category && it.downloaded }
 
-private fun Book.asAndroidAutoMediaItem(): MediaItem =
-    MediaItem.Builder()
-        .setMediaId(
-            Uri.Builder()
-                .scheme(MEDIA_ID_SCHEME)
-                .authority(AUDIOBOOK_MEDIA_ID_AUTHORITY)
-                .appendPath(id.sourceID)
-                .appendPath(id.uuid)
-                .build()
-                .toString(),
-        )
-        .setMediaMetadata(
-            MediaMetadata.Builder()
-                .setTitle(title)
-                .setArtist(authors.takeIf(String::isNotBlank))
-                .setIsBrowsable(false)
-                .setIsPlayable(true)
-                .setMediaType(MediaMetadata.MEDIA_TYPE_AUDIO_BOOK)
-                .build(),
-        )
+private fun bookMediaId(book: Book, category: AutoCategory): String =
+    Uri.Builder()
+        .scheme(MEDIA_ID_SCHEME)
+        .authority(category.mediaCategory)
+        .appendPath(book.id.sourceID)
+        .appendPath(book.id.uuid)
         .build()
+        .toString()
 
-private fun bookIDFromMediaId(mediaId: String): BookID? {
+private fun parseBookMediaId(mediaId: String): Pair<AutoCategory, BookID>? {
     val uri = Uri.parse(mediaId)
-    if (uri.scheme != MEDIA_ID_SCHEME || uri.authority != AUDIOBOOK_MEDIA_ID_AUTHORITY) {
-        return null
-    }
+    if (uri.scheme != MEDIA_ID_SCHEME) return null
+    val category = uri.authority?.let(AutoCategory::forMediaCategory) ?: return null
     val segments = uri.pathSegments
     if (segments.size != 2 || segments.any(String::isBlank)) return null
-    return BookID(sourceID = segments[0], uuid = segments[1])
+    return category to BookID(sourceID = segments[0], uuid = segments[1])
 }
 
 private fun <T> List<T>.requestedPage(page: Int, pageSize: Int): List<T> {

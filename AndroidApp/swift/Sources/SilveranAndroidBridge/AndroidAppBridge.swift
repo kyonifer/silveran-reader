@@ -473,6 +473,26 @@ public func controlAudiobook(command: String, value: Double, text: String) async
     )
 }
 
+public func openHeadlessPlayback(
+    bookID: String,
+    sourceID: String,
+    category: String,
+) async throws {
+    try requireAndroidBootstrap()
+    guard let mediaCategory = LocalMediaCategory(rawValue: category) else {
+        throw AndroidBridgeError.invalidMediaCategory(category)
+    }
+    try await AndroidAudiobookSession.shared.openHeadless(
+        bookID: BookID(sourceID: sourceID, uuid: bookID),
+        category: mediaCategory,
+    )
+}
+
+public func cyclePlaybackRate() async throws {
+    try requireAndroidBootstrap()
+    await AudioSessionActor.shared.cyclePlaybackRate()
+}
+
 public func openReader(
     requestID: String,
     bookID: String,
