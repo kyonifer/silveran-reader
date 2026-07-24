@@ -243,8 +243,8 @@ public final class ReadingSession {
                     for: bookID,
                     audio: false,
                 ) {
-                    await SMILPlayerActor.shared.setCoverImage(coverData)
-                    debugLog("[ReadingSession] Cover image set on SMILPlayerActor")
+                    await AudioSessionActor.shared.setSessionCover(coverData, for: bookID)
+                    debugLog("[ReadingSession] Cover image set on AudioSessionActor")
                 }
             }
             #endif

@@ -16,6 +16,8 @@ import com.kyonifer.silveran.model.DownloadOperation
 import com.kyonifer.silveran.model.DownloadUpdate
 import com.kyonifer.silveran.model.HomeSection
 import com.kyonifer.silveran.model.LibrarySnapshot
+import com.kyonifer.silveran.model.SessionKind
+import com.kyonifer.silveran.model.SessionState
 import com.kyonifer.silveran.model.ReaderDisplaySettings
 import com.kyonifer.silveran.model.ReaderHighlight
 import com.kyonifer.silveran.model.ReaderHighlightPaletteEntry
@@ -298,6 +300,39 @@ class SilveranBridgeClient(context: Context) {
                 .getOrNull()
                 ?.let(onChange)
         }
+    }
+
+    fun observeSession(onChange: (SessionState?) -> Unit) {
+        AndroidBridgeCallbacks.observeSession(this) { payload ->
+            onChange(payload.takeIf(String::isNotBlank)?.let(::parseSessionState))
+        }
+    }
+
+    suspend fun sessionTogglePlayPause() {
+        SilveranAndroidBridge.sessionTogglePlayPause().awaitResult()
+    }
+
+    suspend fun sessionClose() {
+        SilveranAndroidBridge.sessionClose().awaitResult()
+    }
+
+    private fun parseSessionState(json: String): SessionState {
+        val obj = JSONObject(json)
+        return SessionState(
+            kind = if (obj.optString("kind") == "audiobook") {
+                SessionKind.Audiobook
+            } else {
+                SessionKind.Readaloud
+            },
+            bookID = BookID(
+                sourceID = obj.optString("sourceID"),
+                uuid = obj.optString("bookID"),
+            ),
+            title = obj.optString("title"),
+            author = obj.optString("author").takeIf { it.isNotBlank() },
+            isPlaying = obj.optBoolean("isPlaying"),
+            playbackRate = obj.optDouble("playbackRate", 1.0),
+        )
     }
 
     private fun parseReaderOpenResult(json: String): ReaderOpenResult {
@@ -668,6 +703,7 @@ class SilveranBridgeClient(context: Context) {
                         downloadProgress = media.optionalDouble("downloadProgress"),
                     )
                 },
+                playbackOwner = item.optionalString("playbackOwner"),
             )
         }
         return LibrarySnapshot(

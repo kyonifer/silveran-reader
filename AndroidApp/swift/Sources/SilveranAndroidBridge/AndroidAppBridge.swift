@@ -198,6 +198,13 @@ private func makeLibrarySnapshotJSON(refresh: Bool) async throws -> String {
 
         let paths = snapshot.mediaPaths[book.id]
         let cachedPaths = snapshot.cachedMediaPaths[book.id]
+        if let owner = paths?.playbackOwner {
+            debugLog(
+                "[AutoClassify] \(book.title): owner=\(owner.rawValue) "
+                    + "audio=\(paths?.audioPath != nil) synced=\(paths?.syncedPath != nil) "
+                    + "availAudio=\(book.hasAvailableAudiobook) availReadaloud=\(book.hasAvailableReadaloud)"
+            )
+        }
         let media = [
             androidMedia(
                 bookID: book.id,
@@ -263,6 +270,7 @@ private func makeLibrarySnapshotJSON(refresh: Bool) async throws -> String {
                 fileSizeBytes: book.sortableFileSize,
                 coverVersion: book.updatedAt ?? "",
                 media: media,
+                playbackOwner: paths?.playbackOwner?.rawValue,
             )
         )
     }
@@ -493,6 +501,19 @@ public func cyclePlaybackRate() async throws {
     await AudioSessionActor.shared.cyclePlaybackRate()
 }
 
+public func sessionTogglePlayPause() async throws {
+    try requireAndroidBootstrap()
+    try await AudioSessionActor.shared.transport(.togglePlayPause)
+}
+
+public func sessionClose() async throws {
+    try requireAndroidBootstrap()
+    if case .readaloud(let bookID) = await AudioSessionActor.shared.currentSessionKind() {
+        await ReadingSessionStore.shared.endIfViewDetached(for: bookID)
+    }
+    await AudioSessionActor.shared.closeCurrent()
+}
+
 public func openReader(
     requestID: String,
     bookID: String,
@@ -554,6 +575,7 @@ public func startLibraryObservation() async throws {
         guard let payload = try? encodeJSON(updates) else { return }
         notifyAndroidDownloadStateDidChange(payload)
     }
+    await AndroidSessionState.startObserving()
     await installAndroidConnectionObserver()
 }
 
@@ -587,6 +609,7 @@ private struct AndroidBook: Encodable {
     let fileSizeBytes: Int
     let coverVersion: String
     let media: [AndroidMedia]
+    let playbackOwner: String?
 }
 
 private struct AndroidBookDetails: Encodable {

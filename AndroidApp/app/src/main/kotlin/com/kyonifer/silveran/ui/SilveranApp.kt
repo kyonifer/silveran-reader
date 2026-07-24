@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import com.kyonifer.silveran.model.Book
 import com.kyonifer.silveran.model.BookDetails
 import com.kyonifer.silveran.model.BookID
+import com.kyonifer.silveran.model.SessionKind
 import kotlinx.coroutines.launch
 
 private enum class Screen {
@@ -167,10 +168,7 @@ fun SilveranApp(viewModel: SilveranViewModel) {
     }
     BackHandler(enabled = canNavigateBack, onBack = navigateBack)
 
-    KeepPlaybackServiceConnected(
-        active = state.audiobook != null ||
-            (state.readerOpen != null && state.reader?.hasAudioNarration == true),
-    )
+    KeepPlaybackServiceConnected(active = state.session != null)
 
     MaterialTheme(
         colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme(),
@@ -370,50 +368,29 @@ fun SilveranApp(viewModel: SilveranViewModel) {
                     }
                 }
             }
-            if (screen != Screen.Reader) {
-                if (state.readerOpen != null && state.reader?.hasAudioNarration == true) {
-                    GlobalMiniPlayerBar(
-                        book = state.books.firstOrNull { it.id == state.readerBookID },
-                        title = state.reader?.title
-                            ?: state.readerOpen?.title.orEmpty(),
-                        subtitle = state.reader?.author,
-                        isPlaying = state.reader?.isPlaying == true,
-                        onTogglePlay = { viewModel.readerControl("togglePlayPause") },
-                        onOpen = {
-                            state.readerBookID?.let { id ->
-                                selectedBookID = id
-                                readerMode = state.readerModeName ?: "synced"
-                                screenName = Screen.Reader.name
-                            }
-                        },
-                        onClose = viewModel::closeReader,
-                        coverRevision = state.coverRevision,
-                        cover = viewModel::cover,
-                        cachedCover = viewModel::cachedCover,
-                        modifier = Modifier.align(Alignment.BottomCenter),
-                    )
-                } else if (state.audiobook != null) {
-                    val audiobook = state.audiobook
-                    GlobalMiniPlayerBar(
-                        book = state.books.firstOrNull { it.id == audiobook?.bookID },
-                        title = audiobook?.title.orEmpty(),
-                        subtitle = audiobook?.author,
-                        isPlaying = audiobook?.isPlaying == true,
-                        onTogglePlay = viewModel::toggleAudiobookPlayback,
-                        onOpen = {
-                            audiobook?.let {
-                                selectedBookID = it.bookID
-                                readerMode = "audio"
-                                screenName = Screen.Reader.name
-                            }
-                        },
-                        onClose = viewModel::closeAudiobook,
-                        coverRevision = state.coverRevision,
-                        cover = viewModel::cover,
-                        cachedCover = viewModel::cachedCover,
-                        modifier = Modifier.align(Alignment.BottomCenter),
-                    )
-                }
+            val session = state.session
+            if (screen != Screen.Reader && session != null) {
+                GlobalMiniPlayerBar(
+                    book = state.books.firstOrNull { it.id == session.bookID },
+                    title = session.title,
+                    subtitle = session.author,
+                    isPlaying = session.isPlaying,
+                    onTogglePlay = viewModel::toggleSession,
+                    onOpen = {
+                        selectedBookID = session.bookID
+                        readerMode = if (session.kind == SessionKind.Audiobook) {
+                            "audio"
+                        } else {
+                            state.readerModeName ?: "synced"
+                        }
+                        screenName = Screen.Reader.name
+                    },
+                    onClose = viewModel::closeSession,
+                    coverRevision = state.coverRevision,
+                    cover = viewModel::cover,
+                    cachedCover = viewModel::cachedCover,
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                )
             }
             }
         }

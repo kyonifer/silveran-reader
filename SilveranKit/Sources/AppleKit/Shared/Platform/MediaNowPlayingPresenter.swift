@@ -14,13 +14,11 @@ public final class MediaNowPlayingPresenter: NowPlayingPresenting {
     private var cachedArtworkData: Data?
     private var cachedArtwork: MPMediaItemArtwork?
     #endif
-    private var owner: NowPlayingOwner?
 
     public nonisolated init() {}
 
     #if os(iOS) || os(watchOS) || os(tvOS)
-    public func update(_ info: NowPlayingInfo, owner: NowPlayingOwner) {
-        guard owner == self.owner else { return }
+    public func update(_ info: NowPlayingInfo) {
         var nowPlayingInfo = [String: Any]()
 
         nowPlayingInfo[MPMediaItemPropertyTitle] = info.title
@@ -46,21 +44,17 @@ public final class MediaNowPlayingPresenter: NowPlayingPresenting {
         center.playbackState = info.isPlaying ? .playing : .paused
     }
 
-    public func clear(owner: NowPlayingOwner) {
-        guard owner == self.owner else { return }
+    public func clear() {
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
     }
 
     public func configureCommands(
-        owner: NowPlayingOwner,
         skipForwardInterval: TimeInterval,
         skipBackwardInterval: TimeInterval,
         supportsChangePlaybackPosition: Bool,
         supportsChangePlaybackRate: Bool,
         handler: @escaping @Sendable (RemoteCommand) -> Void,
     ) {
-        debugLog("[MediaNowPlayingPresenter] Configuring remote commands for \(owner)")
-        self.owner = owner
         let commandCenter = MPRemoteCommandCenter.shared()
 
         removeAllTargets(from: commandCenter)
@@ -129,10 +123,7 @@ public final class MediaNowPlayingPresenter: NowPlayingPresenting {
         debugLog("[MediaNowPlayingPresenter] Remote commands configured")
     }
 
-    public func teardownCommands(owner: NowPlayingOwner) {
-        guard owner == self.owner else { return }
-        debugLog("[MediaNowPlayingPresenter] Clearing remote commands for \(owner)")
-        self.owner = nil
+    public func teardownCommands() {
         let commandCenter = MPRemoteCommandCenter.shared()
 
         removeAllTargets(from: commandCenter)
@@ -173,12 +164,11 @@ public final class MediaNowPlayingPresenter: NowPlayingPresenting {
     }
     #endif
     #else
-    public func update(_ info: NowPlayingInfo, owner: NowPlayingOwner) {}
+    public func update(_ info: NowPlayingInfo) {}
 
-    public func clear(owner: NowPlayingOwner) {}
+    public func clear() {}
 
     public func configureCommands(
-        owner: NowPlayingOwner,
         skipForwardInterval: TimeInterval,
         skipBackwardInterval: TimeInterval,
         supportsChangePlaybackPosition: Bool,
@@ -186,6 +176,6 @@ public final class MediaNowPlayingPresenter: NowPlayingPresenting {
         handler: @escaping @Sendable (RemoteCommand) -> Void,
     ) {}
 
-    public func teardownCommands(owner: NowPlayingOwner) {}
+    public func teardownCommands() {}
     #endif
 }

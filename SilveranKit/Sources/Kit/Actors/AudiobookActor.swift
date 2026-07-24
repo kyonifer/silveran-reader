@@ -144,8 +144,6 @@ public actor AudiobookActor {
     // for play/pause intent (players only emit events, never auto-pause).
     private var isPlaying = false
     private var stateObservers: [UUID: @Sendable (AudiobookPlaybackState) -> Void] = [:]
-    private var artworkData: Data?
-    private var nowPlayingRefreshTask: Task<Void, Never>?
 
     private init() {}
 
@@ -498,12 +496,7 @@ public actor AudiobookActor {
         }
         self.player = player
 
-        await configureNowPlaying()
-    }
-
-    public func setCoverImage(_ imageData: Data) async {
-        artworkData = imageData
-        await updateNowPlayingInfo()
+        await SMILPlayerActor.shared.setActiveAudioPlayer(.audiobook)
     }
 
     public func play() async throws {
@@ -662,8 +655,6 @@ public actor AudiobookActor {
             "[AudiobookActor] notifyStateChange: isPlaying=\(state.isPlaying), observers=\(stateObservers.count)"
         )
 
-        await updateNowPlayingInfo()
-
         for observer in stateObservers.values {
             observer(state)
         }
@@ -748,89 +739,6 @@ public actor AudiobookActor {
         await seek(to: targetTime)
     }
 
-    private func configureNowPlaying() async {
-        if let presenter = SilveranPlatform.nowPlaying {
-            debugLog("[AudiobookActor] Configuring remote commands")
-            await presenter.configureCommands(
-                owner: .audiobook,
-                skipForwardInterval: 15,
-                skipBackwardInterval: 15,
-                supportsChangePlaybackPosition: true,
-                supportsChangePlaybackRate: false,
-            ) { command in
-                Task { @AudiobookActor in
-                    await AudiobookActor.shared.handleRemoteCommand(command)
-                }
-            }
-            await updateNowPlayingInfo()
-            startNowPlayingRefresh()
-            debugLog("[AudiobookActor] Remote commands configured")
-        }
-        await SMILPlayerActor.shared.setActiveAudioPlayer(.audiobook)
-    }
-
-    private func handleRemoteCommand(_ command: RemoteCommand) async {
-        switch command {
-            case .play, .togglePlayPause:
-                debugLog("[AudiobookActor] Remote play/toggle command received")
-                do {
-                    try await togglePlayPause()
-                } catch {
-                    debugLog("[AudiobookActor] Remote play/toggle failed: \(error)")
-                }
-            case .pause:
-                debugLog("[AudiobookActor] Remote pause command received")
-                await pause()
-            case .skipForward(let interval):
-                debugLog("[AudiobookActor] Remote skip forward command received")
-                await skipForward(interval)
-            case .skipBackward(let interval):
-                debugLog("[AudiobookActor] Remote skip backward command received")
-                await skipBackward(interval)
-            case .changePlaybackPosition(let positionInChapter):
-                debugLog("[AudiobookActor] Remote seek command received: \(positionInChapter)")
-                await seekWithinCurrentChapter(to: positionInChapter)
-            case .changePlaybackRate, .nextTrack, .previousTrack:
-                break
-        }
-    }
-
-    private func updateNowPlayingInfo() async {
-        guard let presenter = SilveranPlatform.nowPlaying else { return }
-        guard player != nil else {
-            await presenter.clear(owner: .audiobook)
-            return
-        }
-
-        var info = NowPlayingInfo(
-            title: metadata?.title ?? "Audiobook",
-            albumTitle: metadata?.author ?? "",
-            playbackRate: Double(desiredPlaybackRate),
-            isPlaying: isPlaying,
-            artwork: artworkData,
-        )
-
-        let currentTime = await currentGlobalTime()
-        if let chapters = metadata?.chapters,
-            let currentIndex = await getCurrentChapterIndex(),
-            currentIndex < chapters.count
-        {
-            let chapter = chapters[currentIndex]
-            info.artist = chapter.title
-            info.duration = chapter.duration
-            info.elapsedTime = max(0, currentTime - chapter.startTime)
-        } else {
-            if let totalDuration = metadata?.totalDuration {
-                info.duration = totalDuration
-            } else if let player {
-                info.duration = await player.duration
-            }
-            info.elapsedTime = currentTime
-        }
-
-        await presenter.update(info, owner: .audiobook)
-    }
-
     public func seekWithinCurrentChapter(to timeInChapter: TimeInterval) async {
         guard let chapters = metadata?.chapters,
             let currentIndex = await getCurrentChapterIndex(),
@@ -869,33 +777,8 @@ public actor AudiobookActor {
         await seekToChapter(href: chapters[currentIndex - 1].id)
     }
 
-    private func startNowPlayingRefresh() {
-        guard nowPlayingRefreshTask == nil else { return }
-
-        // Refresh Now Playing every second to keep the lock screen UI in sync,
-        // especially for chapter transitions during playback
-        nowPlayingRefreshTask = Task { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(1))
-                guard let self else { break }
-                await self.refreshNowPlayingInfo()
-            }
-        }
-    }
-
-    private func refreshNowPlayingInfo() async {
-        guard isPlaying else { return }
-        await updateNowPlayingInfo()
-    }
-
-    private func stopNowPlayingRefresh() {
-        nowPlayingRefreshTask?.cancel()
-        nowPlayingRefreshTask = nil
-    }
-
     public func cleanup() async {
         debugLog("[AudiobookActor] Cleanup called")
-        stopNowPlayingRefresh()
         await player?.stop()
         player = nil
         metadata = nil
@@ -903,12 +786,7 @@ public actor AudiobookActor {
         currentTrackIndex = 0
         isPlaying = false
         stateObservers.removeAll()
-        artworkData = nil
 
-        if let presenter = SilveranPlatform.nowPlaying {
-            await presenter.clear(owner: .audiobook)
-            await presenter.teardownCommands(owner: .audiobook)
-        }
         if await SMILPlayerActor.shared.activeAudioPlayer == .audiobook {
             await SMILPlayerActor.shared.setActiveAudioPlayer(.none)
         }

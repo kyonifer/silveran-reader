@@ -37,7 +37,7 @@ public enum HeadlessAudioSession {
         }
 
         if let cover = await coverData(for: bookID) {
-            await SMILPlayerActor.shared.setCoverImage(cover)
+            await AudioSessionActor.shared.setSessionCover(cover, for: bookID)
         }
         await session.restoreEnginePositionFromSavedProgress()
     }

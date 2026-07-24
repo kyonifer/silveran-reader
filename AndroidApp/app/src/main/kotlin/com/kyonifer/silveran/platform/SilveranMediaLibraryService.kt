@@ -364,15 +364,13 @@ class SilveranMediaLibraryService : MediaLibraryService() {
 private enum class AutoCategory(
     val folderId: String,
     val mediaCategory: String,
+    val owner: String,
     val title: String,
 ) {
-    READALOUD("silveran-readalouds", "synced", "Readalouds"),
-    AUDIOBOOK("silveran-audiobooks", "audio", "Audiobooks");
+    READALOUD("silveran-readalouds", "synced", "readaloud", "Readalouds"),
+    AUDIOBOOK("silveran-audiobooks", "audio", "audiobook", "Audiobooks");
 
-    fun includes(book: Book): Boolean = when (this) {
-        READALOUD -> book.hasDownloaded(mediaCategory)
-        AUDIOBOOK -> book.hasDownloaded(mediaCategory) && !book.hasDownloaded(READALOUD.mediaCategory)
-    }
+    fun includes(book: Book): Boolean = book.playbackOwner == owner
 
     val folderItem: MediaItem by lazy {
         MediaItem.Builder()
@@ -410,9 +408,6 @@ private val rootMediaItem: MediaItem = MediaItem.Builder()
             .build(),
     )
     .build()
-
-private fun Book.hasDownloaded(category: String): Boolean =
-    media.any { it.category == category && it.downloaded }
 
 private fun bookMediaId(book: Book, category: AutoCategory): String =
     Uri.Builder()

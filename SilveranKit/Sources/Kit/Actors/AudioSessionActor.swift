@@ -103,6 +103,7 @@ public enum ReadaloudOpenResult: Sendable, Equatable {
 public struct AudioSessionSnapshot: Sendable {
     public let kind: AudioSessionKind
     public let title: String?
+    public let author: String?
     public let isPlaying: Bool
     public let chapterLabel: String?
     public let bookProgress: Double
@@ -133,7 +134,9 @@ public actor AudioSessionActor {
     ]
 
     private var currentKind: AudioSessionKind?
+    private var artworkData: Data?
     private var readaloudTitle: String?
+    private var readaloudAuthor: String?
     private var smilObserverID: UUID?
     private var attachments: Set<UUID> = []
     private var snapshotObservers: [UUID: @Sendable (AudioSessionSnapshot?) -> Void] = [:]
@@ -239,6 +242,7 @@ public actor AudioSessionActor {
             nextPeriodicSync =
                 syncInterval > 0 ? Date().addingTimeInterval(syncInterval) : .distantFuture
             startRefreshTask()
+            await configureNowPlayingCommands(for: .audiobook(book.id))
             await publishState()
             startCoverTask(for: book, sessionID: sessionID)
         } catch {
@@ -260,6 +264,8 @@ public actor AudioSessionActor {
         if loadedBookID == bookID && isPlaying {
             currentKind = .readaloud(bookID)
             readaloudTitle = title
+            readaloudAuthor = author
+            await configureNowPlayingCommands(for: .readaloud(bookID))
             await installSMILObserver()
             return .joinedLiveSession
         }
@@ -278,8 +284,23 @@ public actor AudioSessionActor {
 
         currentKind = .readaloud(bookID)
         readaloudTitle = title
+        readaloudAuthor = author
+        await configureNowPlayingCommands(for: .readaloud(bookID))
         await installSMILObserver()
         return .openedFresh
+    }
+
+    public func setSessionCover(_ data: Data?, for bookID: BookID) async {
+        guard let currentKind, currentKind.bookID == bookID else { return }
+        artworkData = data
+        switch currentKind {
+            case .audiobook:
+                await updateNowPlaying(audiobookNowPlaying(from: await makeState()))
+            case .readaloud:
+                await updateNowPlaying(
+                    readaloudNowPlaying(from: await SMILPlayerActor.shared.getCurrentState())
+                )
+        }
     }
 
     public func closeAudiobook() async {
@@ -477,7 +498,10 @@ public actor AudioSessionActor {
         if case .readaloud = currentKind {
             currentKind = nil
             readaloudTitle = nil
+            readaloudAuthor = nil
+            artworkData = nil
             notifySnapshotObservers(nil)
+            await teardownNowPlayingCommands()
         }
         if onlyIfEngineActive {
             if await SMILPlayerActor.shared.activeAudioPlayer == .smil {
@@ -506,13 +530,17 @@ public actor AudioSessionActor {
             }
             currentKind = nil
             readaloudTitle = nil
+            readaloudAuthor = nil
+            artworkData = nil
             notifySnapshotObservers(nil)
+            await teardownNowPlayingCommands()
             return
         }
         if bookID != id {
             currentKind = .readaloud(bookID)
         }
         notifySnapshotObservers(readaloudSnapshot(from: state, fallbackBookID: bookID))
+        await updateNowPlaying(readaloudNowPlaying(from: state))
     }
 
     private func readaloudSnapshot(
@@ -522,6 +550,7 @@ public actor AudioSessionActor {
         AudioSessionSnapshot(
             kind: .readaloud(state.bookID ?? fallbackBookID),
             title: readaloudTitle,
+            author: readaloudAuthor,
             isPlaying: state.isPlaying,
             chapterLabel: state.chapterLabel,
             bookProgress: state.bookTotal > 0 ? state.bookElapsed / state.bookTotal : 0,
@@ -535,6 +564,7 @@ public actor AudioSessionActor {
         return AudioSessionSnapshot(
             kind: .audiobook(id),
             title: state.title,
+            author: state.author,
             isPlaying: state.isPlaying,
             chapterLabel: chapter?.title,
             bookProgress: state.bookProgress,
@@ -726,7 +756,11 @@ public actor AudioSessionActor {
     }
 
     private func publishState(using suppliedState: AudiobookPlaybackState? = nil) async {
-        notifyObservers(await makeState(using: suppliedState))
+        let state = await makeState(using: suppliedState)
+        notifyObservers(state)
+        if case .audiobook = currentKind {
+            await updateNowPlaying(audiobookNowPlaying(from: state))
+        }
     }
 
     private func makeState(
@@ -898,7 +932,8 @@ public actor AudioSessionActor {
 
     private func applyCover(_ cover: Data, sessionID: UUID) async {
         guard activeSessionID == sessionID else { return }
-        await AudiobookActor.shared.setCoverImage(cover)
+        artworkData = cover
+        await publishState()
     }
 
     private func teardown(syncReason: SyncReason?) async {
@@ -939,7 +974,106 @@ public actor AudioSessionActor {
         cancelSleepTimer()
         if case .audiobook = currentKind {
             currentKind = nil
+            artworkData = nil
             notifySnapshotObservers(nil)
+            await teardownNowPlayingCommands()
         }
+    }
+
+    private func configureNowPlayingCommands(for kind: AudioSessionKind) async {
+        guard let presenter = SilveranPlatform.nowPlaying else { return }
+        let supportsChangePlaybackPosition: Bool
+        if case .audiobook = kind {
+            supportsChangePlaybackPosition = true
+        } else {
+            supportsChangePlaybackPosition = false
+        }
+        await presenter.configureCommands(
+            skipForwardInterval: 15,
+            skipBackwardInterval: 15,
+            supportsChangePlaybackPosition: supportsChangePlaybackPosition,
+            supportsChangePlaybackRate: false,
+        ) { command in
+            Task { await AudioSessionActor.shared.handleRemoteCommand(command) }
+        }
+    }
+
+    private func teardownNowPlayingCommands() async {
+        guard let presenter = SilveranPlatform.nowPlaying else { return }
+        await presenter.clear()
+        await presenter.teardownCommands()
+    }
+
+    private func updateNowPlaying(_ info: NowPlayingInfo?) async {
+        guard let presenter = SilveranPlatform.nowPlaying else { return }
+        if let info {
+            await presenter.update(info)
+        } else {
+            await presenter.clear()
+        }
+    }
+
+    private func handleRemoteCommand(_ command: RemoteCommand) async {
+        switch command {
+            case .play, .togglePlayPause:
+                try? await transport(.togglePlayPause)
+            case .pause:
+                try? await transport(.pause)
+            case .skipForward(let interval):
+                switch currentKind {
+                    case .audiobook:
+                        await AudiobookActor.shared.skipForward(interval)
+                    case .readaloud:
+                        await SMILPlayerActor.shared.skipForward(seconds: interval)
+                    case nil:
+                        break
+                }
+            case .skipBackward(let interval):
+                switch currentKind {
+                    case .audiobook:
+                        await AudiobookActor.shared.skipBackward(interval)
+                    case .readaloud:
+                        await SMILPlayerActor.shared.skipBackward(seconds: interval)
+                    case nil:
+                        break
+                }
+            case .changePlaybackPosition(let position):
+                if case .audiobook = currentKind {
+                    await AudiobookActor.shared.seekWithinCurrentChapter(to: position)
+                }
+            case .changePlaybackRate(let rate):
+                await setPlaybackRate(rate)
+            case .nextTrack, .previousTrack:
+                break
+        }
+    }
+
+    private func audiobookNowPlaying(from state: AudiobookSessionState?) -> NowPlayingInfo? {
+        guard let state else { return nil }
+        let chapter = state.currentChapterIndex.flatMap { state.chapters[safe: $0] }
+        return NowPlayingInfo(
+            title: state.title,
+            artist: chapter?.title,
+            albumTitle: state.author,
+            duration: state.chapterDuration,
+            elapsedTime: state.chapterElapsed,
+            playbackRate: state.playbackRate,
+            isPlaying: state.isPlaying,
+            artwork: artworkData,
+        )
+    }
+
+    private func readaloudNowPlaying(from state: SMILPlaybackState?) -> NowPlayingInfo? {
+        guard let state else { return nil }
+        return NowPlayingInfo(
+            title: readaloudTitle ?? "Silveran Reader",
+            artist: state.chapterLabel ?? "Playing",
+            albumTitle: readaloudAuthor ?? "",
+            duration: state.chapterTotal,
+            elapsedTime: state.chapterElapsed,
+            playbackRate: state.playbackRate,
+            isPlaying: state.isPlaying,
+            artwork: artworkData,
+        )
     }
 }

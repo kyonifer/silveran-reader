@@ -207,6 +207,7 @@ public final class MediaOverlayManager {
 
         let wasPlaying = isPlaying
         isPlaying = state.isPlaying
+        playbackRate = state.playbackRate
         if isInBackground && state.isPlaying {
             backgroundAudioPlayed = true
         }

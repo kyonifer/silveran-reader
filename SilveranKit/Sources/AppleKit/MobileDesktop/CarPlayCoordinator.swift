@@ -128,26 +128,9 @@ public final class CarPlayCoordinator {
     public func getDownloadedBooks(category: LocalMediaCategory) async -> [BookMetadata] {
         let snapshot = await BookServiceActor.shared.librarySnapshot(policy: .cachedOnly)
 
-        var result: [BookMetadata] = []
-        for book in snapshot.books {
-            guard let paths = snapshot.mediaPaths[book.id] else { continue }
-            let hasCategory =
-                switch category {
-                    case .ebook:
-                        paths.ebookPath != nil
-                    case .audio:
-                        paths.audioPath != nil
-                    case .synced:
-                        paths.syncedPath != nil
-                }
-
-            if hasCategory {
-                // If requesting audiobooks, skip books that also have readaloud (prefer readaloud)
-                if category == .audio && paths.syncedPath != nil {
-                    continue
-                }
-                result.append(book)
-            }
+        let wantedOwner: PlaybackOwner = category == .synced ? .readaloud : .audiobook
+        let result = snapshot.books.filter {
+            snapshot.mediaPaths[$0.id]?.playbackOwner == wantedOwner
         }
 
         return result.sorted { ($0.position?.updatedAt ?? "") > ($1.position?.updatedAt ?? "") }

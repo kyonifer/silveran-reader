@@ -25,6 +25,8 @@ object AndroidBridgeCallbacks {
     @Volatile
     private var readerStateListener: Registration<(String) -> Unit>? = null
     @Volatile
+    private var sessionListener: Registration<(String) -> Unit>? = null
+    @Volatile
     private var readerWebView: Registration<WebView>? = null
     private val payloadRequests = ConcurrentHashMap<String, CompletableDeferred<String>>()
     private val coverRequests = ConcurrentHashMap<String, CompletableDeferred<CoverPayload>>()
@@ -42,6 +44,7 @@ object AndroidBridgeCallbacks {
         if (downloadListener?.owner === owner) downloadListener = null
         if (sourceStatusListener?.owner === owner) sourceStatusListener = null
         if (readerStateListener?.owner === owner) readerStateListener = null
+        if (sessionListener?.owner === owner) sessionListener = null
     }
 
     fun observeReaderState(owner: Any, onChange: (String) -> Unit) {
@@ -58,6 +61,10 @@ object AndroidBridgeCallbacks {
 
     fun observeAudiobook(owner: Any, onChange: (String) -> Unit) {
         audiobookListener = Registration(owner, onChange)
+    }
+
+    fun observeSession(owner: Any, onChange: (String) -> Unit) {
+        sessionListener = Registration(owner, onChange)
     }
 
     fun observeDownloads(owner: Any, onChange: (String) -> Unit) {
@@ -93,6 +100,11 @@ object AndroidBridgeCallbacks {
     fun readerStateDidChange(payload: String) {
         android.util.Log.d("SilveranReaderState", payload)
         readerStateListener?.callback?.invoke(payload)
+    }
+
+    @JvmStatic
+    fun sessionStateDidChange(payload: String) {
+        sessionListener?.callback?.invoke(payload)
     }
 
     @JvmStatic

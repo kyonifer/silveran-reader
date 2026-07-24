@@ -50,6 +50,9 @@ extension JavaClass<JavaAndroidBridgeCallbacks> {
 
     @JavaStaticMethod
     func readerStateDidChange(_ payload: String)
+
+    @JavaStaticMethod
+    func sessionStateDidChange(_ payload: String)
 }
 
 enum AndroidPlatformBootstrap {
@@ -139,6 +142,10 @@ func notifyAndroidEvaluateReaderJS(requestID: String, script: String) {
 
 func notifyAndroidReaderStateDidChange(_ payload: String) {
     try? JavaClass<JavaAndroidBridgeCallbacks>().readerStateDidChange(payload)
+}
+
+func notifyAndroidSessionDidChange(_ payload: String) {
+    try? JavaClass<JavaAndroidBridgeCallbacks>().sessionStateDidChange(payload)
 }
 
 func deliverAndroidCoverPayload(

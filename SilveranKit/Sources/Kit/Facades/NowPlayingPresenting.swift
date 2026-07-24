@@ -44,21 +44,15 @@ public enum RemoteCommand: Sendable {
     case previousTrack
 }
 
-public enum NowPlayingOwner: String, Sendable {
-    case readaloud
-    case audiobook
-}
-
 public protocol NowPlayingPresenting: Sendable {
-    func update(_ info: NowPlayingInfo, owner: NowPlayingOwner) async
-    func clear(owner: NowPlayingOwner) async
+    func update(_ info: NowPlayingInfo) async
+    func clear() async
     func configureCommands(
-        owner: NowPlayingOwner,
         skipForwardInterval: TimeInterval,
         skipBackwardInterval: TimeInterval,
         supportsChangePlaybackPosition: Bool,
         supportsChangePlaybackRate: Bool,
         handler: @escaping @Sendable (RemoteCommand) -> Void,
     ) async
-    func teardownCommands(owner: NowPlayingOwner) async
+    func teardownCommands() async
 }

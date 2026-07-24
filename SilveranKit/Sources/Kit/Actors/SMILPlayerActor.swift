@@ -135,9 +135,6 @@ public actor SMILPlayerActor {
         [:]
     private var sessionID = UUID()
 
-    private var nowPlayingUpdateTask: Task<Void, Never>?
-    private var coverImageData: Data?
-
     private init() {}
 
     public func loadBook(
@@ -183,7 +180,7 @@ public actor SMILPlayerActor {
         computeCachedTotals()
 
         try? await factory.prepareSession(longForm: true)
-        await setupNowPlaying()
+        setActiveAudioPlayer(.smil)
 
         debugLog("[SMILPlayerActor] Book loaded with \(result.sections.count) sections")
         await notifyStateChange()
@@ -203,11 +200,6 @@ public actor SMILPlayerActor {
 
     public func getLoadedBookTitle() -> String? {
         return bookTitle
-    }
-
-    public func setCoverImage(_ imageData: Data?) async {
-        coverImageData = imageData
-        await updateNowPlayingInfo()
     }
 
     public func play() async throws {
@@ -231,7 +223,6 @@ public actor SMILPlayerActor {
         await player.play()
         isPlaying = true
         startUpdateTimer()
-        startNowPlayingUpdateTimer()
 
         debugLog("[SMILPlayerActor] Playing")
         await notifyStateChange()
@@ -243,8 +234,6 @@ public actor SMILPlayerActor {
         await player.pause()
         isPlaying = false
         stopUpdateTimer()
-        stopNowPlayingUpdateTimer()
-        await updateNowPlayingInfo()
 
         debugLog("[SMILPlayerActor] Paused")
         await notifyStateChange()
@@ -485,8 +474,6 @@ public actor SMILPlayerActor {
         currentEntryIndex = 0
         currentAudioFile = ""
         isPlaying = false
-
-        stopNowPlayingUpdateTimer()
     }
 
     public func cleanup(expectedSessionID: UUID? = nil) async {
@@ -498,12 +485,10 @@ public actor SMILPlayerActor {
         debugLog("[SMILPlayerActor] Cleanup: activeAudioPlayer=\(activeAudioPlayer)")
         await clearBookState()
 
-        await teardownNowPlaying()
         if activeAudioPlayer == .smil {
             activeAudioPlayer = .none
         }
         await SilveranPlatform.audioPlayerFactory?.deactivateSession()
-        coverImageData = nil
     }
 
     private func setCurrentEntry(
@@ -902,101 +887,9 @@ public actor SMILPlayerActor {
     private func notifyStateChange() async {
         guard let state = await buildCurrentState() else { return }
 
-        await updateNowPlayingInfo()
         for observer in stateObservers.values {
             await observer(state)
         }
     }
 
-    private func setupNowPlaying() async {
-        guard let presenter = SilveranPlatform.nowPlaying else { return }
-
-        // Scrubbing SMIL from the lock screen is unsupported for now; disabling
-        // the command keeps the system scrubber inert instead of snapping back.
-        await presenter.configureCommands(
-            owner: .readaloud,
-            skipForwardInterval: 15,
-            skipBackwardInterval: 15,
-            supportsChangePlaybackPosition: false,
-            supportsChangePlaybackRate: false,
-        ) { command in
-            Task { @SMILPlayerActor in
-                switch command {
-                    case .play, .togglePlayPause:
-                        // Many Bluetooth headsets only send play for both play AND pause
-                        debugLog("[SMILPlayerActor] Remote play/toggle command")
-                        try? await SMILPlayerActor.shared.togglePlayPause()
-                    case .pause:
-                        debugLog("[SMILPlayerActor] Remote pause command")
-                        await SMILPlayerActor.shared.pause()
-                    case .skipForward(let interval):
-                        debugLog("[SMILPlayerActor] Remote skip forward command")
-                        await SMILPlayerActor.shared.skipForward(seconds: interval)
-                    case .skipBackward(let interval):
-                        debugLog("[SMILPlayerActor] Remote skip backward command")
-                        await SMILPlayerActor.shared.skipBackward(seconds: interval)
-                    case .changePlaybackPosition, .changePlaybackRate, .nextTrack,
-                        .previousTrack:
-                        break
-                }
-            }
-        }
-
-        setActiveAudioPlayer(.smil)
-        debugLog("[SMILPlayerActor] Now-playing remote commands configured")
-    }
-
-    private func teardownNowPlaying() async {
-        guard let presenter = SilveranPlatform.nowPlaying else { return }
-        debugLog("[SMILPlayerActor] Tearing down now-playing")
-        await presenter.clear(owner: .readaloud)
-        await presenter.teardownCommands(owner: .readaloud)
-    }
-
-    private func startNowPlayingUpdateTimer() {
-        stopNowPlayingUpdateTimer()
-        nowPlayingUpdateTask = Task { @SMILPlayerActor in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(1))
-                guard !Task.isCancelled else { return }
-                await SMILPlayerActor.shared.updateNowPlayingIfPlaying()
-            }
-        }
-    }
-
-    private func updateNowPlayingIfPlaying() async {
-        if isPlaying {
-            await updateNowPlayingInfo()
-        }
-    }
-
-    private func stopNowPlayingUpdateTimer() {
-        nowPlayingUpdateTask?.cancel()
-        nowPlayingUpdateTask = nil
-    }
-
-    private func updateNowPlayingInfo() async {
-        guard let presenter = SilveranPlatform.nowPlaying else { return }
-
-        guard !bookStructure.isEmpty else {
-            await presenter.clear(owner: .readaloud)
-            return
-        }
-
-        let state = await buildCurrentState()
-
-        await presenter.update(
-            NowPlayingInfo(
-                title: bookTitle ?? "Silveran Reader",
-                artist: state?.chapterLabel ?? "Playing",
-                albumTitle: bookAuthor ?? "",
-                duration: state?.chapterTotal ?? 0,
-                elapsedTime: state?.chapterElapsed ?? 0,
-                playbackRate: state?.playbackRate ?? 1.0,
-                isPlaying: state?.isPlaying ?? false,
-                artwork: coverImageData,
-            ),
-            owner: .readaloud,
-        )
-    }
 }

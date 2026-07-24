@@ -38,15 +38,13 @@ extension JavaClass<JavaAndroidNowPlayingBridge> {
 actor AndroidNowPlayingPresenter: NowPlayingPresenting {
     static let shared = AndroidNowPlayingPresenter()
 
-    private var owner: NowPlayingOwner?
     private var commandToken: String?
     private var commandHandler: (@Sendable (RemoteCommand) -> Void)?
     private var cachedArtwork: Data?
 
     private init() {}
 
-    func update(_ info: NowPlayingInfo, owner: NowPlayingOwner) {
-        guard owner == self.owner else { return }
+    func update(_ info: NowPlayingInfo) {
         let artworkChanged = info.artwork != cachedArtwork
         let artworkBase64 = artworkChanged ? (info.artwork?.base64EncodedString() ?? "") : ""
 
@@ -70,14 +68,12 @@ actor AndroidNowPlayingPresenter: NowPlayingPresenting {
         }
     }
 
-    func clear(owner: NowPlayingOwner) {
-        guard owner == self.owner else { return }
+    func clear() {
         cachedArtwork = nil
         try? JavaClass<JavaAndroidNowPlayingBridge>().clear()
     }
 
     func configureCommands(
-        owner: NowPlayingOwner,
         skipForwardInterval: TimeInterval,
         skipBackwardInterval: TimeInterval,
         supportsChangePlaybackPosition: Bool,
@@ -85,7 +81,6 @@ actor AndroidNowPlayingPresenter: NowPlayingPresenting {
         handler: @escaping @Sendable (RemoteCommand) -> Void,
     ) {
         let token = UUID().uuidString
-        self.owner = owner
         commandToken = token
         commandHandler = handler
         try? JavaClass<JavaAndroidNowPlayingBridge>().configureCommands(
@@ -97,9 +92,8 @@ actor AndroidNowPlayingPresenter: NowPlayingPresenting {
         )
     }
 
-    func teardownCommands(owner: NowPlayingOwner) {
-        guard owner == self.owner, let token = commandToken else { return }
-        self.owner = nil
+    func teardownCommands() {
+        guard let token = commandToken else { return }
         commandToken = nil
         commandHandler = nil
         try? JavaClass<JavaAndroidNowPlayingBridge>().teardownCommands(token)

@@ -8,6 +8,8 @@ import androidx.lifecycle.viewModelScope
 import com.kyonifer.silveran.bridge.SilveranBridgeClient
 import com.kyonifer.silveran.model.AppSettings
 import com.kyonifer.silveran.model.AudiobookPlayerState
+import com.kyonifer.silveran.model.SessionKind
+import com.kyonifer.silveran.model.SessionState
 import com.kyonifer.silveran.model.Book
 import com.kyonifer.silveran.model.BookDetails
 import com.kyonifer.silveran.model.BookID
@@ -43,6 +45,7 @@ data class SilveranUiState(
     val pendingDownloads: Set<DownloadOperation> = emptySet(),
     val audiobookLoading: Boolean = false,
     val audiobook: AudiobookPlayerState? = null,
+    val session: SessionState? = null,
     val readerOpen: ReaderOpenResult? = null,
     val reader: ReaderState? = null,
     val readerBookID: BookID? = null,
@@ -73,6 +76,9 @@ class SilveranViewModel private constructor(
         }
         client.observeReaderState { reader ->
             mutableState.value = mutableState.value.copy(reader = reader)
+        }
+        client.observeSession { session ->
+            mutableState.value = mutableState.value.copy(session = session)
         }
         client.observeDownloadChanges { updates ->
             viewModelScope.launch { applyDownloadUpdates(updates) }
@@ -295,6 +301,24 @@ class SilveranViewModel private constructor(
         client.registerReaderWebView(owner, webView)
 
     fun unregisterReaderWebView(owner: Any) = client.unregisterReaderWebView(owner)
+
+    fun toggleSession() {
+        viewModelScope.launch {
+            runCatching { client.sessionTogglePlayPause() }.onFailure(::showError)
+        }
+    }
+
+    fun closeSession() {
+        val session = mutableState.value.session ?: return
+        when {
+            mutableState.value.readerBookID == session.bookID &&
+                mutableState.value.readerOpen != null -> closeReader()
+            session.kind == SessionKind.Audiobook -> closeAudiobook()
+            else -> viewModelScope.launch {
+                runCatching { client.sessionClose() }.onFailure(::showError)
+            }
+        }
+    }
 
     fun toggleAudiobookPlayback() = controlAudiobook("togglePlayPause")
 

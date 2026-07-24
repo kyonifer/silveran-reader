@@ -43,6 +43,7 @@ data class Book(
     val fileSizeBytes: Long,
     val coverVersion: String,
     val media: List<BookMedia>,
+    val playbackOwner: String?,
 ) {
     val hasEbook: Boolean get() = media.any { it.category == "ebook" }
     val hasAudio: Boolean get() = media.any { it.category == "audio" }
@@ -157,6 +158,17 @@ data class ReaderOpenResult(
     val originalPath: String,
     val hasAudioNarration: Boolean,
     val title: String,
+)
+
+enum class SessionKind { Readaloud, Audiobook }
+
+data class SessionState(
+    val kind: SessionKind,
+    val bookID: BookID,
+    val title: String,
+    val author: String?,
+    val isPlaying: Boolean,
+    val playbackRate: Double,
 )
 
 data class ReaderTocEntry(

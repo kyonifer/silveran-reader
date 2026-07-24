@@ -23,6 +23,20 @@ public struct MediaPaths: Sendable, Equatable {
     public var isAllNil: Bool {
         ebookPath == nil && audioPath == nil && syncedPath == nil
     }
+
+    /// The single audio category a downloaded book plays as in the car / Android
+    /// Auto browse trees. Readaloud (synced) wins when both are present, so a
+    /// book never appears under both. `nil` when no audio media is local.
+    public var playbackOwner: PlaybackOwner? {
+        if syncedPath != nil { return .readaloud }
+        if audioPath != nil { return .audiobook }
+        return nil
+    }
+}
+
+public enum PlaybackOwner: String, Sendable {
+    case audiobook
+    case readaloud
 }
 
 // Relative to the source cache dir, never absolute: the app-container path changes across installs.
