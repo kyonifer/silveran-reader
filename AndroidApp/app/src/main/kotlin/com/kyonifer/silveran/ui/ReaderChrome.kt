@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -67,13 +68,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.kyonifer.silveran.model.ReaderDisplaySettings
 import com.kyonifer.silveran.model.ReaderHighlight
@@ -521,37 +525,66 @@ internal fun ReaderBottomOverlay(
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    IconButton(onClick = { readerControl("prevSentence", 0.0, "") }) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.RotateLeft,
-                            contentDescription = "Skip back",
-                            tint = statsColor,
-                        )
-                    }
-                    IconButton(onClick = { readerControl("togglePlayPause", 0.0, "") }) {
-                        Icon(
-                            imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                            contentDescription = if (isPlaying) "Pause" else "Play",
-                            tint = statsColor,
-                        )
-                    }
-                    IconButton(onClick = { readerControl("nextSentence", 0.0, "") }) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.RotateRight,
-                            contentDescription = "Skip forward",
-                            tint = statsColor,
-                        )
-                    }
+                    OverlayControl(
+                        icon = Icons.AutoMirrored.Filled.RotateLeft,
+                        contentDescription = "Skip back",
+                        tint = statsColor,
+                        buttonSize = 36.dp,
+                        iconSize = 16.dp,
+                        onClick = { readerControl("prevSentence", 0.0, "") },
+                    )
+                    OverlayControl(
+                        icon = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                        contentDescription = if (isPlaying) "Pause" else "Play",
+                        tint = statsColor,
+                        buttonSize = 44.dp,
+                        iconSize = 20.dp,
+                        onClick = { readerControl("togglePlayPause", 0.0, "") },
+                    )
+                    OverlayControl(
+                        icon = Icons.AutoMirrored.Filled.RotateRight,
+                        contentDescription = "Skip forward",
+                        tint = statsColor,
+                        buttonSize = 36.dp,
+                        iconSize = 16.dp,
+                        onClick = { readerControl("nextSentence", 0.0, "") },
+                    )
                 }
             }
         }
     }
 }
 
+// IconButton pads itself out to a 48dp touch target, which crowds the stats.
+@Composable
+private fun OverlayControl(
+    icon: ImageVector,
+    contentDescription: String,
+    tint: Color,
+    buttonSize: Dp,
+    iconSize: Dp,
+    onClick: () -> Unit,
+) {
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .clip(CircleShape)
+            .clickable(onClick = onClick)
+            .size(buttonSize),
+    ) {
+        Icon(
+            icon,
+            contentDescription = contentDescription,
+            tint = tint,
+            modifier = Modifier.size(iconSize),
+        )
+    }
+}
+
 @Composable
 private fun StatRow(
     text: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     iconLeading: Boolean,
     color: Color,
 ) {
