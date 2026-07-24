@@ -464,6 +464,7 @@ internal fun ReaderBottomOverlay(
     isPlaying: Boolean,
     options: ReaderOverlayOptions,
     positionAtTop: Boolean,
+    miniPlayerVisible: Boolean,
     bookFraction: Double?,
     currentPage: Int?,
     totalPages: Int?,
@@ -480,7 +481,7 @@ internal fun ReaderBottomOverlay(
         (options.showTimeRemainingInBook || options.showTimeRemainingInChapter)
     val hasStats = statsVisible && (hasBookStats || hasTimeStats)
     // The mini player owns the playback controls whenever it is on screen.
-    val hasControls = hasAudioNarration && !positionAtTop &&
+    val hasControls = hasAudioNarration && !miniPlayerVisible &&
         (options.showSkipBackward || options.showPlayPause || options.showSkipForward)
 
     Surface(

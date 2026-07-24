@@ -192,6 +192,8 @@ internal fun ReaderScreen(
         val hasAudioNarration = readerState?.hasAudioNarration == true
         // An always-visible mini player owns the bottom, so the stats move up.
         val statsAtTop = hasAudioNarration && overlayOptions.alwaysShowMiniPlayer
+        val miniPlayerVisible = hasAudioNarration &&
+            (chromeVisible || overlayOptions.alwaysShowMiniPlayer)
 
         ReaderBottomOverlay(
             statsVisible = !chromeVisible,
@@ -199,6 +201,7 @@ internal fun ReaderScreen(
             isPlaying = readerState?.isPlaying == true,
             options = overlayOptions,
             positionAtTop = statsAtTop,
+            miniPlayerVisible = miniPlayerVisible,
             bookFraction = readerState?.bookFraction,
             currentPage = readerState?.chapterCurrentPage,
             totalPages = readerState?.chapterTotalPages,
