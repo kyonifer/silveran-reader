@@ -37,6 +37,11 @@ public enum SilveranRuntime {
     private static func runMigrationList() async -> Bool {
         let filesystem = FilesystemActor.shared
         do {
+            do {
+                try await filesystem.runFlatColorThemeMigrationIfNeeded()
+            } catch {
+                debugLog("[SilveranMigrations] Flat color theme migration deferred: \(error)")
+            }
             let sources = try await runBookSourceRegistryMigration(using: filesystem)
             await runCredentialMigrations(using: filesystem, sources: sources)
             await runKeychainAccessibilityMigrations(using: filesystem, sources: sources)

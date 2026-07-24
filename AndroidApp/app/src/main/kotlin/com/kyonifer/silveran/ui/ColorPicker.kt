@@ -9,20 +9,17 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -41,20 +38,18 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
 import kotlin.math.roundToInt
 
 internal fun colorToHex(color: Color): String =
     String.format("#%06X", color.toArgb() and 0xFFFFFF)
 
 @Composable
-internal fun ColorPickerDialog(
-    title: String,
-    initialColor: String,
-    onConfirm: (String) -> Unit,
-    onDismiss: () -> Unit,
+internal fun InlineColorPicker(
+    value: String,
+    onChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    val initial = remember { parseHexColor(initialColor) ?: Color.White }
+    val initial = remember { parseHexColor(value) ?: Color.White }
     val initialHsv = remember {
         FloatArray(3).also { android.graphics.Color.colorToHSV(initial.toArgb(), it) }
     }
@@ -74,103 +69,94 @@ internal fun ColorPickerDialog(
         hexText = colorToHex(color)
     }
 
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(shape = RoundedCornerShape(24.dp), tonalElevation = 6.dp) {
-            Column(
-                modifier = Modifier.padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        title,
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.weight(1f),
-                    )
-                    ColorChip(initial)
-                    Text(
-                        "→",
-                        modifier = Modifier.padding(horizontal = 6.dp),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    ColorChip(current)
-                }
-                SaturationBrightnessPanel(
-                    hue = hue,
-                    saturation = saturation,
-                    brightness = brightness,
-                    onChange = { s, b ->
-                        saturation = s
-                        brightness = b
-                        hexText = colorToHex(Color.hsv(hue.coerceIn(0f, 360f), s, b))
-                    },
-                )
-                HueSlider(
-                    hue = hue,
-                    onChange = {
-                        hue = it
-                        hexText = colorToHex(
-                            Color.hsv(it.coerceIn(0f, 360f), saturation, brightness)
-                        )
-                    },
-                )
-                OutlinedTextField(
-                    value = hexText,
-                    onValueChange = { typed ->
-                        hexText = typed
-                        parseHexColor(typed.trim())?.let { color ->
-                            val hsv = FloatArray(3)
-                            android.graphics.Color.colorToHSV(color.toArgb(), hsv)
-                            hue = hsv[0]
-                            saturation = hsv[1]
-                            brightness = hsv[2]
-                        }
-                    },
-                    label = { Text("Hex") },
-                    singleLine = true,
-                    isError = parseHexColor(hexText.trim()) == null,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                themePresetColors.chunked(7).forEach { rowColors ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        rowColors.forEach { preset ->
-                            val presetColor = parseHexColor(preset) ?: Color.Transparent
-                            val selected = colorToHex(current).equals(preset, ignoreCase = true)
-                            Box(
-                                modifier = Modifier
-                                    .size(30.dp)
-                                    .background(presetColor, CircleShape)
-                                    .border(
-                                        width = if (selected) 2.dp else 1.dp,
-                                        color = if (selected) {
-                                            MaterialTheme.colorScheme.primary
-                                        } else {
-                                            Color.Gray.copy(alpha = 0.5f)
-                                        },
-                                        shape = CircleShape,
-                                    )
-                                    .clickable { adoptColor(presetColor) },
-                            )
-                        }
+    LaunchedEffect(value) {
+        val external = parseHexColor(value.trim()) ?: return@LaunchedEffect
+        if (!colorToHex(external).equals(colorToHex(current), ignoreCase = true)) {
+            adoptColor(external)
+        }
+    }
+
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        SaturationBrightnessPanel(
+            hue = hue,
+            saturation = saturation,
+            brightness = brightness,
+            onChange = { s, b ->
+                saturation = s
+                brightness = b
+                val color = Color.hsv(hue.coerceIn(0f, 360f), s, b)
+                hexText = colorToHex(color)
+                onChange(colorToHex(color))
+            },
+        )
+        HueSlider(
+            hue = hue,
+            onChange = {
+                hue = it
+                val color = Color.hsv(it.coerceIn(0f, 360f), saturation, brightness)
+                hexText = colorToHex(color)
+                onChange(colorToHex(color))
+            },
+        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            OutlinedTextField(
+                value = hexText,
+                onValueChange = { typed ->
+                    hexText = typed
+                    parseHexColor(typed.trim())?.let { color ->
+                        val hsv = FloatArray(3)
+                        android.graphics.Color.colorToHSV(color.toArgb(), hsv)
+                        hue = hsv[0]
+                        saturation = hsv[1]
+                        brightness = hsv[2]
+                        onChange(colorToHex(color))
                     }
-                }
-                Row(modifier = Modifier.fillMaxWidth()) {
-                    Spacer(modifier = Modifier.weight(1f))
-                    TextButton(onClick = onDismiss) { Text("Cancel") }
-                    TextButton(onClick = { onConfirm(colorToHex(current)) }) { Text("Done") }
+                },
+                label = { Text("Hex") },
+                singleLine = true,
+                isError = parseHexColor(hexText.trim()) == null,
+                modifier = Modifier.weight(1f),
+            )
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .background(current, CircleShape)
+                    .border(1.dp, Color.Gray.copy(alpha = 0.5f), CircleShape),
+            )
+        }
+        themePresetColors.chunked(7).forEach { rowColors ->
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                rowColors.forEach { preset ->
+                    val presetColor = parseHexColor(preset) ?: Color.Transparent
+                    val selected = colorToHex(current).equals(preset, ignoreCase = true)
+                    Box(
+                        modifier = Modifier
+                            .size(30.dp)
+                            .background(presetColor, CircleShape)
+                            .border(
+                                width = if (selected) 2.dp else 1.dp,
+                                color = if (selected) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    Color.Gray.copy(alpha = 0.5f)
+                                },
+                                shape = CircleShape,
+                            )
+                            .clickable {
+                                adoptColor(presetColor)
+                                onChange(colorToHex(presetColor))
+                            },
+                    )
                 }
             }
         }
     }
-}
-
-@Composable
-private fun ColorChip(color: Color) {
-    Box(
-        modifier = Modifier
-            .size(30.dp)
-            .background(color, CircleShape)
-            .border(1.dp, Color.Gray.copy(alpha = 0.5f), CircleShape),
-    )
 }
 
 @Composable
@@ -191,7 +177,7 @@ private fun SaturationBrightnessPanel(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(190.dp)
+            .height(170.dp)
             .onSizeChanged { panelSize = it }
             .clip(RoundedCornerShape(14.dp))
             .background(

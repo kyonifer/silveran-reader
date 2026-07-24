@@ -1,5 +1,6 @@
 package com.kyonifer.silveran.ui
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -398,9 +399,9 @@ private fun ThemeManageRow(
 }
 
 internal val themePresetColors = listOf(
-    "#FFFFFF", "#FAF4E8", "#F5E9D5", "#E8F0E3", "#E4EBF5",
-    "#1A1A1A", "#22252A", "#2B2620", "#0F1A14", "#000000",
-    "#3D3D3D", "#5B4636", "#EEEEEE", "#D8CCAF",
+    "#FFD60A", "#FF9F0A", "#FF453A", "#FF375F", "#BF5AF2", "#5E5CE6", "#0A84FF",
+    "#FFF59D", "#FFCC80", "#EF9A9A", "#F48FB1", "#CE93D8", "#90CAF9", "#A5D6A7",
+    "#FFFFFF", "#FAF4E8", "#F5E9D5", "#E4EBF5", "#1A1A1A", "#22252A", "#000000",
 )
 
 private val highlightModeOptions = listOf(
@@ -679,8 +680,8 @@ internal fun ThemeEditorDialog(
                                 selected = readaloudMode,
                                 onSelect = { readaloudMode = it },
                             )
-                            ThemeColorRow(
-                                label = "Highlight Color",
+                            SettingsSectionHeader("Highlight Color")
+                            InlineColorPicker(
                                 value = highlight,
                                 onChange = { highlight = it },
                             )
@@ -711,10 +712,11 @@ internal fun ThemeEditorDialog(
                                             .also { it[index] = updated }
                                     },
                                     onColorChange = { updated ->
+                                        previewUserIndex = index
                                         userColors = userColors.toMutableList()
                                             .also { it[index] = updated }
                                     },
-                                    onPickerOpen = { previewUserIndex = index },
+                                    onExpand = { previewUserIndex = index },
                                 )
                             }
                         }
@@ -740,43 +742,45 @@ private fun ThemeColorRow(
     label: String,
     value: String,
     onChange: (String) -> Unit,
+    onExpand: (() -> Unit)? = null,
 ) {
-    var pickerOpen by remember { mutableStateOf(false) }
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { pickerOpen = true }
-            .padding(vertical = 8.dp),
-    ) {
-        Text(
-            label,
-            style = MaterialTheme.typography.bodyLarge,
-            modifier = Modifier.weight(1f),
-        )
-        Text(
-            value.uppercase(),
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(end = 12.dp),
-        )
-        Box(
+    var expanded by remember { mutableStateOf(false) }
+    Column {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
-                .size(32.dp)
-                .background(parseHexColor(value) ?: Color.Transparent, CircleShape)
-                .border(1.dp, Color.Gray.copy(alpha = 0.5f), CircleShape),
-        )
-    }
-    if (pickerOpen) {
-        ColorPickerDialog(
-            title = label,
-            initialColor = value,
-            onConfirm = {
-                onChange(it)
-                pickerOpen = false
-            },
-            onDismiss = { pickerOpen = false },
-        )
+                .fillMaxWidth()
+                .clickable {
+                    expanded = !expanded
+                    if (expanded) onExpand?.invoke()
+                }
+                .padding(vertical = 8.dp),
+        ) {
+            Text(
+                label,
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                value.uppercase(),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(end = 12.dp),
+            )
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .background(parseHexColor(value) ?: Color.Transparent, CircleShape)
+                    .border(1.dp, Color.Gray.copy(alpha = 0.5f), CircleShape),
+            )
+        }
+        AnimatedVisibility(visible = expanded) {
+            InlineColorPicker(
+                value = value,
+                onChange = onChange,
+                modifier = Modifier.padding(top = 4.dp, bottom = 8.dp),
+            )
+        }
     }
 }
 
@@ -786,40 +790,38 @@ private fun UserHighlightRow(
     color: String,
     onLabelChange: (String) -> Unit,
     onColorChange: (String) -> Unit,
-    onPickerOpen: () -> Unit,
+    onExpand: () -> Unit,
 ) {
-    var pickerOpen by remember { mutableStateOf(false) }
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Box(
-            modifier = Modifier
-                .size(36.dp)
-                .background(parseHexColor(color) ?: Color.Transparent, CircleShape)
-                .border(1.dp, Color.Gray.copy(alpha = 0.5f), CircleShape)
-                .clickable {
-                    onPickerOpen()
-                    pickerOpen = true
-                },
-        )
-        OutlinedTextField(
-            value = label,
-            onValueChange = onLabelChange,
-            label = { Text("Label") },
-            singleLine = true,
-            modifier = Modifier.weight(1f),
-        )
-    }
-    if (pickerOpen) {
-        ColorPickerDialog(
-            title = "Highlight Color",
-            initialColor = color,
-            onConfirm = {
-                onColorChange(it)
-                pickerOpen = false
-            },
-            onDismiss = { pickerOpen = false },
-        )
+    var expanded by remember { mutableStateOf(false) }
+    Column {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .background(parseHexColor(color) ?: Color.Transparent, CircleShape)
+                    .border(1.dp, Color.Gray.copy(alpha = 0.5f), CircleShape)
+                    .clickable {
+                        expanded = !expanded
+                        if (expanded) onExpand()
+                    },
+            )
+            OutlinedTextField(
+                value = label,
+                onValueChange = onLabelChange,
+                label = { Text("Label") },
+                singleLine = true,
+                modifier = Modifier.weight(1f),
+            )
+        }
+        AnimatedVisibility(visible = expanded) {
+            InlineColorPicker(
+                value = color,
+                onChange = onColorChange,
+                modifier = Modifier.padding(top = 8.dp, bottom = 8.dp),
+            )
+        }
     }
 }

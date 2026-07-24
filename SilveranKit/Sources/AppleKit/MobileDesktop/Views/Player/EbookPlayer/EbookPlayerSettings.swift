@@ -13,7 +13,6 @@ struct EbookPlayerSettings: View {
     @State private var fontSizeInput: String = "20"
     @State private var customFamilies: [CustomFontFamily] = []
     @State private var showFontManager = false
-    @State private var showManageThemes = false
 
     var body: some View {
         iOSBody
@@ -220,14 +219,10 @@ struct EbookPlayerSettings: View {
                 }
             }
 
-            Button {
-                showManageThemes = true
+            NavigationLink {
+                ManageThemesView(settingsVM: settingsVM)
             } label: {
                 Label("Manage Themes...", systemImage: "paintpalette")
-            }
-            .sheet(isPresented: $showManageThemes) {
-                ManageThemesView(settingsVM: settingsVM)
-                    .presentationDetents([.fraction(0.7)])
             }
         }
         .onAppear {

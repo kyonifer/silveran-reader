@@ -655,70 +655,10 @@ public actor SettingsActor {
             #if os(iOS)
             config.readingBar.showPlayerControls = true
             #endif
-            Self.migrateToThemesIfNeeded(&config)
         } catch {
             config = SilveranGlobalConfig()
             try? Self.save(config: config, to: resolvedURL, fileManager: fileManager)
         }
-    }
-
-    private static func migrateToThemesIfNeeded(_ config: inout SilveranGlobalConfig) {
-        guard config.themes.customThemes.isEmpty else { return }
-
-        let reading = config.reading
-        let defaults = SilveranGlobalConfig.Reading()
-        let hasCustomColors =
-            reading.backgroundColor != defaults.backgroundColor
-            || reading.foregroundColor != defaults.foregroundColor
-            || reading.highlightColor != defaults.highlightColor
-            || reading.highlightThickness != defaults.highlightThickness
-            || reading.readaloudHighlightMode != defaults.readaloudHighlightMode
-            || reading.userHighlightColor1 != defaults.userHighlightColor1
-            || reading.userHighlightColor2 != defaults.userHighlightColor2
-            || reading.userHighlightColor3 != defaults.userHighlightColor3
-            || reading.userHighlightColor4 != defaults.userHighlightColor4
-            || reading.userHighlightColor5 != defaults.userHighlightColor5
-            || reading.userHighlightColor6 != defaults.userHighlightColor6
-            || reading.userHighlightLabel1 != defaults.userHighlightLabel1
-            || reading.userHighlightLabel2 != defaults.userHighlightLabel2
-            || reading.userHighlightLabel3 != defaults.userHighlightLabel3
-            || reading.userHighlightLabel4 != defaults.userHighlightLabel4
-            || reading.userHighlightLabel5 != defaults.userHighlightLabel5
-            || reading.userHighlightLabel6 != defaults.userHighlightLabel6
-            || reading.userHighlightMode != defaults.userHighlightMode
-            || reading.customCSS != defaults.customCSS
-
-        guard hasCustomColors else { return }
-
-        let customTheme = ReaderTheme(
-            name: "My Custom Theme",
-            isBuiltIn: false,
-            backgroundColor: reading.backgroundColor ?? kDefaultBackgroundColorLight,
-            foregroundColor: reading.foregroundColor ?? kDefaultForegroundColorLight,
-            highlightColor: reading.highlightColor ?? "#CCCCCC",
-            highlightThickness: reading.highlightThickness,
-            readaloudHighlightMode: reading.readaloudHighlightMode,
-            userHighlightColor1: reading.userHighlightColor1,
-            userHighlightColor2: reading.userHighlightColor2,
-            userHighlightColor3: reading.userHighlightColor3,
-            userHighlightColor4: reading.userHighlightColor4,
-            userHighlightColor5: reading.userHighlightColor5,
-            userHighlightColor6: reading.userHighlightColor6,
-            userHighlightLabel1: reading.userHighlightLabel1,
-            userHighlightLabel2: reading.userHighlightLabel2,
-            userHighlightLabel3: reading.userHighlightLabel3,
-            userHighlightLabel4: reading.userHighlightLabel4,
-            userHighlightLabel5: reading.userHighlightLabel5,
-            userHighlightLabel6: reading.userHighlightLabel6,
-            userHighlightMode: reading.userHighlightMode,
-            customCSS: reading.customCSS,
-        )
-        config.themes.customThemes = [customTheme]
-        config.themes.selectedLightThemeId = customTheme.id
-        config.themes.selectedDarkThemeId = customTheme.id
-        debugLog(
-            "[SettingsActor] Migrated existing color settings to custom theme '\(customTheme.name)'"
-        )
     }
 
     @discardableResult

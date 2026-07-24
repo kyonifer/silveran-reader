@@ -798,7 +798,8 @@ private struct MacReaderSettingsView: View {
                             themePickerView(
                                 selection: $themes.selectedLightThemeId,
                                 themes: ReaderTheme.themesForLightMode(
-                                    customThemes: themes.customThemes
+                                    customThemes: themes.customThemes,
+                                    builtInOverrides: themes.builtInThemeOverrides,
                                 ),
                             )
                             .onChange(of: themes.selectedLightThemeId) { _, _ in
@@ -811,7 +812,8 @@ private struct MacReaderSettingsView: View {
                             themePickerView(
                                 selection: $themes.selectedDarkThemeId,
                                 themes: ReaderTheme.themesForDarkMode(
-                                    customThemes: themes.customThemes
+                                    customThemes: themes.customThemes,
+                                    builtInOverrides: themes.builtInThemeOverrides,
                                 ),
                             )
                             .onChange(of: themes.selectedDarkThemeId) { _, _ in
@@ -885,29 +887,16 @@ private struct MacReaderSettingsView: View {
             colorScheme == .dark
             ? themes.selectedDarkThemeId
             : themes.selectedLightThemeId
-        guard let theme = ReaderTheme.resolve(id: activeId, customThemes: themes.customThemes)
+        guard
+            let theme = ReaderTheme.resolve(
+                id: activeId,
+                customThemes: themes.customThemes,
+                builtInOverrides: themes.builtInThemeOverrides,
+            )
         else {
             return
         }
-        reading.backgroundColor = theme.backgroundColor
-        reading.foregroundColor = theme.foregroundColor
-        reading.highlightColor = theme.highlightColor
-        reading.highlightThickness = theme.highlightThickness
-        reading.readaloudHighlightMode = theme.readaloudHighlightMode
-        reading.userHighlightColor1 = theme.userHighlightColor1
-        reading.userHighlightColor2 = theme.userHighlightColor2
-        reading.userHighlightColor3 = theme.userHighlightColor3
-        reading.userHighlightColor4 = theme.userHighlightColor4
-        reading.userHighlightColor5 = theme.userHighlightColor5
-        reading.userHighlightColor6 = theme.userHighlightColor6
-        reading.userHighlightLabel1 = theme.userHighlightLabel1
-        reading.userHighlightLabel2 = theme.userHighlightLabel2
-        reading.userHighlightLabel3 = theme.userHighlightLabel3
-        reading.userHighlightLabel4 = theme.userHighlightLabel4
-        reading.userHighlightLabel5 = theme.userHighlightLabel5
-        reading.userHighlightLabel6 = theme.userHighlightLabel6
-        reading.userHighlightMode = theme.userHighlightMode
-        reading.customCSS = theme.customCSS
+        reading.apply(theme: theme)
     }
 
     private var macManageThemesSheet: some View {
@@ -950,7 +939,8 @@ private struct MacManageThemesView: View {
         VStack(spacing: 0) {
             List {
                 Section {
-                    ForEach(ReaderTheme.allBuiltIn) { theme in
+                    ForEach(ReaderTheme.effectiveBuiltIn(overrides: themes.builtInThemeOverrides)) {
+                        theme in
                         themeRow(theme)
                     }
                     if !themes.customThemes.isEmpty {
@@ -979,7 +969,9 @@ private struct MacManageThemesView: View {
     }
 
     private var newThemeMenu: some View {
-        let allThemes = ReaderTheme.allBuiltIn + themes.customThemes
+        let allThemes =
+            ReaderTheme.effectiveBuiltIn(overrides: themes.builtInThemeOverrides)
+            + themes.customThemes
         return Menu {
             ForEach(allThemes) { theme in
                 Button("From \"\(theme.name)\"") {
@@ -996,12 +988,7 @@ private struct MacManageThemesView: View {
     private func themeRow(_ theme: ReaderTheme) -> some View {
         HStack(spacing: 12) {
             Button {
-                if theme.isBuiltIn {
-                    let dup = duplicateTheme(theme)
-                    editingTheme = dup
-                } else {
-                    editingTheme = theme
-                }
+                editingTheme = theme
             } label: {
                 HStack(spacing: 12) {
                     ZStack {
@@ -1031,6 +1018,15 @@ private struct MacManageThemesView: View {
                                 .foregroundStyle(.secondary)
                             if !theme.isBuiltIn {
                                 Text(appearanceLabel(theme.appearance))
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .padding(.horizontal, 4)
+                                    .padding(.vertical, 1)
+                                    .background(Color.secondary.opacity(0.15))
+                                    .cornerRadius(3)
+                            }
+                            if theme.isBuiltIn, isBuiltInEdited(theme.id) {
+                                Text("Edited")
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                                     .padding(.horizontal, 4)
@@ -1077,6 +1073,13 @@ private struct MacManageThemesView: View {
                     editingTheme = dup
                 } label: {
                     Label("Duplicate", systemImage: "doc.on.doc")
+                }
+                if theme.isBuiltIn, isBuiltInEdited(theme.id) {
+                    Button {
+                        resetBuiltInTheme(theme.id)
+                    } label: {
+                        Label("Reset to Stock", systemImage: "arrow.counterclockwise")
+                    }
                 }
                 if !theme.isBuiltIn {
                     Button {
@@ -1150,6 +1153,21 @@ private struct MacManageThemesView: View {
         }
     }
 
+    private func isBuiltInEdited(_ id: String) -> Bool {
+        themes.builtInThemeOverrides.contains { $0.id == id }
+    }
+
+    private func resetBuiltInTheme(_ id: String) {
+        themes.builtInThemeOverrides.removeAll { $0.id == id }
+        let activeId =
+            colorScheme == .dark
+            ? themes.selectedDarkThemeId
+            : themes.selectedLightThemeId
+        if activeId == id, let stock = ReaderTheme.allBuiltIn.first(where: { $0.id == id }) {
+            reading.apply(theme: stock)
+        }
+    }
+
     private func appearanceLabel(_ appearance: ThemeAppearance) -> String {
         switch appearance {
             case .light: return "Light only"
@@ -1178,6 +1196,8 @@ private struct MacThemeEditorSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
     @State private var draft: ReaderTheme
+    @State private var tab: ThemeEditorTab = .theme
+    @State private var previewUserIndex = 0
 
     init(
         theme: ReaderTheme,
@@ -1190,123 +1210,38 @@ private struct MacThemeEditorSheet: View {
         self._draft = State(initialValue: theme)
     }
 
+    private var isBuiltInEdit: Bool { theme.isBuiltIn }
+
     var body: some View {
         VStack(spacing: 0) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Theme Name").font(.headline)
-                        TextField("Theme Name", text: $draft.name)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(maxWidth: 300)
-                    }
+            VStack(spacing: 12) {
+                ThemePreviewCard(theme: draft, previewUserColor: previewUserColor)
+                    .padding(.horizontal)
+                    .padding(.top, 12)
 
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Show In").font(.headline)
-                        Picker("Show In", selection: $draft.appearance) {
-                            Text("Light & Dark").tag(ThemeAppearance.any)
-                            Text("Light Only").tag(ThemeAppearance.light)
-                            Text("Dark Only").tag(ThemeAppearance.dark)
-                        }
-                        .pickerStyle(.segmented)
-                        .frame(maxWidth: 300)
-                        .labelsHidden()
-                    }
-
-                    Divider()
-
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Reader Colors").font(.headline)
-                        macColorRow(label: "Background", hex: $draft.backgroundColor)
-                        macColorRow(label: "Text", hex: $draft.foregroundColor)
-                    }
-
-                    Divider()
-
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Readaloud Highlight").font(.headline)
-                        Picker("Style", selection: $draft.readaloudHighlightMode) {
-                            Text("Background").tag("background")
-                            Text("Text").tag("text")
-                            Text("Underline").tag("underline")
-                        }
-                        .pickerStyle(.segmented)
-                        .frame(maxWidth: 300)
-                        .labelsHidden()
-
-                        macColorRow(label: "Highlight Color", hex: $draft.highlightColor)
-
-                        if draft.readaloudHighlightMode == "background" {
-                            HStack(spacing: 8) {
-                                Text("Highlight Height")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                Slider(value: $draft.highlightThickness, in: 0.6...4.0)
-                                    .frame(width: 120)
-                                Text(String(format: "%.1fx", draft.highlightThickness))
-                                    .font(.caption.monospacedDigit())
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-
-                    Divider()
-
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("User Highlight Colors").font(.headline)
-                        Picker("Style", selection: $draft.userHighlightMode) {
-                            Text("Background").tag("background")
-                            Text("Text").tag("text")
-                            Text("Underline").tag("underline")
-                        }
-                        .pickerStyle(.segmented)
-                        .frame(maxWidth: 300)
-                        .labelsHidden()
-
-                        macLabeledColorRow(
-                            label: $draft.userHighlightLabel1,
-                            hex: $draft.userHighlightColor1,
-                        )
-                        macLabeledColorRow(
-                            label: $draft.userHighlightLabel2,
-                            hex: $draft.userHighlightColor2,
-                        )
-                        macLabeledColorRow(
-                            label: $draft.userHighlightLabel3,
-                            hex: $draft.userHighlightColor3,
-                        )
-                        macLabeledColorRow(
-                            label: $draft.userHighlightLabel4,
-                            hex: $draft.userHighlightColor4,
-                        )
-                        macLabeledColorRow(
-                            label: $draft.userHighlightLabel5,
-                            hex: $draft.userHighlightColor5,
-                        )
-                        macLabeledColorRow(
-                            label: $draft.userHighlightLabel6,
-                            hex: $draft.userHighlightColor6,
-                        )
-                    }
-
-                    Divider()
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Custom CSS").font(.headline)
-                        TextEditor(
-                            text: Binding(
-                                get: { draft.customCSS ?? "" },
-                                set: { draft.customCSS = $0.isEmpty ? nil : $0 },
-                            )
-                        )
-                        .font(.system(.body, design: .monospaced))
-                        .frame(height: 100)
-                        .border(Color.secondary.opacity(0.3), width: 1)
+                Picker("Section", selection: $tab) {
+                    ForEach(ThemeEditorTab.allCases) { tab in
+                        Text(tab.rawValue).tag(tab)
                     }
                 }
-                .padding()
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .padding(.horizontal)
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
+                        switch tab {
+                            case .theme: themeTab
+                            case .readaloud: readaloudTab
+                            case .highlights: highlightsTab
+                            case .advanced: advancedTab
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding()
+                }
             }
-            .frame(minWidth: 550, minHeight: 500)
+            .frame(minWidth: 550, minHeight: 560)
 
             Divider()
             HStack {
@@ -1317,6 +1252,143 @@ private struct MacThemeEditorSheet: View {
                     .keyboardShortcut(.defaultAction)
             }
             .padding(12)
+        }
+    }
+
+    @ViewBuilder
+    private var themeTab: some View {
+        if isBuiltInEdit {
+            Text(
+                "This built-in theme stays available in its appearance mode. "
+                    + "Restore the stock look anytime with Reset to Stock in Manage Themes."
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        } else {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Theme Name").font(.headline)
+                TextField("Theme Name", text: $draft.name)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(maxWidth: 300)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Show In").font(.headline)
+                Picker("Show In", selection: $draft.appearance) {
+                    Text("Light & Dark").tag(ThemeAppearance.any)
+                    Text("Light Only").tag(ThemeAppearance.light)
+                    Text("Dark Only").tag(ThemeAppearance.dark)
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 300)
+                .labelsHidden()
+            }
+        }
+
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Reader Colors").font(.headline)
+            macColorRow(label: "Background", hex: $draft.backgroundColor)
+            macColorRow(label: "Text", hex: $draft.foregroundColor)
+        }
+    }
+
+    private var readaloudTab: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Readaloud Highlight").font(.headline)
+            Picker("Style", selection: $draft.readaloudHighlightMode) {
+                Text("Background").tag("background")
+                Text("Text").tag("text")
+                Text("Underline").tag("underline")
+            }
+            .pickerStyle(.segmented)
+            .frame(maxWidth: 300)
+            .labelsHidden()
+
+            macColorRow(label: "Highlight Color", hex: $draft.highlightColor)
+
+            if draft.readaloudHighlightMode == "background" {
+                HStack(spacing: 8) {
+                    Text("Highlight Height")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Slider(value: $draft.highlightThickness, in: 0.6...4.0)
+                        .frame(width: 120)
+                    Text(String(format: "%.1fx", draft.highlightThickness))
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    private var highlightsTab: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("User Highlight Colors").font(.headline)
+            Picker("Style", selection: $draft.userHighlightMode) {
+                Text("Background").tag("background")
+                Text("Text").tag("text")
+                Text("Underline").tag("underline")
+            }
+            .pickerStyle(.segmented)
+            .frame(maxWidth: 300)
+            .labelsHidden()
+
+            macLabeledColorRow(
+                label: $draft.userHighlightLabel1,
+                hex: $draft.userHighlightColor1,
+            )
+            macLabeledColorRow(
+                label: $draft.userHighlightLabel2,
+                hex: $draft.userHighlightColor2,
+            )
+            macLabeledColorRow(
+                label: $draft.userHighlightLabel3,
+                hex: $draft.userHighlightColor3,
+            )
+            macLabeledColorRow(
+                label: $draft.userHighlightLabel4,
+                hex: $draft.userHighlightColor4,
+            )
+            macLabeledColorRow(
+                label: $draft.userHighlightLabel5,
+                hex: $draft.userHighlightColor5,
+            )
+            macLabeledColorRow(
+                label: $draft.userHighlightLabel6,
+                hex: $draft.userHighlightColor6,
+            )
+        }
+        .onChange(of: draft.userHighlightColor1) { _, _ in previewUserIndex = 0 }
+        .onChange(of: draft.userHighlightColor2) { _, _ in previewUserIndex = 1 }
+        .onChange(of: draft.userHighlightColor3) { _, _ in previewUserIndex = 2 }
+        .onChange(of: draft.userHighlightColor4) { _, _ in previewUserIndex = 3 }
+        .onChange(of: draft.userHighlightColor5) { _, _ in previewUserIndex = 4 }
+        .onChange(of: draft.userHighlightColor6) { _, _ in previewUserIndex = 5 }
+    }
+
+    private var advancedTab: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Custom CSS").font(.headline)
+            TextEditor(
+                text: Binding(
+                    get: { draft.customCSS ?? "" },
+                    set: { draft.customCSS = $0.isEmpty ? nil : $0 },
+                )
+            )
+            .font(.system(.body, design: .monospaced))
+            .frame(height: 100)
+            .border(Color.secondary.opacity(0.3), width: 1)
+        }
+    }
+
+    private var previewUserColor: String {
+        switch previewUserIndex {
+            case 1: return draft.userHighlightColor2
+            case 2: return draft.userHighlightColor3
+            case 3: return draft.userHighlightColor4
+            case 4: return draft.userHighlightColor5
+            case 5: return draft.userHighlightColor6
+            default: return draft.userHighlightColor1
         }
     }
 
@@ -1380,45 +1452,65 @@ private struct MacThemeEditorSheet: View {
     }
 
     private func saveTheme() {
-        if let idx = themes.customThemes.firstIndex(where: { $0.id == draft.id }) {
-            themes.customThemes[idx] = draft
-        }
-        if !draft.availableFor(colorScheme: "light") && themes.selectedLightThemeId == draft.id {
-            themes.selectedLightThemeId = "builtin-light"
-        }
-        if !draft.availableFor(colorScheme: "dark") && themes.selectedDarkThemeId == draft.id {
-            themes.selectedDarkThemeId = "builtin-dark"
+        if isBuiltInEdit {
+            // Overrides keep the stock name and appearance so Reset to Stock
+            // can always restore the theme without identity changes.
+            if let stock = ReaderTheme.allBuiltIn.first(where: { $0.id == draft.id }) {
+                draft.name = stock.name
+                draft.appearance = stock.appearance
+                if let idx = themes.builtInThemeOverrides.firstIndex(where: { $0.id == draft.id }
+                ) {
+                    themes.builtInThemeOverrides[idx] = draft
+                } else {
+                    themes.builtInThemeOverrides.append(draft)
+                }
+            }
+        } else {
+            if let idx = themes.customThemes.firstIndex(where: { $0.id == draft.id }) {
+                themes.customThemes[idx] = draft
+            }
+            if !draft.availableFor(colorScheme: "light")
+                && themes.selectedLightThemeId == draft.id
+            {
+                themes.selectedLightThemeId = "builtin-light"
+            }
+            if !draft.availableFor(colorScheme: "dark") && themes.selectedDarkThemeId == draft.id {
+                themes.selectedDarkThemeId = "builtin-dark"
+            }
         }
         let activeId =
             colorScheme == .dark
             ? themes.selectedDarkThemeId
             : themes.selectedLightThemeId
         if activeId == draft.id {
-            applyThemeToReading(draft)
+            reading.apply(theme: draft)
         }
         dismiss()
     }
 
-    private func applyThemeToReading(_ theme: ReaderTheme) {
-        reading.backgroundColor = theme.backgroundColor
-        reading.foregroundColor = theme.foregroundColor
-        reading.highlightColor = theme.highlightColor
-        reading.highlightThickness = theme.highlightThickness
-        reading.readaloudHighlightMode = theme.readaloudHighlightMode
-        reading.userHighlightColor1 = theme.userHighlightColor1
-        reading.userHighlightColor2 = theme.userHighlightColor2
-        reading.userHighlightColor3 = theme.userHighlightColor3
-        reading.userHighlightColor4 = theme.userHighlightColor4
-        reading.userHighlightColor5 = theme.userHighlightColor5
-        reading.userHighlightColor6 = theme.userHighlightColor6
-        reading.userHighlightLabel1 = theme.userHighlightLabel1
-        reading.userHighlightLabel2 = theme.userHighlightLabel2
-        reading.userHighlightLabel3 = theme.userHighlightLabel3
-        reading.userHighlightLabel4 = theme.userHighlightLabel4
-        reading.userHighlightLabel5 = theme.userHighlightLabel5
-        reading.userHighlightLabel6 = theme.userHighlightLabel6
-        reading.userHighlightMode = theme.userHighlightMode
-        reading.customCSS = theme.customCSS
+}
+
+extension SilveranGlobalConfig.Reading {
+    fileprivate mutating func apply(theme: ReaderTheme) {
+        backgroundColor = theme.backgroundColor
+        foregroundColor = theme.foregroundColor
+        highlightColor = theme.highlightColor
+        highlightThickness = theme.highlightThickness
+        readaloudHighlightMode = theme.readaloudHighlightMode
+        userHighlightColor1 = theme.userHighlightColor1
+        userHighlightColor2 = theme.userHighlightColor2
+        userHighlightColor3 = theme.userHighlightColor3
+        userHighlightColor4 = theme.userHighlightColor4
+        userHighlightColor5 = theme.userHighlightColor5
+        userHighlightColor6 = theme.userHighlightColor6
+        userHighlightLabel1 = theme.userHighlightLabel1
+        userHighlightLabel2 = theme.userHighlightLabel2
+        userHighlightLabel3 = theme.userHighlightLabel3
+        userHighlightLabel4 = theme.userHighlightLabel4
+        userHighlightLabel5 = theme.userHighlightLabel5
+        userHighlightLabel6 = theme.userHighlightLabel6
+        userHighlightMode = theme.userHighlightMode
+        customCSS = theme.customCSS
     }
 }
 

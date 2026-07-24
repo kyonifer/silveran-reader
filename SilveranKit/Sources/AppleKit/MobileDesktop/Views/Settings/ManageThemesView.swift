@@ -12,23 +12,17 @@ struct ManageThemesView: View {
 
     var body: some View {
         #if os(iOS)
-        NavigationStack {
-            themeListContent
-                .navigationTitle("Manage Themes")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Done") { dismiss() }
-                    }
-                    ToolbarItem(placement: .primaryAction) {
-                        newThemeMenu
-                    }
+        themeListContent
+            .navigationTitle("Manage Themes")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    newThemeMenu
                 }
-        }
-        .sheet(item: $editingTheme) { theme in
-            ThemeEditorView(settingsVM: settingsVM, theme: theme)
-                .presentationDetents([.fraction(0.7)])
-        }
+            }
+            .fullScreenCover(item: $editingTheme) { theme in
+                ThemeEditorView(settingsVM: settingsVM, theme: theme)
+            }
         #else
         VStack(spacing: 0) {
             themeListContent
@@ -64,7 +58,7 @@ struct ManageThemesView: View {
     private var themeListContent: some View {
         List {
             Section("Built-in Themes") {
-                ForEach(ReaderTheme.allBuiltIn) { theme in
+                ForEach(settingsVM.effectiveBuiltInThemes) { theme in
                     themeRow(theme)
                 }
             }
@@ -110,11 +104,7 @@ struct ManageThemesView: View {
     private func themeRow(_ theme: ReaderTheme) -> some View {
         HStack(spacing: 12) {
             Button {
-                if theme.isBuiltIn {
-                    editingTheme = settingsVM.duplicateTheme(theme)
-                } else {
-                    editingTheme = theme
-                }
+                editingTheme = theme
             } label: {
                 HStack(spacing: 12) {
                     themePreviewSwatch(theme)
@@ -136,6 +126,15 @@ struct ManageThemesView: View {
                                 .foregroundStyle(.secondary)
                             if !theme.isBuiltIn {
                                 Text(appearanceLabel(theme.appearance))
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .padding(.horizontal, 4)
+                                    .padding(.vertical, 1)
+                                    .background(Color.secondary.opacity(0.15))
+                                    .cornerRadius(3)
+                            }
+                            if theme.isBuiltIn, settingsVM.isBuiltInEdited(id: theme.id) {
+                                Text("Edited")
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                                     .padding(.horizontal, 4)
@@ -214,6 +213,13 @@ struct ManageThemesView: View {
             } label: {
                 Label("Duplicate", systemImage: "doc.on.doc")
             }
+            if theme.isBuiltIn, settingsVM.isBuiltInEdited(id: theme.id) {
+                Button {
+                    settingsVM.resetBuiltInTheme(id: theme.id, for: colorScheme)
+                } label: {
+                    Label("Reset to Stock", systemImage: "arrow.counterclockwise")
+                }
+            }
             if !theme.isBuiltIn {
                 Button {
                     renamingThemeId = theme.id
@@ -234,7 +240,9 @@ struct ManageThemesView: View {
                 .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
         }
+        #if os(macOS)
         .menuStyle(.borderlessButton)
+        #endif
         .fixedSize()
     }
 

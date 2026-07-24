@@ -132,7 +132,7 @@ public struct ReaderTheme: Codable, Equatable, Sendable, Identifiable {
 extension ReaderTheme {
     public static let builtInLight = ReaderTheme(
         id: "builtin-light",
-        name: "Light (Default)",
+        name: "Light",
         isBuiltIn: true,
         appearance: .light,
         backgroundColor: kDefaultBackgroundColorLight,
@@ -143,7 +143,7 @@ extension ReaderTheme {
 
     public static let builtInDark = ReaderTheme(
         id: "builtin-dark",
-        name: "Dark (Default)",
+        name: "Dark",
         isBuiltIn: true,
         appearance: .dark,
         backgroundColor: kDefaultBackgroundColorDark,
@@ -163,16 +163,32 @@ extension ReaderTheme {
         .builtInDark,
     ]
 
-    public static func resolve(id: String, customThemes: [ReaderTheme]) -> ReaderTheme? {
-        if let builtIn = allBuiltIn.first(where: { $0.id == id }) {
+    public static func effectiveBuiltIn(overrides: [ReaderTheme]) -> [ReaderTheme] {
+        allBuiltIn.map { stock in
+            guard var override = overrides.first(where: { $0.id == stock.id }) else {
+                return stock
+            }
+            override.name = stock.name
+            override.appearance = stock.appearance
+            return override
+        }
+    }
+
+    public static func resolve(
+        id: String,
+        customThemes: [ReaderTheme],
+        builtInOverrides: [ReaderTheme] = [],
+    ) -> ReaderTheme? {
+        let builtIns = effectiveBuiltIn(overrides: builtInOverrides)
+        if let builtIn = builtIns.first(where: { $0.id == id }) {
             return builtIn
         }
         // Migrate old built-in IDs
         if id.hasPrefix("builtin-light") {
-            return .builtInLight
+            return builtIns.first { $0.id == builtInLight.id }
         }
         if id.hasPrefix("builtin-dark") {
-            return .builtInDark
+            return builtIns.first { $0.id == builtInDark.id }
         }
         return customThemes.first(where: { $0.id == id })
     }
@@ -183,13 +199,23 @@ extension ReaderTheme {
         return id
     }
 
-    public static func themesForLightMode(customThemes: [ReaderTheme]) -> [ReaderTheme] {
-        allBuiltIn.filter { $0.availableFor(colorScheme: "light") }
+    public static func themesForLightMode(
+        customThemes: [ReaderTheme],
+        builtInOverrides: [ReaderTheme] = [],
+    ) -> [ReaderTheme] {
+        effectiveBuiltIn(overrides: builtInOverrides).filter {
+            $0.availableFor(colorScheme: "light")
+        }
             + customThemes.filter { $0.availableFor(colorScheme: "light") }
     }
 
-    public static func themesForDarkMode(customThemes: [ReaderTheme]) -> [ReaderTheme] {
-        allBuiltIn.filter { $0.availableFor(colorScheme: "dark") }
+    public static func themesForDarkMode(
+        customThemes: [ReaderTheme],
+        builtInOverrides: [ReaderTheme] = [],
+    ) -> [ReaderTheme] {
+        effectiveBuiltIn(overrides: builtInOverrides).filter {
+            $0.availableFor(colorScheme: "dark")
+        }
             + customThemes.filter { $0.availableFor(colorScheme: "dark") }
     }
 }

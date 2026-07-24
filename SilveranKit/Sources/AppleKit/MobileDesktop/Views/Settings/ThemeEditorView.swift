@@ -8,6 +8,9 @@ struct ThemeEditorView: View {
     @Environment(\.colorScheme) private var colorScheme
     @State private var draft: ReaderTheme
     @State private var originalFlatValues: FlatColorSnapshot?
+    @State private var tab: ThemeEditorTab = .theme
+    @State private var previewUserIndex = 0
+    @State private var expandedPicker: String? = nil
 
     init(settingsVM: SettingsViewModel, theme: ReaderTheme) {
         self.settingsVM = settingsVM
@@ -15,11 +18,13 @@ struct ThemeEditorView: View {
         self._draft = State(initialValue: theme)
     }
 
+    private var isBuiltInEdit: Bool { theme.isBuiltIn }
+
     var body: some View {
         #if os(iOS)
         NavigationStack {
             editorContent
-                .navigationTitle("Edit Theme")
+                .navigationTitle(isBuiltInEdit ? theme.name : "Edit Theme")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
@@ -50,33 +55,53 @@ struct ThemeEditorView: View {
     }
 
     private var editorContent: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                nameField
+        VStack(spacing: 12) {
+            ThemePreviewCard(theme: draft, previewUserColor: previewUserColor)
+                .padding(.horizontal)
+                .padding(.top, 8)
 
-                appearanceField
-
-                Divider()
-
-                readerColorsSection
-
-                Divider()
-
-                readaloudSection
-
-                Divider()
-
-                userHighlightsSection
-
-                Divider()
-
-                customCSSSection
+            Picker("Section", selection: $tab) {
+                ForEach(ThemeEditorTab.allCases) { tab in
+                    Text(tab.rawValue).tag(tab)
+                }
             }
-            .padding()
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .padding(.horizontal)
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    switch tab {
+                        case .theme: themeTab
+                        case .readaloud: readaloudSection
+                        case .highlights: userHighlightsSection
+                        case .advanced: customCSSSection
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding()
+            }
         }
         .onChange(of: draft) { _, newDraft in
             pushLivePreview(newDraft)
         }
+    }
+
+    @ViewBuilder
+    private var themeTab: some View {
+        if isBuiltInEdit {
+            Text(
+                "This built-in theme stays available in its appearance mode. "
+                    + "Restore the stock look anytime with Reset to Stock in Manage Themes."
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        } else {
+            nameField
+            appearanceField
+        }
+
+        readerColorsSection
     }
 
     private var nameField: some View {
@@ -113,16 +138,13 @@ struct ThemeEditorView: View {
             Text("Reader Colors")
                 .font(.headline)
 
-            editorColorRow(label: "Background", hex: $draft.backgroundColor)
-            editorColorRow(label: "Text", hex: $draft.foregroundColor)
+            colorRow(label: "Background", key: "background", hex: $draft.backgroundColor)
+            colorRow(label: "Text", key: "text", hex: $draft.foregroundColor)
         }
     }
 
     private var readaloudSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Readaloud Highlight")
-                .font(.headline)
-
             VStack(alignment: .leading, spacing: 4) {
                 Text("Style")
                     .font(.caption)
@@ -139,7 +161,9 @@ struct ThemeEditorView: View {
                 #endif
             }
 
-            editorColorRow(label: "Highlight Color", hex: $draft.highlightColor)
+            Text("Highlight Color")
+                .font(.headline)
+            InlineColorPicker(hex: $draft.highlightColor)
 
             if draft.readaloudHighlightMode == "background" {
                 VStack(alignment: .leading, spacing: 4) {
@@ -176,13 +200,43 @@ struct ThemeEditorView: View {
                 #endif
             }
 
-            labeledColorRow(label: $draft.userHighlightLabel1, hex: $draft.userHighlightColor1)
-            labeledColorRow(label: $draft.userHighlightLabel2, hex: $draft.userHighlightColor2)
-            labeledColorRow(label: $draft.userHighlightLabel3, hex: $draft.userHighlightColor3)
-            labeledColorRow(label: $draft.userHighlightLabel4, hex: $draft.userHighlightColor4)
-            labeledColorRow(label: $draft.userHighlightLabel5, hex: $draft.userHighlightColor5)
-            labeledColorRow(label: $draft.userHighlightLabel6, hex: $draft.userHighlightColor6)
+            highlightRow(
+                index: 0,
+                label: $draft.userHighlightLabel1,
+                hex: $draft.userHighlightColor1,
+            )
+            highlightRow(
+                index: 1,
+                label: $draft.userHighlightLabel2,
+                hex: $draft.userHighlightColor2,
+            )
+            highlightRow(
+                index: 2,
+                label: $draft.userHighlightLabel3,
+                hex: $draft.userHighlightColor3,
+            )
+            highlightRow(
+                index: 3,
+                label: $draft.userHighlightLabel4,
+                hex: $draft.userHighlightColor4,
+            )
+            highlightRow(
+                index: 4,
+                label: $draft.userHighlightLabel5,
+                hex: $draft.userHighlightColor5,
+            )
+            highlightRow(
+                index: 5,
+                label: $draft.userHighlightLabel6,
+                hex: $draft.userHighlightColor6,
+            )
         }
+        .onChange(of: draft.userHighlightColor1) { _, _ in previewUserIndex = 0 }
+        .onChange(of: draft.userHighlightColor2) { _, _ in previewUserIndex = 1 }
+        .onChange(of: draft.userHighlightColor3) { _, _ in previewUserIndex = 2 }
+        .onChange(of: draft.userHighlightColor4) { _, _ in previewUserIndex = 3 }
+        .onChange(of: draft.userHighlightColor5) { _, _ in previewUserIndex = 4 }
+        .onChange(of: draft.userHighlightColor6) { _, _ in previewUserIndex = 5 }
     }
 
     private var customCSSSection: some View {
@@ -197,24 +251,94 @@ struct ThemeEditorView: View {
             )
             .font(.system(.body, design: .monospaced))
             .frame(height: 100)
-            #if os(macOS)
-            .border(Color.secondary.opacity(0.3), width: 1)
-            #endif
+            .scrollContentBackground(.hidden)
+            .padding(6)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color.secondary.opacity(0.1))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .strokeBorder(Color.secondary.opacity(0.4), lineWidth: 1)
+            )
+        }
+    }
+
+    private var previewUserColor: String {
+        switch previewUserIndex {
+            case 1: return draft.userHighlightColor2
+            case 2: return draft.userHighlightColor3
+            case 3: return draft.userHighlightColor4
+            case 4: return draft.userHighlightColor5
+            case 5: return draft.userHighlightColor6
+            default: return draft.userHighlightColor1
         }
     }
 
     @ViewBuilder
-    private func editorColorRow(label: String, hex: Binding<String>) -> some View {
-        ThemeColorControl(label: label, hex: hex)
+    private func colorRow(label: String, key: String, hex: Binding<String>) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    expandedPicker = expandedPicker == key ? nil : key
+                }
+            } label: {
+                HStack(spacing: 12) {
+                    Text(label)
+                        .foregroundStyle(.primary)
+                    Spacer()
+                    Text(hex.wrappedValue.uppercased())
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                    Circle()
+                        .fill(Color(hex: hex.wrappedValue) ?? .clear)
+                        .frame(width: 32, height: 32)
+                        .overlay(
+                            Circle().strokeBorder(Color.secondary.opacity(0.5), lineWidth: 1)
+                        )
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if expandedPicker == key {
+                InlineColorPicker(hex: hex)
+                    .padding(.top, 10)
+            }
+        }
     }
 
     @ViewBuilder
-    private func labeledColorRow(label: Binding<String>, hex: Binding<String>) -> some View {
-        HStack {
-            TextField("Label", text: label)
-                .textFieldStyle(.roundedBorder)
-                .frame(maxWidth: 120)
-            ThemeColorControl(label: label.wrappedValue, hex: hex)
+    private func highlightRow(index: Int, label: Binding<String>, hex: Binding<String>) -> some View
+    {
+        let key = "user\(index)"
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 12) {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        expandedPicker = expandedPicker == key ? nil : key
+                    }
+                    if expandedPicker == key {
+                        previewUserIndex = index
+                    }
+                } label: {
+                    Circle()
+                        .fill(Color(hex: hex.wrappedValue) ?? .clear)
+                        .frame(width: 36, height: 36)
+                        .overlay(
+                            Circle().strokeBorder(Color.secondary.opacity(0.5), lineWidth: 1)
+                        )
+                }
+                .buttonStyle(.plain)
+
+                TextField("Label", text: label)
+                    .textFieldStyle(.roundedBorder)
+            }
+
+            if expandedPicker == key {
+                InlineColorPicker(hex: hex)
+                    .padding(.top, 10)
+            }
         }
     }
 
@@ -270,7 +394,11 @@ struct ThemeEditorView: View {
     }
 
     private func saveEditing() {
-        settingsVM.updateCustomTheme(draft)
+        if isBuiltInEdit {
+            settingsVM.updateBuiltInTheme(draft)
+        } else {
+            settingsVM.updateCustomTheme(draft)
+        }
         let isActive = settingsVM.activeThemeId(for: colorScheme) == draft.id
         if isActive {
             settingsVM.applyThemeValues(draft)
@@ -325,63 +453,6 @@ private struct FlatColorSnapshot {
     let userHighlightLabel6: String
     let userHighlightMode: String
     let customCSS: String?
-}
-
-private struct ThemeColorControl: View {
-    let label: String
-    @Binding var hex: String
-    @State private var localColor: Color = .gray
-    @State private var hexInput: String = ""
-    @State private var isInitialized = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(label)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            HStack(spacing: 12) {
-                ColorPicker("", selection: $localColor, supportsOpacity: false)
-                    .labelsHidden()
-                    .frame(width: 44, height: 28)
-                    .onAppear {
-                        localColor = Color(hex: hex) ?? .gray
-                        hexInput = hex
-                        DispatchQueue.main.async { isInitialized = true }
-                    }
-                    .onChange(of: localColor) { _, newColor in
-                        guard isInitialized else { return }
-                        if let newHex = newColor.hexString() {
-                            hex = newHex
-                            hexInput = newHex
-                        }
-                    }
-
-                TextField("#RRGGBB", text: $hexInput)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.system(.body, design: .monospaced))
-                    #if os(iOS)
-                .textInputAutocapitalization(.characters)
-                .autocorrectionDisabled(true)
-                    #endif
-                    .frame(maxWidth: 100)
-                    .onSubmit {
-                        if let color = Color(hex: hexInput) {
-                            hex = hexInput.uppercased()
-                            localColor = color
-                        } else {
-                            hexInput = hex
-                        }
-                    }
-                    .onChange(of: hex) { _, newHex in
-                        guard isInitialized else { return }
-                        hexInput = newHex
-                        if let color = Color(hex: newHex) {
-                            localColor = color
-                        }
-                    }
-            }
-        }
-    }
 }
 
 #endif

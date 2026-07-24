@@ -83,6 +83,7 @@ public final class SettingsViewModel {
     public var selectedLightThemeId: String = "builtin-light"
     public var selectedDarkThemeId: String = "builtin-dark"
     public var customThemes: [ReaderTheme] = []
+    public var builtInThemeOverrides: [ReaderTheme] = []
 
     public var isLoaded: Bool = false
 
@@ -215,6 +216,7 @@ public final class SettingsViewModel {
         selectedLightThemeId = ReaderTheme.migrateThemeId(config.themes.selectedLightThemeId)
         selectedDarkThemeId = ReaderTheme.migrateThemeId(config.themes.selectedDarkThemeId)
         customThemes = config.themes.customThemes
+        builtInThemeOverrides = config.themes.builtInThemeOverrides
 
         isLoaded = true
     }
@@ -231,20 +233,38 @@ public final class SettingsViewModel {
         observerID = id
     }
 
+    public var effectiveBuiltInThemes: [ReaderTheme] {
+        ReaderTheme.effectiveBuiltIn(overrides: builtInThemeOverrides)
+    }
+
     public var allThemes: [ReaderTheme] {
-        ReaderTheme.allBuiltIn + customThemes
+        effectiveBuiltInThemes + customThemes
     }
 
     public var lightThemes: [ReaderTheme] {
-        ReaderTheme.themesForLightMode(customThemes: customThemes)
+        ReaderTheme.themesForLightMode(
+            customThemes: customThemes,
+            builtInOverrides: builtInThemeOverrides,
+        )
     }
 
     public var darkThemes: [ReaderTheme] {
-        ReaderTheme.themesForDarkMode(customThemes: customThemes)
+        ReaderTheme.themesForDarkMode(
+            customThemes: customThemes,
+            builtInOverrides: builtInThemeOverrides,
+        )
     }
 
     public func resolveTheme(id: String) -> ReaderTheme? {
-        ReaderTheme.resolve(id: id, customThemes: customThemes)
+        ReaderTheme.resolve(
+            id: id,
+            customThemes: customThemes,
+            builtInOverrides: builtInThemeOverrides,
+        )
+    }
+
+    public func isBuiltInEdited(id: String) -> Bool {
+        builtInThemeOverrides.contains { $0.id == id }
     }
 
     public func activeThemeId(for colorScheme: ColorScheme) -> String {
@@ -356,6 +376,33 @@ public final class SettingsViewModel {
         save()
     }
 
+    // Edits to a built-in theme are stored as an override keeping the stock
+    // name and appearance, so Reset to Stock can always restore it.
+    public func updateBuiltInTheme(_ theme: ReaderTheme) {
+        guard let stock = ReaderTheme.allBuiltIn.first(where: { $0.id == theme.id }) else {
+            return
+        }
+        var override = theme
+        override.name = stock.name
+        override.appearance = stock.appearance
+        if let index = builtInThemeOverrides.firstIndex(where: { $0.id == override.id }) {
+            builtInThemeOverrides[index] = override
+        } else {
+            builtInThemeOverrides.append(override)
+        }
+        save()
+    }
+
+    public func resetBuiltInTheme(id: String, for colorScheme: ColorScheme) {
+        builtInThemeOverrides.removeAll { $0.id == id }
+        save()
+        if activeThemeId(for: colorScheme) == id,
+            let stock = ReaderTheme.allBuiltIn.first(where: { $0.id == id })
+        {
+            applyThemeValues(stock)
+        }
+    }
+
     public func save() {
         saveTask?.cancel()
         saveTask = Task {
@@ -415,6 +462,7 @@ public final class SettingsViewModel {
             selectedLightThemeId: selectedLightThemeId,
             selectedDarkThemeId: selectedDarkThemeId,
             customThemes: customThemes,
+            builtInThemeOverrides: builtInThemeOverrides,
         )
     }
 
