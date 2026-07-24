@@ -14,8 +14,10 @@ import kotlinx.coroutines.CompletableDeferred
 object AndroidBridgeCallbacks {
     private class Registration<T>(val owner: Any, val callback: T)
 
-    @Volatile
-    private var listener: Registration<() -> Unit>? = null
+    // The library snapshot has more than one in-process consumer (the app's
+    // ViewModel and the Android Auto MediaLibraryService), so this fans out to
+    // all registered owners rather than holding a single slot.
+    private val libraryListeners = ConcurrentHashMap<Any, () -> Unit>()
     @Volatile
     private var audiobookListener: Registration<(String) -> Unit>? = null
     @Volatile
@@ -33,13 +35,13 @@ object AndroidBridgeCallbacks {
     private val mainHandler = Handler(Looper.getMainLooper())
 
     fun observe(owner: Any, onChange: () -> Unit) {
-        listener = Registration(owner, onChange)
+        libraryListeners[owner] = onChange
     }
 
     // A stale owner (an already-replaced ViewModel's client) must not tear down
     // registrations that a newer owner has since installed.
     fun clearObserver(owner: Any) {
-        if (listener?.owner === owner) listener = null
+        libraryListeners.remove(owner)
         if (audiobookListener?.owner === owner) audiobookListener = null
         if (downloadListener?.owner === owner) downloadListener = null
         if (sourceStatusListener?.owner === owner) sourceStatusListener = null
@@ -77,7 +79,7 @@ object AndroidBridgeCallbacks {
 
     @JvmStatic
     fun librarySnapshotDidChange() {
-        listener?.callback?.invoke()
+        libraryListeners.values.forEach { it.invoke() }
     }
 
     @JvmStatic

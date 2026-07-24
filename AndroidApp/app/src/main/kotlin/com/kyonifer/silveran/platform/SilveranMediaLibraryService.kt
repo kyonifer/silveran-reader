@@ -94,6 +94,19 @@ class SilveranMediaLibraryService : MediaLibraryService() {
             .setPeriodicPositionUpdateEnabled(false)
             .build()
         player.addListener(buttonPreferencesListener)
+        serviceScope.launch {
+            runCatching { client.observeLibraryChanges(::onCatalogChanged) }
+        }
+    }
+
+    private fun onCatalogChanged() {
+        mainHandler.post {
+            val session = session ?: return@post
+            session.notifyChildrenChanged(ROOT_MEDIA_ID, Int.MAX_VALUE, null)
+            AutoCategory.entries.forEach { category ->
+                session.notifyChildrenChanged(category.folderId, Int.MAX_VALUE, null)
+            }
+        }
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? =
@@ -103,6 +116,7 @@ class SilveranMediaLibraryService : MediaLibraryService() {
         session?.player?.removeListener(buttonPreferencesListener)
         session?.release()
         session = null
+        client.close()
         serviceScope.cancel()
         super.onDestroy()
     }
