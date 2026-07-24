@@ -1,14 +1,20 @@
 package com.kyonifer.silveran.ui
 
 import android.graphics.Bitmap
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
@@ -17,6 +23,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -117,6 +124,9 @@ internal fun GlobalMiniPlayerBar(
     }
 }
 
+// Matches the 50pt compact height of the iOS DraggableAudioCard.
+internal val ReaderMiniPlayerHeight = 50.dp
+
 // In-reader compact bar shown with the chrome, like the iOS DraggableAudioCard
 // compact state: cover, title/chapter, playback speed, play/pause.
 @Composable
@@ -147,7 +157,8 @@ internal fun ReaderMiniPlayer(
             modifier = Modifier
                 .fillMaxWidth()
                 .navigationBarsPadding()
-                .padding(horizontal = 12.dp, vertical = 6.dp),
+                .padding(horizontal = 12.dp)
+                .height(ReaderMiniPlayerHeight),
         ) {
             BookCover(
                 book = book,
@@ -180,24 +191,37 @@ internal fun ReaderMiniPlayer(
                     )
                 }
             }
-            Box(
-                contentAlignment = Alignment.Center,
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
                 modifier = Modifier
                     .clip(RoundedCornerShape(10.dp))
                     .clickable { showSpeed = true }
-                    .size(width = 52.dp, height = 56.dp),
+                    .size(width = 44.dp, height = 44.dp),
             ) {
-                Icon(Icons.Filled.Speed, contentDescription = "Playback speed")
+                Icon(
+                    Icons.Filled.Speed,
+                    contentDescription = "Playback speed",
+                    modifier = Modifier.size(20.dp),
+                )
                 Text(
                     formatPlaybackRate(playbackRate),
                     style = MaterialTheme.typography.labelSmall,
-                    modifier = Modifier.align(Alignment.BottomCenter),
                 )
             }
-            IconButton(onClick = onTogglePlay) {
+            Spacer(Modifier.width(8.dp))
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(LocalContentColor.current.copy(alpha = 0.1f))
+                    .clickable(onClick = onTogglePlay),
+            ) {
                 Icon(
                     imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                     contentDescription = if (isPlaying) "Pause" else "Play",
+                    modifier = Modifier.size(24.dp),
                 )
             }
         }
