@@ -22,6 +22,7 @@ import com.kyonifer.silveran.model.ReaderDisplaySettings
 import com.kyonifer.silveran.model.ReaderHighlight
 import com.kyonifer.silveran.model.ReaderHighlightPaletteEntry
 import com.kyonifer.silveran.model.ReaderOpenResult
+import com.kyonifer.silveran.model.ReaderOverlayOptions
 import com.kyonifer.silveran.model.ReaderPendingEdit
 import com.kyonifer.silveran.model.ReaderSearchResult
 import com.kyonifer.silveran.model.ReaderSearchSection
@@ -392,6 +393,8 @@ class SilveranBridgeClient(context: Context) {
             selectedDarkThemeId = obj.optString("selectedDarkThemeId").takeIf { it.isNotEmpty() },
             themes = parseReaderThemes(obj.optJSONArray("themes")),
             settings = obj.optJSONObject("settings")?.let(::parseReaderDisplaySettings),
+            overlay = obj.optJSONObject("overlay")?.let(::parseReaderOverlayOptions)
+                ?: ReaderOverlayOptions(),
             search = obj.optJSONObject("search")?.let(::parseReaderSearch)
                 ?: ReaderSearchState(),
             highlights = parseReaderHighlights(obj.optJSONArray("highlights")),
@@ -441,6 +444,33 @@ class SilveranBridgeClient(context: Context) {
                 )
             }
         }
+    }
+
+    private fun parseReaderOverlayOptions(obj: JSONObject): ReaderOverlayOptions {
+        val defaults = ReaderOverlayOptions()
+        return ReaderOverlayOptions(
+            showProgress = obj.optBoolean("showProgress", defaults.showProgress),
+            showPageNumber = obj.optBoolean("showPageNumber", defaults.showPageNumber),
+            showTimeRemainingInBook = obj.optBoolean(
+                "showTimeRemainingInBook",
+                defaults.showTimeRemainingInBook,
+            ),
+            showTimeRemainingInChapter = obj.optBoolean(
+                "showTimeRemainingInChapter",
+                defaults.showTimeRemainingInChapter,
+            ),
+            showSkipBackward = obj.optBoolean("showSkipBackward", defaults.showSkipBackward),
+            showPlayPause = obj.optBoolean("showPlayPause", defaults.showPlayPause),
+            showSkipForward = obj.optBoolean("showSkipForward", defaults.showSkipForward),
+            alwaysShowMiniPlayer = obj.optBoolean(
+                "alwaysShowMiniPlayer",
+                defaults.alwaysShowMiniPlayer,
+            ),
+            showMiniPlayerStats = obj.optBoolean(
+                "showMiniPlayerStats",
+                defaults.showMiniPlayerStats,
+            ),
+        )
     }
 
     private fun parseReaderSearch(obj: JSONObject): ReaderSearchState {

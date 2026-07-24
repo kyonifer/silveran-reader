@@ -35,6 +35,7 @@ import androidx.compose.material.icons.automirrored.filled.FormatAlignLeft
 import androidx.compose.material.icons.automirrored.filled.FormatAlignRight
 import androidx.compose.material.icons.filled.FormatSize
 import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -82,6 +83,7 @@ import androidx.compose.ui.unit.dp
 import com.kyonifer.silveran.model.ReaderDisplaySettings
 import com.kyonifer.silveran.model.ReaderHighlight
 import com.kyonifer.silveran.model.ReaderHighlightPaletteEntry
+import com.kyonifer.silveran.model.ReaderOverlayOptions
 import com.kyonifer.silveran.model.ReaderSearchState
 import com.kyonifer.silveran.model.ReaderTheme
 import com.kyonifer.silveran.model.ReaderTocEntry
@@ -119,6 +121,7 @@ internal fun ReaderTopBar(
     onShowBookmarks: () -> Unit,
     onShowToc: () -> Unit,
     onShowSettings: () -> Unit,
+    onShowDisplayOptions: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Surface(color = backgroundColor, contentColor = contentColor, modifier = modifier) {
@@ -145,6 +148,9 @@ internal fun ReaderTopBar(
             }
             IconButton(onClick = onShowSettings) {
                 Icon(Icons.Filled.FormatSize, contentDescription = "Customize reader")
+            }
+            IconButton(onClick = onShowDisplayOptions) {
+                Icon(Icons.Filled.MoreHoriz, contentDescription = "Display options")
             }
         }
     }
@@ -456,6 +462,8 @@ internal fun ReaderBottomOverlay(
     statsVisible: Boolean,
     hasAudioNarration: Boolean,
     isPlaying: Boolean,
+    options: ReaderOverlayOptions,
+    positionAtTop: Boolean,
     bookFraction: Double?,
     currentPage: Int?,
     totalPages: Int?,
@@ -466,14 +474,29 @@ internal fun ReaderBottomOverlay(
     modifier: Modifier = Modifier,
 ) {
     val statsColor = Color.Gray.copy(alpha = 0.8f)
+    val hasBookStats = (options.showProgress && bookFraction != null) ||
+        (options.showPageNumber && currentPage != null && (totalPages ?: 0) > 0)
+    val hasTimeStats = hasAudioNarration &&
+        (options.showTimeRemainingInBook || options.showTimeRemainingInChapter)
+    val hasStats = statsVisible && (hasBookStats || hasTimeStats)
+    // The mini player owns the playback controls whenever it is on screen.
+    val hasControls = hasAudioNarration && !positionAtTop &&
+        (options.showSkipBackward || options.showPlayPause || options.showSkipForward)
+
     Surface(
-        color = if (statsVisible || hasAudioNarration) backgroundColor else Color.Transparent,
+        color = if (hasStats || hasControls) backgroundColor else Color.Transparent,
         modifier = modifier,
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .navigationBarsPadding()
+                .then(
+                    if (positionAtTop) {
+                        Modifier.statusBarsPadding()
+                    } else {
+                        Modifier.navigationBarsPadding()
+                    }
+                )
                 .padding(horizontal = 20.dp, vertical = 8.dp),
         ) {
             if (statsVisible) {
@@ -481,7 +504,7 @@ internal fun ReaderBottomOverlay(
                     modifier = Modifier.align(Alignment.CenterStart),
                     verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
-                    if (bookFraction != null) {
+                    if (options.showProgress && bookFraction != null) {
                         StatRow(
                             text = "${(bookFraction.coerceIn(0.0, 1.0) * 100).roundToInt()}%",
                             icon = Icons.AutoMirrored.Filled.MenuBook,
@@ -489,7 +512,9 @@ internal fun ReaderBottomOverlay(
                             color = statsColor,
                         )
                     }
-                    if (currentPage != null && totalPages != null && totalPages > 0) {
+                    if (options.showPageNumber &&
+                        currentPage != null && totalPages != null && totalPages > 0
+                    ) {
                         StatRow(
                             text = "Page $currentPage of $totalPages",
                             icon = Icons.Filled.Bookmark,
@@ -498,57 +523,67 @@ internal fun ReaderBottomOverlay(
                         )
                     }
                 }
-                if (hasAudioNarration) {
+                if (hasTimeStats) {
                     Column(
                         modifier = Modifier.align(Alignment.CenterEnd),
                         horizontalAlignment = Alignment.End,
                         verticalArrangement = Arrangement.spacedBy(2.dp),
                     ) {
-                        StatRow(
-                            text = formatTimeHoursMinutes(bookTimeRemaining),
-                            icon = Icons.AutoMirrored.Filled.MenuBook,
-                            iconLeading = false,
-                            color = statsColor,
-                        )
-                        StatRow(
-                            text = formatTimeMinutesSeconds(chapterTimeRemaining),
-                            icon = Icons.Filled.Bookmark,
-                            iconLeading = false,
-                            color = statsColor,
-                        )
+                        if (options.showTimeRemainingInBook) {
+                            StatRow(
+                                text = formatTimeHoursMinutes(bookTimeRemaining),
+                                icon = Icons.AutoMirrored.Filled.MenuBook,
+                                iconLeading = false,
+                                color = statsColor,
+                            )
+                        }
+                        if (options.showTimeRemainingInChapter) {
+                            StatRow(
+                                text = formatTimeMinutesSeconds(chapterTimeRemaining),
+                                icon = Icons.Filled.Bookmark,
+                                iconLeading = false,
+                                color = statsColor,
+                            )
+                        }
                     }
                 }
             }
-            if (hasAudioNarration) {
+            if (hasControls) {
                 Row(
                     modifier = Modifier.align(Alignment.Center),
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    OverlayControl(
-                        icon = Icons.AutoMirrored.Filled.RotateLeft,
-                        contentDescription = "Skip back",
-                        tint = statsColor,
-                        buttonSize = 36.dp,
-                        iconSize = 16.dp,
-                        onClick = { readerControl("prevSentence", 0.0, "") },
-                    )
-                    OverlayControl(
-                        icon = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                        contentDescription = if (isPlaying) "Pause" else "Play",
-                        tint = statsColor,
-                        buttonSize = 44.dp,
-                        iconSize = 20.dp,
-                        onClick = { readerControl("togglePlayPause", 0.0, "") },
-                    )
-                    OverlayControl(
-                        icon = Icons.AutoMirrored.Filled.RotateRight,
-                        contentDescription = "Skip forward",
-                        tint = statsColor,
-                        buttonSize = 36.dp,
-                        iconSize = 16.dp,
-                        onClick = { readerControl("nextSentence", 0.0, "") },
-                    )
+                    if (options.showSkipBackward) {
+                        OverlayControl(
+                            icon = Icons.AutoMirrored.Filled.RotateLeft,
+                            contentDescription = "Skip back",
+                            tint = statsColor,
+                            buttonSize = 36.dp,
+                            iconSize = 16.dp,
+                            onClick = { readerControl("prevSentence", 0.0, "") },
+                        )
+                    }
+                    if (options.showPlayPause) {
+                        OverlayControl(
+                            icon = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                            contentDescription = if (isPlaying) "Pause" else "Play",
+                            tint = statsColor,
+                            buttonSize = 44.dp,
+                            iconSize = 20.dp,
+                            onClick = { readerControl("togglePlayPause", 0.0, "") },
+                        )
+                    }
+                    if (options.showSkipForward) {
+                        OverlayControl(
+                            icon = Icons.AutoMirrored.Filled.RotateRight,
+                            contentDescription = "Skip forward",
+                            tint = statsColor,
+                            buttonSize = 36.dp,
+                            iconSize = 16.dp,
+                            onClick = { readerControl("nextSentence", 0.0, "") },
+                        )
+                    }
                 }
             }
         }
@@ -584,7 +619,7 @@ private fun OverlayControl(
 @Composable
 private fun StatRow(
     text: String,
-    icon: ImageVector,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
     iconLeading: Boolean,
     color: Color,
 ) {
@@ -633,6 +668,95 @@ internal fun ReaderProgressHairline(
             )
         }
         Spacer(modifier = Modifier.weight(inset))
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun ReaderDisplayOptionsSheet(
+    options: ReaderOverlayOptions,
+    lockViewToAudio: Boolean,
+    hasAudioNarration: Boolean,
+    onChangeOptions: (ReaderOverlayOptions) -> Unit,
+    onChangeLockViewToAudio: (Boolean) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxHeight(0.7f)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp)
+                .navigationBarsPadding(),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text("Display Options", style = MaterialTheme.typography.titleMedium)
+
+            if (hasAudioNarration) {
+                SettingsSectionHeader("Playback")
+                SettingSwitch(
+                    label = "Free Browse When Paused",
+                    checked = !lockViewToAudio,
+                    onToggle = { onChangeLockViewToAudio(!it) },
+                )
+
+                SettingsSectionHeader("Mini Player")
+                SettingSwitch(
+                    label = "Always Show",
+                    checked = options.alwaysShowMiniPlayer,
+                    onToggle = { onChangeOptions(options.copy(alwaysShowMiniPlayer = it)) },
+                )
+                SettingSwitch(
+                    label = "Show Stats Below",
+                    checked = options.showMiniPlayerStats,
+                    onToggle = { onChangeOptions(options.copy(showMiniPlayerStats = it)) },
+                )
+            }
+
+            SettingsSectionHeader("Overlay Info")
+            SettingSwitch(
+                label = "Book Progress",
+                checked = options.showProgress,
+                onToggle = { onChangeOptions(options.copy(showProgress = it)) },
+            )
+            SettingSwitch(
+                label = "Page Number",
+                checked = options.showPageNumber,
+                onToggle = { onChangeOptions(options.copy(showPageNumber = it)) },
+            )
+            if (hasAudioNarration) {
+                SettingSwitch(
+                    label = "Time in Book",
+                    checked = options.showTimeRemainingInBook,
+                    onToggle = { onChangeOptions(options.copy(showTimeRemainingInBook = it)) },
+                )
+                SettingSwitch(
+                    label = "Time in Chapter",
+                    checked = options.showTimeRemainingInChapter,
+                    onToggle = { onChangeOptions(options.copy(showTimeRemainingInChapter = it)) },
+                )
+
+                SettingsSectionHeader("Overlay Controls")
+                SettingSwitch(
+                    label = "Skip Back",
+                    checked = options.showSkipBackward,
+                    onToggle = { onChangeOptions(options.copy(showSkipBackward = it)) },
+                )
+                SettingSwitch(
+                    label = "Play/Pause",
+                    checked = options.showPlayPause,
+                    onToggle = { onChangeOptions(options.copy(showPlayPause = it)) },
+                )
+                SettingSwitch(
+                    label = "Skip Forward",
+                    checked = options.showSkipForward,
+                    onToggle = { onChangeOptions(options.copy(showSkipForward = it)) },
+                )
+            }
+        }
     }
 }
 
@@ -690,7 +814,6 @@ internal fun ReaderSettingsSheet(
     themes: List<ReaderTheme>,
     selectedLightThemeId: String?,
     selectedDarkThemeId: String?,
-    hasAudioNarration: Boolean,
     onChange: (ReaderDisplaySettings, Boolean) -> Unit,
     onReset: () -> Unit,
     onSelectLightTheme: (String) -> Unit,
@@ -843,16 +966,6 @@ internal fun ReaderSettingsSheet(
                 Icon(Icons.Filled.Palette, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("Manage Themes...")
-            }
-
-            if (hasAudioNarration) {
-                HorizontalDivider()
-                SettingsSectionHeader("Playback")
-                SettingSwitch(
-                    label = "Free Browse When Paused",
-                    checked = !settings.lockViewToAudio,
-                    onToggle = { onChange(settings.copy(lockViewToAudio = !it), true) },
-                )
             }
         }
     }

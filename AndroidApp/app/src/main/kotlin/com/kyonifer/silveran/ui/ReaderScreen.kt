@@ -61,6 +61,7 @@ import androidx.webkit.WebViewFeature
 import com.kyonifer.silveran.model.Book
 import com.kyonifer.silveran.model.ReaderDisplaySettings
 import com.kyonifer.silveran.model.ReaderOpenResult
+import com.kyonifer.silveran.model.ReaderOverlayOptions
 import com.kyonifer.silveran.model.ReaderSearchState
 import com.kyonifer.silveran.model.ReaderState
 import java.io.File
@@ -102,6 +103,7 @@ internal fun ReaderScreen(
     var showManageThemes by remember { mutableStateOf(false) }
     var showSearch by remember { mutableStateOf(false) }
     var showBookmarks by remember { mutableStateOf(false) }
+    var showDisplayOptions by remember { mutableStateOf(false) }
 
     DisposableEffect(webView) {
         registerWebView(webView, webView)
@@ -182,12 +184,17 @@ internal fun ReaderScreen(
             CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
         }
 
+        val overlayOptions = readerState?.overlay ?: ReaderOverlayOptions()
         val hasAudioNarration = readerState?.hasAudioNarration == true
+        // An always-visible mini player owns the bottom, so the stats move up.
+        val statsAtTop = hasAudioNarration && overlayOptions.alwaysShowMiniPlayer
 
         ReaderBottomOverlay(
             statsVisible = !chromeVisible,
             hasAudioNarration = hasAudioNarration,
             isPlaying = readerState?.isPlaying == true,
+            options = overlayOptions,
+            positionAtTop = statsAtTop,
             bookFraction = readerState?.bookFraction,
             currentPage = readerState?.chapterCurrentPage,
             totalPages = readerState?.chapterTotalPages,
@@ -195,7 +202,9 @@ internal fun ReaderScreen(
             chapterTimeRemaining = readerState?.chapterTimeRemaining,
             backgroundColor = chromeBg,
             readerControl = readerControl,
-            modifier = Modifier.align(Alignment.BottomCenter),
+            modifier = Modifier.align(
+                if (statsAtTop) Alignment.TopCenter else Alignment.BottomCenter
+            ),
         )
 
         ReaderProgressHairline(
@@ -218,6 +227,7 @@ internal fun ReaderScreen(
                 onShowBookmarks = { showBookmarks = true },
                 onShowToc = { showToc = true },
                 onShowSettings = { showSettings = true },
+                onShowDisplayOptions = { showDisplayOptions = true },
             )
         }
 
@@ -226,11 +236,12 @@ internal fun ReaderScreen(
             readerState?.selectedChapterId,
         )
         ReaderAudioCard(
-            visible = hasAudioNarration && chromeVisible,
+            visible = hasAudioNarration &&
+                (chromeVisible || overlayOptions.alwaysShowMiniPlayer),
             book = book,
             readerState = readerState,
             chapterLabel = tocIndex?.let { readerState?.toc?.getOrNull(it)?.label },
-            showStats = false,
+            showStats = overlayOptions.showMiniPlayerStats,
             backgroundColor = chromeBg,
             contentColor = chromeFg,
             readerControl = readerControl,
@@ -343,7 +354,6 @@ internal fun ReaderScreen(
             themes = readerState?.themes.orEmpty(),
             selectedLightThemeId = readerState?.selectedLightThemeId,
             selectedDarkThemeId = readerState?.selectedDarkThemeId,
-            hasAudioNarration = readerState?.hasAudioNarration == true,
             onChange = { updated, commit ->
                 displaySettings = updated
                 if (commit) {
@@ -358,6 +368,22 @@ internal fun ReaderScreen(
             onSelectDarkTheme = { readerControl("selectDarkTheme", 0.0, it) },
             onShowManageThemes = { showManageThemes = true },
             onDismiss = { showSettings = false },
+        )
+    }
+
+    if (showDisplayOptions) {
+        ReaderDisplayOptionsSheet(
+            options = readerState?.overlay ?: ReaderOverlayOptions(),
+            lockViewToAudio = displaySettings.lockViewToAudio,
+            hasAudioNarration = readerState?.hasAudioNarration == true,
+            onChangeOptions = {
+                readerControl("updateOverlayOptions", 0.0, it.toUpdateJson())
+            },
+            onChangeLockViewToAudio = { locked ->
+                displaySettings = displaySettings.copy(lockViewToAudio = locked)
+                readerControl("updateReaderSettings", 0.0, displaySettings.toUpdateJson())
+            },
+            onDismiss = { showDisplayOptions = false },
         )
     }
 

@@ -176,6 +176,31 @@ final class AndroidReaderSession {
     private var pendingEditHighlightID: UUID?
     private var translateAvailable = false
     private var lastChapterRestart: Date?
+    private var overlayOptions = OverlayOptions()
+
+    private struct OverlayOptions: Encodable {
+        var showProgress = kDefaultShowProgress
+        var showPageNumber = kDefaultShowPageNumber
+        var showTimeRemainingInBook = kDefaultShowTimeRemainingInBook
+        var showTimeRemainingInChapter = kDefaultShowTimeRemainingInChapter
+        var showSkipBackward = kDefaultShowOverlaySkipBackward
+        var showPlayPause = kDefaultShowOverlayPlayPause
+        var showSkipForward = kDefaultShowOverlaySkipForward
+        var alwaysShowMiniPlayer = kDefaultAlwaysShowMiniPlayer
+        var showMiniPlayerStats = kDefaultShowMiniPlayerStats
+    }
+
+    private struct OverlayOptionsUpdate: Decodable {
+        var showProgress: Bool?
+        var showPageNumber: Bool?
+        var showTimeRemainingInBook: Bool?
+        var showTimeRemainingInChapter: Bool?
+        var showSkipBackward: Bool?
+        var showPlayPause: Bool?
+        var showSkipForward: Bool?
+        var alwaysShowMiniPlayer: Bool?
+        var showMiniPlayerStats: Bool?
+    }
 
     nonisolated private init() {}
 
@@ -200,6 +225,15 @@ final class AndroidReaderSession {
         settings.scrollingMode = config.reading.scrollingMode
         settings.enableMarginClickNavigation = config.reading.enableMarginClickNavigation
         settings.lockViewToAudio = config.playback.lockViewToAudio
+        overlayOptions.showProgress = config.readingBar.showProgress
+        overlayOptions.showPageNumber = config.readingBar.showPageNumber
+        overlayOptions.showTimeRemainingInBook = config.readingBar.showTimeRemainingInBook
+        overlayOptions.showTimeRemainingInChapter = config.readingBar.showTimeRemainingInChapter
+        overlayOptions.showSkipBackward = config.readingBar.showOverlaySkipBackward
+        overlayOptions.showPlayPause = config.readingBar.showOverlayPlayPause
+        overlayOptions.showSkipForward = config.readingBar.showOverlaySkipForward
+        overlayOptions.alwaysShowMiniPlayer = config.readingBar.alwaysShowMiniPlayer
+        overlayOptions.showMiniPlayerStats = config.readingBar.showMiniPlayerStats
         defaultPlaybackSpeed = config.playback.defaultPlaybackSpeed
         customThemes = config.themes.customThemes
         builtInThemeOverrides = config.themes.builtInThemeOverrides
@@ -482,6 +516,8 @@ final class AndroidReaderSession {
             case "resetReaderSettings":
                 resetDisplaySettings()
                 try await persistDisplaySettings()
+            case "updateOverlayOptions":
+                try await applyOverlayOptions(json: text)
             case "saveHighlight":
                 try await applyHighlightEdit(json: text)
             case "cancelSelection":
@@ -818,6 +854,35 @@ final class AndroidReaderSession {
         settings.enableMarginClickNavigation = kDefaultEnableMarginClickNavigation
     }
 
+    private func applyOverlayOptions(json: String) async throws {
+        let update = try JSONDecoder().decode(OverlayOptionsUpdate.self, from: Data(json.utf8))
+        if let value = update.showProgress { overlayOptions.showProgress = value }
+        if let value = update.showPageNumber { overlayOptions.showPageNumber = value }
+        if let value = update.showTimeRemainingInBook {
+            overlayOptions.showTimeRemainingInBook = value
+        }
+        if let value = update.showTimeRemainingInChapter {
+            overlayOptions.showTimeRemainingInChapter = value
+        }
+        if let value = update.showSkipBackward { overlayOptions.showSkipBackward = value }
+        if let value = update.showPlayPause { overlayOptions.showPlayPause = value }
+        if let value = update.showSkipForward { overlayOptions.showSkipForward = value }
+        if let value = update.alwaysShowMiniPlayer { overlayOptions.alwaysShowMiniPlayer = value }
+        if let value = update.showMiniPlayerStats { overlayOptions.showMiniPlayerStats = value }
+
+        try await SettingsActor.shared.updateConfig(
+            showProgress: overlayOptions.showProgress,
+            showTimeRemainingInBook: overlayOptions.showTimeRemainingInBook,
+            showTimeRemainingInChapter: overlayOptions.showTimeRemainingInChapter,
+            showPageNumber: overlayOptions.showPageNumber,
+            alwaysShowMiniPlayer: overlayOptions.alwaysShowMiniPlayer,
+            showOverlaySkipBackward: overlayOptions.showSkipBackward,
+            showOverlaySkipForward: overlayOptions.showSkipForward,
+            showOverlayPlayPause: overlayOptions.showPlayPause,
+            showMiniPlayerStats: overlayOptions.showMiniPlayerStats,
+        )
+    }
+
     private func persistDisplaySettings() async throws {
         try await SettingsActor.shared.updateConfig(
             fontSize: settings.fontSize,
@@ -1073,6 +1138,7 @@ final class AndroidReaderSession {
         let selectedDarkThemeId: String
         let themes: [Theme]
         let settings: DisplaySettings
+        let overlay: OverlayOptions
         let search: Search
         let highlights: [HighlightItem]
         let highlightPalette: [PaletteEntry]
@@ -1174,6 +1240,7 @@ final class AndroidReaderSession {
                 enableMarginClickNavigation: settings.enableMarginClickNavigation,
                 lockViewToAudio: settings.lockViewToAudio,
             ),
+            overlay: overlayOptions,
             search: ReaderState.Search(
                 query: searchQuery,
                 isSearching: isSearching,

@@ -288,6 +288,30 @@ data class ReaderPendingEdit(
     val note: String?,
 )
 
+data class ReaderOverlayOptions(
+    val showProgress: Boolean = true,
+    val showPageNumber: Boolean = true,
+    val showTimeRemainingInBook: Boolean = true,
+    val showTimeRemainingInChapter: Boolean = true,
+    val showSkipBackward: Boolean = true,
+    val showPlayPause: Boolean = true,
+    val showSkipForward: Boolean = true,
+    val alwaysShowMiniPlayer: Boolean = false,
+    val showMiniPlayerStats: Boolean = false,
+) {
+    fun toUpdateJson(): String = JSONObject().apply {
+        put("showProgress", showProgress)
+        put("showPageNumber", showPageNumber)
+        put("showTimeRemainingInBook", showTimeRemainingInBook)
+        put("showTimeRemainingInChapter", showTimeRemainingInChapter)
+        put("showSkipBackward", showSkipBackward)
+        put("showPlayPause", showPlayPause)
+        put("showSkipForward", showSkipForward)
+        put("alwaysShowMiniPlayer", alwaysShowMiniPlayer)
+        put("showMiniPlayerStats", showMiniPlayerStats)
+    }.toString()
+}
+
 data class ReaderState(
     val title: String,
     val author: String,
@@ -317,6 +341,7 @@ data class ReaderState(
     val selectedDarkThemeId: String?,
     val themes: List<ReaderTheme>,
     val settings: ReaderDisplaySettings?,
+    val overlay: ReaderOverlayOptions,
     val search: ReaderSearchState,
     val highlights: List<ReaderHighlight>,
     val highlightPalette: List<ReaderHighlightPaletteEntry>,
