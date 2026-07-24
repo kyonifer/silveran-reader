@@ -347,4 +347,5 @@ data class ReaderState(
     val highlightPalette: List<ReaderHighlightPaletteEntry>,
     val pendingSelectionText: String?,
     val pendingEdit: ReaderPendingEdit?,
+    val pendingServerPosition: ServerPosition?,
 )

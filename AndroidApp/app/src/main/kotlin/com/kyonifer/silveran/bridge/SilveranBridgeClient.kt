@@ -408,6 +408,12 @@ class SilveranBridgeClient(context: Context) {
                     note = edit.optionalString("note"),
                 )
             },
+            pendingServerPosition = obj.optJSONObject("pendingServerPosition")?.let { position ->
+                ServerPosition(
+                    title = position.optionalString("title"),
+                    totalProgression = position.optionalDouble("totalProgression"),
+                )
+            },
         )
     }
 

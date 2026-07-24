@@ -6,6 +6,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.kyonifer.silveran.bridge.SilveranBridgeClient
+import com.kyonifer.silveran.data.LastOpenBookRoute
+import com.kyonifer.silveran.data.LastOpenBookStore
 import com.kyonifer.silveran.model.AppSettings
 import com.kyonifer.silveran.model.AudiobookPlayerState
 import com.kyonifer.silveran.model.SessionKind
@@ -56,6 +58,7 @@ data class SilveranUiState(
 
 class SilveranViewModel private constructor(
     private val client: SilveranBridgeClient,
+    private val lastOpenBooks: LastOpenBookStore,
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(SilveranUiState())
     val state: StateFlow<SilveranUiState> = mutableState.asStateFlow()
@@ -248,6 +251,12 @@ class SilveranViewModel private constructor(
         }
     }
 
+    fun lastOpenBook(): LastOpenBookRoute? = lastOpenBooks.load()
+
+    fun rememberLastOpenBook(bookID: BookID, mode: String) = lastOpenBooks.save(bookID, mode)
+
+    fun forgetLastOpenBook() = lastOpenBooks.clear()
+
     fun openReader(book: Book, mode: String) {
         val key = book.id to mode
         if (currentReaderKey == key) return
@@ -310,6 +319,7 @@ class SilveranViewModel private constructor(
 
     fun closeSession() {
         val session = mutableState.value.session ?: return
+        lastOpenBooks.clear()
         when {
             mutableState.value.readerBookID == session.bookID &&
                 mutableState.value.readerOpen != null -> closeReader()
@@ -518,7 +528,10 @@ class SilveranViewModel private constructor(
             object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : ViewModel> create(modelClass: Class<T>): T =
-                    SilveranViewModel(SilveranBridgeClient(context.applicationContext)) as T
+                    SilveranViewModel(
+                        SilveranBridgeClient(context.applicationContext),
+                        LastOpenBookStore(context.applicationContext),
+                    ) as T
             }
     }
 }

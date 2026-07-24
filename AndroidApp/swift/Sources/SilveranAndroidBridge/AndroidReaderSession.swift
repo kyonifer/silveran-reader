@@ -177,6 +177,7 @@ final class AndroidReaderSession {
     private var translateAvailable = false
     private var lastChapterRestart: Date?
     private var overlayOptions = OverlayOptions()
+    private var pendingServerPosition: IncomingServerPosition?
 
     private struct OverlayOptions: Encodable {
         var showProgress = kDefaultShowProgress
@@ -308,6 +309,7 @@ final class AndroidReaderSession {
         highlights = []
         pendingSelection = nil
         pendingEditHighlightID = nil
+        pendingServerPosition = nil
         await loadPersistedConfig()
         applyActiveTheme()
 
@@ -331,6 +333,16 @@ final class AndroidReaderSession {
             self.styleManager?.sendInitialStyles(isDarkMode: self.isDarkMode)
             Task { @SilveranUIActor in
                 await self.loadHighlights()
+            }
+        }
+        session.onIncomingServerPosition = { [weak self] position in
+            Task { @SilveranUIActor [weak self] in
+                guard let self else { return }
+                if await SettingsActor.shared.config.sync.autoSyncToNewerServerPosition {
+                    self.session?.progressManager?.handleServerPositionUpdate(position.locator)
+                } else {
+                    self.pendingServerPosition = position
+                }
             }
         }
 
@@ -431,6 +443,7 @@ final class AndroidReaderSession {
         evaluator?.close()
         evaluator = nil
         lastStatePayload = nil
+        pendingServerPosition = nil
     }
 
     func handleMessage(name: String, body: String) {
@@ -518,6 +531,13 @@ final class AndroidReaderSession {
                 try await persistDisplaySettings()
             case "updateOverlayOptions":
                 try await applyOverlayOptions(json: text)
+            case "acceptServerPosition":
+                if let position = pendingServerPosition {
+                    pendingServerPosition = nil
+                    session.progressManager?.handleServerPositionUpdate(position.locator)
+                }
+            case "declineServerPosition":
+                pendingServerPosition = nil
             case "saveHighlight":
                 try await applyHighlightEdit(json: text)
             case "cancelSelection":
@@ -1081,6 +1101,11 @@ final class AndroidReaderSession {
             let note: String?
         }
 
+        struct ServerPosition: Encodable {
+            let title: String?
+            let totalProgression: Double?
+        }
+
         struct Search: Encodable {
             struct Section: Encodable {
                 let label: String
@@ -1144,6 +1169,7 @@ final class AndroidReaderSession {
         let highlightPalette: [PaletteEntry]
         let pendingSelectionText: String?
         let pendingEdit: PendingEdit?
+        let pendingServerPosition: ServerPosition?
     }
 
     // The reader state lives across several @Observable objects whose
@@ -1278,6 +1304,12 @@ final class AndroidReaderSession {
                         note: $0.note,
                     )
                 }
+            },
+            pendingServerPosition: pendingServerPosition.map {
+                ReaderState.ServerPosition(
+                    title: $0.locator.title,
+                    totalProgression: $0.locator.locations?.totalProgression,
+                )
             },
         )
 

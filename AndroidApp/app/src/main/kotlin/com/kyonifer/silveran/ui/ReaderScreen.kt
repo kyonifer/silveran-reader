@@ -36,7 +36,10 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -65,6 +68,7 @@ import com.kyonifer.silveran.model.ReaderOverlayOptions
 import com.kyonifer.silveran.model.ReaderSearchState
 import com.kyonifer.silveran.model.ReaderState
 import java.io.File
+import kotlin.math.roundToInt
 import org.json.JSONObject
 
 private const val READER_ORIGIN = "https://appassets.androidplatform.net"
@@ -250,6 +254,33 @@ internal fun ReaderScreen(
             cover = cover,
             cachedCover = cachedCover,
             modifier = Modifier.fillMaxSize(),
+        )
+    }
+
+    readerState?.pendingServerPosition?.let { position ->
+        AlertDialog(
+            onDismissRequest = { readerControl("declineServerPosition", 0.0, "") },
+            title = { Text("Server Has Newer Position") },
+            text = {
+                val location = listOfNotNull(
+                    position.title,
+                    position.totalProgression?.let { "${(it * 100).roundToInt()}%" },
+                ).joinToString(", ")
+                Text(
+                    "Another device has synced a more recent reading position" +
+                        if (location.isBlank()) "." else " ($location).",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { readerControl("acceptServerPosition", 0.0, "") }) {
+                    Text("Go to New Position")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { readerControl("declineServerPosition", 0.0, "") }) {
+                    Text("Stay Here")
+                }
+            },
         )
     }
 

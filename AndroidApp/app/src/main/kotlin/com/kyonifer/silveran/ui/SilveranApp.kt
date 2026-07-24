@@ -74,6 +74,7 @@ fun SilveranApp(viewModel: SilveranViewModel) {
     var categoryKindName by rememberSaveable { mutableStateOf("") }
     var categoryGroup by rememberSaveable { mutableStateOf("") }
     var settingsSavePending by remember { mutableStateOf(false) }
+    var restoreAttempted by rememberSaveable { mutableStateOf(false) }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val drawerScope = rememberCoroutineScope()
     val screen = Screen.valueOf(screenName)
@@ -100,12 +101,14 @@ fun SilveranApp(viewModel: SilveranViewModel) {
             if (readerMode == "audio") {
                 if (state.audiobook?.isPlaying != true) {
                     viewModel.closeAudiobook()
+                    viewModel.forgetLastOpenBook()
                 }
             } else {
                 val keepsPlaying = state.reader?.isPlaying == true &&
                     state.reader?.hasAudioNarration == true
                 if (!keepsPlaying) {
                     viewModel.closeReader()
+                    viewModel.forgetLastOpenBook()
                 }
             }
         }
@@ -156,6 +159,21 @@ fun SilveranApp(viewModel: SilveranViewModel) {
         } else if (screen == Screen.Reader) {
             selectedBook?.let { viewModel.openReader(it, readerMode) }
         }
+        if (screen == Screen.Reader) {
+            selectedBook?.let { viewModel.rememberLastOpenBook(it.id, readerMode) }
+        }
+    }
+    // rememberSaveable survives process death but not a cold launch, so the
+    // open book is restored from its own persisted route instead.
+    LaunchedEffect(state.libraryLoaded) {
+        if (!state.libraryLoaded || restoreAttempted) return@LaunchedEffect
+        restoreAttempted = true
+        if (screen != Screen.Library) return@LaunchedEffect
+        val route = viewModel.lastOpenBook() ?: return@LaunchedEffect
+        if (state.books.none { it.id == route.bookID }) return@LaunchedEffect
+        selectedBookID = route.bookID
+        readerMode = route.mode
+        screenName = Screen.Reader.name
     }
     LaunchedEffect(screen, selectedBookSummary?.id, selectedBookSummary?.coverVersion) {
         if (screen == Screen.Details) selectedBookSummary?.let(viewModel::loadBookDetails)
