@@ -497,7 +497,12 @@ internal fun ReaderBottomOverlay(
                         Modifier.navigationBarsPadding()
                     }
                 )
-                .padding(horizontal = 20.dp, vertical = 8.dp),
+                .padding(
+                    start = 20.dp,
+                    end = 20.dp,
+                    top = 8.dp,
+                    bottom = if (positionAtTop) 8.dp else 22.dp,
+                ),
         ) {
             if (statsVisible) {
                 Column(
@@ -551,7 +556,7 @@ internal fun ReaderBottomOverlay(
             if (hasControls) {
                 Row(
                     modifier = Modifier.align(Alignment.Center),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(20.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     if (options.showSkipBackward) {
@@ -559,8 +564,8 @@ internal fun ReaderBottomOverlay(
                             icon = Icons.AutoMirrored.Filled.RotateLeft,
                             contentDescription = "Skip back",
                             tint = statsColor,
-                            buttonSize = 36.dp,
-                            iconSize = 16.dp,
+                            buttonSize = 46.dp,
+                            iconSize = 22.dp,
                             onClick = { readerControl("prevSentence", 0.0, "") },
                         )
                     }
@@ -569,8 +574,8 @@ internal fun ReaderBottomOverlay(
                             icon = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                             contentDescription = if (isPlaying) "Pause" else "Play",
                             tint = statsColor,
-                            buttonSize = 44.dp,
-                            iconSize = 20.dp,
+                            buttonSize = 56.dp,
+                            iconSize = 28.dp,
                             onClick = { readerControl("togglePlayPause", 0.0, "") },
                         )
                     }
@@ -579,8 +584,8 @@ internal fun ReaderBottomOverlay(
                             icon = Icons.AutoMirrored.Filled.RotateRight,
                             contentDescription = "Skip forward",
                             tint = statsColor,
-                            buttonSize = 36.dp,
-                            iconSize = 16.dp,
+                            buttonSize = 46.dp,
+                            iconSize = 22.dp,
                             onClick = { readerControl("nextSentence", 0.0, "") },
                         )
                     }
